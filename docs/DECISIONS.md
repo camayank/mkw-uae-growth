@@ -43,6 +43,39 @@ clock) so SLA rules and stored times agree. Sessions and sign-in codes use real 
 **D11. Passwordless sign-in.** Six-digit email codes, hashed, 10-minute life, 5 attempts per code, 5 codes per
 account per hour, per-IP limits on the endpoints. Sessions are 14-day HttpOnly cookies.
 
+**D12. Compiled build, one condition.** Production runs `tsc` output under plain Node 22. TypeScript was raised
+from 5.6.3 to 5.9.3 (pinned) for `rewriteRelativeImportExtensions`, which emits the sources' `.ts` imports as
+`.js` without rewriting a single source file, so development, tests and the seed script keep running the
+TypeScript directly. `@tasees/core` exports its compiled output under the `production` condition and its sources
+by default; `node --conditions=production` is set by every production script and the Dockerfile. To remove:
+delete the `tsconfig.build.json` files, the `build` scripts and the `exports` condition, and run `tsx` again.
+
+**D13. S3 signing written in-house, no SDK.** The object storage adapter signs requests with AWS Signature
+Version 4 using `node:crypto` and the global `fetch` (about 120 lines) instead of adding the AWS SDK (hundreds
+of transitive packages, each a supply-chain exposure for the one process that holds client documents). The
+algorithm is checked against AWS's two published S3 test vectors and against a loopback fake bucket that
+recomputes the signature from what it receives; a real bucket must still be exercised in staging. To remove:
+replace `s3Storage()` with an SDK-backed `Storage` and delete the signing functions.
+
+**D14. Playwright 1.49.1 as a pinned development dependency** (Apache-2.0, maintained by Microsoft) for the
+browser smoke test that CI runs against the compiled build. It is never installed in the production image
+(`pnpm install --prod`). To remove: delete it from the root `package.json` and the smoke step from CI.
+
+**D15. Erasure tombstones; it never deletes.** A PDPL erasure replaces the person's name, email and the text of
+messages they wrote, deletes their sessions and codes, and deactivates the account. Every foreign key still
+resolves, payments and payouts keep their amounts, and audit rows are untouched because each hash covers the one
+before it. What a person wrote into other fields (a dispute reason, a decline reason, a change-order description,
+an evidence file name) stays, because those rows have no author column and are part of the engagement record;
+KNOWN-GAPS lists this. Only the founder may erase, and never their own account.
+
+**D16. Audit functions pin their time zone.** The hash covers the event time as text, so `audit_append` and
+`audit_verify` run with `timezone = UTC` and `datestyle = ISO, MDY` set on the function itself. The formula is
+unchanged; events written before this setting (all under UTC sessions) still verify.
+
+**D17. Notifications go out after the transaction commits.** Inviting a person records the account and audit
+event in one transaction and sends the invitation only once that has committed, so a rolled-back change never
+produces an email.
+
 ## Open for the owner
 
 1. **Margin rates and floors per category.** Seeded from the Sheet (setup 20% / AED 500 and so on). Confirm.
@@ -55,3 +88,7 @@ account per hour, per-IP limits on the endpoints. Sessions are 14-day HttpOnly c
 6. **Hosting region and provider** (see DEPLOY.md, data residency).
 7. **Whether partners may see the client's company name before accepting.** Today they see only emirate, zone
    and the services; the name appears after they accept and become a party.
+8. **Retention periods** (Settings page): 5 years for tax records, client documents and messages, audit trail
+   kept indefinitely. Shown as UNCERTAIN until confirmed after legal advice.
+9. **Who may erase a person's data.** Built as founder-only; ops can export.
+10. **Cloud provider and region for O1 staging.** AWS me-central-1 suggested (native S3 and RDS); see DEPLOY.md.

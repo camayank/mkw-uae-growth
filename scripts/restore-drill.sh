@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Restore drill: prove a backup can be restored and that what comes back is whole.
 #   DUMP         the .dump file from scripts/backup.sh (required)
-#   ADMIN_URL    Postgres URL of a role that may CREATE DATABASE on the drill server (required)
+#   ADMIN_URL    Postgres URL of a role that may CREATE DATABASE and CREATE ROLE on the drill server (required);
+#                it needs CREATEROLE (or ADMIN OPTION on the app_* roles) to grant itself the three application roles
 #   SOURCE_URL   optional: the live database, to compare row counts against
 # Creates a scratch database, restores into it, verifies the checksum, recomputes the whole audit hash chain,
 # compares row counts with the source when given, and drops the scratch database. Prints a log to copy into
@@ -46,6 +47,25 @@ if (cd "$here/../apps/api" && DATABASE_URL="$target" node --conditions=productio
 else
   echo "audit chain: BROKEN"; status=1
 fi
+# Application-level check: start the compiled server on the restored copy, sign a client in with a one-time code
+# and load their overview, so the restored grants and policies are proven to work rather than merely to exist.
+port="${DRILL_PORT:-8799}"
+( cd "$here/../apps/api" && DATABASE_URL="$target" DEV_LOGIN=1 PORT="$port" LOG=0 IN_PROCESS_JOBS=0 node --conditions=production dist/main.js >/dev/null 2>&1 & echo $! > "/tmp/tasees-drill.pid" )
+for i in $(seq 1 30); do curl -sf "http://127.0.0.1:$port/api/health" >/dev/null && break; sleep 1; done
+client_email="$(psql "$target" -At -c "select email from users where role = 'client_owner' and status = 'active' order by created_at limit 1")"
+if [ -n "$client_email" ]; then
+  code="$(curl -s -XPOST "http://127.0.0.1:$port/api/auth/request-code" -H 'content-type: application/json' -d "{\"email\":\"$client_email\"}" | sed -n 's/.*"devCode":"\([0-9]*\)".*/\1/p')"
+  token="$(curl -s -XPOST "http://127.0.0.1:$port/api/auth/verify" -H 'content-type: application/json' -d "{\"email\":\"$client_email\",\"code\":\"$code\"}" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')"
+  home="$(curl -s "http://127.0.0.1:$port/api/client/home" -H "authorization: Bearer $token")"
+  if echo "$home" | grep -q '"engagements"' && ! echo "$home" | grep -qi 'margin\|partner_unit\|partnerUnit'; then
+    echo "client sign-in on the restored copy: OK ($client_email loaded $(echo "$home" | grep -o '"id"' | wc -l) rows, no margin or partner cost field)"
+  else
+    echo "client sign-in on the restored copy: FAILED"; status=1
+  fi
+else
+  echo "client sign-in on the restored copy: skipped (no active client owner in the backup)"
+fi
+kill -TERM "$(cat /tmp/tasees-drill.pid)" 2>/dev/null; sleep 2
 last="$(psql "$target" -At -c "select max(at) from audit_events")"
 echo "latest audit event in the backup: $last"
 echo "== result: $([ $status -eq 0 ] && echo PASS || echo FAIL)"

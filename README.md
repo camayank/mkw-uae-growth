@@ -22,6 +22,7 @@ pnpm install
 pnpm seed          # catalogue, margin rules and demo parties (invented firm names) into ./apps/api/data/pglite
 pnpm dev           # http://localhost:8787 with development sign-in (codes shown on screen)
 pnpm test          # 68 tests: pricing, allocation, rules, full HTTP flow, database security
+# browser smoke test (needs Playwright): see scripts/smoke.mjs
 pnpm typecheck
 ```
 
@@ -98,6 +99,10 @@ They match the **Deliverable Codes**, **Rate Cards** and **Offer Builder** tabs 
   Partners are paid 40% at kick-off, 40% at the key milestone, 20% on completion, and only from money received.
 
 ## Further reading
+
+- [`docs/PRODUCT_SPEC.md`](docs/PRODUCT_SPEC.md): the base product: modules, rules, data model, build plan
+- [`outcomes/QUEUE.yaml`](outcomes/QUEUE.yaml): the build queue; work only on the released outcome
+- [`CLAUDE.md`](CLAUDE.md): rules for contributors and coding agents
 
 - [`docs/DEPLOY.md`](docs/DEPLOY.md): environment variables, Postgres, hosting in the UAE, jobs, backups
 - [`docs/DECISIONS.md`](docs/DECISIONS.md): why it is built this way, and the decisions still open for the owner

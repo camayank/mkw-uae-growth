@@ -1,0 +1,19 @@
+{
+  "name": "tasees-platform",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Managed marketplace for UAE business services: partner quotes, margin pricing, allocation and transparent delivery. Operated by MKW Advisors.",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @tasees/api dev",
+    "start": "pnpm --filter @tasees/api start",
+    "seed": "pnpm --filter @tasees/api seed",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "jobs": "pnpm --filter @tasees/api jobs",
+    "import:sheet": "pnpm --filter @tasees/api import:sheet"
+  }
+}

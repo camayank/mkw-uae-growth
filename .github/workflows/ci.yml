@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+
+jobs:
+  check:
+    name: Typecheck, test, build, browser smoke test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit and API tests (PGlite, in memory; no network)
+        run: pnpm test
+
+      - name: Compile
+        run: pnpm build
+
+      - name: Install Chromium for the smoke test
+        run: pnpm add -D -w playwright@1.49.1 && npx playwright install --with-deps chromium
+
+      - name: Seed demo data and start the compiled server
+        run: |
+          pnpm seed
+          cd apps/api
+          DEV_LOGIN=1 PAYMENT_WEBHOOK_SECRET=ci-secret PGLITE_DIR=./data/pglite LOG=0 \
+            node --conditions=production dist/main.js > ../../smoke-server.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://localhost:8787/api/health && break; sleep 1; done
+          curl -sf http://localhost:8787/api/health
+
+      - name: Browser smoke test against the compiled build
+        run: OUT=./smoke-shots node scripts/smoke.mjs
+
+      - name: Verify the audit chain of the smoke run
+        run: PGLITE_DIR=./data/pglite pnpm verify:audit
+
+      - name: Keep screenshots and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-evidence
+          path: |
+            smoke-shots/
+            smoke-server.log
+          if-no-files-found: ignore
+
+  image:
+    name: Container image builds
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the image
+        run: docker build -t tasees-platform:ci .
+      - name: Image starts and answers health checks
+        run: |
+          docker run -d --name tasees -p 8787:8787 -e PAYMENT_WEBHOOK_SECRET=ci tasees-platform:ci
+          for i in $(seq 1 30); do curl -sf http://localhost:8787/api/health && break; sleep 1; done
+          curl -sf http://localhost:8787/api/health | grep '"ok":true'
+          docker logs tasees

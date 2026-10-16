@@ -5,13 +5,15 @@
   "type": "module",
   "scripts": {
     "dev": "DEV_LOGIN=1 tsx watch src/main.ts",
-    "start": "tsx src/main.ts",
+    "demo": "DEV_LOGIN=1 PAYMENT_WEBHOOK_SECRET=dev-secret tsx src/main.ts",
     "seed": "tsx src/scripts/seed.ts",
-    "import:sheet": "tsx src/scripts/import-sheet.ts",
-    "jobs": "tsx src/scripts/run-jobs.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node --conditions=production dist/main.js",
+    "jobs": "node --conditions=production dist/scripts/run-jobs.js",
+    "import:sheet": "node --conditions=production dist/scripts/import-sheet.js",
+    "verify:audit": "node --conditions=production dist/scripts/verify-audit.js",
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json",
-    "demo": "DEV_LOGIN=1 PAYMENT_WEBHOOK_SECRET=dev-secret tsx src/main.ts"
+    "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
     "@electric-sql/pglite": "0.3.15",
@@ -25,7 +27,7 @@
     "@types/node": "22.10.2",
     "@types/pg": "8.11.10",
     "tsx": "4.19.2",
-    "typescript": "5.6.3",
+    "typescript": "5.9.3",
     "vitest": "2.1.8"
   }
 }

@@ -1,9 +1,11 @@
 node_modules/
 dist/
 .env
-data/pglite/
-data/uploads/
+**/data/pglite/
+**/data/uploads/
+backups/
 coverage/
 *.log
 .DS_Store
 smoke-shots/
+smoke-server.pid

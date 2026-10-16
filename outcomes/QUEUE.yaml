@@ -14,7 +14,7 @@ baseline:
 outcomes:
   - id: O1
     title: Production foundation
-    status: in-progress
+    status: verified-pending-merge
     depends_on: [O0]
     contract: outcomes/O1-production-foundation.md
     needs_from_owner: [cloud account in a UAE region, domain name]

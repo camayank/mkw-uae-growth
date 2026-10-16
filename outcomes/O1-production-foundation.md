@@ -1,6 +1,6 @@
 # O1 Production foundation
 
-Status: in-progress (branch `outcome/O1-production-foundation`)
+Status: verified-pending-merge (branch `outcome/O1-production-foundation`, 16 Oct 2026)
 
 ## Business result
 
@@ -86,6 +86,27 @@ Each piece ships behind its own route, adapter or script; reverting the pull req
 Migration `002` only adds columns, a table and a settings row, so the previous code runs against the new
 schema. `STORAGE=local` keeps the disk adapter; `pnpm dev` keeps the uncompiled path.
 
-## Evidence paths
+## Evidence
 
-Filled in when the outcome is verified (see the end of this file).
+| Claim | Evidence |
+| --- | --- |
+| Tests and typecheck | `pnpm test`: 40 core + 59 API = 99 passing (baseline 68); `pnpm typecheck` clean. The same 59 API tests pass on PostgreSQL 16.15 with `TEST_DATABASE_URL` (run locally on 16 Oct 2026). |
+| Partner and user administration | `apps/api/test/admin.test.ts` (10 tests: creation, invitation, role kind, finance read-only, ops kept out of MKW staff, deactivation revokes sessions and codes, reactivation, self-protection, input validation) |
+| PDPL export and erasure | `apps/api/test/pdpl.test.ts` (9 tests: export scope, no audit payloads in an export even after a partner's change order, who may export, erasure keeps payments/payouts/audit rows byte-for-byte and the chain re-verifies, tamper detection, time-zone independence, database denies the new tables to clients and partners, retention confirmation audited) |
+| Storage adapter | `apps/api/test/storage.test.ts` (12 tests: AWS SigV4 GET and PUT test vectors, contract tests for memory/local/S3, server-side encryption header, signature and region errors, addressing style, environment selection) |
+| Security tests unchanged | `apps/api/test/security.test.ts` (8 tests, untouched, passing) |
+| Compiled build | `pnpm build`; compiled server started with `NODE_ENV=production` on a fresh database and applied both migrations; runtime stage simulated with `pnpm install --prod` only (no `tsx`): served `/api/health` and the web app. Graceful `SIGTERM` shutdown verified. |
+| CI | `.github/workflows/ci.yml` (not yet run: no GitHub repository attached in this session) |
+| Backups and restore drill | `scripts/backup.sh`, `scripts/restore-drill.sh`, `docs/RESTORE-DRILL.md` (raw transcript of the PASS on Postgres 16, including the first FAIL that found the privileges gap) |
+| Browser smoke test | `scripts/smoke.mjs` against the compiled build on a fresh demo: `docs/evidence/O1/log.txt` (13 hard checks, all OK, no page errors); audit chain of that run verified: 25 events |
+| Screenshots, 1280 px | `docs/evidence/O1/16-people.png`, `17-people-after-changes.png`, `18-settings-retention.png`, `19-settings-retention-confirmed.png` |
+| Screenshots, 390 px | `docs/evidence/O1/20-mobile-people.png`, `21-mobile-settings.png` (no horizontal overflow) |
+| Independent review | A separate reviewing agent read the diff without the author's notes: 1 blocker (audit payloads in the export could carry a client price to a partner) and 12 other findings; all code findings fixed and covered by tests, the rest recorded in `docs/KNOWN-GAPS.md` and `docs/DECISIONS.md`. |
+
+## Could not verify
+
+- A staging URL: no cloud account or domain yet. The image is built and checked only by CI (`image` job), and
+  CI itself has not run because the repository has no GitHub remote in this session.
+- The S3 adapter against a real bucket: proven against AWS's published test vectors and a loopback fake only.
+- The restore drill ran with the drill server being the source server; repeat from the backup bucket onto a
+  separate server at the first staging deployment.

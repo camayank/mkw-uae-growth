@@ -15,5 +15,8 @@
     "typecheck": "pnpm -r typecheck",
     "jobs": "pnpm --filter @tasees/api jobs",
     "import:sheet": "pnpm --filter @tasees/api import:sheet"
+  },
+  "devDependencies": {
+    "playwright": "1.49.1"
   }
 }

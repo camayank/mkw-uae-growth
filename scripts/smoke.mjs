@@ -11,6 +11,11 @@ const OUT = process.env.OUT ?? "./smoke-shots";
 const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
 const errors = [];
 const log = [];
+/** A check that must hold; a failed one fails the run, so CI cannot pass on a leak. */
+const check = (label, ok) => {
+  log.push(`${label} ${ok ? "OK" : "FAILED"}`);
+  if (!ok) errors.push(`check failed: ${label}`);
+};
 
 async function session(email) {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
@@ -148,7 +153,7 @@ for (const p of partnerPages) {
   await p.locator('form[data-form="message"] button').click();
   await p.waitForTimeout(700);
   const txt = await p.locator("main").innerText();
-  log.push("partner sees client price words? " + /client price|margin|AED 4,200/i.test(txt));
+  check("partner page shows no client price or margin:", !/client price|margin|AED 4,200/i.test(txt));
   await shot(p, "11-partner-engagement");
   worked = true;
 }
@@ -168,8 +173,8 @@ await client.locator('button[data-act="ms-review"][data-approve="1"]').first().c
 await client.waitForTimeout(700);
 log.push("approve: " + (await toastText(client)));
 const pageText = await client.locator("main").innerText();
-log.push("client sees phone? " + pageText.includes("123 4567") + " · sees email? " + pageText.includes("ali@example.com"));
-log.push("client sees partner cost words? " + /partner cost|margin/i.test(pageText));
+check("client page hides the partner's phone and email:", !pageText.includes("123 4567") && !pageText.includes("ali@example.com"));
+check("client page shows no partner cost or margin:", !/partner cost|margin/i.test(pageText));
 await shot(client, "13-client-engagement-approved");
 
 // Mobile
@@ -182,14 +187,14 @@ await mp.waitForSelector("#nav a");
 await mp.goto(engagementUrl); await mp.reload();
 await mp.waitForTimeout(700);
 const overflow = await mp.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
-log.push("mobile horizontal overflow? " + overflow);
+check("client page at 390 px has no horizontal overflow:", !overflow);
 await mp.screenshot({ path: `${OUT}/14-mobile-client.png`, fullPage: false });
 
 // Audit
 const founder = await session("founder@mkwadvisors.test");
 await founder.goto(BASE + "/#/audit");
 await founder.waitForSelector('main h1:text-is("Audit trail")');
-log.push("audit: " + (await founder.locator("main p").first().innerText()));
+check("audit chain intact on the audit screen:", (await founder.locator("main p").first().innerText()).includes("intact"));
 await shot(founder, "15-audit");
 
 // People and organisations (O1): partner creation, invite, role change, deactivation, export, erasure
@@ -224,7 +229,7 @@ log.push("role change: " + (await toastText(founder)));
 await founder.locator("tr", { hasText: `staff-${stamp}@new-partner.test` }).locator('button[data-act="user-deactivate"]').click();
 await founder.waitForTimeout(700);
 log.push("deactivate: " + (await toastText(founder)));
-log.push("deactivated badge shown? " + (await founder.locator("tr", { hasText: `staff-${stamp}@new-partner.test` }).locator(".badge.bad").count()) + " · reactivate offered? " + (await founder.locator("tr", { hasText: `staff-${stamp}@new-partner.test` }).locator('button[data-act="user-reactivate"]').count()));
+check("deactivated user shows the badge and a reactivate button:", (await founder.locator("tr", { hasText: `staff-${stamp}@new-partner.test` }).locator(".badge.bad").count()) === 1 && (await founder.locator("tr", { hasText: `staff-${stamp}@new-partner.test` }).locator('button[data-act="user-reactivate"]').count()) === 1);
 // Export the client member's data (a JSON download), then erase the deactivated staff account
 const [download] = await Promise.all([
   founder.waitForEvent("download"),
@@ -235,16 +240,16 @@ await founder.waitForTimeout(500);
 await founder.locator("tr", { hasText: `staff-${stamp}@new-partner.test` }).locator('button[data-act="user-erase"]').click();
 await founder.waitForTimeout(800);
 log.push("erase: " + (await toastText(founder)));
-log.push("erased person shown as tombstone? " + (await founder.locator("tr", { hasText: "Erased person" }).count() > 0));
+check("erased person shown as a tombstone:", (await founder.locator("tr", { hasText: "Erased person" }).count()) > 0);
 await shot(founder, "17-people-after-changes");
 // Ops cannot touch MKW Advisors staff; finance can only look
 await ops.goto(BASE + "/#/people"); await ops.reload();
 await ops.waitForSelector("main h1");
 const mkwCard = ops.locator(".card", { hasText: "MKW Advisors" }).first();
-log.push("ops sees invite form for MKW staff? " + (await mkwCard.locator('form[data-form="invite"]').count() > 0) + " · ops sees erase buttons? " + (await ops.locator('button[data-act="user-erase"]').count() > 0));
+check("ops cannot invite MKW staff or erase anyone:", (await mkwCard.locator('form[data-form="invite"]').count()) === 0 && (await ops.locator('button[data-act="user-erase"]').count()) === 0);
 await finance.goto(BASE + "/#/people"); await finance.reload();
 await finance.waitForSelector("main h1");
-log.push("finance sees any admin form? " + (await finance.locator('form[data-form="invite"], form[data-form="new-partner"], form[data-form="role"]').count() > 0) + " · finance sees deactivate? " + (await finance.locator('button[data-act="user-deactivate"]').count() > 0));
+check("finance sees no admin forms or deactivate buttons:", (await finance.locator('form[data-form="invite"], form[data-form="new-partner"], form[data-form="role"]').count()) === 0 && (await finance.locator('button[data-act="user-deactivate"]').count()) === 0);
 
 // Settings: retention periods (O1)
 await founder.goto(BASE + "/#/settings");
@@ -254,11 +259,12 @@ await shot(founder, "18-settings-retention");
 await founder.fill('form[data-form="retention"] input[name="note"]', "Smoke test: confirmed by the founder");
 await founder.locator('form[data-form="retention"] button[type="submit"]').click();
 await founder.waitForTimeout(800);
-log.push("retention: " + (await toastText(founder)) + " · UNCERTAIN badges after: " + (await founder.locator('.badge:text-is("UNCERTAIN")').count()));
+log.push("retention: " + (await toastText(founder)));
+check("no UNCERTAIN retention badge after the founder confirms:", (await founder.locator('.badge:text-is("UNCERTAIN")').count()) === 0);
 await shot(founder, "19-settings-retention-confirmed");
 await finance.goto(BASE + "/#/settings"); await finance.reload();
 await finance.waitForSelector("main h1");
-log.push("finance sees confirm button on settings? " + (await finance.locator('form[data-form="retention"] button[type="submit"]').count() > 0));
+check("finance cannot confirm retention periods:", (await finance.locator('form[data-form="retention"] button[type="submit"]').count()) === 0);
 
 // Mobile views of the new screens
 const mf = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
@@ -273,10 +279,16 @@ for (const [route, name] of [["people", "20-mobile-people"], ["settings", "21-mo
   await mfp.waitForSelector("main h1");
   await mfp.waitForTimeout(600);
   const over = await mfp.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
-  log.push(`mobile ${route} horizontal overflow? ` + over);
+  check(`${route} at 390 px has no horizontal overflow:`, !over);
   await mfp.screenshot({ path: `${OUT}/${name}.png`, fullPage: false });
 }
 
 writeFileSync(`${OUT}/log.txt`, [...log, "ERRORS:", ...errors].join("\n"));
 console.log([...log, "ERRORS:", ...errors].join("\n"));
 await browser.close();
+if (errors.length) {
+  console.error(`SMOKE TEST FAILED: ${errors.length} error(s)`);
+  process.exitCode = 1;
+} else {
+  console.log("SMOKE TEST PASSED");
+}

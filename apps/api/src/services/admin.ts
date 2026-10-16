@@ -2,7 +2,7 @@ import { ROLE_ORG, type OrgType, type Role } from "@tasees/core";
 import { audit, type SessionUser } from "../lib/context.ts";
 import type { Queryable } from "../lib/db.ts";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.ts";
-import type { Notifier } from "../lib/notify.ts";
+import type { Notification } from "../lib/notify.ts";
 
 /**
  * Console administration: partner organisations, people and their roles, and UAE PDPL data requests.
@@ -91,7 +91,10 @@ export interface NewPartner {
 }
 
 /** A partner firm and its first admin. The firm starts as a prospect with no licence or agreement on file. */
-export async function createPartner(tx: Queryable, actor: SessionUser, p: NewPartner, notify: Notifier) {
+/** A message to send once the transaction has committed, so nothing goes out for a change that was rolled back. */
+export type PendingNotification = Notification;
+
+export async function createPartner(tx: Queryable, actor: SessionUser, p: NewPartner) {
   assertCanManage(actor, "partner");
   const email = p.adminEmail.trim().toLowerCase();
   await assertEmailFree(tx, email);
@@ -117,8 +120,8 @@ export async function createPartner(tx: Queryable, actor: SessionUser, p: NewPar
   ).rows[0]!;
   await audit(tx, actor, "partner.created", "org", org.id, { name: p.name.trim(), adminUserId: user.id });
   await audit(tx, actor, "user.invited", "user", user.id, { orgId: org.id, role: "partner_admin" });
-  await notify.send({ to: email, channel: "email", template: "user_invited", vars: { orgName: p.name.trim(), role: "partner_admin" } });
-  return { orgId: org.id, adminUserId: user.id };
+  const notification: PendingNotification = { to: email, channel: "email", template: "user_invited", vars: { orgName: p.name.trim(), role: "partner_admin" } };
+  return { orgId: org.id, adminUserId: user.id, notification };
 }
 
 async function assertEmailFree(tx: Queryable, email: string) {
@@ -126,7 +129,7 @@ async function assertEmailFree(tx: Queryable, email: string) {
   if (r.rows.length) throw conflict("A user with that email already exists");
 }
 
-export async function inviteUser(tx: Queryable, actor: SessionUser, orgId: string, input: { email: string; name: string; role: Role }, notify: Notifier) {
+export async function inviteUser(tx: Queryable, actor: SessionUser, orgId: string, input: { email: string; name: string; role: Role }) {
   const org = await loadOrg(tx, orgId);
   assertCanManage(actor, org.type);
   if (ROLE_ORG[input.role] !== org.type) throw badRequest(`The role ${input.role} does not belong to a ${org.type} organisation`);
@@ -142,8 +145,8 @@ export async function inviteUser(tx: Queryable, actor: SessionUser, orgId: strin
     ])
   ).rows[0]!;
   await audit(tx, actor, "user.invited", "user", user.id, { orgId: org.id, role: input.role });
-  await notify.send({ to: email, channel: "email", template: "user_invited", vars: { orgName: org.name, role: input.role } });
-  return { id: user.id };
+  const notification: PendingNotification = { to: email, channel: "email", template: "user_invited", vars: { orgName: org.name, role: input.role } };
+  return { id: user.id, notification };
 }
 
 export async function changeRole(tx: Queryable, actor: SessionUser, userId: string, role: Role) {
@@ -208,8 +211,11 @@ export async function exportPerson(tx: Queryable, actor: SessionUser, userId: st
     payoutsReleased: await q("select id, engagement_id, stage, released_at from payouts where released_by = $1 order by released_at"),
     usersInvited: await q("select id, role, created_at from users where invited_by = $1 order by created_at"),
     dataRequests: await q("select id, kind, status, created_at from data_requests where user_id = $1 order by created_at"),
-    auditEventsAsActor: await q("select id, at, action, entity, entity_id, data from audit_events where actor_user_id = $1 order by id"),
-    auditEventsAboutThem: await q("select id, at, action, entity, data from audit_events where entity = 'user' and entity_id = $1 order by id"),
+    // Audit payloads are MKW's internal record of what was done and can carry figures (a change order's client
+    // price under the partner who proposed it, margin under ops). The export lists what happened and when, never
+    // the payload; the person's own words come from the live tables above.
+    auditEventsAsActor: await q("select id, at, action, entity, entity_id from audit_events where actor_user_id = $1 order by id"),
+    auditEventsAboutThem: await q("select id, at, action, entity from audit_events where entity = 'user' and entity_id = $1 order by id"),
   };
   const summary = {
     sessions: data.sessions.length,

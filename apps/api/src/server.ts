@@ -459,13 +459,17 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
         capacity: z.number().int().min(0).max(500).optional(),
       })
       .parse(req.body);
-    return asPlatform(db, user, (tx) => createPartner(tx, user, body, opts.notify));
+    const { notification, ...result } = await asPlatform(db, user, (tx) => createPartner(tx, user, body));
+    await opts.notify.send(notification); // after commit: the account exists before the invitation goes out
+    return result;
   });
 
   app.post<{ Params: { id: string } }>("/api/admin/orgs/:id/users", async (req) => {
     const user = requireRole(req, "ops", "founder");
     const body = z.object({ email: z.string().email(), name: z.string().min(2).max(120), role: RoleSchema }).parse(req.body);
-    return asPlatform(db, user, (tx) => inviteUser(tx, user, req.params.id, body, opts.notify));
+    const { notification, ...result } = await asPlatform(db, user, (tx) => inviteUser(tx, user, req.params.id, body));
+    await opts.notify.send(notification);
+    return result;
   });
 
   app.post<{ Params: { id: string } }>("/api/admin/users/:id/role", async (req) => {

@@ -61,7 +61,9 @@ describe("AWS Signature Version 4", () => {
 /**
  * A loopback stand-in for an S3 bucket. It stores objects, checks the payload hash, insists on server-side
  * encryption for every upload, and recomputes the signature from the request it actually received with the
- * shared secret, so a header we sign but do not send (or send but do not sign) fails here.
+ * shared secret, so a header we sign but do not send fails here. It reuses signV4, so only the two AWS
+ * vectors above prove the algorithm itself; this proves the wire format and the round trip. A real bucket in
+ * staging is still the final check.
  */
 function fakeS3(secret: { accessKeyId: string; secretAccessKey: string; region: string }) {
   const objects = new Map<string, Buffer>();

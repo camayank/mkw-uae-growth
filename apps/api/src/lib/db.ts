@@ -42,9 +42,10 @@ export async function openPostgres(connectionString: string): Promise<Database> 
   const pool = new pg.Pool({ connectionString, max: 10 });
   // Postgres returns bigint as text; amounts here fit safely in JS numbers (under 2^53 fils).
   pg.types.setTypeParser(20, (v) => Number(v));
-  // The audit hash covers the event time as text, so every connection must render times the same way.
+  // The audit functions pin their own time zone and date style (migration 002); this keeps every other
+  // timestamp the application reads in UTC as well. A failure here is logged, never hidden.
   pool.on("connect", (client) => {
-    client.query("set timezone to 'UTC'").catch(() => undefined);
+    client.query("set timezone to 'UTC'").catch((e) => console.error("could not set the session time zone to UTC", e));
   });
   return {
     kind: "postgres",

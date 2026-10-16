@@ -61,6 +61,33 @@ describe("PDPL export and erasure", () => {
     expect(logged.rows.map((x) => x.kind)).toEqual(["export"]);
   });
 
+  it("never puts another party's figures into an export, even through audit payloads", async () => {
+    // A partner proposes a change order: the audit event under the partner's name carries the client price.
+    const co = await env.call("setup", "POST", `/api/engagements/${engagementId}/change-orders`, { description: "Extra attestation", partnerCostAed: 1000 });
+    expect(co.status).toBe(200);
+    const partner = await env.call("founder", "POST", `/api/admin/users/${partnerAdminId}/export`);
+    const partnerText = JSON.stringify(partner.body);
+    expect(partner.body.auditEventsAsActor.map((e: any) => e.action)).toContain("change_order.proposed");
+    expect(partnerText).not.toMatch(/clientFils|client_fils|clientUnit|margin/i);
+    // Ops built the offers: the audit payload under ops carries margin, which ops may not see.
+    const opsId = (await env.call("ops", "GET", "/api/me")).body.id;
+    const ops = await env.call("founder", "POST", `/api/admin/users/${opsId}/export`);
+    expect(ops.body.auditEventsAsActor.map((e: any) => e.action)).toContain("offer.built");
+    expect(JSON.stringify(ops.body)).not.toMatch(/margin/i);
+    for (const e of [...partner.body.auditEventsAsActor, ...ops.body.auditEventsAsActor]) expect(e).not.toHaveProperty("data");
+  });
+
+  it("verifies the chain whatever time zone or date style the session uses", async () => {
+    await asPlatform(env.db, null, async (tx) => {
+      await tx.query("set local timezone to 'Asia/Dubai'");
+      await tx.query("set local datestyle to 'SQL, DMY'");
+      await tx.query("select audit_append(null, null, 'test.timezone', 'system', null, '{}'::jsonb)");
+      expect((await verifyAuditChain(tx)).intact).toBe(true);
+    });
+    const utc = await asPlatform(env.db, null, (tx) => verifyAuditChain(tx));
+    expect(utc.intact).toBe(true);
+  });
+
   it("limits who may export", async () => {
     expect((await env.call("finance", "POST", `/api/admin/users/${memberId}/export`)).status).toBe(403);
     expect((await env.call("client", "POST", `/api/admin/users/${memberId}/export`)).status).toBe(403);

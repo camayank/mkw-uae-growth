@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join, normalize } from "node:path";
+import { dirname, join, normalize, sep } from "node:path";
 import { createHash, createHmac, randomUUID } from "node:crypto";
 
 /**
@@ -41,7 +41,7 @@ export function localStorage(root = process.env.UPLOAD_DIR ?? "./data/uploads"):
     },
     async get(key) {
       const path = normalize(join(root, key));
-      if (!path.startsWith(normalize(root))) throw new Error("bad key");
+      if (!path.startsWith(normalize(root) + sep)) throw new Error("bad key");
       return readFile(path);
     },
   };
@@ -184,7 +184,7 @@ export function s3Storage(cfg: S3Config): Storage {
       return key;
     },
     async get(key) {
-      if (!key.startsWith(prefix) || key.includes("..")) throw new Error("bad key");
+      if (!key.startsWith(prefix)) throw new Error("bad key");
       const res = await request("GET", key);
       if (res.status === 404) throw new Error("not found");
       if (!res.ok) throw await errorOf(res, "Reading the file");

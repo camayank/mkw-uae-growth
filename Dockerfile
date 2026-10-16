@@ -22,8 +22,9 @@ COPY --from=build /app/packages/core/dist packages/core/dist
 COPY --from=build /app/apps/api/dist apps/api/dist
 COPY apps/api/migrations apps/api/migrations
 COPY apps/web/public apps/web/public
-ENV NODE_ENV=production HOST=0.0.0.0 PORT=8787 UPLOAD_DIR=/app/data/uploads WEB_DIR=/app/apps/web/public
-RUN mkdir -p /app/data/uploads && chown -R node:node /app/data
+# Without DATABASE_URL the image falls back to embedded PGlite under /app/data, the only directory the node user may write.
+ENV NODE_ENV=production HOST=0.0.0.0 PORT=8787 UPLOAD_DIR=/app/data/uploads PGLITE_DIR=/app/data/pglite WEB_DIR=/app/apps/web/public
+RUN mkdir -p /app/data/uploads /app/data/pglite && chown -R node:node /app/data
 EXPOSE 8787
 USER node
 WORKDIR /app/apps/api

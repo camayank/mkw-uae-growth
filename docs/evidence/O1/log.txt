@@ -17,16 +17,16 @@ admin@setup-partner.test accepted 1
 admin@corporate-services.test accepted 1
 admin@tax-accounts.test accepted 1
 submit: Sent to MKW Advisors for checking
-partner sees client price words? false
+partner page shows no client price or margin: OK
 11-partner-engagement
 qa: Passed to the client for approval
 12-ops-engagement
 approve: Approved. Thank you.
-client sees phone? false · sees email? false
-client sees partner cost words? false
+client page hides the partner's phone and email: OK
+client page shows no partner cost or margin: OK
 13-client-engagement-approved
-mobile horizontal overflow? false
-audit: Each event is chained to the one before by a SHA-256 hash; the chain on this page is intact.
+client page at 390 px has no horizontal overflow: OK
+audit chain intact on the audit screen: OK
 15-audit
 16-people
 partner created: Partner firm created; its admin can sign in now
@@ -34,18 +34,19 @@ new partner admin signed in, sees: MKW Advisors Partner Network
 invite: Invited
 role change: Role changed
 deactivate: Account deactivated
-deactivated badge shown? 1 · reactivate offered? 1
-export downloaded: person-62789815-1a5f-4e3f-a003-cf4f8d175e0b.json
+deactivated user shows the badge and a reactivate button: OK
+export downloaded: person-e2f4c62c-0277-4de0-a464-bf07dd661057.json
 erase: Personal data erased and recorded
-erased person shown as tombstone? true
+erased person shown as a tombstone: OK
 17-people-after-changes
-ops sees invite form for MKW staff? false · ops sees erase buttons? false
-finance sees any admin form? false · finance sees deactivate? false
+ops cannot invite MKW staff or erase anyone: OK
+finance sees no admin forms or deactivate buttons: OK
 retention UNCERTAIN badges before: 4
 18-settings-retention
-retention: Retention periods confirmed · UNCERTAIN badges after: 0
+retention: Retention periods confirmed
+no UNCERTAIN retention badge after the founder confirms: OK
 19-settings-retention-confirmed
-finance sees confirm button on settings? false
-mobile people horizontal overflow? false
-mobile settings horizontal overflow? false
+finance cannot confirm retention periods: OK
+people at 390 px has no horizontal overflow: OK
+settings at 390 px has no horizontal overflow: OK
 ERRORS:

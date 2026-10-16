@@ -69,3 +69,11 @@ begin
 end $$;
 
 grant execute on function audit_verify() to app_platform;
+
+-- The hash covers at::text. Pin the time zone and date style inside both functions so the text, and therefore
+-- the hash, is the same whatever the session that writes or verifies has set. The formula is unchanged, so
+-- every event already written under a UTC session still verifies.
+alter function audit_append(uuid, uuid, text, text, text, jsonb) set timezone to 'UTC';
+alter function audit_append(uuid, uuid, text, text, text, jsonb) set datestyle to 'ISO, MDY';
+alter function audit_verify() set timezone to 'UTC';
+alter function audit_verify() set datestyle to 'ISO, MDY';

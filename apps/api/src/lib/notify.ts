@@ -14,7 +14,8 @@ export interface Notification {
     | "milestone_ready_for_review"
     | "milestone_qa_rejected"
     | "change_order_to_approve"
-    | "payout_released";
+    | "payout_released"
+    | "user_invited";
   vars: Record<string, string | number>;
 }
 

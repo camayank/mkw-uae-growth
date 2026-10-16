@@ -26,6 +26,7 @@ export async function openPglite(dataDir?: string): Promise<Database> {
   // int8 (bigint) as JS numbers: every amount here is a safe integer of fils.
   const db = new PGlite(dataDir, { parsers: { 20: (v: string) => Number(v) } });
   await db.waitReady;
+  await db.exec("set timezone to 'UTC'");
   return {
     kind: "pglite",
     transaction: (fn) => db.transaction(async (tx) => fn({ query: (s, p) => tx.query(s, p as unknown[]) as never })),
@@ -41,6 +42,10 @@ export async function openPostgres(connectionString: string): Promise<Database> 
   const pool = new pg.Pool({ connectionString, max: 10 });
   // Postgres returns bigint as text; amounts here fit safely in JS numbers (under 2^53 fils).
   pg.types.setTypeParser(20, (v) => Number(v));
+  // The audit hash covers the event time as text, so every connection must render times the same way.
+  pool.on("connect", (client) => {
+    client.query("set timezone to 'UTC'").catch(() => undefined);
+  });
   return {
     kind: "postgres",
     async transaction(fn) {

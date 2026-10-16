@@ -160,7 +160,7 @@ export function s3Storage(cfg: S3Config): Storage {
     const res = await fetchImpl(`${endpoint.protocol}//${host}${path}`, {
       method,
       headers: { ...sendHeaders, authorization },
-      body: body as BodyInit | undefined,
+      body: body as unknown as RequestInit["body"],
     });
     return res;
   };

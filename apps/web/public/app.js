@@ -32,10 +32,10 @@ const dateTime = (v) =>
 const words = (s) => String(s ?? "").replace(/_/g, " ");
 
 const TONE = {
-  ok: ["client_approved", "completed", "accepted", "released", "paid", "published", "signed", "approved", "eligible", "ok"],
+  ok: ["client_approved", "completed", "accepted", "released", "paid", "published", "signed", "approved", "eligible", "ok", "active", "verified"],
   info: ["in_progress", "in_delivery", "evidence_submitted", "qa_passed", "allocating", "draft", "scoped", "offered", "priced", "proposed"],
-  warn: ["awaiting_payment", "ops_review", "quoting", "pending", "pilot", "open"],
-  bad: ["disputed", "qa_rejected", "expired", "withdrawn", "cancelled", "rejected", "withheld", "paused"],
+  warn: ["awaiting_payment", "ops_review", "quoting", "pending", "pilot", "open", "prospect", "contacted", "UNCERTAIN"],
+  bad: ["disputed", "qa_rejected", "expired", "withdrawn", "cancelled", "rejected", "withheld", "paused", "deactivated", "erased"],
 };
 const tone = (s) => Object.keys(TONE).find((k) => TONE[k].includes(s)) ?? "";
 const badge = (s, label) => `<span class="badge ${tone(s)}">${esc(label ?? words(s))}</span>`;
@@ -104,6 +104,14 @@ const fileToBase64 = (file) =>
     r.readAsDataURL(file);
   });
 
+function download(name, text) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
 async function deliverables() {
   if (!state.deliverables) state.deliverables = await api("GET", "/api/deliverables");
   return state.deliverables;
@@ -126,7 +134,7 @@ document.addEventListener("visibilitychange", () => {
 function navFor() {
   if (isClient()) return [["home", "Overview"], ["new", "New request"]];
   if (isPartner()) return [["home", "Work"], ["rates", "Rate card"], ["payouts", "Payouts"]];
-  return [["home", "Queue"], ["pipeline", "Pipeline"], ["partners", "Partners"], ["new", "New request"], ["audit", "Audit trail"]];
+  return [["home", "Queue"], ["pipeline", "Pipeline"], ["partners", "Partners"], ["people", "People"], ["new", "New request"], ["settings", "Settings"], ["audit", "Audit trail"]];
 }
 
 function chrome() {
@@ -189,6 +197,8 @@ async function renderOnce() {
     if (page === "partners") return await renderPartners();
     if (page === "new") return await renderIntake();
     if (page === "audit") return await renderAudit();
+    if (page === "people") return await renderPeople();
+    if (page === "settings") return await renderSettings();
     return await renderQueue();
   } catch (e) {
     if (e.status === 401) {
@@ -793,6 +803,121 @@ async function renderAudit() {
   )}</div>`;
 }
 
+
+// People: organisations, users, data requests ------------------------------------------------
+
+const ROLES_FOR = {
+  client: ["client_owner", "client_member"],
+  partner: ["partner_admin", "partner_staff"],
+  platform: ["ops", "finance", "founder", "agent"],
+};
+const ORG_LABEL = { platform: "MKW Advisors", partner: "Partner firm", client: "Client" };
+
+async function renderPeople() {
+  const orgs = await api("GET", "/api/admin/orgs");
+  const canWrite = ["ops", "founder"].includes(role());
+  const founder = role() === "founder";
+  // Ops manages clients and partners; MKW Advisors' own staff are the founder's business.
+  const canManage = (o) => canWrite && (o.type !== "platform" || founder);
+  const me = state.me.id;
+  const userRow = (o, u) => {
+    const manage = canManage(o) && u.status !== "erased";
+    const roleSelect = manage && u.id !== me
+      ? `<form class="row" data-form="role" data-id="${u.id}"><select name="role" style="width:auto">${ROLES_FOR[o.type]
+          .map((r) => `<option value="${r}" ${r === u.role ? "selected" : ""}>${esc(words(r))}</option>`)
+          .join("")}</select><button class="sm" type="submit">Change</button></form>`
+      : esc(words(u.role));
+    const actions = [];
+    if (manage && u.id !== me && u.status === "active") actions.push(`<button class="sm" data-act="user-deactivate" data-id="${u.id}">Deactivate</button>`);
+    if (manage && u.status === "deactivated") actions.push(`<button class="sm" data-act="user-reactivate" data-id="${u.id}">Reactivate</button>`);
+    if (canWrite && (o.type !== "platform" || founder)) actions.push(`<button class="sm" data-act="user-export" data-id="${u.id}" data-name="${esc(u.name)}">Export data</button>`);
+    if (founder && u.id !== me && u.status !== "erased") actions.push(`<button class="sm danger" data-act="user-erase" data-id="${u.id}" data-name="${esc(u.name)}">Erase</button>`);
+    return `<tr><td>${esc(u.name)}${u.id === me ? ` <span class="small muted">(you)</span>` : ""}</td><td class="small">${esc(u.email)}</td><td>${roleSelect}</td>
+      <td>${badge(u.status)}</td><td>${actions.length ? `<div class="actions">${actions.join("")}</div>` : ""}</td></tr>`;
+  };
+  const inviteForm = (o) =>
+    canManage(o)
+      ? `<form class="pad grid cols-3" data-form="invite" data-id="${o.id}" style="padding-top:8px;border-top:1px solid var(--line)">
+          <input name="name" placeholder="Full name" required minlength="2" /><input name="email" type="email" placeholder="Work email" required />
+          <div class="row"><select name="role">${ROLES_FOR[o.type].filter((r) => r !== "agent").map((r) => `<option value="${r}">${esc(words(r))}</option>`).join("")}</select>
+          <button class="sm primary" type="submit">Invite</button></div></form>`
+      : "";
+  const orgCard = (o) => `<div class="card flush"><div class="row between" style="padding:16px 18px 0"><h2 style="padding:0">${esc(o.name)}</h2>
+      <span>${badge(o.type, ORG_LABEL[o.type])}${o.profile ? ` ${badge(o.profile.status ?? o.status)}` : ""}</span></div>
+    ${table(["Name", "Email", "Role", "Status", ""], o.users.map((u) => userRow(o, u)), "No users yet.")}
+    ${inviteForm(o)}</div>`;
+  const platform = orgs.filter((o) => o.type === "platform");
+  const partners = orgs.filter((o) => o.type === "partner");
+  const clients = orgs.filter((o) => o.type === "client");
+  $app.innerHTML = `
+  <h1>People and organisations</h1>
+  <p class="muted">Invite people, change roles and deactivate accounts here, so nobody touches the database by hand. Every change is in the audit trail.
+    ${canWrite ? "" : " Finance can view this page but not change it."}${canWrite && !founder ? " MKW Advisors staff are managed by the founder." : ""}</p>
+  <div class="kpis">
+    <div class="kpi"><b>${partners.length}</b><span>Partner firms</span></div>
+    <div class="kpi"><b>${clients.length}</b><span>Client companies</span></div>
+    <div class="kpi"><b>${orgs.reduce((n, o) => n + o.users.filter((u) => u.status === "active").length, 0)}</b><span>Active users</span></div>
+    <div class="kpi"><b>${orgs.reduce((n, o) => n + o.users.filter((u) => u.status !== "active").length, 0)}</b><span>Deactivated or erased</span></div>
+  </div>
+  ${
+    canWrite
+      ? `<form class="card" data-form="new-partner"><h2>Add a partner firm</h2>
+        <p class="small muted">Creates the firm and its first admin, who can sign in at once. The firm starts as a prospect: it receives work only after its licence and the signed Partner Network Agreement are on file and ops marks it signed on the Partners page.</p>
+        <div class="grid cols-3">
+          <div class="field"><label>Firm name</label><input name="name" required minlength="2" placeholder="e.g. Example Corporate Services LLC" /></div>
+          <div class="field"><label>Admin name</label><input name="adminName" required minlength="2" /></div>
+          <div class="field"><label>Admin work email</label><input name="adminEmail" type="email" required /></div>
+          <div class="field"><label>Emirates served (comma separated)</label><input name="emirates" placeholder="Dubai, Sharjah" /></div>
+          <div class="field"><label>Service codes (comma separated)</label><input name="codes" placeholder="SET-FZ-LIC, VISA-RES" /></div>
+          <div class="field"><label>Capacity (live jobs)</label><input name="capacity" type="number" min="0" max="500" value="10" /></div>
+        </div><button class="primary" type="submit">Create partner firm</button></form><br>`
+      : ""
+  }
+  <div class="stack">
+    <h2 style="margin:0">MKW Advisors</h2>${platform.map(orgCard).join("")}
+    <h2 style="margin:8px 0 0">Partner firms</h2>${partners.map(orgCard).join("") || `<p class="empty">No partner firms yet.</p>`}
+    <h2 style="margin:8px 0 0">Clients</h2>${clients.map(orgCard).join("") || `<p class="empty">No clients yet.</p>`}
+  </div>
+  <p class="small muted" style="margin-top:16px">Data requests under the UAE PDPL: <b>Export data</b> downloads everything held about a person as JSON. <b>Erase</b> (founder only) replaces the person's name, email and messages with tombstones and ends their access, while payments, offers and the audit trail stay as tax law requires. Erasure cannot be undone.</p>`;
+}
+
+// Settings: retention -------------------------------------------------------------------------
+
+const RETENTION_LABEL = {
+  taxRecords: "Tax and accounting records",
+  clientDocuments: "Client documents and evidence files",
+  messages: "Engagement messages",
+  auditTrail: "Audit trail",
+  sessions: "Sign-in sessions",
+  loginCodes: "Sign-in codes",
+};
+
+async function renderSettings() {
+  const r = await api("GET", "/api/admin/settings/retention");
+  const founder = role() === "founder";
+  const periodText = (p) => (p.years === null && p.days == null ? "Indefinitely" : p.years != null ? `${p.years} years` : `${p.days} days`);
+  $app.innerHTML = `
+  <h1>Settings</h1>
+  <h2>Retention periods ${badge(r.confirmed ? "verified" : "UNCERTAIN", r.confirmed ? "confirmed" : "not yet confirmed")}</h2>
+  <p class="muted">How long each kind of record is kept. ${
+    r.confirmed ? `Confirmed on ${date(r.confirmedAt)} after legal advice.` : "The defaults below are working assumptions marked UNCERTAIN until the founder confirms them after legal advice."
+  } Nothing is deleted automatically yet; these periods are recorded so that deletion, when it is built, follows a confirmed rule.</p>
+  <form class="card flush" data-form="retention">${table(
+    ["Record", founder ? "Period (edit)" : "Period", "Basis", "Confidence"],
+    Object.entries(r.periods).map(
+      ([k, p]) => `<tr><td>${esc(RETENTION_LABEL[k] ?? k)}</td>
+        <td>${founder && (p.years != null || p.days != null) ? `<input name="${k}" type="number" min="0" max="${p.years != null ? 100 : 36500}" value="${p.years ?? p.days}" style="width:90px" /> ${p.years != null ? "years" : "days"}` : esc(periodText(p))}</td>
+        <td class="small">${esc(p.basis)}</td><td>${badge(p.confidence)}</td></tr>`,
+    ),
+  )}
+  ${
+    founder
+      ? `<div class="pad" style="padding-top:8px"><div class="field"><label>Who confirmed these periods, and when</label><input name="note" required minlength="3" placeholder="e.g. Confirmed with [law firm] on 20 Oct 2026" /></div>
+        <button class="primary" type="submit">Confirm retention periods</button></div>`
+      : `<p class="small muted pad">Only the founder can confirm these periods.</p>`
+  }</form>`;
+}
+
 // Events ----------------------------------------------------------------------------------
 
 document.addEventListener("click", (ev) => {
@@ -864,6 +989,21 @@ document.addEventListener("click", (ev) => {
         toast(`Timers run: ${r.allocationTimeouts} re-routed, ${r.autoApprovals} auto-approved, ${r.offersExpired} offers expired`);
       }, null),
     "partner-status": () => act(() => api("PUT", `/api/ops/partners/${id}`, { status: el.dataset.status }), "Partner updated"),
+    "user-deactivate": () => {
+      if (!confirm("Deactivate this account? They are signed out everywhere and cannot sign in again until reactivated.")) return;
+      act(() => api("POST", `/api/admin/users/${id}/deactivate`), "Account deactivated");
+    },
+    "user-reactivate": () => act(() => api("POST", `/api/admin/users/${id}/reactivate`), "Account reactivated"),
+    "user-export": () =>
+      act(async () => {
+        const data = await api("POST", `/api/admin/users/${id}/export`);
+        download(`person-${id}.json`, JSON.stringify(data, null, 2));
+      }, `Export of ${el.dataset.name}'s data downloaded and recorded`),
+    "user-erase": () => {
+      const typed = prompt(`Erase ${el.dataset.name}'s personal data? This cannot be undone. Their name, email and messages become tombstones; payments and the audit trail stay. Type ERASE to confirm.`);
+      if (typed !== "ERASE") return typed === null ? undefined : toast("Not erased: type ERASE exactly to confirm", true);
+      act(() => api("POST", `/api/admin/users/${id}/erase`, { confirm: "ERASE" }), "Personal data erased and recorded");
+    },
     "add-client": () => {
       const f = el.closest("form");
       const body = { company: f.newCompany.value.trim(), ownerName: f.newOwner.value.trim(), ownerEmail: f.newEmail.value.trim() };
@@ -937,6 +1077,29 @@ document.addEventListener("submit", (ev) => {
       exclusions: String(fd.get("exclusions") || "").split("\n").map((s) => s.trim()).filter(Boolean),
     };
     return act(() => api("PUT", "/api/partner/rate-cards", { cards: [card] }), "Price saved for 90 days");
+  }
+  if (kind === "new-partner") {
+    const list = (v) => String(v || "").split(",").map((x) => x.trim()).filter(Boolean);
+    const body = {
+      name: String(fd.get("name")),
+      adminName: String(fd.get("adminName")),
+      adminEmail: String(fd.get("adminEmail")),
+      emirates: list(fd.get("emirates")),
+      codes: list(fd.get("codes")).map((c) => c.toUpperCase()),
+      capacity: Number(fd.get("capacity") || 10),
+    };
+    return act(() => api("POST", "/api/admin/partners", body), "Partner firm created; its admin can sign in now");
+  }
+  if (kind === "invite") return act(() => api("POST", `/api/admin/orgs/${id}/users`, { name: String(fd.get("name")), email: String(fd.get("email")), role: String(fd.get("role")) }), "Invited");
+  if (kind === "role") return act(() => api("POST", `/api/admin/users/${id}/role`, { role: String(fd.get("role")) }), "Role changed");
+  if (kind === "retention") {
+    const periods = {};
+    for (const [k, v] of fd.entries()) {
+      if (k === "note" || v === "") continue;
+      periods[k] = ["sessions", "loginCodes"].includes(k) ? { days: Number(v) } : { years: Number(v) };
+    }
+    if (!confirm("Confirm these retention periods? Each becomes 'verified' and the change is recorded in the audit trail with your note.")) return;
+    return act(() => api("PUT", "/api/admin/settings/retention", { periods, note: String(fd.get("note")) }), "Retention periods confirmed");
   }
   if (kind === "quote") {
     const lines = [...form.querySelectorAll("[data-line]")].map((row) => {

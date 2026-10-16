@@ -171,6 +171,9 @@ legend { padding: 0 6px; color: var(--muted); font-size: 0.85rem; }
 
 @media (max-width: 640px) {
   .top { padding: 10px 16px; gap: 8px 12px; }
+  /* The menu takes its own full row and wraps, so seven links do not stack into a tall column. */
+  nav#nav { order: 3; flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 2px 6px; }
+  .brand { margin-right: auto; }
   .who span { display: none; }
   main { padding: 16px 16px 48px; }
   .brand small { display: none; }

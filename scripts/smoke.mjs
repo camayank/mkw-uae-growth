@@ -17,9 +17,22 @@ async function session(email) {
   const page = await ctx.newPage();
   page.on("pageerror", (e) => errors.push(`${email}: ${e.message}`));
   page.on("console", (m) => m.type() === "error" && !m.text().includes("401") && errors.push(`${email} console: ${m.text()}`));
-  page.on("dialog", (d) => d.accept(d.type() === "prompt" ? (d.defaultValue() || "REF-12345") : undefined));
+  page.on("dialog", (d) => d.accept(d.type() === "prompt" ? (d.message().includes("Type ERASE") ? "ERASE" : d.defaultValue() || "REF-12345") : undefined));
   await page.goto(BASE + "/");
   await page.locator(`button[data-email="${email}"]`).click();
+  await page.locator('form[data-form="verify"] button[type="submit"]').click();
+  await page.waitForSelector("#nav a");
+  return page;
+}
+/** Sign in through the real email form (for accounts that are not demo buttons). Development mode fills the code in. */
+async function sessionByEmail(email) {
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await ctx.newPage();
+  page.on("pageerror", (e) => errors.push(`${email}: ${e.message}`));
+  await page.goto(BASE + "/");
+  await page.fill('form[data-form="request-code"] input[name="email"]', email);
+  await page.locator('form[data-form="request-code"] button[type="submit"]').click();
+  await page.waitForSelector('form[data-form="verify"]');
   await page.locator('form[data-form="verify"] button[type="submit"]').click();
   await page.waitForSelector("#nav a");
   return page;
@@ -178,6 +191,91 @@ await founder.goto(BASE + "/#/audit");
 await founder.waitForSelector('main h1:text-is("Audit trail")');
 log.push("audit: " + (await founder.locator("main p").first().innerText()));
 await shot(founder, "15-audit");
+
+// People and organisations (O1): partner creation, invite, role change, deactivation, export, erasure
+await founder.goto(BASE + "/#/people");
+await founder.waitForSelector('form[data-form="new-partner"]');
+await shot(founder, "16-people");
+const stamp = Date.now().toString(36);
+const partnerEmail = `admin-${stamp}@new-partner.test`;
+await founder.fill('form[data-form="new-partner"] input[name="name"]', `Smoke Partners ${stamp} LLC`);
+await founder.fill('form[data-form="new-partner"] input[name="adminName"]', "Smoke Admin");
+await founder.fill('form[data-form="new-partner"] input[name="adminEmail"]', partnerEmail);
+await founder.fill('form[data-form="new-partner"] input[name="emirates"]', "Dubai, Sharjah");
+await founder.fill('form[data-form="new-partner"] input[name="codes"]', "set-fz-lic, visa-res");
+await founder.locator('form[data-form="new-partner"] button[type="submit"]').click();
+await founder.waitForTimeout(800);
+log.push("partner created: " + (await toastText(founder)));
+const newPartnerAdmin = await sessionByEmail(partnerEmail);
+log.push("new partner admin signed in, sees: " + (await newPartnerAdmin.locator("#brand").innerText()).replace(/\s+/g, " "));
+// Invite staff into the new firm, promote them, then deactivate them
+const firmCard = founder.locator(".card", { hasText: `Smoke Partners ${stamp} LLC` });
+await firmCard.locator('form[data-form="invite"] input[name="name"]').fill("Smoke Staff");
+await firmCard.locator('form[data-form="invite"] input[name="email"]').fill(`staff-${stamp}@new-partner.test`);
+await firmCard.locator('form[data-form="invite"] select[name="role"]').selectOption("partner_staff");
+await firmCard.locator('form[data-form="invite"] button[type="submit"]').click();
+await founder.waitForTimeout(700);
+log.push("invite: " + (await toastText(founder)));
+const staffRow = founder.locator("tr", { hasText: `staff-${stamp}@new-partner.test` });
+await staffRow.locator('form[data-form="role"] select').selectOption("partner_admin");
+await staffRow.locator('form[data-form="role"] button').click();
+await founder.waitForTimeout(700);
+log.push("role change: " + (await toastText(founder)));
+await founder.locator("tr", { hasText: `staff-${stamp}@new-partner.test` }).locator('button[data-act="user-deactivate"]').click();
+await founder.waitForTimeout(700);
+log.push("deactivate: " + (await toastText(founder)));
+log.push("deactivated badge shown? " + (await founder.locator("tr", { hasText: `staff-${stamp}@new-partner.test` }).locator(".badge.bad").count()) + " · reactivate offered? " + (await founder.locator("tr", { hasText: `staff-${stamp}@new-partner.test` }).locator('button[data-act="user-reactivate"]').count()));
+// Export the client member's data (a JSON download), then erase the deactivated staff account
+const [download] = await Promise.all([
+  founder.waitForEvent("download"),
+  founder.locator("tr", { hasText: "accounts@sample-client.test" }).locator('button[data-act="user-export"]').click(),
+]);
+log.push("export downloaded: " + download.suggestedFilename());
+await founder.waitForTimeout(500);
+await founder.locator("tr", { hasText: `staff-${stamp}@new-partner.test` }).locator('button[data-act="user-erase"]').click();
+await founder.waitForTimeout(800);
+log.push("erase: " + (await toastText(founder)));
+log.push("erased person shown as tombstone? " + (await founder.locator("tr", { hasText: "Erased person" }).count() > 0));
+await shot(founder, "17-people-after-changes");
+// Ops cannot touch MKW Advisors staff; finance can only look
+await ops.goto(BASE + "/#/people"); await ops.reload();
+await ops.waitForSelector("main h1");
+const mkwCard = ops.locator(".card", { hasText: "MKW Advisors" }).first();
+log.push("ops sees invite form for MKW staff? " + (await mkwCard.locator('form[data-form="invite"]').count() > 0) + " · ops sees erase buttons? " + (await ops.locator('button[data-act="user-erase"]').count() > 0));
+await finance.goto(BASE + "/#/people"); await finance.reload();
+await finance.waitForSelector("main h1");
+log.push("finance sees any admin form? " + (await finance.locator('form[data-form="invite"], form[data-form="new-partner"], form[data-form="role"]').count() > 0) + " · finance sees deactivate? " + (await finance.locator('button[data-act="user-deactivate"]').count() > 0));
+
+// Settings: retention periods (O1)
+await founder.goto(BASE + "/#/settings");
+await founder.waitForSelector('form[data-form="retention"]');
+log.push("retention UNCERTAIN badges before: " + (await founder.locator('.badge:text-is("UNCERTAIN")').count()));
+await shot(founder, "18-settings-retention");
+await founder.fill('form[data-form="retention"] input[name="note"]', "Smoke test: confirmed by the founder");
+await founder.locator('form[data-form="retention"] button[type="submit"]').click();
+await founder.waitForTimeout(800);
+log.push("retention: " + (await toastText(founder)) + " · UNCERTAIN badges after: " + (await founder.locator('.badge:text-is("UNCERTAIN")').count()));
+await shot(founder, "19-settings-retention-confirmed");
+await finance.goto(BASE + "/#/settings"); await finance.reload();
+await finance.waitForSelector("main h1");
+log.push("finance sees confirm button on settings? " + (await finance.locator('form[data-form="retention"] button[type="submit"]').count() > 0));
+
+// Mobile views of the new screens
+const mf = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+const mfp = await mf.newPage();
+mfp.on("pageerror", (e) => errors.push(`mobile founder: ${e.message}`));
+await mfp.goto(BASE + "/");
+await mfp.locator('button[data-email="founder@mkwadvisors.test"]').click();
+await mfp.locator('form[data-form="verify"] button[type="submit"]').click();
+await mfp.waitForSelector("#nav a");
+for (const [route, name] of [["people", "20-mobile-people"], ["settings", "21-mobile-settings"]]) {
+  await mfp.goto(BASE + "/#/" + route); await mfp.reload();
+  await mfp.waitForSelector("main h1");
+  await mfp.waitForTimeout(600);
+  const over = await mfp.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
+  log.push(`mobile ${route} horizontal overflow? ` + over);
+  await mfp.screenshot({ path: `${OUT}/${name}.png`, fullPage: false });
+}
 
 writeFileSync(`${OUT}/log.txt`, [...log, "ERRORS:", ...errors].join("\n"));
 console.log([...log, "ERRORS:", ...errors].join("\n"));

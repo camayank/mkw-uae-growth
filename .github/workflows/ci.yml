@@ -43,14 +43,17 @@ jobs:
           cd apps/api
           DEV_LOGIN=1 PAYMENT_WEBHOOK_SECRET=ci-secret PGLITE_DIR=./data/pglite LOG=0 \
             node --conditions=production dist/main.js > ../../smoke-server.log 2>&1 &
+          echo $! > ../../smoke-server.pid
           for i in $(seq 1 30); do curl -sf http://localhost:8787/api/health && break; sleep 1; done
           curl -sf http://localhost:8787/api/health
 
       - name: Browser smoke test against the compiled build
         run: OUT=./smoke-shots node scripts/smoke.mjs
 
-      - name: Verify the audit chain of the smoke run
-        run: PGLITE_DIR=./data/pglite pnpm verify:audit
+      - name: Stop the server cleanly, then verify the audit chain of the smoke run
+        run: |
+          kill -TERM "$(cat smoke-server.pid)" && sleep 3
+          PGLITE_DIR=./data/pglite pnpm verify:audit
 
       - name: Keep screenshots and logs
         if: always()

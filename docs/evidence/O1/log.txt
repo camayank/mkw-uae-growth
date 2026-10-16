@@ -1,0 +1,51 @@
+01-sign-in
+02-client-intake
+request: Request received. We will send your offers shortly.
+build: Offers built
+03-ops-pipeline
+04-ops-queue
+05-ops-offer-no-margin
+publish: Published to the client
+06-finance-offer-with-margin
+07-client-offer
+08-client-engagement-awaiting-payment
+deposit: Payment recorded
+09-finance-engagement-allocated
+10-partner-offered-work
+shot-partner
+admin@setup-partner.test accepted 1
+admin@corporate-services.test accepted 1
+admin@tax-accounts.test accepted 1
+submit: Sent to MKW Advisors for checking
+partner sees client price words? false
+11-partner-engagement
+qa: Passed to the client for approval
+12-ops-engagement
+approve: Approved. Thank you.
+client sees phone? false · sees email? false
+client sees partner cost words? false
+13-client-engagement-approved
+mobile horizontal overflow? false
+audit: Each event is chained to the one before by a SHA-256 hash; the chain on this page is intact.
+15-audit
+16-people
+partner created: Partner firm created; its admin can sign in now
+new partner admin signed in, sees: MKW Advisors Partner Network
+invite: Invited
+role change: Role changed
+deactivate: Account deactivated
+deactivated badge shown? 1 · reactivate offered? 1
+export downloaded: person-62789815-1a5f-4e3f-a003-cf4f8d175e0b.json
+erase: Personal data erased and recorded
+erased person shown as tombstone? true
+17-people-after-changes
+ops sees invite form for MKW staff? false · ops sees erase buttons? false
+finance sees any admin form? false · finance sees deactivate? false
+retention UNCERTAIN badges before: 4
+18-settings-retention
+retention: Retention periods confirmed · UNCERTAIN badges after: 0
+19-settings-retention-confirmed
+finance sees confirm button on settings? false
+mobile people horizontal overflow? false
+mobile settings horizontal overflow? false
+ERRORS:

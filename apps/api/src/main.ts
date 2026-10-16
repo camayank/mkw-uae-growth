@@ -42,3 +42,26 @@ if (process.env.IN_PROCESS_JOBS !== "0") {
     runJobs(db, { notify }).catch((e) => console.error("jobs failed", e));
   }, 15 * 60 * 1000).unref();
 }
+
+// Graceful shutdown: finish in-flight requests, then close the database. PGlite in particular cannot reopen a
+// data directory that was not closed cleanly, and a container runtime sends SIGTERM before it kills the process.
+let shuttingDown = false;
+for (const signal of ["SIGTERM", "SIGINT"] as const) {
+  process.on(signal, () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`${signal} received, shutting down`);
+    const deadline = setTimeout(() => process.exit(1), 10_000).unref();
+    app
+      .close()
+      .then(() => db.close())
+      .then(() => {
+        clearTimeout(deadline);
+        process.exit(0);
+      })
+      .catch((e) => {
+        console.error("shutdown failed", e);
+        process.exit(1);
+      });
+  });
+}

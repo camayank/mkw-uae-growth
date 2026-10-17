@@ -55,7 +55,8 @@ outcomes:
     needs_from_owner: [pilot partners and clients, lawyer, tax adviser]
   - id: O8
     title: Reporting and compliance calendar (dashboards, accounting export, client obligations)
-    status: queued
+    status: verified-pending-merge
+    contract: outcomes/O8-reporting-and-compliance.md
     depends_on: [O7]
     needs_from_owner: [accounting system name]
   - id: O9

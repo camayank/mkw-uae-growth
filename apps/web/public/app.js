@@ -137,9 +137,9 @@ document.addEventListener("visibilitychange", () => {
 });
 
 function navFor() {
-  if (isClient()) return [["home", "Overview"], ["new", "New request"], ["statement", "Statement"]];
-  if (isPartner()) return [["home", "Work"], ["firm", "Your firm"], ["rates", "Rate card"], ["payouts", "Payouts"]];
-  return [["home", "Queue"], ["pipeline", "Pipeline"], ["partners", "Partners"], ["delays", "Delays"], ["people", "People"], ["catalogue", "Catalogue"], ["rules", "Rules"], ["scoping", "Scoping"], ["agent", "AI queue"], ["new", "New request"], ["settings", "Settings"], ["audit", "Audit trail"]];
+  if (isClient()) return [["home", "Overview"], ["new", "New request"], ["compliance", "Compliance"], ["statement", "Statement"]];
+  if (isPartner()) return [["home", "Work"], ["performance", "Performance"], ["firm", "Your firm"], ["rates", "Rate card"], ["payouts", "Payouts"]];
+  return [["home", "Queue"], ["dashboard", "Dashboard"], ["pipeline", "Pipeline"], ["partners", "Partners"], ["delays", "Delays"], ["compliance", "Compliance"], ["people", "People"], ["catalogue", "Catalogue"], ["rules", "Rules"], ["scoping", "Scoping"], ["agent", "AI queue"], ["new", "New request"], ["settings", "Settings"], ["audit", "Audit trail"]];
 }
 
 function chrome() {
@@ -206,11 +206,13 @@ async function renderOnce() {
     if (isClient()) {
       if (page === "offer" && id) return await renderClientOffer(id);
       if (page === "statement") return await renderStatement();
+      if (page === "compliance") return await renderClientCompliance();
       if (page === "new") return await renderIntake();
       return await renderClientHome();
     }
     if (isPartner()) {
       if (page === "firm") return await renderFirm(state.me.orgId);
+      if (page === "performance") return await renderPartnerPerformance();
       if (page === "rates") return await renderRateCards();
       if (page === "payouts") return await renderPartnerPayouts();
       return await renderPartnerHome();
@@ -220,6 +222,8 @@ async function renderOnce() {
     if (page === "partners") return await renderPartners();
     if (page === "partner" && id) return await renderFirm(id);
     if (page === "delays") return await renderDelays();
+    if (page === "dashboard") return await renderDashboard(id);
+    if (page === "compliance") return await renderOpsCompliance(id);
     if (page === "new") return await renderIntake();
     if (page === "audit") return await renderAudit();
     if (page === "people") return await renderPeople();
@@ -865,6 +869,134 @@ async function renderDelays() {
   )}</div>`;
 }
 
+const OBLIGATION_KINDS = ["licence_renewal", "visa_expiry", "vat_return", "ct_return", "esr_notification", "ubo_update", "audit_filing", "custom"];
+const obligationTone = (o) => (o.status === "met" ? "ok" : o.status === "waived" ? "expired" : o.status === "evidence_uploaded" ? "info" : o.status === "pending_review" ? "UNCERTAIN" : new Date(o.dueDate) < new Date() ? "bad" : "pending");
+const obligationLabel = (o) => (o.status === "open" && new Date(o.dueDate) < new Date() ? "overdue" : o.status === "evidence_uploaded" ? "evidence uploaded, MKW checking" : o.status === "pending_review" ? "date to confirm" : words(o.status));
+
+async function renderClientCompliance() {
+  const list = await api("GET", "/api/client/compliance");
+  const live = list.filter((o) => !["met", "waived"].includes(o.status));
+  $app.innerHTML = `<h1>Your compliance calendar</h1>
+  <p class="muted">The recurring obligations that follow from what we set up for you: renewals, returns, registers. We remind you 30 and 7 days ahead. An obligation counts as met when your filing confirmation is uploaded and we have checked it. Dates marked ${badge("UNCERTAIN")} are our estimates until a person confirms them; we do not file on your behalf unless you ask for it as a service.</p>
+  <div class="card flush">${table(
+    ["Due", "Obligation", "Status", "Evidence", ""],
+    list.map((o) => `<tr><td><b>${date(o.dueDate)}</b>${o.periodLabel ? `<br><span class="small muted">${esc(o.periodLabel)}</span>` : ""}</td><td>${esc(o.title)}${o.confidence !== "confirmed" ? ` ${badge("UNCERTAIN")}` : ""}<br><span class="small muted">${esc(words(o.kind))}${o.recurrence !== "none" ? ` · ${esc(o.recurrence)}` : ""}</span>${o.basis ? `<br><span class="small muted">${esc(o.basis)}</span>` : ""}</td>
+      <td>${badge(obligationTone(o), obligationLabel(o))}${o.metAt ? `<br><span class="small muted">${date(o.metAt)}</span>` : ""}</td>
+      <td class="small">${o.evidenceName ? `<a href="/api/obligations/${o.id}/file" target="_blank" rel="noopener">${esc(o.evidenceName)}</a>` : "–"}</td>
+      <td>${["open", "evidence_uploaded"].includes(o.status) ? `<form class="row" data-form="obligation-evidence" data-id="${o.id}"><input type="file" name="file" required style="width:auto;max-width:100%" /><button class="sm primary" type="submit">Upload filing confirmation</button></form>` : ""}</td></tr>`),
+    "Nothing on your calendar yet. Obligations appear when an engagement completes and MKW Advisors confirms the dates.",
+  )}</div>
+  <p class="small muted">${live.length} open · ${list.length - live.length} done</p>`;
+}
+
+async function renderOpsCompliance(clientId) {
+  const list = await api("GET", `/api/ops/compliance${clientId ? `?client=${encodeURIComponent(clientId)}` : ""}`);
+  const canAct = ["ops", "founder"].includes(role());
+  const orgs = canAct ? (await api("GET", "/api/admin/orgs")).filter((o) => o.type === "client") : [];
+  $app.innerHTML = `<h1>Compliance calendar</h1>
+  <p class="muted">Obligations generated when an engagement completes arrive as "date to confirm": check the date against the licence, the FTA portal or the registrar, record what it was checked against, and only then the client sees it. Evidence uploaded by a client is checked here before the obligation counts as met; nothing is filed by the platform.</p>
+  ${canAct ? `<div class="card"><form class="grid cols-3" data-form="obligation-add">
+    <div><label>Client</label><select name="client">${orgs.map((o) => `<option value="${o.id}" ${o.id === clientId ? "selected" : ""}>${esc(o.name)}</option>`).join("")}</select></div>
+    <div><label>Kind</label><select name="kind">${OBLIGATION_KINDS.map((k) => `<option value="${k}">${esc(words(k))}</option>`).join("")}</select></div>
+    <div><label>Title</label><input name="title" required minlength="3" placeholder="VAT return Q4 2026" /></div>
+    <div><label>Due date</label><input name="dueDate" type="date" required /></div>
+    <div><label>Recurs</label><select name="recurrence"><option value="none">once</option><option value="monthly">monthly</option><option value="quarterly">quarterly</option><option value="yearly">yearly</option></select></div>
+    <div><label>Basis (what the date comes from)</label><input name="basis" placeholder="FTA portal, tax period Oct–Dec" /></div>
+    <div style="grid-column:1/-1"><button class="sm primary" type="submit">Add obligation (confirmed by you)</button></div></form></div>` : ""}
+  <div class="card flush">${table(
+    ["Due", "Client", "Obligation", "Status", "Evidence", ""],
+    list.map((o) => {
+      let action = "";
+      if (canAct && ["pending_review", "open"].includes(o.status)) action += `<form class="row" data-form="obligation-confirm" data-id="${o.id}"><input name="dueDate" type="date" value="${esc(o.dueDate)}" style="width:auto" /><input name="note" placeholder="Checked against…" required style="max-width:200px" /><button class="sm ${o.status === "pending_review" ? "primary" : ""}" type="submit">${o.status === "pending_review" ? "Confirm" : "Re-date"}</button></form>`;
+      if (canAct && o.status === "evidence_uploaded") action += `<button class="sm primary" data-act="obligation-met" data-id="${o.id}">Checked: met</button> `;
+      if (canAct && !["met", "waived"].includes(o.status)) action += `<button class="sm" data-act="obligation-waive" data-id="${o.id}">Does not apply</button>`;
+      return `<tr><td><b>${date(o.dueDate)}</b></td><td>${esc(o.client)}</td><td>${esc(o.title)} ${o.confidence !== "confirmed" ? badge("UNCERTAIN") : ""}<br><span class="small muted">${esc(words(o.kind))}${o.recurrence !== "none" ? ` · ${esc(o.recurrence)}` : ""}</span>${o.basis ? `<br><span class="small muted">${esc(o.basis)}</span>` : ""}${o.metNote ? `<br><span class="small">Checked: ${esc(o.metNote)}</span>` : ""}${o.waiveReason ? `<br><span class="small">Waived: ${esc(o.waiveReason)}</span>` : ""}</td>
+        <td>${badge(obligationTone(o), obligationLabel(o))}${(o.remindersSent ?? []).length ? `<br><span class="small muted">reminded ${o.remindersSent.map((r) => (r === -1 ? "overdue" : `${r}d`)).join(", ")}</span>` : ""}</td>
+        <td class="small">${o.evidenceName ? `<a href="/api/obligations/${o.id}/file" target="_blank" rel="noopener">${esc(o.evidenceName)}</a><br><span class="muted">${dateTime(o.evidenceUploadedAt)}</span>` : "–"}</td><td>${action}</td></tr>`;
+    }),
+    "No obligations yet.",
+  )}</div>`;
+}
+
+async function renderDashboard(periodArg) {
+  const now = new Date();
+  const period = periodArg ? decodeURIComponent(periodArg) : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const d = await api("GET", `/api/admin/dashboard?period=${encodeURIComponent(period)}`);
+  const c = d.current;
+  const p = d.previous;
+  const delta = (a, b, money = true) => {
+    if (b === 0 && a === 0) return "";
+    const diff = a - b;
+    return `<span class="small ${diff >= 0 ? "muted" : "muted"}">${diff >= 0 ? "▲" : "▼"} ${money ? aed(Math.abs(diff)) : Math.abs(diff)} vs ${esc(p.period.label)}</span>`;
+  };
+  const kpi = (label, value, sub = "") => `<div class="kpi"><b>${value}</b><span>${label}</span>${sub ? `<br>${sub}` : ""}</div>`;
+  const y = Number(period.slice(0, 4));
+  const options = [];
+  for (let m = 12; m >= 1; m--) options.push(`${y}-${String(m).padStart(2, "0")}`);
+  const choices = [String(y), `${y}-Q1`, `${y}-Q2`, `${y}-Q3`, `${y}-Q4`, ...options];
+  $app.innerHTML = `<div class="row between"><h1>Dashboard</h1><form class="row" data-form="period"><select name="period" style="width:auto">${choices.map((x) => `<option ${x === period ? "selected" : ""}>${x}</option>`).join("")}</select><button class="sm" type="submit">Show</button></form></div>
+  <p class="muted">Figures come from the same invoice, payment and payout rows the accounting export uses. ${d.seesMargin ? "" : "Margin is shown to finance and the founder."}</p>
+  <div class="kpis">
+    ${kpi("Revenue (net of VAT, issued invoices)", aed(c.revenueNetFils), delta(c.revenueNetFils, p.revenueNetFils))}
+    ${kpi("VAT on fees", aed(c.vatFils), delta(c.vatFils, p.vatFils))}
+    ${kpi("Cash collected", aed(c.cashCollectedFils), delta(c.cashCollectedFils, p.cashCollectedFils))}
+    ${kpi("Refunded", aed(c.refundedFils))}
+    ${d.seesMargin ? kpi("Margin on accepted offers", `${aed(c.marginFils)} <span class="small muted">${pct(c.marginBp)}</span>`, delta(c.marginFils, p.marginFils)) : ""}
+    ${kpi("Payouts paid to partners", aed(c.payoutsPaidFils), delta(c.payoutsPaidFils, p.payoutsPaidFils))}
+    ${kpi("Payouts due now", aed(c.payoutsDueFils))}
+    ${kpi("Guarantee credits", aed(c.guaranteeCreditsFils))}
+  </div>
+  <div class="kpis">
+    ${kpi("Requests", c.requests, delta(c.requests, p.requests, false))}
+    ${kpi("Offers accepted", c.offersAccepted, delta(c.offersAccepted, p.offersAccepted, false))}
+    ${kpi("Request → acceptance", `${(c.requestToAcceptance * 100).toFixed(0)}%`)}
+    ${kpi("Engagements completed", c.engagementsCompleted)}
+    ${kpi("Steps on time", `${(c.onTimeRate * 100).toFixed(0)}%`, `<span class="small muted">${c.milestonesOnTime} of ${c.milestonesDone}</span>`)}
+  </div>
+  <div class="grid cols-2">
+    <div class="card flush"><h2>Partner share by category (accepted work, ${esc(c.period.label)})</h2>${table(
+      ["Category", "Partner", "#Share"],
+      Object.entries(c.partnerShareByCategory).flatMap(([cat, m]) => Object.entries(m).map(([partner, share]) => `<tr><td>${esc(cat)}</td><td>${esc(partner)}</td><td class="num">${(share * 100).toFixed(0)}%</td></tr>`)),
+      "No work accepted in this period.",
+    )}<p class="small muted pad" style="padding-top:0">The 35% fairness cap is measured on this share, per category.</p></div>
+    <div class="stack">
+      <div class="card flush"><h2>Engagements by status</h2>${table(["Status", "#Count"], d.pipeline.map((r) => `<tr><td>${badge(r.status)}</td><td class="num">${r.n}</td></tr>`), "None yet.")}</div>
+      <div class="card flush"><h2>Compliance calendar</h2>${table(["Status", "#Count"], d.obligations.map((r) => `<tr><td>${esc(words(r.status))}</td><td class="num">${r.n}</td></tr>`), "No obligations yet.")}</div>
+      ${["ops", "finance", "founder"].includes(role()) ? `<div class="card"><h2>Accounting export</h2>
+        <p class="small muted">CSV for the accounting system (generic layout; the final column mapping for Zoho Books, Xero or QuickBooks is an owner decision, ${badge("UNCERTAIN")} until named). Every export is logged.</p>
+        <form class="grid cols-3" data-form="accounting-export">
+          <div><label>Set</label><select name="set"><option value="sales">Sales: tax invoices and credit notes</option><option value="payments">Payments received and refunded</option><option value="payouts">Partner payouts released</option>${seesMargin() ? `<option value="margin">Margin per line (finance)</option>` : ""}</select></div>
+          <div><label>From</label><input name="from" type="date" value="${esc(c.period.from)}" required /></div>
+          <div><label>To</label><input name="to" type="date" value="${esc(new Date(new Date(c.period.to).getTime() - 86400000).toISOString().slice(0, 10))}" required /></div>
+          <div style="grid-column:1/-1"><button class="sm primary" type="submit">Download CSV</button> <a class="small" href="#/settings">export log on Settings</a></div></form></div>` : ""}
+    </div>
+  </div>`;
+}
+
+async function renderPartnerPerformance() {
+  const d = await api("GET", "/api/partner/dashboard");
+  const by = (s) => d.jobs.find((j) => j.status === s)?.n ?? 0;
+  const pay = (s) => d.payouts.find((p) => p.status === s)?.total ?? 0;
+  $app.innerHTML = `<h1>Your performance</h1>
+  <p class="muted">What MKW Advisors sees of your firm: jobs, on-time delivery, payouts and the weekly scorecard that decides who gets work.</p>
+  <div class="kpis">
+    <div class="kpi"><b>${by("in_delivery") + by("allocating") + by("disputed")}</b><span>Jobs in delivery</span></div>
+    <div class="kpi"><b>${by("completed")}</b><span>Jobs completed</span></div>
+    <div class="kpi"><b>${(d.milestones.onTimeRate * 100).toFixed(0)}%</b><span>Steps on time (${d.milestones.onTime} of ${d.milestones.done})</span></div>
+    <div class="kpi"><b>${d.milestones.late}</b><span>Steps late now</span></div>
+    <div class="kpi"><b>${aed(pay("released"))}</b><span>Paid to you</span></div>
+    <div class="kpi"><b>${aed(pay("eligible"))}</b><span>Due now (invoice us)</span></div>
+    <div class="kpi"><b>${d.rating.average ?? "–"}</b><span>Client rating (${d.rating.count})</span></div>
+    <div class="kpi"><b>${d.scorecards[0]?.score ?? "–"}</b><span>Quality score</span></div>
+  </div>
+  <div class="card flush"><h2>Scorecard trend</h2>${table(["Computed", "#Score", "On time", "First-pass QA", "Disputes", "Strikes", "Rating"], d.scorecards.map((c) => `<tr><td class="small">${date(c.computedAt)}${c.provisional ? ` ${badge("UNCERTAIN", "provisional")}` : ""}</td><td class="num"><b>${c.score}</b></td><td class="num">${c.inputs.milestonesOnTime}/${c.inputs.milestonesDone}</td><td class="num">${c.inputs.qaFirstPass}/${c.inputs.qaSubmissions}</td><td class="num">${c.inputs.disputes}</td><td class="num">${c.inputs.slaStrikes}</td><td class="num">${c.inputs.rating ?? "–"}</td></tr>`), "No scorecard yet; MKW Advisors computes it weekly.")}</div>`;
+}
+
+async function renderExportLog() {
+  const log = await api("GET", "/api/admin/accounting/exports");
+  return `<h2 style="margin-top:20px">Accounting exports</h2><div class="card flush">${table(["When", "Set", "Range", "#Rows", "By"], log.map((l) => `<tr><td class="small">${dateTime(l.exportedAt)}</td><td>${esc(l.setName)}</td><td class="small">${date(l.fromDate)} – ${date(l.toDate)}</td><td class="num">${l.rows}</td><td class="small">${esc(l.exportedBy)}</td></tr>`), "No exports yet (from the Dashboard).")}</div>`;
+}
+
 async function renderPartnerPayouts() {
   const h = await api("GET", "/api/partner/home");
   const admin = role() === "partner_admin";
@@ -937,6 +1069,8 @@ const EXCEPTION_LABEL = {
   ai_draft: "AI draft to decide",
   lead: "Public lead for an existing account",
   delay: "Late step to attribute",
+  obligation: "Compliance date to confirm",
+  obligation_evidence: "Filing evidence to check",
   credit: "Guarantee credit for finance",
   partner_document: "Partner document to verify",
   partner_review: "Partner application to review",
@@ -945,7 +1079,7 @@ const EXCEPTION_LABEL = {
 async function renderQueue() {
   const o = await api("GET", "/api/ops/overview");
   const linkFor = (x) =>
-    ["offer_review", "offer_ready"].includes(x.kind) ? `#/offer/${x.ref}` : x.kind === "needs_quote" ? `#/pipeline` : x.kind === "scoping" ? `#/request/${x.ref}` : x.kind === "ai_draft" || x.kind === "lead" ? `#/agent` : x.kind === "delay" || x.kind === "credit" ? `#/delays` : x.kind === "partner_document" ? `#/partners` : x.kind === "partner_review" ? `#/partner/${x.ref}` : `#/engagement/${x.ref}`;
+    ["offer_review", "offer_ready"].includes(x.kind) ? `#/offer/${x.ref}` : x.kind === "needs_quote" ? `#/pipeline` : x.kind === "scoping" ? `#/request/${x.ref}` : x.kind === "ai_draft" || x.kind === "lead" ? `#/agent` : x.kind === "delay" || x.kind === "credit" ? `#/delays` : x.kind === "obligation" || x.kind === "obligation_evidence" ? `#/compliance` : x.kind === "partner_document" ? `#/partners` : x.kind === "partner_review" ? `#/partner/${x.ref}` : `#/engagement/${x.ref}`;
   const counts = Object.fromEntries(Object.keys(EXCEPTION_LABEL).map((k) => [k, o.exceptions.filter((x) => x.kind === k).length]));
   $app.innerHTML = `
   <h1>What needs a person today</h1>
@@ -1458,6 +1592,7 @@ async function renderSettings() {
       : `<p class="small muted pad">Only the founder can confirm these periods.</p>`
   }</form>
   ${await renderCompany()}
+  ${["ops", "finance", "founder"].includes(role()) ? await renderExportLog() : ""}
   ${await renderDeliveryLog()}`;
 }
 
@@ -1578,6 +1713,15 @@ document.addEventListener("click", (ev) => {
       const note = decision === "waive" ? prompt("Why is the credit waived? (recorded)") : prompt("Note (optional)", "") ?? "";
       if (decision === "waive" && !note) return;
       return act(() => api("POST", `/api/ops/credits/${id}/decide`, { decision, note: note || "" }), decision === "approve" ? "Credit approved" : "Credit waived");
+    },
+    "obligation-met": () => {
+      const note = prompt("What was the evidence checked against? (recorded)", "") ?? "";
+      return act(() => api("POST", `/api/ops/obligations/${id}/met`, { note }), "Marked met; next occurrence scheduled where it recurs");
+    },
+    "obligation-waive": () => {
+      const reason = prompt("Why does this obligation not apply? (recorded)");
+      if (!reason) return;
+      return act(() => api("POST", `/api/ops/obligations/${id}/waive`, { reason }), "Waived");
     },
     "credit-settle": () => {
       const reference = prompt("Refund or transfer reference");
@@ -1719,6 +1863,25 @@ document.addEventListener("submit", (ev) => {
       if (kind === "doc-upload") await api("POST", `/api/document-requests/${id}/upload`, { fileName: file.name, contentBase64 });
       else await api("POST", `/api/partners/${id}/documents`, { kind: String(fd.get("kind")), fileName: file.name, contentBase64, reference: String(fd.get("reference") || "") || undefined, expiresOn: String(fd.get("expiresOn") || "") || undefined });
     }, "Uploaded");
+  }
+  if (kind === "obligation-evidence") {
+    const file = fd.get("file");
+    if (!(file instanceof File) || !file.size) return toast("Choose a file", true);
+    if (file.size > 15 * 1024 * 1024) return toast("Files must be under 15 MB", true);
+    return act(async () => {
+      await api("POST", `/api/obligations/${id}/evidence`, { fileName: file.name, contentBase64: await fileToBase64(file) });
+    }, "Uploaded; MKW Advisors will check it and mark the obligation met");
+  }
+  if (kind === "obligation-add") return act(() => api("POST", `/api/ops/clients/${String(fd.get("client"))}/obligations`, { kind: String(fd.get("kind")), title: String(fd.get("title")), dueDate: String(fd.get("dueDate")), recurrence: String(fd.get("recurrence")), basis: String(fd.get("basis") || "") || undefined }), "Added");
+  if (kind === "obligation-confirm") return act(() => api("POST", `/api/ops/obligations/${id}/confirm`, { dueDate: String(fd.get("dueDate") || "") || undefined, note: String(fd.get("note")) }), "Confirmed; the client now sees it");
+  if (kind === "period") {
+    location.hash = `#/dashboard/${encodeURIComponent(String(fd.get("period")))}`;
+    return;
+  }
+  if (kind === "accounting-export") {
+    const url = `/api/admin/accounting/export?set=${encodeURIComponent(String(fd.get("set")))}&from=${encodeURIComponent(String(fd.get("from")))}&to=${encodeURIComponent(String(fd.get("to")))}`;
+    window.open(url, "_blank", "noopener");
+    return;
   }
   if (kind === "doc-request") return act(() => api("POST", `/api/milestones/${id}/document-requests`, { kind: String(fd.get("kind")), note: String(fd.get("note") || "") }), "Client asked");
   if (kind === "rating") return act(() => api("POST", `/api/engagements/${id}/rating`, { stars: Number(fd.get("stars")), comment: String(fd.get("comment") || "") }), "Thank you for rating");

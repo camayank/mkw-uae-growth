@@ -1,6 +1,6 @@
 # O8 Reporting and compliance calendar
 
-Status: in-progress (branch `outcome/O8-reporting-and-compliance`, stacked on O6)
+Status: verified-pending-merge (branch `outcome/O8-reporting-and-compliance`, stacked on O6, 17 Oct 2026)
 
 ## Business result
 
@@ -74,3 +74,19 @@ watch is O6).
 ## Rollback
 
 Additive migration; dashboards and exports are read-only; the calendar job is a no-op without rows.
+
+## Evidence
+
+| Claim | Evidence |
+| --- | --- |
+| Tests | `pnpm test`: 51 core + 145 API = 196 (O6: 186); `packages/core/test/reporting.test.ts`, `apps/api/test/reporting.test.ts` (4) |
+| Dashboard | revenue, VAT, cash, payouts due, margin, steps done equal direct SQL on the same tables; on-time 100%, request→acceptance 100%, one completion; partner shares per category sum to 1; previous period zero; ops gets no `margin*` key and `seesMargin:false`; bad period 400; client and partner 403 |
+| Partner dashboard | own jobs, on-time rate, eligible payouts, latest scorecard; no "client", "margin" or other firm's name in the body; client 403 |
+| Export | sales CSV header and one row per issued invoice with number and net; payments two rows; payouts empty before release; margin 403 for ops and 200 for finance; client 403; reversed range 400; a client named `=HYPERLINK(...)` exported as `'=HYPERLINK`; five logged rows and five audit events |
+| Calendar | three obligations generated pending review (licence renewal, UBO, visa) with UNCERTAIN; client API returns none and the `app_client` role sees no rows and is denied `met_note`; finance 403 on confirm; confirm needs a note; confirmed date visible to the client as confirmed; waive; met refused without evidence; partner cannot upload; file to the client and 404 to a partner; met creates the next occurrence a year on as open; custom obligation; reminders: overdue once, 30-day once, 7-day once, from "Tasees, by MKW Advisors" with "We do not file on your behalf" |
+| Smoke | `docs/evidence/O8/log.txt` (79 checks OK); screenshots `49-founder-dashboard.png`, `50-ops-compliance.png`, `51-client-compliance.png`, `52-partner-performance.png` (1280 px), `53-mobile-dashboard.png`, `54-mobile-compliance.png` (390 px) |
+
+## Could not verify
+
+The obligation rules (visa term, VAT periods, corporate tax year end, ESR scope) against a qualified person;
+the accounting system's import mapping (owner to name the system).

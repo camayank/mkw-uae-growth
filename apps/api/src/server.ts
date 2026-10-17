@@ -42,6 +42,7 @@ import {
 import { runJobs } from "./jobs/run.ts";
 import { buildOffers, overrideLinePrice, publishOffer } from "./services/pricing.ts";
 import { createRequest, IntakeSchema } from "./services/requests.ts";
+import { addFee, catalogue, retireFee, rulesOverview, scheduleRule, updatePricingSettings, verifyFee } from "./services/rules.ts";
 import {
   changeRole,
   confirmRetention,
@@ -542,6 +543,61 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     const Period = z.object({ years: z.number().int().min(0).max(100).nullable().optional(), days: z.number().int().min(0).max(36500).nullable().optional() });
     const body = z.object({ periods: z.record(Period).default({}), note: z.string().min(3).max(500) }).parse(req.body);
     return asPlatform(db, user, (tx) => confirmRetention(tx, user, body.periods, body.note));
+  });
+
+  // Catalogue, margin rules and government fees (O4) ----------------------------------------------
+  app.get("/api/admin/catalogue", async (req) => {
+    const user = requireRole(req, ...PLATFORM_ROLES);
+    return asPlatform(db, user, (tx) => catalogue(tx));
+  });
+
+  app.get("/api/admin/rules", async (req) => {
+    const user = requireRole(req, ...PLATFORM_ROLES);
+    return asPlatform(db, user, (tx) => rulesOverview(tx));
+  });
+
+  app.put<{ Params: { category: string } }>("/api/admin/rules/:category", async (req) => {
+    const user = requireRole(req, "founder");
+    const body = z
+      .object({ rateBp: z.number().int().min(0).max(10_000), floorAed: z.number().min(0).max(1_000_000), effectiveFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), note: z.string().min(3).max(500) })
+      .parse(req.body);
+    return asPlatform(db, user, (tx) => scheduleRule(tx, user, { category: req.params.category, rateBp: body.rateBp, floorFils: aed(body.floorAed), effectiveFrom: body.effectiveFrom, note: body.note }));
+  });
+
+  app.put("/api/admin/pricing-settings", async (req) => {
+    const user = requireRole(req, "founder");
+    const body = z.object({ capFactorBp: z.number().int().optional(), roundToAed: z.number().optional(), note: z.string().min(3).max(500) }).parse(req.body);
+    return asPlatform(db, user, (tx) =>
+      updatePricingSettings(tx, user, { ...(body.capFactorBp !== undefined ? { capFactorBp: body.capFactorBp } : {}), ...(body.roundToAed !== undefined ? { roundTo: aed(body.roundToAed) } : {}) }, body.note),
+    );
+  });
+
+  app.post("/api/admin/fees", async (req) => {
+    const user = requireRole(req, "ops", "founder");
+    const body = z
+      .object({
+        code: z.string().min(2).max(20),
+        emirate: z.string().min(2).max(40),
+        freeZone: z.string().max(60).nullish(),
+        feeAed: z.number().min(0).max(10_000_000),
+        sourceUrl: z.string().max(500).default(""),
+        sourceNote: z.string().max(500).default(""),
+        effectiveFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      })
+      .parse(req.body);
+    return asPlatform(db, user, (tx) => addFee(tx, user, { ...body, feeFils: aed(body.feeAed) }));
+  });
+
+  app.post<{ Params: { id: string } }>("/api/admin/fees/:id/verify", async (req) => {
+    const user = requireRole(req, "founder");
+    const { verifiedBy } = z.object({ verifiedBy: z.string().min(2).max(120) }).parse(req.body);
+    return asPlatform(db, user, (tx) => verifyFee(tx, user, req.params.id, verifiedBy));
+  });
+
+  app.post<{ Params: { id: string } }>("/api/admin/fees/:id/retire", async (req) => {
+    const user = requireRole(req, "ops", "founder");
+    const { reason } = z.object({ reason: z.string().min(3).max(300) }).parse(req.body);
+    return asPlatform(db, user, (tx) => retireFee(tx, user, req.params.id, reason));
   });
 
   // Payment provider webhook ------------------------------------------------------

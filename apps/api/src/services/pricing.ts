@@ -13,7 +13,7 @@ import {
 import { audit, type SessionUser } from "../lib/context.ts";
 import { num, type Queryable } from "../lib/db.ts";
 import { badRequest, conflict, notFound } from "../lib/errors.ts";
-import { addDays, loadDeliverables, loadPartners, loadRateCards, loadRfqQuotes, loadRules, loadSettings, today } from "./repo.ts";
+import { addDays, dbToday, loadDeliverables, loadGovernmentFees, loadPartners, loadRateCards, loadRfqQuotes, loadRules, loadSettings, type FeeLookup } from "./repo.ts";
 
 export const OFFER_VALID_DAYS = 14;
 
@@ -34,8 +34,8 @@ export async function buildOffers(
   tiers: Tier[] = ["essential", "standard", "priority"],
 ): Promise<BuildResult> {
   const req = (
-    await tx.query<{ id: string; client_org_id: string; scope: { lines: ScopeLine[] }; status: string }>(
-      "select id, client_org_id, scope, status from requests where id = $1",
+    await tx.query<{ id: string; client_org_id: string; scope: { lines: ScopeLine[] }; status: string; answers: { emirate?: string; freeZone?: string | null } }>(
+      "select id, client_org_id, scope, status, answers from requests where id = $1",
       [requestId],
     )
   ).rows[0];
@@ -43,14 +43,21 @@ export async function buildOffers(
   const lines = req.scope?.lines ?? [];
   if (lines.length === 0) throw badRequest("The request has no deliverables to price");
 
-  const [deliverables, rules, settings, partners] = await Promise.all([
+  const asOf = await dbToday(tx);
+  const codes = lines.map((l) => l.code);
+  const [deliverables, rules, settings, partners, fees] = await Promise.all([
     loadDeliverables(tx),
-    loadRules(tx),
+    loadRules(tx, asOf),
     loadSettings(tx),
     loadPartners(tx),
+    loadGovernmentFees(tx, codes, req.answers?.emirate ?? "Dubai", req.answers?.freeZone ?? null, asOf),
   ]);
-  const codes = lines.map((l) => l.code);
-  const cards = await loadRateCards(tx, codes, today());
+  // MKW's own fee table, where it has a row for this place, replaces the partner's stated government fee.
+  for (const [code, f] of fees) {
+    const d = deliverables.get(code);
+    if (d) d.govFeeTable = f.fee;
+  }
+  const cards = await loadRateCards(tx, codes, asOf);
   const rfq = await loadRfqQuotes(tx, requestId);
   const all: CostQuote[] = [...cards, ...rfq].filter((q) => {
     const p = partners.get(q.partnerId);
@@ -83,9 +90,9 @@ export async function buildOffers(
       const scored = scoreQuotes(quotes, d, partners, settings.weights);
       const sel = selectForTier(scored, tier);
       if (!sel) continue;
-      const line = priceLine(
-        { deliverable: d, qty: sl.qty, partnerUnitCost: sel.chosen.partnerUnitCost, govUnitFee: sel.chosen.govFeeUsed, rule },
-        settings,
+      const line = withFeeCheck(
+        priceLine({ deliverable: d, qty: sl.qty, partnerUnitCost: sel.chosen.partnerUnitCost, govUnitFee: sel.chosen.govFeeUsed, rule }, settings),
+        fees.get(sl.code),
       );
       picked.push({ line, partnerId: sel.chosen.partnerId, fallbackId: sel.fallback?.partnerId ?? null, sourceId: sel.chosen.quoteId });
     }
@@ -102,14 +109,14 @@ export async function buildOffers(
     const offer = (
       await tx.query<{ id: string }>(
         `insert into offers (request_id, client_org_id, tier, status, valid_to, professional_fils, mkw_fees_fils, vat_fils,
-           government_fils, client_total_fils, partner_payout_fils, margin_fils, margin_bp, lines_needing_review)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) returning id`,
+           government_fils, client_total_fils, partner_payout_fils, margin_fils, margin_bp, lines_needing_review, rules_as_of)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) returning id`,
         [
           requestId,
           req.client_org_id,
           tier,
           status,
-          addDays(today(), OFFER_VALID_DAYS),
+          addDays(asOf, OFFER_VALID_DAYS),
           totals.professional,
           totals.mkwFees,
           totals.vat,
@@ -119,6 +126,7 @@ export async function buildOffers(
           totals.margin,
           totals.marginBp,
           totals.linesNeedingReview,
+          asOf,
         ],
       )
     ).rows[0]!;
@@ -152,6 +160,19 @@ export async function buildOffers(
   }
   await tx.query("update requests set status = 'offered' where id = $1", [requestId]);
   return { offerIds, missing: [] };
+}
+
+/**
+ * A government fee a client is charged must come from a verified, current row of MKW's table. An UNCERTAIN or
+ * stale row prices the line but sends it to ops review with the reason; no row at all uses the partner's figure
+ * and says so, so ops can see where the table has gaps.
+ */
+export function withFeeCheck(line: PricedLine, fee: FeeLookup | undefined): PricedLine {
+  const note = (reason: string): PricedLine => ({ ...line, status: "ops_review", reason: line.reason ? `${line.reason}; ${reason}` : reason });
+  if (!fee) return line.govUnitFee > 0 ? { ...line, reason: line.reason ? `${line.reason}; government fee from the partner's card (no table row)` : "Government fee from the partner's card (no table row)" } : line;
+  if (fee.confidence === "UNCERTAIN") return note("Government fee UNCERTAIN: verify it before this reaches the client");
+  if (fee.stale) return note(`Government fee verified over 90 days ago (${fee.verifiedAt}): re-verify before this reaches the client`);
+  return line;
 }
 
 function dedupeByPartner(quotes: CostQuote[]): CostQuote[] {

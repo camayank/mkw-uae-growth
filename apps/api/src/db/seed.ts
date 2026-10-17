@@ -2,25 +2,35 @@ import { aed, DEFAULT_SETTINGS } from "@tasees/core";
 import { asPlatform } from "../lib/context.ts";
 import type { Database } from "../lib/db.ts";
 import { DELIVERABLES, DEMO, MARGIN_RULES } from "./seed-data.ts";
+import { CATALOGUE_EXTENSION, EXTENSION_MARGIN_RULES, STARTER_ROWS } from "./catalogue.ts";
 
 /** Catalogue, margin rules and settings. Safe to run more than once. */
 export async function seedCatalogue(db: Database): Promise<void> {
   await asPlatform(db, null, async (tx) => {
-    for (const [code, name, category, model, billing, mid, basis, requires, evidence] of DELIVERABLES) {
-      await tx.query(
-        `insert into deliverables (code, name, category, model, billing, market_mid_fils, mid_basis, requires, required_evidence)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+    const upsert = async (code: string, name: string, category: string, model: string, billing: string, mid: number, basis: string, requires: readonly string[], evidence: readonly string[], row: number | null) =>
+      tx.query(
+        `insert into deliverables (code, name, category, model, billing, market_mid_fils, mid_basis, requires, required_evidence, sheet_row)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
          on conflict (code) do update set name = excluded.name, category = excluded.category, model = excluded.model,
            billing = excluded.billing, market_mid_fils = excluded.market_mid_fils, mid_basis = excluded.mid_basis,
-           requires = excluded.requires, required_evidence = excluded.required_evidence`,
-        [code, name, category, model, billing, aed(mid), basis, [...requires], [...evidence]],
+           requires = excluded.requires, required_evidence = excluded.required_evidence, sheet_row = excluded.sheet_row`,
+        [code, name, category, model, billing, aed(mid), basis, [...requires], [...evidence], row],
       );
+    for (const [code, name, category, model, billing, mid, basis, requires, evidence] of DELIVERABLES) {
+      await upsert(code, name, category, model, billing, mid, basis, requires, evidence, STARTER_ROWS[code]?.[0] ?? null);
     }
-    for (const [category, rate, floor] of MARGIN_RULES) {
+    for (const [code, name, category, model, billing, mid, basis, requires, evidence, row] of CATALOGUE_EXTENSION) {
+      await upsert(code, name, category, model, billing, mid, basis, requires, evidence, row);
+    }
+    // Margin rules: the current rule per category is a cache of the version in force; versions are never overwritten,
+    // so a rule the founder changed from the console is not reset by a restart (insert only when the category is new).
+    for (const [category, rate, floor] of [...MARGIN_RULES, ...EXTENSION_MARGIN_RULES]) {
+      const existing = await tx.query("select 1 from margin_rule_versions where category = $1", [category]);
+      if (existing.rows.length) continue;
+      await tx.query("insert into margin_rules (category, rate_bp, floor_fils) values ($1,$2,$3) on conflict (category) do nothing", [category, rate, floor]);
       await tx.query(
-        `insert into margin_rules (category, rate_bp, floor_fils) values ($1,$2,$3)
-         on conflict (category) do update set rate_bp = excluded.rate_bp, floor_fils = excluded.floor_fils`,
-        [category, rate, floor],
+        "insert into margin_rule_versions (category, rate_bp, floor_fils, effective_from, note) values ($1,$2,$3, date '2026-01-01', $4) on conflict do nothing",
+        [category, rate, floor, EXTENSION_MARGIN_RULES.some(([c]) => c === category) ? "Default for a category the Sheet does not price yet: UNCERTAIN until the owner confirms" : "Starter rule from the Deliverable Codes tab"],
       );
     }
     await tx.query(

@@ -3,7 +3,7 @@ import { createSession } from "../src/lib/auth.ts";
 import { randomBytes } from "node:crypto";
 import pg from "pg";
 import { migrate, openPglite, openPostgres, type Database } from "../src/lib/db.ts";
-import { consoleNotifier, type Notifier } from "../src/lib/notify.ts";
+import { memoryTransport, recordingNotifier, type Notifier, type OutboundEmail } from "../src/lib/notify.ts";
 import { memoryStorage } from "../src/lib/storage.ts";
 import { seedCatalogue, seedDemo, type DemoIds } from "../src/db/seed.ts";
 import { DEMO } from "../src/db/seed-data.ts";
@@ -14,6 +14,9 @@ export interface TestEnv {
   db: Database;
   ids: DemoIds;
   notify: Notifier;
+  /** Emails the memory transport delivered, oldest first. */
+  emails: OutboundEmail[];
+  transport: ReturnType<typeof memoryTransport>;
   clock: { now: Date };
   tokens: Record<string, string>;
   call: <T = any>(who: string, method: string, url: string, body?: unknown) => Promise<{ status: number; body: T }>;
@@ -63,8 +66,9 @@ export async function makeEnv(start = new Date("2026-10-19T06:00:00Z")): Promise
   await migrate(db);
   await seedCatalogue(db);
   const ids = await seedDemo(db);
-  const notify = consoleNotifier(() => undefined);
   const clock = { now: start };
+  const transport = memoryTransport();
+  const notify = recordingNotifier({ db, transport, appUrl: "https://app.test", fromClient: "tasees@mkwadvisors.test", fromPartner: "partners@mkwadvisors.test", now: () => clock.now, log: (m) => (process.env.NOTIFY_DEBUG ? console.log(m) : undefined) });
   const app = await buildApp({ db, notify, storage: memoryStorage(), now: () => clock.now, devLogin: true, webhookSecret: "test-secret" });
   const tokens: Record<string, string> = {};
   for (const [k, email] of Object.entries(EMAILS)) tokens[k] = await createSession(db, email);
@@ -75,7 +79,8 @@ export async function makeEnv(start = new Date("2026-10-19T06:00:00Z")): Promise
       headers: who === "anon" ? {} : { authorization: `Bearer ${tokens[who]}` },
       ...(body === undefined ? {} : { payload: body as object }),
     });
+    await notify.flush(); // deliveries happen after the request, as in production
     return { status: res.statusCode, body: res.body ? JSON.parse(res.body) : null };
   };
-  return { app, db, ids, notify, clock, tokens, call };
+  return { app, db, ids, notify, emails: transport.delivered, transport, clock, tokens, call };
 }

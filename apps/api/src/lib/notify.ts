@@ -1,29 +1,210 @@
+import { asPlatform } from "./context.ts";
+import { withClock, type Database } from "./db.ts";
+import { signedFetch, type AwsCredentials } from "./sigv4.ts";
+import { renderTemplate, TEMPLATE_AUDIENCE, BRAND, type Audience, type TemplateName, type Vars } from "./templates.ts";
+
 /**
- * Outbound messages. Development logs them; production plugs in email (Google Workspace or SendGrid)
- * and WhatsApp (WATI templates). Every send is a template with variables, never free text from users.
+ * Outbound messages. Every send is a named template with typed variables, never free text from users.
+ *
+ *   Notifier   what the application calls: send() queues, flush() records and delivers after the caller's
+ *              transaction has finished, so a rolled-back change never produces an email.
+ *   Transport  how an email leaves: memory (tests), console (development), Amazon SES (production).
+ *   Record     every message lands in the notifications table with its delivery result; rows addressed to a
+ *              known user are that user's in-app bell.
  */
 export interface Notification {
   to: string;
   channel: "email" | "whatsapp";
-  template:
-    | "login_code"
-    | "offer_ready"
-    | "payment_due"
-    | "allocation_offered"
-    | "allocation_reassigned"
-    | "milestone_ready_for_review"
-    | "milestone_qa_rejected"
-    | "change_order_to_approve"
-    | "payout_released"
-    | "user_invited";
-  vars: Record<string, string | number>;
+  template: TemplateName;
+  vars: Vars;
+  /** Overrides the audience derived from the template or the recipient's organisation. */
+  audience?: Audience;
 }
 
 export interface Notifier {
   send(n: Notification): Promise<void>;
+  /** Deliver everything queued so far. Tests call it; the server calls it after each request. */
+  flush(): Promise<void>;
+  /** Everything handed to send(), oldest first (last 500). */
   sent: Notification[];
 }
 
+export interface OutboundEmail {
+  to: string;
+  from: string;
+  fromName: string;
+  subject: string;
+  text: string;
+}
+
+export interface Transport {
+  kind: string;
+  deliver(email: OutboundEmail): Promise<{ providerRef: string }>;
+}
+
+export function memoryTransport(): Transport & { delivered: OutboundEmail[]; failNext?: string } {
+  const delivered: OutboundEmail[] = [];
+  const t: Transport & { delivered: OutboundEmail[]; failNext?: string } = {
+    kind: "memory",
+    delivered,
+    async deliver(email) {
+      if (t.failNext) {
+        const msg = t.failNext;
+        t.failNext = undefined;
+        throw new Error(msg);
+      }
+      delivered.push(email);
+      return { providerRef: `mem-${delivered.length}` };
+    },
+  };
+  return t;
+}
+
+export function consoleTransport(log: (msg: string) => void = console.log): Transport {
+  let n = 0;
+  return {
+    kind: "console",
+    async deliver(email) {
+      n += 1;
+      log(`[email] to ${email.to} from "${email.fromName}" <${email.from}>: ${email.subject}`);
+      return { providerRef: `console-${n}` };
+    },
+  };
+}
+
+export interface SesConfig extends AwsCredentials {
+  region: string;
+  endpoint?: string;
+  fetchImpl?: typeof fetch;
+  now?: () => Date;
+}
+
+/** Amazon SES v2 SendEmail over HTTPS, signed with SigV4. No SDK. */
+export function sesTransport(cfg: SesConfig): Transport {
+  for (const k of ["region", "accessKeyId", "secretAccessKey"] as const) if (!cfg[k]) throw new Error(`SES transport needs ${k}`);
+  const endpoint = new URL(cfg.endpoint ?? `https://email.${cfg.region}.amazonaws.com`);
+  return {
+    kind: "ses",
+    async deliver(email) {
+      const url = new URL("/v2/email/outbound-emails", endpoint);
+      const body = JSON.stringify({
+        FromEmailAddress: `${email.fromName.replace(/"/g, "")} <${email.from}>`,
+        Destination: { ToAddresses: [email.to] },
+        Content: {
+          Simple: {
+            Subject: { Data: email.subject, Charset: "UTF-8" },
+            Body: { Text: { Data: email.text, Charset: "UTF-8" } },
+          },
+        },
+      });
+      const res = await signedFetch({ ...cfg, service: "ses" }, url, { method: "POST", body, headers: { "content-type": "application/json" } });
+      const text = await res.text();
+      if (!res.ok) {
+        let code = String(res.status);
+        try {
+          code = (JSON.parse(text) as { message?: string }).message ?? code;
+        } catch {
+          /* keep the status */
+        }
+        throw new Error(`SES refused the message: ${code}`);
+      }
+      const ref = (JSON.parse(text) as { MessageId?: string }).MessageId ?? "unknown";
+      return { providerRef: ref };
+    },
+  };
+}
+
+export interface NotifierOptions {
+  db: Database;
+  transport: Transport;
+  /** Base URL used in links, for example https://app.tasees.ae */
+  appUrl: string;
+  fromClient: string;
+  fromPartner: string;
+  now?: () => Date;
+  log?: (msg: string) => void;
+}
+
+/**
+ * Records every message and delivers it through the transport, after the calling transaction has finished.
+ * The record is written in its own transaction: a delivery failure marks the row failed and never throws
+ * into business code.
+ */
+export function recordingNotifier(opts: NotifierOptions): Notifier {
+  const sent: Notification[] = [];
+  const queue: Notification[] = [];
+  let flushing: Promise<void> | null = null;
+  const log = opts.log ?? ((m) => console.error(m));
+  const db = withClock(opts.db, opts.now);
+
+  const deliverOne = async (n: Notification) => {
+    const to = n.to.trim().toLowerCase();
+    // Who is this? Decides the audience (branding) and whether the row is somebody's in-app notification.
+    const user = await asPlatform(db, null, async (tx) =>
+      (await tx.query<{ id: string; type: "client" | "partner" | "platform"; status: string }>("select u.id, o.type, u.status from users u join orgs o on o.id = u.org_id where u.email = $1", [to])).rows[0],
+    );
+    const fromOrg: Audience | undefined = user ? (user.type === "client" ? "client" : user.type === "partner" ? "partner" : "staff") : undefined;
+    const templateAudience = TEMPLATE_AUDIENCE[n.template];
+    const audience: Audience = n.audience ?? (templateAudience === "any" ? (fromOrg ?? "client") : templateAudience);
+    const rendered = renderTemplate(n.template, audience, n.vars, opts.appUrl);
+    const from = audience === "client" ? opts.fromClient : opts.fromPartner;
+    const id = await asPlatform(db, null, async (tx) =>
+      (
+        await tx.query<{ id: string }>(
+          `insert into notifications (user_id, to_email, channel, template, audience, subject, body, vars, in_app, status)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,'queued') returning id`,
+          [user?.id ?? null, to, n.channel, n.template, audience, rendered.subject, rendered.body, JSON.stringify(n.vars), rendered.inApp && !!user],
+        )
+      ).rows[0]!.id,
+    );
+    if (n.channel !== "email") {
+      await asPlatform(db, null, (tx) => tx.query("update notifications set status = 'skipped', error = 'channel not available yet' where id = $1", [id]));
+      return;
+    }
+    try {
+      const { providerRef } = await opts.transport.deliver({ to, from, fromName: BRAND[audience].name, subject: rendered.subject, text: rendered.body });
+      await asPlatform(db, null, (tx) => tx.query("update notifications set status = 'sent', provider_ref = $2, sent_at = app_now() where id = $1", [id, providerRef]));
+    } catch (e) {
+      const msg = (e as Error).message.slice(0, 500);
+      log(`[notify] delivery failed for ${n.template} to ${to}: ${msg}`);
+      await asPlatform(db, null, (tx) => tx.query("update notifications set status = 'failed', error = $2 where id = $1", [id, msg]));
+    }
+  };
+
+  const drain = async () => {
+    while (queue.length) {
+      const n = queue.shift()!;
+      try {
+        await deliverOne(n);
+      } catch (e) {
+        log(`[notify] could not record ${n.template} to ${n.to}: ${(e as Error).message}`);
+      }
+    }
+  };
+  const flush = (): Promise<void> => {
+    if (flushing) return flushing;
+    // Clear the marker only when the drain has finished, never before the assignment below completes.
+    const run = drain().finally(() => {
+      if (flushing === run) flushing = null;
+    });
+    flushing = run;
+    return run;
+  };
+
+  return {
+    sent,
+    async send(n) {
+      sent.push(n);
+      if (sent.length > 500) sent.shift();
+      queue.push(n);
+      // Deliver once the current transaction and request have finished; never inside the caller's transaction.
+      setImmediate(() => void flush());
+    },
+    flush,
+  };
+}
+
+/** Development fallback with no database record: prints each message. Kept for scripts. */
 export function consoleNotifier(log: (msg: string) => void = console.log): Notifier {
   const sent: Notification[] = [];
   return {
@@ -33,5 +214,20 @@ export function consoleNotifier(log: (msg: string) => void = console.log): Notif
       if (sent.length > 500) sent.shift();
       log(`[notify] ${n.channel} ${n.template} -> ${n.to} ${JSON.stringify(n.vars)}`);
     },
+    async flush() {},
   };
+}
+
+/** Pick the transport from the environment. `EMAIL=ses` needs the AWS variables; anything else prints. */
+export function transportFromEnv(env: NodeJS.ProcessEnv = process.env): Transport {
+  if (env.EMAIL === "ses") {
+    return sesTransport({
+      region: env.SES_REGION ?? env.S3_REGION ?? "me-central-1",
+      accessKeyId: env.SES_ACCESS_KEY_ID ?? env.S3_ACCESS_KEY_ID ?? "",
+      secretAccessKey: env.SES_SECRET_ACCESS_KEY ?? env.S3_SECRET_ACCESS_KEY ?? "",
+      sessionToken: env.SES_SESSION_TOKEN || undefined,
+      endpoint: env.SES_ENDPOINT || undefined,
+    });
+  }
+  return consoleTransport();
 }

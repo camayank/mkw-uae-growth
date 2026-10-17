@@ -246,7 +246,7 @@ export function opsEngagement(db: Database, user: SessionUser, engagementId: str
   });
 }
 
-async function exceptionQueue(tx: Queryable) {
+export async function exceptionQueue(tx: Queryable) {
   const rows = await tx.query<{ kind: string; ref: string; detail: string; at: string }>(
     `select 'offer_review' as kind, id::text as ref, 'Offer needs review: ' || lines_needing_review || ' line(s)' as detail, created_at::text as at
        from offers where status = 'ops_review'
@@ -276,6 +276,34 @@ async function exceptionQueue(tx: Queryable) {
 export function auditTrail(db: Database, user: SessionUser, limit = 200) {
   return asPlatform(db, user, async (tx) => {
     const r = await tx.query("select id, at, actor_user_id, action, entity, entity_id, data, prev_hash, hash from audit_events order by id desc limit $1", [limit]);
+    return r.rows.map(camel);
+  });
+}
+
+// Notifications -------------------------------------------------------------------------
+
+/** The signed-in person's own in-app notifications. Clients and partners read under their database role. */
+export function myNotifications(db: Database, user: SessionUser) {
+  const run = user.orgType === "platform" ? asPlatform : asUser;
+  return run(db, user, async (tx) => {
+    const rows = await tx.query(
+      `select id, template, subject, body, created_at, read_at from notifications
+       where user_id = $1 and in_app order by created_at desc limit 50`,
+      [user.id],
+    );
+    const unread = await tx.query<{ n: number }>("select count(*)::int as n from notifications where user_id = $1 and in_app and read_at is null", [user.id]);
+    return { items: rows.rows.map(camel), unread: num(unread.rows[0]?.n) };
+  });
+}
+
+/** Delivery log for MKW staff: what went out, to whom, and whether it arrived at the provider. */
+export function deliveryLog(db: Database, user: SessionUser, limit = 200) {
+  return asPlatform(db, user, async (tx) => {
+    const r = await tx.query(
+      `select n.id, n.to_email, n.channel, n.template, n.audience, n.subject, n.status, n.provider_ref, n.error, n.created_at, n.sent_at, n.read_at,
+         u.name as recipient from notifications n left join users u on u.id = n.user_id order by n.created_at desc limit $1`,
+      [limit],
+    );
     return r.rows.map(camel);
   });
 }

@@ -54,7 +54,7 @@ import {
   listOrganisations,
   reactivateUser,
 } from "./services/admin.ts";
-import { auditTrail, clientHome, clientOffer, opsEngagement, opsOffer, opsOverview, partnerHome, partyEngagement } from "./services/views.ts";
+import { auditTrail, clientHome, clientOffer, deliveryLog, myNotifications, opsEngagement, opsOffer, opsOverview, partnerHome, partyEngagement } from "./services/views.ts";
 
 export interface AppOptions {
   db: Database;
@@ -74,6 +74,11 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 25 * 1024 * 1024 });
   const db = withClock(opts.db, opts.now);
   const deps: Deps = { notify: opts.notify, now: opts.now };
+
+  // Queued notifications go out once the response is on its way, after every transaction of the request.
+  app.addHook("onResponse", async () => {
+    await opts.notify.flush();
+  });
 
   app.addHook("onRequest", async (req) => {
     const token = bearer(req) ?? cookie(req, COOKIE);
@@ -260,7 +265,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   app.post<{ Params: { id: string } }>("/api/engagements/:id/change-orders", async (req) => {
     const user = requireRole(req, "partner_admin");
     const body = z.object({ description: z.string().min(3).max(2000), partnerCostAed: z.number().positive().max(10_000_000) }).parse(req.body);
-    const id = await asPlatform(db, user, (tx) => proposeChangeOrder(tx, user, req.params.id, body.description, aed(body.partnerCostAed)));
+    const id = await asPlatform(db, user, (tx) => proposeChangeOrder(tx, user, req.params.id, body.description, aed(body.partnerCostAed), deps));
     return { id };
   });
 
@@ -436,6 +441,31 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   app.post("/api/ops/jobs/run", async (req) => {
     const user = requireRole(req, "ops", "founder");
     return runJobs(db, deps, user);
+  });
+
+  // Notifications: each person's own bell ---------------------------------------------------------
+  app.get("/api/notifications", async (req) => {
+    const user = requireUser(req);
+    return myNotifications(db, user);
+  });
+
+  app.post("/api/notifications/read", async (req) => {
+    const user = requireUser(req);
+    const body = z.object({ ids: z.array(z.string().uuid()).max(200).optional() }).parse(req.body ?? {});
+    return asPlatform(db, user, async (tx) => {
+      const r = await tx.query(
+        body.ids?.length
+          ? "update notifications set read_at = app_now() where user_id = $1 and read_at is null and id = any($2::uuid[]) returning id"
+          : "update notifications set read_at = app_now() where user_id = $1 and read_at is null returning id",
+        body.ids?.length ? [user.id, body.ids] : [user.id],
+      );
+      return { ok: true, marked: r.rows.length };
+    });
+  });
+
+  app.get("/api/admin/notifications", async (req) => {
+    const user = requireRole(req, ...PLATFORM_ROLES);
+    return deliveryLog(db, user);
   });
 
   // Administration: organisations, people, PDPL data requests, retention --------------------------

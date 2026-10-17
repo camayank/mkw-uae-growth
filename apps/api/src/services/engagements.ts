@@ -334,6 +334,7 @@ async function timeOut(tx: Queryable, allocationId: string, engagementId: string
     [a.partner_org_id],
   );
   await audit(tx, null, "allocation.timed_out", "allocation", allocationId, { engagementId });
+  await notifyOrg(tx, deps, a.partner_org_id, "allocation_reassigned", { allocationId });
   await runAllocation(tx, null, engagementId, deps, "next_ranked_sla_timeout");
 }
 
@@ -407,9 +408,10 @@ export async function qaMilestone(tx: Queryable, user: SessionUser, milestoneId:
   await audit(tx, user, pass ? "milestone.qa_passed" : "milestone.qa_rejected", "milestone", milestoneId, { note });
   if (pass) {
     const client = (await tx.query<{ client_org_id: string }>("select client_org_id from engagements where id = $1", [m.engagement_id])).rows[0];
-    if (client) await notifyOrg(tx, deps, client.client_org_id, "milestone_ready_for_review", { milestoneId });
+    if (client) await notifyOrg(tx, deps, client.client_org_id, "milestone_ready_for_review", { milestoneId, engagementId: m.engagement_id });
   } else {
-    await notifyOrg(tx, deps, m.partner_org_id, "milestone_qa_rejected", { milestoneId, note: note ?? "" });
+    // The note is read on the engagement page; it is a person's free text and never goes into a message.
+    await notifyOrg(tx, deps, m.partner_org_id, "milestone_qa_rejected", { milestoneId, engagementId: m.engagement_id });
   }
 }
 
@@ -510,7 +512,7 @@ export async function releasePayout(tx: Queryable, user: SessionUser, payoutId: 
 
 // Change orders ------------------------------------------------------------------
 
-export async function proposeChangeOrder(tx: Queryable, user: SessionUser, engagementId: string, description: string, partnerFils: number) {
+export async function proposeChangeOrder(tx: Queryable, user: SessionUser, engagementId: string, description: string, partnerFils: number, deps: Deps) {
   if (user.orgType !== "partner") throw forbidden("Partners raise change orders");
   const isParty = (
     await tx.query("select 1 from engagement_parties where engagement_id = $1 and org_id = $2", [engagementId, user.orgId])
@@ -533,6 +535,8 @@ export async function proposeChangeOrder(tx: Queryable, user: SessionUser, engag
     )
   ).rows[0]!;
   await audit(tx, user, "change_order.proposed", "change_order", co.id, { partnerFils, clientFils });
+  const client = (await tx.query<{ client_org_id: string }>("select client_org_id from engagements where id = $1", [engagementId])).rows[0];
+  if (client) await notifyOrg(tx, deps, client.client_org_id, "change_order_to_approve", { changeOrderId: co.id, engagementId });
   return co.id;
 }
 

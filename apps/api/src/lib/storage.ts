@@ -1,6 +1,12 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, normalize, sep } from "node:path";
-import { createHash, createHmac, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
+import { awsEncode, sha256hex, signV4 } from "./sigv4.ts";
+
+/** Kept for the storage tests and anyone who imported them from here. */
+export { signV4 };
+export const s3Encode = awsEncode;
+export type { SignInput } from "./sigv4.ts";
 
 /**
  * Document storage behind one interface. Three adapters:
@@ -87,53 +93,6 @@ export interface S3Config {
   now?: () => Date;
 }
 
-const sha256hex = (data: Buffer | string) => createHash("sha256").update(data).digest("hex");
-const hmac = (key: Buffer | string, data: string) => createHmac("sha256", key).update(data, "utf8").digest();
-
-/** URI-encode one path segment the way S3 expects: everything but unreserved characters, with %XX in upper case. */
-export function s3Encode(segment: string): string {
-  return encodeURIComponent(segment).replace(/[!'()*]/g, (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase());
-}
-
-export interface SignInput {
-  method: string;
-  /** Already-encoded canonical path, starting with "/". */
-  path: string;
-  /** Canonical query string (sorted, encoded), "" when none. */
-  query?: string;
-  headers: Record<string, string>;
-  payloadHash: string;
-  region: string;
-  service?: string;
-  accessKeyId: string;
-  secretAccessKey: string;
-  /** ISO basic time stamp, for example 20130524T000000Z. */
-  amzDate: string;
-}
-
-/** AWS Signature Version 4 for one request. Pure function so it can be checked against AWS's published test vectors. */
-export function signV4(input: SignInput): { authorization: string; signedHeaders: string; signature: string; canonicalRequest: string } {
-  const service = input.service ?? "s3";
-  const date = input.amzDate.slice(0, 8);
-  const headerList = Object.entries(input.headers)
-    .map(([k, v]) => [k.toLowerCase().trim(), v.trim().replace(/\s+/g, " ")] as const)
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-  const canonicalHeaders = headerList.map(([k, v]) => `${k}:${v}\n`).join("");
-  const signedHeaders = headerList.map(([k]) => k).join(";");
-  const canonicalRequest = [input.method.toUpperCase(), input.path, input.query ?? "", canonicalHeaders, signedHeaders, input.payloadHash].join("\n");
-  const scope = `${date}/${input.region}/${service}/aws4_request`;
-  const stringToSign = ["AWS4-HMAC-SHA256", input.amzDate, scope, sha256hex(canonicalRequest)].join("\n");
-  const kDate = hmac(`AWS4${input.secretAccessKey}`, date);
-  const kRegion = hmac(kDate, input.region);
-  const kService = hmac(kRegion, service);
-  const kSigning = hmac(kService, "aws4_request");
-  const signature = createHmac("sha256", kSigning).update(stringToSign, "utf8").digest("hex");
-  const authorization = `AWS4-HMAC-SHA256 Credential=${input.accessKeyId}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
-  return { authorization, signedHeaders, signature, canonicalRequest };
-}
-
-const amzDateOf = (d: Date) => d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
-
 export function s3Storage(cfg: S3Config): Storage {
   for (const k of ["bucket", "region", "accessKeyId", "secretAccessKey"] as const) if (!cfg[k]) throw new Error(`S3 storage needs ${k}`);
   const fetchImpl = cfg.fetchImpl ?? fetch;
@@ -142,6 +101,7 @@ export function s3Storage(cfg: S3Config): Storage {
   const sse = cfg.sse ?? "AES256";
   const prefix = cfg.prefix ?? "";
 
+  const amzDateOf = (d: Date) => d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
   const request = async (method: "PUT" | "GET", key: string, body?: Buffer, extra: Record<string, string> = {}) => {
     const encodedKey = key.split("/").map(s3Encode).join("/");
     const host = pathStyle ? endpoint.host : `${cfg.bucket}.${endpoint.host}`;
@@ -155,7 +115,7 @@ export function s3Storage(cfg: S3Config): Storage {
       ...(cfg.sessionToken ? { "x-amz-security-token": cfg.sessionToken } : {}),
       ...extra,
     };
-    const { authorization } = signV4({ method, path, headers, payloadHash, region: cfg.region, accessKeyId: cfg.accessKeyId, secretAccessKey: cfg.secretAccessKey, amzDate });
+    const { authorization } = signV4({ method, path, headers, payloadHash, region: cfg.region, service: "s3", accessKeyId: cfg.accessKeyId, secretAccessKey: cfg.secretAccessKey, amzDate });
     const { host: _h, ...sendHeaders } = headers;
     const res = await fetchImpl(`${endpoint.protocol}//${host}${path}`, {
       method,

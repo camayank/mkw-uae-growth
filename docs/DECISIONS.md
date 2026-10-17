@@ -156,6 +156,26 @@ refunded, issues a credit note and sets the engagement's unreleased payouts to w
 payout has been released, so the money leak "client refunded, partner paid" cannot happen without finance
 first settling the partner side by hand.
 
+**D29. Advice is never more certain than its rule.** The engine is pure and takes the rules and zones with
+their confidence from the database; every statement it returns carries the confidence of the rule it came
+from (`verified`, `rule_of_thumb`, `UNCERTAIN`). A verified rule is one a named person has signed off with a
+source and date, recorded by the founder. Nothing in the engine files, registers or concludes anything
+statutory; it recommends, and a person at MKW handles every registration.
+
+**D30. Ops approves what a client reads.** Advice is stored on the request as `pending_review`; the client sees
+nothing until ops approves it, choosing which statements and places to show (removed, never reworded) and
+which structure to recommend. The approval is audited with exactly what was left out. Recomputing after a rule
+changes puts the advice back under review.
+
+**D31. The model writes drafts, a person applies them.** `AiModel` has one method, `draftScope`; its output
+lands in `ai_drafts` as UNCERTAIN; ops approves (which sets the request's scope from the ticked lines, only
+while the request is unpriced) or discards. The in-memory model is keyword rules, so tests never call the
+internet; the Claude adapter will implement the same interface behind an API key and a monthly cap.
+
+**D32. Public intake records consent and tells bots nothing.** The lead page posts to one endpoint that
+requires an explicit consent flag (stored with timestamp, version and channel), silently accepts a filled
+honeypot, is rate-limited per IP, and never reveals whether an email already has an account.
+
 ## Open for the owner
 
 1. **Margin rates and floors per category.** Seeded from the Sheet (setup 20% / AED 500 and so on). Confirm.
@@ -177,6 +197,9 @@ first settling the partner side by hand.
 13. **Margin rules for the five new categories** (Private Client, HR, Advisory, Growth, Other): defaults of
     20% with floors of AED 300 to 500, shown as "default, confirm" on the Rules page.
 14. **Named fee verifier** and whether ops may add fee rows (built: ops adds, founder verifies).
+16. **Who verifies scoping rules and zone data** (monthly), and the AI API key with a monthly cap (USD 100
+    suggested). **Consent wording** on the public intake page (`intake.html`, version 2026-10-privacy-v1) for
+    the lawyer.
 15. **Card payment provider**: the webhook contract is generic until chosen; Network International, Telr,
     Checkout.com or Stripe UAE. **MKW's TRN, legal name and address** for invoices. **Bank bulk-transfer
     sample** for the payout file. **Tax adviser's confirmation** that government fees are disbursements.

@@ -1,6 +1,6 @@
 # O5 Scoping intelligence
 
-Status: in-progress (branch `outcome/O5-scoping-intelligence`, stacked on O3)
+Status: verified-pending-merge (branch `outcome/O5-scoping-intelligence`, stacked on O3, 17 Oct 2026)
 
 ## Business result
 
@@ -63,3 +63,21 @@ approves, nothing is filed); AI for anything client-facing without approval; Wha
 
 Additive migration; without approval nothing new reaches a client; `AI=memory` keeps the queue working
 without a model.
+
+## Evidence
+
+| Claim | Evidence |
+| --- | --- |
+| Tests | `pnpm test`: 40 core + 126 API = 166 (O3: 138); `apps/api/test/scoping.test.ts` (28 tests) |
+| 20 founder cases | each case's expected structure, obligations, licences and first place written in the test; all pass; every statement UNCERTAIN while rules are unverified; verifying a rule flips only that statement |
+| Review gate | advice pending → client sees none, ops queue shows it; approve with removals → client sees it with labels; audit records removals and whether UNCERTAIN items were shown; recompute returns it to review |
+| Verification | ops 403; founder needs a name and an http(s) source; zone verification with cost edit; clients and partners denied at the database |
+| AI queue | draft created from the description, lines and quantities recognised; finance 403; approve applies ticked lines and notes it; approve after pricing 409; discard works; audit trail of create/approve/discard |
+| Public intake | no consent 400; honeypot 200 with nothing created; new company, owner, consent (version, time, channel), request with source and campaign; sign-in code obtainable; repeat lead reuses the account; partner email accepted quietly; 429 under load |
+| Smoke | `docs/evidence/O5/log.txt` (53 checks OK); screenshots `35-ops-scoping-review.png`, `36-client-advice.png`, `37-ai-queue.png`, `38-scoping-rules.png`, `39-public-intake.png` (1280 px), `40-mobile-scoping.png`, `41-mobile-ai-queue.png` (390 px) |
+
+## Could not verify
+
+The rules and zone figures against a qualified person; the AI adapter against the real model (no key); the
+pack's own lead page is a separate artifact and still posts to the Sheet until it is pointed at
+`/api/public/intake`.

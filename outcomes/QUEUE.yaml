@@ -38,7 +38,8 @@ outcomes:
     needs_from_owner: [named person who verifies fees and rules]
   - id: O5
     title: Scoping intelligence (structure, zone, licences, obligations with confidence; public intake; AI draft queue)
-    status: queued
+    status: verified-pending-merge
+    contract: outcomes/O5-scoping-intelligence.md
     depends_on: [O4]
     needs_from_owner: [rule sign-off, AI API key and monthly spend cap]
   - id: O6

@@ -14,6 +14,12 @@ import { dbToday, FEE_STALE_DAYS, loadRules, loadSettings } from "./repo.ts";
 const isFounder = (u: SessionUser) => u.role === "founder";
 const canEditFees = (u: SessionUser) => u.role === "founder" || u.role === "ops";
 
+/** The fee table alone, for ops (who may add fees but must not see rates and floors). */
+export async function feesOverview(tx: Queryable) {
+  const full = await rulesOverview(tx);
+  return { asOf: full.asOf, fees: full.fees, staleAfterDays: full.staleAfterDays };
+}
+
 export async function rulesOverview(tx: Queryable) {
   const asOf = await dbToday(tx);
   const current = await loadRules(tx, asOf);
@@ -90,23 +96,21 @@ export async function scheduleRule(tx: Queryable, actor: SessionUser, change: Ru
   if (!known.rows.length) throw notFound(`No category ${change.category}`);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(change.effectiveFrom)) throw badRequest("Give the effective date as YYYY-MM-DD");
   const asOf = await dbToday(tx);
-  if (change.effectiveFrom < asOf) throw badRequest("A rule cannot take effect in the past; offers already built keep their rules");
+  // Strictly in the future: a version that is or has been in force is never changed, so a date on an offer
+  // always resolves to the rule it was priced under. Future versions may be corrected until their day arrives.
+  if (change.effectiveFrom <= asOf) throw badRequest("A rule change takes effect from tomorrow at the earliest; offers already built keep their rules");
   if (!Number.isInteger(change.rateBp) || change.rateBp < 0 || change.rateBp > 10_000) throw badRequest("Rate must be whole basis points between 0 and 10000");
   if (!Number.isInteger(change.floorFils) || change.floorFils < 0) throw badRequest("Floor must be whole fils, zero or more");
   const before = (await loadRules(tx, asOf)).get(change.category) ?? null;
+  const replaced = (await tx.query<Record<string, unknown>>("select rate_bp, floor_fils, note from margin_rule_versions where category = $1 and effective_from = $2::date", [change.category, change.effectiveFrom])).rows[0] ?? null;
   await tx.query(
     `insert into margin_rule_versions (category, rate_bp, floor_fils, effective_from, note, created_by) values ($1,$2,$3,$4,$5,$6)
      on conflict (category, effective_from) do update set rate_bp = excluded.rate_bp, floor_fils = excluded.floor_fils, note = excluded.note, created_by = excluded.created_by, created_at = app_now()`,
     [change.category, change.rateBp, change.floorFils, change.effectiveFrom, change.note.trim(), actor.id],
   );
-  if (change.effectiveFrom === asOf) {
-    await tx.query(
-      "insert into margin_rules (category, rate_bp, floor_fils) values ($1,$2,$3) on conflict (category) do update set rate_bp = excluded.rate_bp, floor_fils = excluded.floor_fils",
-      [change.category, change.rateBp, change.floorFils],
-    );
-  }
   await audit(tx, actor, "rules.margin_scheduled", "margin_rule", change.category, {
     before,
+    replacedScheduled: replaced ? { rateBp: num(replaced.rate_bp), floor: num(replaced.floor_fils), note: replaced.note } : null,
     after: { rateBp: change.rateBp, floor: change.floorFils },
     effectiveFrom: change.effectiveFrom,
     note: change.note.trim(),
@@ -136,7 +140,8 @@ export async function updatePricingSettings(tx: Queryable, actor: SessionUser, p
   const after: PricingSettings = { ...before, ...patch };
   if (after.capFactorBp < 10_000 || after.capFactorBp > 30_000) throw badRequest("Cap factor must be between 1.0x and 3.0x (10000 to 30000 basis points)");
   if (![100, 500, 1_000, 5_000, 10_000].includes(after.roundTo)) throw badRequest("Round to AED 1, 5, 10, 50 or 100");
-  if (after.vatBp !== DEFAULT_SETTINGS.vatBp) throw badRequest("VAT is set by law and is not editable here");
+  if ("vatBp" in patch && (patch as Partial<PricingSettings>).vatBp !== DEFAULT_SETTINGS.vatBp) throw badRequest("VAT is set by law and is not editable here");
+  after.vatBp = DEFAULT_SETTINGS.vatBp;
   await tx.query("insert into settings (key, value) values ('pricing', $1) on conflict (key) do update set value = excluded.value", [JSON.stringify(after)]);
   await audit(tx, actor, "rules.pricing_settings_changed", "settings", "pricing", { before, after, note });
   return after;
@@ -160,7 +165,7 @@ export async function addFee(tx: Queryable, actor: SessionUser, fee: NewFee) {
   if (!Number.isInteger(fee.feeFils) || fee.feeFils < 0) throw badRequest("Fee must be whole fils, zero or more");
   const effectiveFrom = fee.effectiveFrom ?? (await dbToday(tx));
   if (!/^\d{4}-\d{2}-\d{2}$/.test(effectiveFrom)) throw badRequest("Give the effective date as YYYY-MM-DD");
-  const zone = fee.freeZone?.trim() || null;
+  const zone = fee.freeZone?.trim() || null; // matching is case-insensitive at lookup
   // One live row per code, place and effective date; a replacement retires the earlier row.
   const dup = await tx.query<{ id: string }>(
     "select id from government_fees where code = $1 and emirate = $2 and free_zone is not distinct from $3 and effective_from = $4::date and retired_at is null",
@@ -185,28 +190,42 @@ export async function verifyFee(tx: Queryable, actor: SessionUser, feeId: string
   const f = (await tx.query<Record<string, unknown>>("select * from government_fees where id = $1", [feeId])).rows[0];
   if (!f) throw notFound("Fee not found");
   if (f.retired_at) throw conflict("This fee row has been retired");
-  if (!String(f.source_url ?? "").trim()) throw badRequest("A fee needs a source link before it can be verified");
+  if (!/^https?:\/\//i.test(String(f.source_url ?? "").trim())) throw badRequest("A fee needs an http(s) source link before it can be verified");
   await tx.query("update government_fees set confidence = 'verified', verified_by = $2, verified_at = app_now()::date where id = $1", [feeId, verifiedBy.trim()]);
-  await audit(tx, actor, "fees.verified", "government_fee", feeId, { code: f.code, emirate: f.emirate, freeZone: f.free_zone, fee: num(f.fee_fils), verifiedBy: verifiedBy.trim() });
+  await audit(tx, actor, "fees.verified", "government_fee", feeId, {
+    code: f.code,
+    emirate: f.emirate,
+    freeZone: f.free_zone,
+    fee: num(f.fee_fils),
+    before: { confidence: f.confidence, verifiedBy: f.verified_by, verifiedAt: f.verified_at },
+    after: { confidence: "verified", verifiedBy: verifiedBy.trim() },
+  });
   return { ok: true };
 }
 
 export async function retireFee(tx: Queryable, actor: SessionUser, feeId: string, reason: string) {
   if (!canEditFees(actor)) throw forbidden("Only ops and the founder retire fees");
-  const r = await tx.query("update government_fees set retired_at = app_now() where id = $1 and retired_at is null returning code", [feeId]);
-  if (!r.rows.length) throw notFound("Fee not found or already retired");
-  await audit(tx, actor, "fees.retired", "government_fee", feeId, { reason });
+  const r = await tx.query<Record<string, unknown>>(
+    "update government_fees set retired_at = app_now() where id = $1 and retired_at is null returning code, emirate, free_zone, fee_fils, confidence, verified_by, verified_at",
+    [feeId],
+  );
+  const f = r.rows[0];
+  if (!f) throw notFound("Fee not found or already retired");
+  await audit(tx, actor, "fees.retired", "government_fee", feeId, {
+    reason,
+    before: { code: f.code, emirate: f.emirate, freeZone: f.free_zone, fee: num(f.fee_fils), confidence: f.confidence, verifiedBy: f.verified_by, verifiedAt: f.verified_at },
+  });
   return { ok: true };
 }
 
-export async function catalogue(tx: Queryable) {
-  const rules = await loadRules(tx, await dbToday(tx));
+export async function catalogue(tx: Queryable, showRules: boolean) {
+  const rules = showRules ? await loadRules(tx, await dbToday(tx)) : new Map();
   const rows = await tx.query<Record<string, unknown>>(
     `select d.code, d.name, d.category, d.model, d.billing, d.market_mid_fils, d.mid_basis, d.requires, d.required_evidence, d.sheet_row, d.active,
        (select count(*)::int from government_fees f where f.code = d.code and f.retired_at is null) as fee_rows,
        (select count(*)::int from government_fees f where f.code = d.code and f.retired_at is null and f.confidence = 'verified') as verified_fee_rows,
        (select count(*)::int from rate_cards rc where rc.code = d.code and rc.valid_to >= app_now()::date) as rate_cards
-     from deliverables d order by d.category, d.code`,
+     from deliverables d where d.active order by d.category, d.code`,
   );
   return rows.rows.map((d) => ({
     code: d.code,
@@ -223,6 +242,6 @@ export async function catalogue(tx: Queryable) {
     feeRows: num(d.fee_rows),
     verifiedFeeRows: num(d.verified_fee_rows),
     rateCards: num(d.rate_cards),
-    rule: rules.get(String(d.category)) ?? null,
+    rule: showRules ? (rules.get(String(d.category)) ?? null) : undefined,
   }));
 }

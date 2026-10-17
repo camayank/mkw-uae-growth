@@ -42,7 +42,7 @@ import {
 import { runJobs } from "./jobs/run.ts";
 import { buildOffers, overrideLinePrice, publishOffer } from "./services/pricing.ts";
 import { createRequest, IntakeSchema } from "./services/requests.ts";
-import { addFee, catalogue, retireFee, rulesOverview, scheduleRule, updatePricingSettings, verifyFee } from "./services/rules.ts";
+import { addFee, catalogue, feesOverview, retireFee, rulesOverview, scheduleRule, updatePricingSettings, verifyFee } from "./services/rules.ts";
 import {
   changeRole,
   confirmRetention,
@@ -155,7 +155,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   app.get("/api/deliverables", async (req) => {
     const user = requireUser(req);
     return asUser(db, user, async (tx) =>
-      (await tx.query("select code, name, category, model, billing from deliverables order by category, code")).rows,
+      (await tx.query("select code, name, category, model, billing from deliverables where active order by category, code")).rows,
     );
   });
 
@@ -366,8 +366,9 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
 
   app.post<{ Params: { id: string } }>("/api/ops/offers/:id/publish", async (req) => {
     const user = requireRole(req, "ops", "founder");
+    const { acknowledgeReview } = z.object({ acknowledgeReview: z.boolean().default(false) }).parse(req.body ?? {});
     await asPlatform(db, user, async (tx) => {
-      await publishOffer(tx, user, req.params.id);
+      await publishOffer(tx, user, req.params.id, acknowledgeReview);
       const o = (await tx.query<{ client_org_id: string; id: string }>("select client_org_id, id from offers where id = $1", [req.params.id])).rows[0]!;
       const owners = (await tx.query<{ email: string }>("select email from users where org_id = $1 and role = 'client_owner' and status = 'active'", [o.client_org_id])).rows;
       for (const u of owners) await opts.notify.send({ to: u.email, channel: "email", template: "offer_ready", vars: { offerId: o.id } });
@@ -425,6 +426,8 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
       emirates: z.array(z.string()).optional(),
       codes: z.array(z.string()).optional(),
       ftaTaxAgent: z.boolean().optional(),
+      licensedLawFirm: z.boolean().optional(),
+      regulatoryAdviser: z.boolean().optional(),
       approvedAuditorZones: z.array(z.string()).optional(),
       registeredLiquidator: z.boolean().optional(),
     });
@@ -548,12 +551,18 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   // Catalogue, margin rules and government fees (O4) ----------------------------------------------
   app.get("/api/admin/catalogue", async (req) => {
     const user = requireRole(req, ...PLATFORM_ROLES);
-    return asPlatform(db, user, (tx) => catalogue(tx));
+    // Rates and floors are margin policy: finance and the founder see them, ops does not.
+    return asPlatform(db, user, (tx) => catalogue(tx, user.role !== "ops"));
   });
 
   app.get("/api/admin/rules", async (req) => {
-    const user = requireRole(req, ...PLATFORM_ROLES);
+    const user = requireRole(req, "finance", "founder");
     return asPlatform(db, user, (tx) => rulesOverview(tx));
+  });
+
+  app.get("/api/admin/fees", async (req) => {
+    const user = requireRole(req, ...PLATFORM_ROLES);
+    return asPlatform(db, user, (tx) => feesOverview(tx));
   });
 
   app.put<{ Params: { category: string } }>("/api/admin/rules/:category", async (req) => {
@@ -580,7 +589,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
         emirate: z.string().min(2).max(40),
         freeZone: z.string().max(60).nullish(),
         feeAed: z.number().min(0).max(10_000_000),
-        sourceUrl: z.string().max(500).default(""),
+        sourceUrl: z.string().max(500).refine((u) => u === "" || /^https?:\/\/\S+$/i.test(u), "Source must be an http(s) link").default(""),
         sourceNote: z.string().max(500).default(""),
         effectiveFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
       })

@@ -40,7 +40,7 @@ export interface Deliverable {
   govFeeTable: Fils | null;
   requiredEvidence: string[];
   /** Licence checks a partner must pass to receive this work. */
-  requires?: Array<"fta_tax_agent" | "approved_auditor" | "registered_liquidator">;
+  requires?: Array<"fta_tax_agent" | "approved_auditor" | "registered_liquidator" | "licensed_law_firm" | "regulatory_adviser">;
 }
 
 export interface MarginRule {
@@ -106,6 +106,10 @@ export interface PartnerProfile {
   emirates: string[];
   codes: string[];
   ftaTaxAgent: boolean;
+  /** Licensed to appear before UAE courts and notarise; needed for litigation and notary work. */
+  licensedLawFirm?: boolean;
+  /** Authorised to advise on DFSA, FSRA or VARA licensing. */
+  regulatoryAdviser?: boolean;
   approvedAuditorZones: string[];
   registeredLiquidator: boolean;
   conflicts: string[];

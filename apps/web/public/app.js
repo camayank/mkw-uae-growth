@@ -30,6 +30,11 @@ const dateTime = (v) =>
   v ? new Date(v).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Dubai" }) + " GST" : "–";
 
 const words = (s) => String(s ?? "").replace(/_/g, " ");
+const addDaysIso = (iso, days) => {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+};
 
 const TONE = {
   ok: ["client_approved", "completed", "accepted", "released", "paid", "published", "signed", "approved", "eligible", "ok", "active", "verified"],
@@ -773,7 +778,7 @@ async function renderOpsOffer(id) {
     ),
   )}</div>
   <p class="small muted">Prices follow the margin rule: cost plus the category rate or floor, rounded up to AED 50 and capped at 1.25× the market mid. A line goes to review when the cap would push the margin below the floor. A price you set here is recorded in the audit trail.</p>
-  ${canAct && ["draft", "ops_review"].includes(f.status) ? `<button class="primary" data-act="publish" data-id="${f.id}">Publish to client</button>` : ""}`;
+  ${canAct && ["draft", "ops_review"].includes(f.status) ? `<button class="primary" data-act="publish" data-id="${f.id}" data-review="${f.linesNeedingReview ?? 0}">${f.linesNeedingReview ? "Publish anyway (I have checked the flagged lines)" : "Publish to client"}</button>` : ""}`;
 }
 
 async function renderPartners() {
@@ -882,7 +887,7 @@ async function renderCatalogue() {
     shown.map(
       (d) => `<tr><td class="mono small">${esc(d.code)}</td><td>${esc(d.name)}</td><td class="small">${esc(d.category)}</td><td>${badge(d.model === "agent" ? "pilot" : "ok", d.model)}</td><td class="small">${esc(words(d.billing))}</td>
       <td class="num">${aed(d.marketMid)}</td><td class="small">${d.midBasis === "incl_govt" ? "incl. govt" : "service only"}</td>
-      <td class="small">${d.rule ? `${pct(d.rule.rateBp)} / ${aed(d.rule.floor)}` : badge("UNCERTAIN", "no rule")}</td>
+      <td class="small">${d.rule === undefined ? `<span class="muted">finance</span>` : d.rule ? `${pct(d.rule.rateBp)} / ${aed(d.rule.floor)}` : badge("UNCERTAIN", "no rule")}</td>
       <td class="small">${d.feeRows ? `${d.verifiedFeeRows} verified of ${d.feeRows}` : `<span class="muted">none</span>`}</td><td class="num">${d.rateCards}</td>
       <td class="small">${esc((d.requiredEvidence ?? []).map(words).join(", "))}</td><td class="num small">${d.sheetRow ?? "–"}</td></tr>`,
     ),
@@ -890,15 +895,16 @@ async function renderCatalogue() {
 }
 
 async function renderRules() {
-  const r = await api("GET", "/api/admin/rules");
   const founder = role() === "founder";
   const canFees = ["ops", "founder"].includes(role());
+  // Rates and floors are margin policy: ops sees and maintains the fee table only.
+  const r = await api("GET", seesMargin() ? "/api/admin/rules" : "/api/admin/fees");
   const list = await deliverables();
   const emirates = ["Dubai", "Abu Dhabi", "Sharjah", "Ajman", "Ras Al Khaimah", "Umm Al Quwain", "Fujairah"];
   $app.innerHTML = `
-  <h1>Pricing rules and government fees</h1>
-  <p class="muted">One margin rule prices every offer, change order and re-allocation: price = max(cost × (1 + rate), cost + floor), rounded up to ${aed(r.settings.roundTo)}, capped at ${(r.settings.capFactorBp / 10000).toFixed(2)}× the market mid. Rule changes take effect from a date you choose; offers already built keep the rule they were priced under. Government fees are charged at cost from the table below and are UNCERTAIN until a named person verifies them; a verified fee is stale after ${r.staleAfterDays} days.</p>
-  <h2>Margin rules by category</h2>
+  <h1>${seesMargin() ? "Pricing rules and government fees" : "Government fees"}</h1>
+  <p class="muted">${seesMargin() ? `One margin rule prices every offer, change order and re-allocation: price = max(cost × (1 + rate), cost + floor), rounded up to ${aed(r.settings.roundTo)}, capped at ${(r.settings.capFactorBp / 10000).toFixed(2)}× the market mid. Rule changes take effect from tomorrow at the earliest; offers already built keep the rule they were priced under. ` : "Margin rates and floors are visible to finance and the founder. "}Government fees are charged at cost from the table below and are UNCERTAIN until a named person verifies them; a verified fee is stale after ${r.staleAfterDays} days. An offer line priced on an UNCERTAIN or stale fee stops for a person before it can be published.</p>
+  ${seesMargin() ? `<h2>Margin rules by category</h2>
   <div class="card flush">${table(
     ["Category", "#Services", "Rate", "#Floor", "Scheduled change", ...(founder ? ["Schedule a change"] : [])],
     r.categories.map(
@@ -910,7 +916,7 @@ async function renderRules() {
           ? `<td><form class="row" data-form="rule" data-id="${esc(c.category)}" style="flex-wrap:wrap;gap:4px">
               <input name="ratePct" type="number" min="0" max="100" step="0.5" value="${c.current ? c.current.rateBp / 100 : 20}" style="width:70px" title="Rate %" />%
               <input name="floorAed" type="number" min="0" value="${c.current ? c.current.floor / 100 : 500}" style="width:90px" title="Floor AED" />
-              <input name="effectiveFrom" type="date" value="${r.asOf}" min="${r.asOf}" style="width:150px" />
+              <input name="effectiveFrom" type="date" value="${addDaysIso(r.asOf, 1)}" min="${addDaysIso(r.asOf, 1)}" style="width:150px" />
               <input name="note" placeholder="Why" required minlength="3" style="width:160px" />
               <button class="sm" type="submit">Schedule</button></form></td>`
           : ""
@@ -926,7 +932,7 @@ async function renderRules() {
           <div class="field" style="grid-column:1/-1"><label>Why</label><input name="note" required minlength="3" /></div></div>
           <button class="primary" type="submit">Save settings</button></form>`
       : `<p class="small muted">Market cap ${(r.settings.capFactorBp / 10000).toFixed(2)}×, rounding ${aed(r.settings.roundTo)}, VAT ${pct(r.settings.vatBp)}. Only the founder changes rules and settings.</p>`
-  }
+  }` : ""}
   <h2 style="margin-top:20px">Government fee table</h2>
   <div class="card flush">${table(
     ["Service", "Emirate", "Free zone", "#Fee", "Source", "From", "Confidence", "Verified", ""],
@@ -1133,7 +1139,11 @@ document.addEventListener("click", (ev) => {
       if (!codes.length) return;
       act(() => api("POST", `/api/ops/requests/${id}/rfq`, { codes }), "Sent to up to 5 partners for sealed quotes");
     },
-    publish: () => act(() => api("POST", `/api/ops/offers/${id}/publish`), "Published to the client"),
+    publish: () => {
+      const flagged = Number(el.dataset.review || 0);
+      if (flagged && !confirm(`${flagged} line(s) are flagged (margin below the floor or a government fee that is UNCERTAIN or stale). Publishing records that you checked them. Publish?`)) return;
+      act(() => api("POST", `/api/ops/offers/${id}/publish`, { acknowledgeReview: flagged > 0 }), "Published to the client");
+    },
     "run-jobs": () =>
       act(async () => {
         const r = await api("POST", "/api/ops/jobs/run");

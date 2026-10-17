@@ -329,8 +329,12 @@ log.push("rule: " + (await toastText(founder)));
 check("scheduled rule change is listed with its date:", /22\.0%.*AED 350.*from 1 Jan 2030/s.test(await founder.locator("main").innerText()));
 await shot(founder, "26-rules");
 await ops.goto(BASE + "/#/rules"); await ops.reload();
-await ops.waitForSelector('main h1:text-is("Pricing rules and government fees")');
-check("ops sees rules but cannot schedule, verify or change settings:", (await ops.locator('form[data-form="rule"], form[data-form="pricing-settings"], button[data-act="fee-verify"]').count()) === 0 && (await ops.locator('form[data-form="fee"]').count()) === 1);
+await ops.waitForSelector('main h1:text-is("Government fees")');
+const opsRules = await ops.locator("main").innerText();
+check("ops sees the fee table but no margin rates, floors or settings:", !/Margin rules by category|Pricing settings|20\.0%/.test(opsRules) && (await ops.locator('form[data-form="rule"], form[data-form="pricing-settings"], button[data-act="fee-verify"]').count()) === 0 && (await ops.locator('form[data-form="fee"]').count()) === 1);
+await ops.goto(BASE + "/#/catalogue"); await ops.reload();
+await ops.waitForSelector('main h1:text-is("Service catalogue")');
+check("ops catalogue hides the rule column values:", !/20\.0% \//.test(await ops.locator("main").innerText()));
 
 // Mobile views of the new screens
 const mf = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });

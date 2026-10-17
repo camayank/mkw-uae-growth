@@ -79,6 +79,8 @@ export function checkEligibility(
     for (const req of d?.requires ?? []) {
       if (req === "fta_tax_agent" && !p.ftaTaxAgent) failures.push("not an FTA registered tax agent");
       if (req === "registered_liquidator" && !p.registeredLiquidator) failures.push("not a registered liquidator");
+      if (req === "licensed_law_firm" && !p.licensedLawFirm) failures.push("not a licensed law firm");
+      if (req === "regulatory_adviser" && !p.regulatoryAdviser) failures.push("not an authorised regulatory adviser");
       if (req === "approved_auditor") {
         const zone = ctx.freeZone ?? "mainland";
         if (!p.approvedAuditorZones.includes(zone)) failures.push(`not an approved auditor for ${zone}`);

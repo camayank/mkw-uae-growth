@@ -64,13 +64,16 @@ leaves the extra catalogue rows in place (harmless) and returns to the single cu
 
 | Claim | Evidence |
 | --- | --- |
-| Tests | `pnpm test`: 40 core + 85 API = 125 (O2: 113); `apps/api/test/catalogue.test.ts` (12 tests) |
+| Tests | `pnpm test`: 40 core + 86 API = 126 (O2: 113); `apps/api/test/catalogue.test.ts` (13 tests) |
+| Review | independent reviewer: 14 findings (same-day versions overwritable, publish without evidenced approval, change orders on the wrong clock, ops seeing rates, case-sensitive zone match, no uniqueness on fees, thin audits, unvalidated source URL, circular sample test, dead columns); all fixed with tests or recorded |
 | 83 services | 82 codes; the test maps every code to its Service Catalogue rows and proves rows 1..83 are all covered |
 | Fee table | emirate and zone rows, UNCERTAIN → review, verified → clear, 91 days → stale → review, retire → fallback, other emirate unaffected, source required to verify |
-| Effective dates | rule scheduled for tomorrow leaves today's rebuild unchanged; tomorrow's build uses it; earlier offer rows and `rules_as_of` unchanged; past dates refused; audit before/after |
+| Effective dates | rule scheduled for tomorrow leaves today's rebuild unchanged; tomorrow's build uses it; earlier offer rows and `rules_as_of` unchanged; today and past dates refused; audit before/after |
+| Evidenced publish | an offer on an UNCERTAIN fee returns 409 on publish until acknowledged; the audit event lists the acknowledged line, reason and figures |
+| Hand-computed figures | SET-FZ-LIC 2,800 → 3,400; VISA-RES 1,600 → 2,000; SET-ML-LIC 6,500 → 7,800; AUD-EXT agent fee 800; TAX-AGENT fee 1,150; ACC-BOOK 650 → 850 (literal fils, independent of the engine's helpers) |
 | Access | ops and finance cannot schedule rules; clients and partners are refused at the API and `permission denied` at the database for fees, versions and rules |
 | Ten samples | 10 requests, 30+ lines, every line and total recomputed independently from the rule; OF-0001 totals reproduced |
-| Smoke | `docs/evidence/O4/log.txt` (28 checks OK); screenshots `25-catalogue.png`, `26-rules.png` (1280 px), `27-mobile-catalogue.png`, `28-mobile-rules.png` (390 px) |
+| Smoke | `docs/evidence/O4/log.txt` (29 checks OK); screenshots `25-catalogue.png`, `26-rules.png` (1280 px), `27-mobile-catalogue.png`, `28-mobile-rules.png` (390 px) |
 
 ## Could not verify
 

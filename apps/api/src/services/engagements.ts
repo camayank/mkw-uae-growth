@@ -523,7 +523,9 @@ export async function proposeChangeOrder(tx: Queryable, user: SessionUser, engag
   const line = (
     await tx.query<{ code: string }>("select code from engagement_lines where engagement_id = $1 and partner_org_id = $2 limit 1", [engagementId, user.orgId])
   ).rows[0];
-  const [deliverables, rules, settings] = await Promise.all([loadDeliverables(tx), loadRules(tx), loadSettings(tx)]);
+  // The rule in force when the engagement's offer was priced, so one engagement carries one set of economics.
+  const asOf = (await tx.query<{ d: string | null }>("select coalesce(o.rules_as_of, app_now()::date)::text as d from engagements e join offers o on o.id = e.offer_id where e.id = $1", [engagementId])).rows[0]?.d ?? undefined;
+  const [deliverables, rules, settings] = await Promise.all([loadDeliverables(tx), loadRules(tx, asOf ? String(asOf).slice(0, 10) : undefined), loadSettings(tx)]);
   const rule = rules.get(deliverables.get(line?.code ?? "")?.category ?? "") ?? { rateBp: 2_000, floor: 0, category: "" };
   // Same margin rule as the original work; no market cap for one-off changes.
   const clientFils = ceilTo(Math.max(partnerFils + applyBp(partnerFils, rule.rateBp), partnerFils + rule.floor), settings.roundTo);

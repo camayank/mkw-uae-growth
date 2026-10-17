@@ -53,6 +53,8 @@ in a browser; everything listed here is not.
     the start of each period.
 16. **Template wording approval.** The English wording in `templates.ts` needs the owner's sign-off before
     launch; Arabic versions are O9.
+17b. **`deliverables.active` is not editable yet.** The column exists and inactive codes are hidden, but no
+    screen switches a code off; do it by SQL until the catalogue screen gets the control.
 17a. **UAE public holidays are not loaded.** `UAE_CALENDAR.holidays` is empty, so SLA clocks and the ops digest
     treat Eid and National Day as working days until the dates are entered each year (moon-sighting holidays
     are confirmed late). Add a settings entry and a founder screen for them.
@@ -61,7 +63,7 @@ in a browser; everything listed here is not.
 
 ## Verified so far
 
-- 40 domain tests (`packages/core`) and 85 API tests (`apps/api`), all passing on PGlite and on PostgreSQL 16;
+- 40 domain tests (`packages/core`) and 86 API tests (`apps/api`), all passing on PGlite and on PostgreSQL 16;
   typecheck clean; `pnpm build` compiles and the compiled server runs in production mode from a fresh database.
 - O1: partner creation, invitations, role changes and deactivation (sessions revoked, codes refused) are tested as
   every role; PDPL export contains one person's data and no audit payloads (a test reproduces the leak that the
@@ -80,7 +82,7 @@ in a browser; everything listed here is not.
   verified one clears it; a scheduled rule applies only from its date, earlier offers keep their figures and
   `rules_as_of`; founder-only writes, database denies rules and fees to clients and partners; ten sample
   requests (30+ lines, new and old codes, agent and reseller) reproduce the margin rule to the fils, and the
-  Sheet's OF-0001 totals are reproduced (`docs/evidence/O4/`, 28 smoke checks).
+  Sheet's OF-0001 totals are reproduced (`docs/evidence/O4/`, 29 smoke checks).
 - `pricing.test.ts` reproduces the Google Sheet Offer Builder example exactly.
 - `security.test.ts` shows Postgres refusing margin and partner-cost columns to clients, client price to partners,
   and other organisations' rows; sign-in throttling; security headers.

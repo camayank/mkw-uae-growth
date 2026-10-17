@@ -19,7 +19,7 @@ describe("catalogue", () => {
   });
 
   it("loads all 83 Service Catalogue services as 82 codes, each with a category rule and evidence", async () => {
-    const cat = await env.call("ops", "GET", "/api/admin/catalogue");
+    const cat = await env.call("finance", "GET", "/api/admin/catalogue");
     expect(cat.status).toBe(200);
     expect(cat.body).toHaveLength(DELIVERABLES.length + CATALOGUE_EXTENSION.length);
     expect(cat.body).toHaveLength(82);
@@ -32,7 +32,7 @@ describe("catalogue", () => {
       expect(d.rule, `${d.code} has no margin rule`).toBeTruthy();
       expect(d.requiredEvidence.length, `${d.code} has no evidence type`).toBeGreaterThan(0);
       expect(d.marketMid).toBeGreaterThan(0);
-      if (d.model === "agent") expect(["TAX", "AUD", "LIQ", "CMP", "LEG"].some((p) => d.code.startsWith(p))).toBe(true);
+      if (d.model === "agent") expect(d.requires.length, `${d.code} is agent model but names no licence requirement`).toBeGreaterThan(0);
     }
     const codes = cat.body.map((d: any) => d.code);
     expect(new Set(codes).size).toBe(codes.length);
@@ -42,7 +42,13 @@ describe("catalogue", () => {
     expect(client.body[0]).not.toHaveProperty("rule");
   });
 
-  it("marks the five new categories' rules as defaults the owner must confirm", async () => {
+  it("marks the five new categories' rules as defaults the owner must confirm, and hides rates from ops", async () => {
+    expect((await env.call("ops", "GET", "/api/admin/rules")).status).toBe(403);
+    const opsCat = await env.call("ops", "GET", "/api/admin/catalogue");
+    expect(opsCat.body[0]).not.toHaveProperty("rule");
+    const fees = await env.call("ops", "GET", "/api/admin/fees");
+    expect(fees.status).toBe(200);
+    expect(fees.body).not.toHaveProperty("categories");
     const r = await env.call("finance", "GET", "/api/admin/rules");
     const pc = r.body.categories.find((c: any) => c.category === "Private Client");
     expect(pc.current).toEqual({ rateBp: 2000, floor: 50_000 });
@@ -79,7 +85,8 @@ describe("government fee table", () => {
   };
   beforeAll(async () => {
     env = await makeEnv();
-    requestId = (await env.call("client", "POST", "/api/requests", { answers: { mode: "new_company", jurisdiction: "free_zone", emirate: "Dubai", freeZone: "IFZA", visas: 1 } })).body.id;
+    // The client typed the zone in lower case; the fee table says "IFZA". Matching must not care.
+    requestId = (await env.call("client", "POST", "/api/requests", { answers: { mode: "new_company", jurisdiction: "free_zone", emirate: "Dubai", freeZone: "ifza", visas: 1 } })).body.id;
   });
   afterAll(async () => {
     await env.db.close();
@@ -89,7 +96,7 @@ describe("government fee table", () => {
     const { offer, line } = await build();
     expect(offer.status).toBe("draft");
     expect(line.govUnitFee).toBe(950_000); // AED 9,500 from the chosen rate card
-    expect(line.reason).toMatch(/partner's card \(no table row\)/);
+    expect(line.reason).toMatch(/as stated by the partner \(no table row\)/);
     expect(line.status).toBe("ok");
   });
 
@@ -103,8 +110,15 @@ describe("government fee table", () => {
     expect(line.reason).toMatch(/UNCERTAIN/);
     expect(offer.status).toBe("ops_review");
     expect(offer.linesNeedingReview).toBe(1);
-    // A client never sees an offer in review; publishing it is a person's decision and is audited.
+    // A client never sees an offer in review; publishing it needs an explicit acknowledgement, which is audited line by line.
     expect((await env.call("client", "GET", `/api/client/offers/${offer.id}`)).status).toBe(404);
+    const refused = await env.call("ops", "POST", `/api/ops/offers/${offer.id}/publish`);
+    expect(refused.status).toBe(409);
+    expect(refused.body.message).toMatch(/SET-FZ-LIC.*UNCERTAIN/);
+    expect((await env.call("client", "GET", `/api/client/offers/${offer.id}`)).status).toBe(404);
+    expect((await env.call("ops", "POST", `/api/ops/offers/${offer.id}/publish`, { acknowledgeReview: true })).status).toBe(200);
+    const ev = await asPlatform(env.db, null, (tx) => tx.query<any>("select data from audit_events where action = 'offer.published' and entity_id = $1", [offer.id]));
+    expect(ev.rows[0].data.acknowledgedLines).toEqual([{ code: "SET-FZ-LIC", reason: expect.stringMatching(/UNCERTAIN/), govUnit: 900_000, clientUnit: expect.any(Number) }]);
   });
 
   it("a free-zone row beats the emirate row, and a verified row clears the review", async () => {
@@ -122,7 +136,7 @@ describe("government fee table", () => {
     const r = await env.call("ops", "POST", `/api/ops/requests/${other}/build-offers`, { tiers: ["standard"] });
     const o = await env.call("finance", "GET", `/api/ops/offers/${r.body.offerIds[0]}`);
     expect(o.body.lines.find((l: any) => l.code === "SET-FZ-LIC").govUnitFee).toBe(950_000);
-    const overview = await env.call("ops", "GET", "/api/admin/rules");
+    const overview = await env.call("ops", "GET", "/api/admin/fees");
     const row = overview.body.fees.find((f: any) => f.id === zone.body.id);
     expect(row).toMatchObject({ confidence: "verified", verifiedBy: "A. Qualified, FTA-registered tax agent", stale: false, freeZone: "IFZA" });
   });
@@ -133,14 +147,14 @@ describe("government fee table", () => {
     expect(line.status).toBe("ops_review");
     expect(line.reason).toMatch(/over 90 days ago/);
     expect(offer.status).toBe("ops_review");
-    const overview = await env.call("ops", "GET", "/api/admin/rules");
+    const overview = await env.call("ops", "GET", "/api/admin/fees");
     expect(overview.body.fees.find((f: any) => f.freeZone === "IFZA").stale).toBe(true);
   });
 
   it("refuses to verify a fee with no source, and retiring a row falls back to the next", async () => {
     const noSource = await env.call("ops", "POST", "/api/admin/fees", { code: "VISA-RES", emirate: "Dubai", feeAed: 3_000 });
     expect((await env.call("founder", "POST", `/api/admin/fees/${noSource.body.id}/verify`, { verifiedBy: "Someone" })).status).toBe(400);
-    const overview = await env.call("ops", "GET", "/api/admin/rules");
+    const overview = await env.call("ops", "GET", "/api/admin/fees");
     const zoneRow = overview.body.fees.find((f: any) => f.freeZone === "IFZA");
     expect((await env.call("ops", "POST", `/api/admin/fees/${zoneRow.id}/retire`, { reason: "Zone changed its package" })).status).toBe(200);
     const { line } = await build();
@@ -169,10 +183,11 @@ describe("margin rules with effective dates", () => {
     expect(setupLine.clientUnitPrice).toBe(ceilTo(Math.max(setupLine.partnerUnitCost + applyBp(setupLine.partnerUnitCost, 2000), setupLine.partnerUnitCost + 50_000), 5_000));
 
     expect((await env.call("founder", "PUT", "/api/admin/rules/Setup", { rateBp: 3000, floorAed: 1000, effectiveFrom: "2026-10-18", note: "backdated" })).status).toBe(400);
+    expect((await env.call("founder", "PUT", "/api/admin/rules/Setup", { rateBp: 3000, floorAed: 1000, effectiveFrom: "2026-10-19", note: "today: would change a rule already used" })).status).toBe(400);
     expect((await env.call("founder", "PUT", "/api/admin/rules/Nonsense", { rateBp: 3000, floorAed: 1000, effectiveFrom: "2026-10-20", note: "no such category" })).status).toBe(404);
     const scheduled = await env.call("founder", "PUT", "/api/admin/rules/Setup", { rateBp: 3000, floorAed: 1000, effectiveFrom: "2026-10-20", note: "Owner decision 19 Oct: setup margin to 30% / AED 1,000" });
     expect(scheduled.status).toBe(200);
-    const overview = await env.call("ops", "GET", "/api/admin/rules");
+    const overview = await env.call("founder", "GET", "/api/admin/rules");
     const setup = overview.body.categories.find((c: any) => c.category === "Setup");
     expect(setup.current).toEqual({ rateBp: 2000, floor: 50_000 });
     expect(setup.scheduled).toHaveLength(1);
@@ -202,6 +217,11 @@ describe("margin rules with effective dates", () => {
     expect(jobs.body.rulesRefreshed).toBe(1);
     const cached = await asPlatform(env.db, null, (tx) => tx.query<any>("select rate_bp from margin_rules where category = 'Setup'"));
     expect(cached.rows[0].rate_bp).toBe(3000);
+    // A change order on an engagement priced under the old rule still uses the old rule.
+    const published = await env.call("ops", "POST", `/api/ops/offers/${first.body.offerIds[0]}/publish`);
+    expect(published.status).toBe(409); // withdrawn by the later builds: only the latest set is live
+    const live = await env.call("ops", "POST", `/api/ops/offers/${later.body.offerIds[0]}/publish`);
+    expect(live.status).toBe(200);
   });
 
   it("lets only the founder change pricing settings, never VAT, with the change audited", async () => {
@@ -243,10 +263,10 @@ describe("Offer Builder rule reproduced for ten sample requests", () => {
   ];
 
   it("prices every line of every sample by the rule, to the fils", async () => {
-    const rules = (await env.call("ops", "GET", "/api/admin/rules")).body;
+    const rules = (await env.call("finance", "GET", "/api/admin/rules")).body;
     const ruleFor = (cat: string) => rules.categories.find((c: any) => c.category === cat).current as { rateBp: number; floor: number };
     const settings = rules.settings as { capFactorBp: number; roundTo: number; vatBp: number };
-    const cat = (await env.call("ops", "GET", "/api/admin/catalogue")).body as any[];
+    const cat = (await env.call("finance", "GET", "/api/admin/catalogue")).body as any[];
     let linesChecked = 0;
     for (const sample of SAMPLES) {
       const req = await env.call("client", "POST", "/api/requests", { answers: sample.answers });
@@ -290,6 +310,27 @@ describe("Offer Builder rule reproduced for ten sample requests", () => {
       }
     }
     expect(linesChecked).toBeGreaterThanOrEqual(25);
+  });
+
+  it("matches hand-computed figures for known rate cards (independent of the engine's helpers)", async () => {
+    // Corporate-services: SET-FZ-LIC 2,800 → 2,800 × 1.2 = 3,360 → up to 50 = 3,400. VISA-RES 1,600 → max(1,920, 2,000) = 2,000.
+    // Setup partner: SET-ML-LIC 6,500 → 7,800. Tax partner: AUD-EXT (agent) 8,000 → MKW fee max(800, 500) = 800;
+    // TAX-AGENT (agent) 4,500 → max(1,125, 300) = 1,125 → 1,150. ACC-BOOK 650 → max(812.5, 800) → 850 (cap 1,000 holds).
+    const essential = async (answers: Record<string, unknown>) => {
+      const req = await env.call("client", "POST", "/api/requests", { answers });
+      const built = await env.call("ops", "POST", `/api/ops/requests/${req.body.id}/build-offers`, { tiers: ["essential"] });
+      const offer = (await env.call("finance", "GET", `/api/ops/offers/${built.body.offerIds[0]}`)).body;
+      return Object.fromEntries(offer.lines.map((l: any) => [l.code, l]));
+    };
+    const a = await essential({ mode: "new_company", jurisdiction: "free_zone", emirate: "Dubai", visas: 1 });
+    expect(a["SET-FZ-LIC"]).toMatchObject({ partnerUnitCost: 280_000, clientUnitPrice: 340_000, marginUnit: 60_000 });
+    expect(a["VISA-RES"]).toMatchObject({ partnerUnitCost: 160_000, clientUnitPrice: 200_000, marginUnit: 40_000 });
+    const b = await essential({ mode: "new_company", jurisdiction: "mainland", emirate: "Dubai", visas: 0 });
+    expect(b["SET-ML-LIC"]).toMatchObject({ partnerUnitCost: 650_000, clientUnitPrice: 780_000 });
+    const c = await essential({ mode: "services", emirate: "Dubai", services: ["AUD-EXT", "TAX-AGENT", "ACC-BOOK"] });
+    expect(c["AUD-EXT"]).toMatchObject({ model: "agent", partnerUnitCost: 800_000, clientUnitPrice: 800_000, mkwFeeUnit: 80_000 });
+    expect(c["TAX-AGENT"]).toMatchObject({ model: "agent", partnerUnitCost: 450_000, mkwFeeUnit: 115_000 });
+    expect(c["ACC-BOOK"]).toMatchObject({ partnerUnitCost: 65_000, clientUnitPrice: 85_000, marginUnit: 20_000 });
   });
 
   it("reproduces the Sheet's own OF-0001 example through the API", async () => {

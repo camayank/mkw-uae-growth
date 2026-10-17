@@ -50,7 +50,7 @@ export async function buildOffers(
     loadRules(tx, asOf),
     loadSettings(tx),
     loadPartners(tx),
-    loadGovernmentFees(tx, codes, req.answers?.emirate ?? "Dubai", req.answers?.freeZone ?? null, asOf),
+    loadGovernmentFees(tx, codes, req.answers.emirate ?? "", req.answers.freeZone ?? null, asOf),
   ]);
   // MKW's own fee table, where it has a row for this place, replaces the partner's stated government fee.
   for (const [code, f] of fees) {
@@ -169,7 +169,7 @@ export async function buildOffers(
  */
 export function withFeeCheck(line: PricedLine, fee: FeeLookup | undefined): PricedLine {
   const note = (reason: string): PricedLine => ({ ...line, status: "ops_review", reason: line.reason ? `${line.reason}; ${reason}` : reason });
-  if (!fee) return line.govUnitFee > 0 ? { ...line, reason: line.reason ? `${line.reason}; government fee from the partner's card (no table row)` : "Government fee from the partner's card (no table row)" } : line;
+  if (!fee) return line.govUnitFee > 0 ? { ...line, reason: line.reason ? `${line.reason}; government fee as stated by the partner (no table row)` : "Government fee as stated by the partner (no table row)" } : line;
   if (fee.confidence === "UNCERTAIN") return note("Government fee UNCERTAIN: verify it before this reaches the client");
   if (fee.stale) return note(`Government fee verified over 90 days ago (${fee.verifiedAt}): re-verify before this reaches the client`);
   return line;
@@ -184,12 +184,29 @@ function dedupeByPartner(quotes: CostQuote[]): CostQuote[] {
   return [...best.values()];
 }
 
-export async function publishOffer(tx: Queryable, actor: SessionUser, offerId: string): Promise<void> {
+/**
+ * Publishing is the person's approval of everything on the offer. Lines flagged for review (margin below the
+ * floor after the cap, an UNCERTAIN or stale government fee) stop the publish unless the person acknowledges
+ * them, and the flagged lines with their reasons are written into the audit event so the approval is evidenced.
+ */
+export async function publishOffer(tx: Queryable, actor: SessionUser, offerId: string, acknowledgeReview = false): Promise<void> {
   const o = (await tx.query<{ status: OfferStatus }>("select status from offers where id = $1", [offerId])).rows[0];
   if (!o) throw notFound("Offer not found");
   assertOffer(o.status, "published", "platform");
+  const flagged = (
+    await tx.query<{ code: string; reason: string | null; gov_unit_fils: number; client_unit_fils: number }>(
+      "select code, reason, gov_unit_fils, client_unit_fils from offer_lines where offer_id = $1 and status <> 'ok' order by code",
+      [offerId],
+    )
+  ).rows;
+  if (flagged.length && !acknowledgeReview) {
+    throw conflict(`${flagged.length} line(s) need a decision before this offer can go to the client: ${flagged.map((l) => `${l.code} (${l.reason ?? "review"})`).join("; ")}`);
+  }
   await tx.query("update offers set status = 'published', published_at = app_now() where id = $1", [offerId]);
-  await audit(tx, actor, "offer.published", "offer", offerId, { from: o.status });
+  await audit(tx, actor, "offer.published", "offer", offerId, {
+    from: o.status,
+    acknowledgedLines: flagged.map((l) => ({ code: l.code, reason: l.reason, govUnit: num(l.gov_unit_fils), clientUnit: num(l.client_unit_fils) })),
+  });
 }
 
 /** Ops may override one line's client price, for example after a negotiation. Totals are recomputed. */

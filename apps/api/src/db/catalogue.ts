@@ -31,7 +31,7 @@ export const CATALOGUE_EXTENSION: readonly Row[] = [
   ["PRO-COURT", "Vehicle or court transaction", "PRO", "reseller", "one_off", 300, "service_only", [], ["submission_receipt"], 22],
   // Visas & residency
   ["VISA-RELOC", "Relocation support for a family", "Visa", "reseller", "one_off", 10_000, "service_only", [], ["relocation_report"], 26],
-  ["VISA-CBI", "Second residency or citizenship by investment, agent fee", "Visa", "reseller", "one_off", 50_000, "service_only", [], ["application_receipt"], 27],
+  ["VISA-CBI", "Second residency or citizenship by investment (adviser fee)", "Visa", "reseller", "one_off", 50_000, "service_only", [], ["application_receipt"], 27],
   // Accounting & finance
   ["ACC-IFRS", "Financial reporting pack (IFRS or management accounts)", "Accounting", "reseller", "one_off", 7_500, "service_only", [], ["financial_statements"], 33],
   ["ACC-MODEL", "Budgeting, forecasting and financial model", "Accounting", "reseller", "one_off", 10_000, "service_only", [], ["financial_model"], 34],
@@ -59,15 +59,15 @@ export const CATALOGUE_EXTENSION: readonly Row[] = [
   ["AUD-ISO", "ISO certification, per standard", "Audit", "reseller", "one_off", 12_000, "service_only", [], ["iso_certificate"], 58],
   // Compliance & regulation
   ["CMP-KYC", "KYC and onboarding, per month", "Compliance", "reseller", "monthly", 1_500, "service_only", [], ["monthly_log"], 60],
-  ["CMP-REGLIC", "Regulatory licensing (DFSA, FSRA, VARA)", "Compliance", "agent", "one_off", 100_000, "service_only", [], ["regulator_approval"], 61],
+  ["CMP-REGLIC", "Regulatory licensing (DFSA, FSRA, VARA)", "Compliance", "agent", "one_off", 100_000, "service_only", ["regulatory_adviser"], ["regulator_approval"], 61],
   ["CMP-GOV", "Corporate governance and risk advisory", "Compliance", "reseller", "one_off", 30_000, "service_only", [], ["governance_report"], 62],
   // Legal & IP
   ["LEG-CORP", "Corporate and commercial legal matter", "Legal & IP", "reseller", "one_off", 7_500, "service_only", [], ["signed_agreement"], 63],
-  ["LEG-LIT", "Litigation, arbitration or debt recovery, per case", "Legal & IP", "agent", "one_off", 50_000, "service_only", [], ["court_filing"], 64],
+  ["LEG-LIT", "Litigation, arbitration or debt recovery, per case", "Legal & IP", "agent", "one_off", 50_000, "service_only", ["licensed_law_firm"], ["court_filing"], 64],
   ["LEG-WILL", "Will and estate planning, per will", "Legal & IP", "reseller", "one_off", 8_000, "incl_govt", [], ["registered_will"], 65],
   ["LEG-IP", "Patents, IP and franchising", "Legal & IP", "reseller", "one_off", 25_000, "service_only", [], ["ip_filing"], 67],
   ["LEG-ESOP", "Cap table and ESOP management, per year", "Legal & IP", "reseller", "yearly", 15_000, "service_only", [], ["cap_table"], 68],
-  ["LEG-NOTARY", "Notary service, per document", "Legal & IP", "agent", "one_off", 500, "incl_govt", [], ["notarised_document"], 69],
+  ["LEG-NOTARY", "Notary service, per document", "Legal & IP", "agent", "one_off", 500, "incl_govt", ["licensed_law_firm"], ["notarised_document"], 69],
   // Private client & wealth
   ["PC-CLIENT", "Private client services, per year", "Private Client", "reseller", "yearly", 25_000, "service_only", [], ["engagement_letter"], 70],
   ["PC-FAMILY", "Family office services, per year", "Private Client", "reseller", "yearly", 100_000, "service_only", [], ["engagement_letter"], 71],

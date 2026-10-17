@@ -99,8 +99,19 @@ appear is an organisation's own name in its invitation (`user_invited`), entered
 
 **D22. Rules are versioned by effective date; offers remember the date.** `margin_rule_versions` keeps every
 rate and floor with the day it took effect; pricing loads the version in force on the build date and stamps
-`offers.rules_as_of`. A change can only be scheduled for today or later, so an offer is never re-priced by a
-later decision. `margin_rules` stays as a cache of today's rule, refreshed by the jobs sweep.
+`offers.rules_as_of`. A change can only be scheduled for tomorrow or later and a version that has been in force
+is never edited, so a date on an offer always resolves to the rule it was priced under and no offer is re-priced
+by a later decision. Change orders use the rule as of the engagement's offer, so one engagement carries one set
+of economics. `margin_rules` stays as a cache of today's rule, refreshed by the jobs sweep (nothing reads it yet).
+
+**D22a. Margin policy is finance's and the founder's, not ops'.** Ops already sees partner cost and client price
+on lines (as the visibility map has always allowed) but the rates and floors themselves, and their history, are
+shown only to finance and the founder. Ops maintains the fee table (adds rows, which start UNCERTAIN) and
+nothing else on the Rules page.
+
+**D22b. Publishing is an evidenced approval.** An offer with a line flagged for review (margin below the floor
+after the cap, UNCERTAIN or stale fee) cannot be published unless the person acknowledges the flagged lines; the
+`offer.published` audit event lists each acknowledged line with its reason and figures.
 
 **D23. Government fees come from MKW's table, or say that they do not.** A fee row has a source link, who
 verified it and when; it is UNCERTAIN until a named person verifies it and stale 90 days after. Pricing uses

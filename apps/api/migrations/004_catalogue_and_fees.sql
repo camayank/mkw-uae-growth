@@ -49,3 +49,6 @@ alter table margin_rule_versions enable row level security;
 alter table government_fees enable row level security;
 create policy mrv_platform on margin_rule_versions for all to app_platform using (true) with check (true);
 create policy gf_platform on government_fees for all to app_platform using (true) with check (true);
+
+-- One live row per code, place and effective date, whatever two people do at once.
+create unique index government_fees_live_unique on government_fees (code, emirate, coalesce(free_zone, ''), effective_from) where retired_at is null;

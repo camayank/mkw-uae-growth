@@ -62,8 +62,9 @@ export async function loadGovernmentFees(tx: Queryable, codes: string[], emirate
   if (codes.length === 0) return new Map();
   const r = await tx.query<Record<string, unknown>>(
     `select distinct on (code) id, code, fee_fils, confidence, free_zone, verified_by, verified_at::text as verified_at from government_fees
-     where code = any($1) and emirate = $2 and (free_zone is null or free_zone = $3) and effective_from <= $4::date and retired_at is null
-     order by code, (free_zone is not null) desc, effective_from desc`,
+     where code = any($1) and lower(trim(emirate)) = lower(trim($2)) and (free_zone is null or lower(trim(free_zone)) = lower(trim($3)))
+       and effective_from <= $4::date and retired_at is null
+     order by code, (free_zone is not null) desc, effective_from desc, created_at desc, id`,
     [codes, emirate, freeZone ?? "", asOf],
   );
   const out = new Map<string, FeeLookup>();
@@ -99,6 +100,8 @@ interface ProfileJson {
   emirates?: string[];
   codes?: string[];
   ftaTaxAgent?: boolean;
+  licensedLawFirm?: boolean;
+  regulatoryAdviser?: boolean;
   approvedAuditorZones?: string[];
   registeredLiquidator?: boolean;
   conflicts?: string[];
@@ -132,6 +135,8 @@ export async function loadPartners(tx: Queryable): Promise<Map<string, PartnerPr
           emirates: p.emirates ?? [],
           codes: p.codes ?? [],
           ftaTaxAgent: p.ftaTaxAgent ?? false,
+          licensedLawFirm: p.licensedLawFirm ?? false,
+          regulatoryAdviser: p.regulatoryAdviser ?? false,
           approvedAuditorZones: p.approvedAuditorZones ?? [],
           registeredLiquidator: p.registeredLiquidator ?? false,
           conflicts: p.conflicts ?? [],

@@ -20,7 +20,8 @@ outcomes:
     needs_from_owner: [cloud account in a UAE region, domain name]
   - id: O2
     title: Notifications (email adapter, templates, in-app bell, ops digest)
-    status: in-progress
+    status: verified-pending-merge
+    contract: outcomes/O2-notifications.md
     depends_on: [O1]
     needs_from_owner: [email provider account, DNS access for SPF and DKIM]
   - id: O3

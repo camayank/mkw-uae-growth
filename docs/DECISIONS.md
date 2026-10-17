@@ -76,6 +76,25 @@ unchanged; events written before this setting (all under UTC sessions) still ver
 event in one transaction and sends the invitation only once that has committed, so a rolled-back change never
 produces an email.
 
+**D18. Messages are records first, emails second.** Every notice is written to the `notifications` table with
+its audience, wording and delivery result before any email leaves, and rows addressed to a known user are
+that user's in-app bell. Email is best-effort; the table is the record of truth, and the delivery log on the
+Settings page is how MKW answers "did they get it?". Sign-in codes are email-only.
+
+**D19. Notifications leave after the transaction.** The notifier queues sends and flushes once the request
+has finished (and `flush()` after each job), so a rolled-back change never produces an email and a slow
+provider never holds a database transaction open. A provider failure marks the row `failed` and is never
+thrown into business code.
+
+**D20. Amazon SES through its HTTPS API, signed in-house.** Same reasoning as D13: the SigV4 code already
+exists and is tested; one more SDK is one more supply chain. `EMAIL=console` keeps everything in the log for
+development and for any environment without a verified sender.
+
+**D21. Wording by audience, no free text.** Each template exists once with typed variables; the audience
+(client, partner, staff) decides the sender name and sign-off. A QA note, a decline reason or a change-order
+description is read on the engagement page and never placed in a message, so nothing a person typed can reach
+an inbox under MKW's name.
+
 ## Open for the owner
 
 1. **Margin rates and floors per category.** Seeded from the Sheet (setup 20% / AED 500 and so on). Confirm.
@@ -92,3 +111,6 @@ produces an email.
    kept indefinitely. Shown as UNCERTAIN until confirmed after legal advice.
 9. **Who may erase a person's data.** Built as founder-only; ops can export.
 10. **Cloud provider and region for O1 staging.** AWS me-central-1 suggested (native S3 and RDS); see DEPLOY.md.
+11. **Template wording** in `apps/api/src/lib/templates.ts` and the two sender addresses (suggested
+    `tasees@mkwadvisors.com` for clients, `partners@mkwadvisors.com` for partners).
+12. **Ops digest time**: once per working day between 08:00 and 10:00 GST, to ops and the founder.

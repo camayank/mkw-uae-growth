@@ -21,6 +21,11 @@
 | `S3_SSE` | `AES256` | Server-side encryption asked for on every upload; `aws:kms` with `S3_KMS_KEY_ID` to use a customer key. |
 | `S3_FORCE_PATH_STYLE` | by endpoint | `1` or `0` to override the addressing style. |
 | `UPLOAD_DIR` | `./data/uploads` | Where evidence files are stored with the local disk adapter. |
+| `EMAIL` | `console` | `ses` sends email through Amazon SES; anything else records and prints each message. |
+| `SES_REGION`, `SES_ACCESS_KEY_ID`, `SES_SECRET_ACCESS_KEY` | fall back to the `S3_*` values | Credentials of a user allowed only `ses:SendEmail`. `SES_ENDPOINT` overrides the service URL. |
+| `EMAIL_FROM_CLIENT` | `tasees@mkwadvisors.com` | Sender address for messages to clients (shown as "Tasees, by MKW Advisors"). Must be verified in SES. |
+| `EMAIL_FROM_PARTNER` | `partners@mkwadvisors.com` | Sender address for messages to partners and staff (shown as "MKW Advisors"). |
+| `APP_URL` | `http://localhost:PORT` | Public URL of the workspace, used in links inside messages. |
 | `WEB_DIR` | `apps/web/public` | Static web app served at `/`. |
 | `IN_PROCESS_JOBS` | on | `0` turns off the 15-minute in-process timers; then run `pnpm jobs` from cron. |
 | `LOG` | on | `0` turns off request logging. |
@@ -109,7 +114,10 @@ expiry (14 days) run every 15 minutes in-process. With more than one instance, s
    service codes, FTA/auditor approvals) are edited on the **Partners** page.
 3. Load rate cards: export the **Rate Cards** tab of the operating Google Sheet as CSV and run
    `pnpm import:sheet rate-cards.csv` (dry run), then again with `--apply`.
-4. Replace the console notifier with a real email provider and connect the payment provider's webhook.
+4. Email: create the SES identity for mkwadvisors.com in me-central-1, publish the SPF, DKIM and DMARC records it
+   gives you, move the account out of the SES sandbox, verify both sender addresses, then set `EMAIL=ses`. Until
+   then every message is still recorded in the delivery log (Settings page) and each person's bell.
+   Connect the payment provider's webhook (O3).
 5. Verify the government fee table and statutory notes with a qualified person before quoting real clients.
 6. Confirm the retention periods on the **Settings** page after legal advice; until then they show as UNCERTAIN.
 7. Take a first backup and run the restore drill against the new server; record it in `docs/RESTORE-DRILL.md`.

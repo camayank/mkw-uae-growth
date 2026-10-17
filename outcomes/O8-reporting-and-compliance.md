@@ -90,3 +90,15 @@ Additive migration; dashboards and exports are read-only; the calendar job is a 
 
 The obligation rules (visa term, VAT periods, corporate tax year end, ESR scope) against a qualified person;
 the accounting system's import mapping (owner to name the system).
+
+## Review
+
+Sceptical review found 6 should-fix (negative amounts exported as text by the formula guard; reminders
+continuing after evidence upload with a wrong "no evidence" line; re-confirming an unchanged date resending
+the overdue email; period cuts at UTC midnight instead of Gulf time; PDPL export and erasure not covering
+obligation evidence; a rule-generated date waived before confirmation reaching the client) and 5 nits
+(late met rolling to an already-past date as open; past dates confirmable without a flag; an orphan file
+stored before the status check; revenue gross of credit notes; test gaps). All fixed with tests: numbers stay
+numbers, reminders stop at evidence and restart only when the date moves, `gulf()` dates everywhere in
+reporting, `allowPast` with a browser confirmation, a past next date goes back for review, revenue and VAT
+are sums over invoices and credit notes alike, and a second client is proven blind.

@@ -1873,7 +1873,12 @@ document.addEventListener("submit", (ev) => {
     }, "Uploaded; MKW Advisors will check it and mark the obligation met");
   }
   if (kind === "obligation-add") return act(() => api("POST", `/api/ops/clients/${String(fd.get("client"))}/obligations`, { kind: String(fd.get("kind")), title: String(fd.get("title")), dueDate: String(fd.get("dueDate")), recurrence: String(fd.get("recurrence")), basis: String(fd.get("basis") || "") || undefined }), "Added");
-  if (kind === "obligation-confirm") return act(() => api("POST", `/api/ops/obligations/${id}/confirm`, { dueDate: String(fd.get("dueDate") || "") || undefined, note: String(fd.get("note")) }), "Confirmed; the client now sees it");
+  if (kind === "obligation-confirm") {
+    const dueDate = String(fd.get("dueDate") || "") || undefined;
+    const allowPast = dueDate && dueDate < new Date().toISOString().slice(0, 10) ? confirm("That date is in the past: the client will be emailed that it is overdue at once. Continue?") : false;
+    if (dueDate && dueDate < new Date().toISOString().slice(0, 10) && !allowPast) return;
+    return act(() => api("POST", `/api/ops/obligations/${id}/confirm`, { dueDate, note: String(fd.get("note")), ...(allowPast ? { allowPast: true } : {}) }), "Confirmed; the client now sees it");
+  }
   if (kind === "period") {
     location.hash = `#/dashboard/${encodeURIComponent(String(fd.get("period")))}`;
     return;

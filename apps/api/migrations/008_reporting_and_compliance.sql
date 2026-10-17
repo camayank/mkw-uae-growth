@@ -1,5 +1,8 @@
 -- O8 Reporting and compliance calendar: client obligations with evidence, reminder bookkeeping, export log.
 
+-- The calendar date of an instant in Gulf time, for periods, exports and due dates (the session runs in UTC).
+create function gulf(t timestamptz) returns date language sql immutable as $$ select (t at time zone 'Asia/Dubai')::date $$;
+
 create table obligations (
   id uuid primary key default gen_random_uuid(),
   client_org_id uuid not null references orgs(id),
@@ -34,9 +37,10 @@ create index on obligations (status, due_date);
 grant all on obligations to app_platform;
 alter table obligations enable row level security;
 create policy obligations_platform on obligations for all to app_platform using (true) with check (true);
--- The client sees its own obligations once a person has confirmed them (never pending_review), without MKW's notes.
+-- The client sees its own obligations once a person has confirmed them (never pending_review, nor a rule-generated
+-- date waived before anyone confirmed it), without MKW's notes.
 grant select (id, engagement_id, kind, title, basis, due_date, period_label, recurrence, status, confidence, confirmed_at, evidence_name, evidence_uploaded_at, met_at, created_at) on obligations to app_client;
-create policy obligations_client on obligations for select to app_client using (client_org_id = app_org() and status <> 'pending_review');
+create policy obligations_client on obligations for select to app_client using (client_org_id = app_org() and status <> 'pending_review' and (status <> 'waived' or confidence = 'confirmed'));
 
 -- Accounting exports are logged (range, set, rows) so finance can tie a file to the books later.
 create table accounting_exports (

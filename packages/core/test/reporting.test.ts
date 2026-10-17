@@ -26,6 +26,7 @@ describe("periods", () => {
   it("writes CSV that cannot start a formula and quotes separators", () => {
     expect(csvLine(["=SUM(A1)", "a,b", 'say "hi"', 12, null])).toBe(`'=SUM(A1),"a,b","say ""hi""",12,`);
     expect(aedDecimal(1234550)).toBe("12345.50");
+    expect(csvLine([aedDecimal(-1234550), "-5.00", "-5 apples", "+971 50"])).toBe(`-12345.50,-5.00,'-5 apples,'+971 50`);
   });
 });
 

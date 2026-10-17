@@ -212,6 +212,7 @@ export async function exportPerson(tx: Queryable, actor: SessionUser, userId: st
     leadsHeld: await q("select id, company, name, answers, consent, source, created_at from intake_leads where email = $1 order by created_at", [user.email]),
     ratingsGiven: await q("select id, engagement_id, stars, comment_original as comment, created_at from ratings where author_user_id = $1 order by created_at"),
     documentsUploaded: await q("select id, engagement_id, kind, file_name, status, uploaded_at from document_requests where uploaded_by = $1 order by uploaded_at"),
+    obligationEvidenceUploaded: await q("select id, kind, title, evidence_name, evidence_uploaded_at from obligations where evidence_uploaded_by = $1 order by evidence_uploaded_at"),
     payoutsReleased: await q("select id, engagement_id, stage, released_at from payouts where released_by = $1 order by released_at"),
     usersInvited: await q("select id, role, created_at from users where invited_by = $1 order by created_at"),
     dataRequests: await q("select id, kind, status, created_at from data_requests where user_id = $1 order by created_at"),
@@ -269,6 +270,10 @@ export async function erasePerson(tx: Queryable, actor: SessionUser, userId: str
   // engagement's record that a document was supplied.
   const docKeys = (await tx.query<{ file_key: string }>("select file_key from document_requests where uploaded_by = $1 and file_key is not null", [userId])).rows.map((r) => r.file_key);
   await tx.query("update document_requests set file_name = $2, file_key = null, note = null where uploaded_by = $1 and file_key is not null", [userId, TOMBSTONE_TEXT]);
+  const obligationKeys = (await tx.query<{ evidence_key: string }>("select evidence_key from obligations where evidence_uploaded_by = $1 and evidence_key is not null", [userId])).rows.map((r) => r.evidence_key);
+  // The obligation stays met (the organisation's record); only the person's file goes.
+  await tx.query("update obligations set evidence_name = $2, evidence_key = null where evidence_uploaded_by = $1 and evidence_key is not null", [userId, TOMBSTONE_TEXT]);
+  docKeys.push(...obligationKeys);
   await tx.query(
     "update users set name = $2, email = $3, status = 'erased', deactivated_at = coalesce(deactivated_at, app_now()), erased_at = app_now() where id = $1",
     [userId, TOMBSTONE_NAME, tombstoneEmail(userId)],

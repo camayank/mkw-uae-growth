@@ -56,16 +56,22 @@ export async function addObligation(tx: Queryable, actor: SessionUser, clientOrg
 }
 
 /** Ops confirms (or corrects) a generated date; from then on the client sees it. */
-export async function confirmObligation(tx: Queryable, actor: SessionUser, id: string, input: { dueDate?: string; title?: string; periodLabel?: string; note: string }) {
+export async function confirmObligation(tx: Queryable, actor: SessionUser, id: string, input: { dueDate?: string; title?: string; periodLabel?: string; note: string; allowPast?: boolean }) {
   if (!isOps(actor)) throw forbidden("Only ops confirms obligations");
   const o = (await tx.query<{ status: string; due_date: string }>("select status, due_date::text as due_date from obligations where id = $1", [id])).rows[0];
   if (!o) throw notFound("Obligation not found");
   if (!["pending_review", "open"].includes(o.status)) throw conflict(`This obligation is ${o.status}`);
   if (input.dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(input.dueDate)) throw badRequest("Due date must be YYYY-MM-DD");
   if (!input.note.trim()) throw badRequest("Record what the date was checked against");
+  const newDate = input.dueDate ?? o.due_date.slice(0, 10);
+  const dateChanged = newDate !== o.due_date.slice(0, 10);
+  if (o.status === "open" && !dateChanged && !input.title && !input.periodLabel) throw conflict("Nothing changed: the obligation is already confirmed with that date");
+  if (newDate < (await dbToday(tx)) && !input.allowPast) throw badRequest("That date is in the past; confirm it with allowPast if the client really is overdue (the client is emailed at once)");
+  // Reminders start again only when the date moves; a re-confirmation with the same date does not resend them.
   await tx.query(
-    `update obligations set status = 'open', confidence = 'confirmed', confirmed_by = $2, confirmed_at = app_now(), due_date = coalesce($3::date, due_date), title = coalesce($4, title), period_label = coalesce($5, period_label), reminders_sent = '{}' where id = $1`,
-    [id, actor.id, input.dueDate ?? null, input.title?.trim() || null, input.periodLabel?.trim() || null],
+    `update obligations set status = 'open', confidence = 'confirmed', confirmed_by = $2, confirmed_at = app_now(), due_date = $3::date, title = coalesce($4, title), period_label = coalesce($5, period_label),
+       reminders_sent = case when $6 then '{}'::int[] else reminders_sent end where id = $1`,
+    [id, actor.id, newDate, input.title?.trim() || null, input.periodLabel?.trim() || null, dateChanged || o.status === "pending_review"],
   );
   await audit(tx, actor, "obligation.confirmed", "obligation", id, { from: o.due_date.slice(0, 10), to: input.dueDate ?? o.due_date.slice(0, 10), note: input.note });
   return { ok: true };
@@ -104,8 +110,9 @@ export async function markObligationMet(tx: Queryable, actor: SessionUser, id: s
   const next = nextDue(String(o.due_date).slice(0, 10), o.recurrence as Recurrence);
   let nextId: string | null = null;
   if (next) {
-    // A confirmed recurring date rolls forward as open; an unconfirmed rule comes back for review.
-    const confirmed = o.confidence === "confirmed";
+    // A confirmed recurring date rolls forward as open; an unconfirmed rule, or a next date already in the
+    // past (met very late), comes back for review before the client is told.
+    const confirmed = o.confidence === "confirmed" && next >= (await dbToday(tx));
     nextId = (
       await tx.query<{ id: string }>(
         `insert into obligations (client_org_id, engagement_id, kind, title, basis, due_date, recurrence, status, confidence, confirmed_by, confirmed_at, previous_id)
@@ -129,7 +136,7 @@ export async function sweepObligations(tx: Queryable, notify: Notifier): Promise
   const today = await dbToday(tx);
   const open = (
     await tx.query<{ id: string; client_org_id: string; title: string; due_date: string; reminders_sent: number[]; confidence: string }>(
-      "select id, client_org_id, title, due_date::text as due_date, reminders_sent, confidence from obligations where status in ('open', 'evidence_uploaded') order by due_date",
+      "select id, client_org_id, title, due_date::text as due_date, reminders_sent, confidence from obligations where status = 'open' order by due_date",
     )
   ).rows;
   let sent = 0;

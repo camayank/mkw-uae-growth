@@ -52,8 +52,8 @@ describe("dashboards and accounting export", () => {
     expect(f.status).toBe(200);
     const c = f.body.current;
     const db = await asPlatform(env.db, null, async (tx) => ({
-      net: (await tx.query<any>("select coalesce(sum(net_fils),0)::bigint as n from invoices where status='issued' and kind='tax_invoice'")).rows[0].n,
-      vat: (await tx.query<any>("select coalesce(sum(vat_fils),0)::bigint as n from invoices where status='issued' and kind='tax_invoice'")).rows[0].n,
+      net: (await tx.query<any>("select coalesce(sum(net_fils),0)::bigint as n from invoices where status='issued'")).rows[0].n,
+      vat: (await tx.query<any>("select coalesce(sum(vat_fils),0)::bigint as n from invoices where status='issued'")).rows[0].n,
       paid: (await tx.query<any>("select coalesce(sum(amount_fils),0)::bigint as n from payments where status='paid'")).rows[0].n,
       due: (await tx.query<any>("select coalesce(sum(amount_fils),0)::bigint as n from payouts where status='eligible'")).rows[0].n,
       margin: (await tx.query<any>("select coalesce(sum(margin_fils),0)::bigint as n from offers where accepted_at is not null")).rows[0].n,
@@ -116,6 +116,20 @@ describe("dashboards and accounting export", () => {
     expect(payments.statusCode).toBe(200);
     expect(payments.body.trim().split("\r\n").length - 1).toBe(2);
     expect(payments.body).toContain("Received");
+    // A refund exports as a negative number, not text; revenue on the dashboard nets the credit note off.
+    const paidBalance = (await asPlatform(env.db, null, (tx) => tx.query<any>("select id from payments where kind = 'balance' and status = 'paid'"))).rows[0];
+    expect((await env.call("finance", "POST", `/api/ops/payments/${paidBalance.id}/refund`, { reference: "RF-1", reason: "Goodwill refund for the test" })).status).toBe(200);
+    const withRefund = await get("finance", "payments");
+    const refundLine = withRefund.body.trim().split("\r\n").find((l: string) => l.includes("Refunded"))!;
+    expect(refundLine).toMatch(/,-\d+\.\d\d,/);
+    expect(refundLine).not.toContain("'-");
+    const period = env.clock.now.toISOString().slice(0, 7);
+    const dash = (await env.call("founder", "GET", `/api/admin/dashboard?period=${period}`)).body.current;
+    const sums = (await asPlatform(env.db, null, (tx) => tx.query<any>("select coalesce(sum(net_fils) filter (where kind='tax_invoice'),0)::bigint as inv, coalesce(sum(net_fils) filter (where kind='credit_note'),0)::bigint as cn, coalesce(sum(vat_fils),0)::bigint as vat from invoices where status='issued'"))).rows[0];
+    expect(Number(sums.cn)).toBeLessThan(0); // credit notes carry negative amounts
+    expect(dash.revenueNetFils).toBe(Number(sums.inv) + Number(sums.cn));
+    expect(dash.creditNotesNetFils).toBe(-Number(sums.cn));
+    expect(dash.vatFils).toBe(Number(sums.vat));
     const payouts = await get("finance", "payouts");
     expect(payouts.body.trim().split("\r\n").length).toBe(1); // nothing released yet
     expect((await get("ops", "margin")).statusCode).toBe(403);
@@ -131,11 +145,11 @@ describe("dashboards and accounting export", () => {
     expect(again.body).not.toMatch(/,=HYPERLINK/);
     await asPlatform(env.db, null, (tx) => tx.query("update orgs set name = 'Sample Trading FZ-LLC' where type = 'client'"));
     const log = await env.call("finance", "GET", "/api/admin/accounting/exports");
-    expect(log.body.length).toBe(5); // refused exports are not exports
-    expect(log.body.filter((l: any) => l.setName === "sales").every((l: any) => l.rows === 2)).toBe(true);
-    expect(log.body.map((l: any) => l.setName).sort()).toEqual(["margin", "payments", "payouts", "sales", "sales"]);
+    expect(log.body.length).toBe(6); // refused exports are not exports
+    expect(log.body.filter((l: any) => l.setName === "sales").map((l: any) => l.rows).sort()).toEqual([2, 3]); // the refund added a credit note
+    expect(log.body.map((l: any) => l.setName).sort()).toEqual(["margin", "payments", "payments", "payouts", "sales", "sales"]);
     const ev = await asPlatform(env.db, null, (tx) => tx.query<any>("select count(*)::int as n from audit_events where action = 'accounting.exported'"));
-    expect(ev.rows[0].n).toBe(5);
+    expect(ev.rows[0].n).toBe(6);
   });
 
   it("compliance calendar: generated pending review, confirmed by ops before the client sees it, met only with checked evidence, rolled forward, reminded", async () => {
@@ -152,12 +166,15 @@ describe("dashboards and accounting export", () => {
     const licence = pending.find((o: any) => o.kind === "licence_renewal");
     expect((await env.call("finance", "POST", `/api/ops/obligations/${licence.id}/confirm`, { note: "x" })).status).toBe(403);
     expect((await env.call("ops", "POST", `/api/ops/obligations/${licence.id}/confirm`, { note: "" })).status).toBe(400);
+    expect((await env.call("ops", "POST", `/api/ops/obligations/${licence.id}/confirm`, { dueDate: "2020-01-01", note: "typo" })).status).toBe(400);
     const confirmed = await env.call("ops", "POST", `/api/ops/obligations/${licence.id}/confirm`, { dueDate: "2027-10-20", note: "Date on the issued licence" });
     expect(confirmed.status).toBe(200);
+    expect((await env.call("ops", "POST", `/api/ops/obligations/${licence.id}/confirm`, { dueDate: "2027-10-20", note: "again" })).status).toBe(409);
     const visa = pending.find((o: any) => o.kind === "visa_expiry");
     expect((await env.call("ops", "POST", `/api/ops/obligations/${visa.id}/waive`, { reason: "Visa not taken up" })).status).toBe(200);
     let mine = (await env.call("client", "GET", "/api/client/compliance")).body;
-    expect(mine.map((o: any) => o.kind).sort()).toEqual(["licence_renewal", "visa_expiry"]);
+    // A rule-generated date waived before anyone confirmed it never reaches the client.
+    expect(mine.map((o: any) => o.kind).sort()).toEqual(["licence_renewal"]);
     expect(mine.find((o: any) => o.kind === "licence_renewal")).toMatchObject({ dueDate: "2027-10-20", status: "open", confidence: "confirmed" });
     expect(mine[0].metNote).toBeUndefined();
     // Met needs evidence, then MKW's check; a partner cannot upload; another client cannot see it.
@@ -187,6 +204,15 @@ describe("dashboards and accounting export", () => {
     expect(overdue[0]!.text).toContain("We do not file on your behalf");
     jobs = await env.call("ops", "POST", "/api/ops/jobs/run");
     expect(jobs.body.obligationReminders).toBe(0);
+    // Re-dating restarts reminders; uploading evidence stops them.
+    expect((await env.call("ops", "POST", `/api/ops/obligations/${custom.body.id}/confirm`, { dueDate: env.clock.now.toISOString().slice(0, 10), note: "moved a day" })).status).toBe(200);
+    env.clock.now = new Date(env.clock.now.getTime() + 1 * day);
+    expect((await env.call("ops", "POST", "/api/ops/jobs/run")).body.obligationReminders).toBe(1);
+    expect((await env.call("client", "POST", `/api/obligations/${custom.body.id}/evidence`, { fileName: "membership.pdf", contentBase64: pdf })).status).toBe(200);
+    expect((await env.call("ops", "POST", "/api/ops/jobs/run")).body.obligationReminders).toBe(0);
+    expect(env.emails.filter((m) => /^Overdue: Chamber/.test(m.subject))).toHaveLength(2);
+    // Evidence cannot be attached to a met or unconfirmed obligation (and nothing is stored).
+    expect((await env.call("client", "POST", `/api/obligations/${licence.id}/evidence`, { fileName: "late.pdf", contentBase64: pdf })).status).toBe(409);
     const soon = await env.call("ops", "POST", `/api/ops/clients/${clientUser.orgId}/obligations`, { kind: "vat_return", title: "VAT return Q4", dueDate: new Date(env.clock.now.getTime() + 20 * day).toISOString().slice(0, 10), recurrence: "quarterly" });
     expect(soon.status).toBe(200);
     jobs = await env.call("ops", "POST", "/api/ops/jobs/run");
@@ -196,6 +222,14 @@ describe("dashboards and accounting export", () => {
     jobs = await env.call("ops", "POST", "/api/ops/jobs/run");
     expect(jobs.body.obligationReminders).toBe(1);
     expect(env.emails.filter((m) => /^Reminder: VAT return Q4.*7 days/.test(m.subject))).toHaveLength(1);
+    // Another client's owner sees none of it and cannot upload to it.
+    const other = await env.call("anon", "POST", "/api/public/intake", { company: "Other Co", name: "Other Owner", email: "other@other.test", consent: true, answers: { mode: "new_company", jurisdiction: "free_zone", emirate: "Dubai", visas: 1 } });
+    expect(other.status).toBe(200);
+    const { createSession } = await import("../src/lib/auth.ts");
+    env.tokens.other = await createSession(env.db, "other@other.test");
+    expect((await env.call("other", "GET", "/api/client/compliance")).body).toEqual([]);
+    expect((await env.call("other", "POST", `/api/obligations/${soon.body.id}/evidence`, { fileName: "x.pdf", contentBase64: pdf })).status).toBe(404);
+    expect((await env.app.inject({ method: "GET", url: `/api/obligations/${licence.id}/file`, headers: { authorization: `Bearer ${env.tokens.other}` } })).statusCode).toBe(404);
     const actions = await asPlatform(env.db, null, (tx) => tx.query<any>("select action from audit_events where action like 'obligation.%' order by id"));
     expect(actions.rows.map((a) => a.action)).toEqual(expect.arrayContaining(["obligation.generated", "obligation.confirmed", "obligation.waived", "obligation.evidence_uploaded", "obligation.met", "obligation.rolled_forward", "obligation.added", "obligation.reminded"]));
   });

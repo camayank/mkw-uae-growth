@@ -37,42 +37,43 @@ export interface Figures {
 
 async function figures(tx: Queryable, p: Period, withMargin: boolean): Promise<Figures> {
   const one = async <T extends Record<string, unknown>>(sql: string) => (await tx.query<T>(sql, [p.from, p.to])).rows[0]!;
+  // Credit notes carry negative amounts, so plain sums are already net of them.
   const inv = await one<{ net: number; vat: number; disb: number; credits: number }>(
-    `select coalesce(sum(net_fils) filter (where kind = 'tax_invoice'), 0)::bigint as net,
-            coalesce(sum(vat_fils) filter (where kind = 'tax_invoice'), 0)::bigint - coalesce(sum(vat_fils) filter (where kind = 'credit_note'), 0)::bigint as vat,
-            coalesce(sum(disbursements_fils) filter (where kind = 'tax_invoice'), 0)::bigint as disb,
-            coalesce(sum(net_fils) filter (where kind = 'credit_note'), 0)::bigint as credits
-     from invoices where status = 'issued' and issued_at >= $1::date and issued_at < $2::date`,
+    `select coalesce(sum(net_fils), 0)::bigint as net,
+            coalesce(sum(vat_fils), 0)::bigint as vat,
+            coalesce(sum(disbursements_fils), 0)::bigint as disb,
+            coalesce(-sum(net_fils) filter (where kind = 'credit_note'), 0)::bigint as credits
+     from invoices where status = 'issued' and gulf(issued_at) >= $1::date and gulf(issued_at) < $2::date`,
   );
   const cash = await one<{ paid: number; refunded: number }>(
-    `select coalesce(sum(amount_fils) filter (where paid_at >= $1::date and paid_at < $2::date), 0)::bigint as paid,
-            coalesce(sum(amount_fils) filter (where refunded_at >= $1::date and refunded_at < $2::date), 0)::bigint as refunded
+    `select coalesce(sum(amount_fils) filter (where gulf(paid_at) >= $1::date and gulf(paid_at) < $2::date), 0)::bigint as paid,
+            coalesce(sum(amount_fils) filter (where gulf(refunded_at) >= $1::date and gulf(refunded_at) < $2::date), 0)::bigint as refunded
      from payments where status in ('paid', 'refunded')`,
   );
   const pay = await one<{ paid: number; due: number }>(
-    `select coalesce(sum(amount_fils) filter (where status = 'released' and released_at >= $1::date and released_at < $2::date), 0)::bigint as paid,
+    `select coalesce(sum(amount_fils) filter (where status = 'released' and gulf(released_at) >= $1::date and gulf(released_at) < $2::date), 0)::bigint as paid,
             coalesce(sum(amount_fils) filter (where status = 'eligible'), 0)::bigint as due
      from payouts`,
   );
-  const credits = await one<{ n: number }>(`select coalesce(sum(amount_fils), 0)::bigint as n from guarantee_credits where status in ('applied', 'approved', 'settled') and decided_at >= $1::date and decided_at < $2::date`);
+  const credits = await one<{ n: number }>(`select coalesce(sum(amount_fils), 0)::bigint as n from guarantee_credits where status in ('applied', 'approved', 'settled') and gulf(decided_at) >= $1::date and gulf(decided_at) < $2::date`);
   const funnel = await one<{ requests: number; published: number; accepted: number; completed: number }>(
-    `select (select count(*) from requests where created_at >= $1::date and created_at < $2::date)::int as requests,
-            (select count(distinct request_id) from offers where published_at >= $1::date and published_at < $2::date)::int as published,
-            (select count(*) from offers where accepted_at >= $1::date and accepted_at < $2::date)::int as accepted,
-            (select count(*) from engagements where completed_at >= $1::date and completed_at < $2::date)::int as completed`,
+    `select (select count(*) from requests where gulf(created_at) >= $1::date and gulf(created_at) < $2::date)::int as requests,
+            (select count(distinct request_id) from offers where gulf(published_at) >= $1::date and gulf(published_at) < $2::date)::int as published,
+            (select count(*) from offers where gulf(accepted_at) >= $1::date and gulf(accepted_at) < $2::date)::int as accepted,
+            (select count(*) from engagements where gulf(completed_at) >= $1::date and gulf(completed_at) < $2::date)::int as completed`,
   );
   const onTime = await one<{ done: number; on_time: number }>(
     `select count(*)::int as done,
             count(*) filter (where (select min(a.at) from audit_events a where a.entity = 'milestone' and a.entity_id = m.id::text and a.action = 'milestone.submitted')::date <= m.due_date)::int as on_time
      from milestones m where m.status = 'client_approved'
-       and (select max(a.at) from audit_events a where a.entity = 'milestone' and a.entity_id = m.id::text and a.action in ('milestone.approved', 'milestone.dispute_approve')) >= $1::date
-       and (select max(a.at) from audit_events a where a.entity = 'milestone' and a.entity_id = m.id::text and a.action in ('milestone.approved', 'milestone.dispute_approve')) < $2::date`,
+       and gulf((select max(a.at) from audit_events a where a.entity = 'milestone' and a.entity_id = m.id::text and a.action in ('milestone.approved', 'milestone.dispute_approve'))) >= $1::date
+       and gulf((select max(a.at) from audit_events a where a.entity = 'milestone' and a.entity_id = m.id::text and a.action in ('milestone.approved', 'milestone.dispute_approve'))) < $2::date`,
   );
   const share = (
     await tx.query<{ category: string; partner: string; n: number }>(
       `select d.category, o.name as partner, count(*)::int as n
        from allocations a join orgs o on o.id = a.partner_org_id join deliverables d on d.code = any(a.codes)
-       where a.accepted_at >= $1::date and a.accepted_at < $2::date group by 1, 2 order by 1, 2`,
+       where gulf(a.accepted_at) >= $1::date and gulf(a.accepted_at) < $2::date group by 1, 2 order by 1, 2`,
       [p.from, p.to],
     )
   ).rows;
@@ -81,6 +82,7 @@ async function figures(tx: Queryable, p: Period, withMargin: boolean): Promise<F
   const partnerShareByCategory = Object.fromEntries(Object.entries(byCat).map(([c, m]) => [c, shares(m)]));
   const out: Figures = {
     period: p,
+    // Revenue is net of credit notes as well as VAT, so it reconciles to the sales export total.
     revenueNetFils: num(inv.net),
     vatFils: num(inv.vat),
     disbursementsFils: num(inv.disb),
@@ -104,7 +106,7 @@ async function figures(tx: Queryable, p: Period, withMargin: boolean): Promise<F
     // Margin on accepted offers in the period: what the client pays less what partners are owed, before VAT.
     const m = await one<{ margin: number; prof: number }>(
       `select coalesce(sum(margin_fils), 0)::bigint as margin, coalesce(sum(professional_fils + mkw_fees_fils), 0)::bigint as prof
-       from offers where accepted_at >= $1::date and accepted_at < $2::date`,
+       from offers where gulf(accepted_at) >= $1::date and gulf(accepted_at) < $2::date`,
     );
     out.marginFils = num(m.margin);
     out.marginBp = num(m.prof) === 0 ? 0 : Math.round((num(m.margin) * 10_000) / num(m.prof));
@@ -144,7 +146,7 @@ export async function partnerDashboard(tx: Queryable, actor: SessionUser) {
       `select count(*) filter (where m.status = 'client_approved')::int as done,
               count(*) filter (where m.status = 'client_approved' and (select min(a.at) from audit_events a where a.entity = 'milestone' and a.entity_id = m.id::text and a.action = 'milestone.submitted')::date <= m.due_date)::int as on_time,
               count(*) filter (where m.status in ('pending', 'in_progress', 'qa_rejected'))::int as open,
-              count(*) filter (where m.status in ('pending', 'in_progress', 'qa_rejected') and m.due_date < app_now()::date)::int as late
+              count(*) filter (where m.status in ('pending', 'in_progress', 'qa_rejected') and m.due_date < gulf(app_now()))::int as late
        from milestones m where m.partner_org_id = $1`,
       [org],
     )
@@ -179,9 +181,9 @@ export async function accountingExport(tx: Queryable, actor: SessionUser, set: E
     header = ["Date", "Type", "Number", "Reverses", "Client", "Engagement", "Net AED", "VAT AED", "Disbursements AED", "Gross AED", "Currency", "Supply date", "Status"];
     const r = (
       await tx.query<Record<string, unknown>>(
-        `select i.issued_at::date::text as d, i.kind, i.number, r.number as reverses, c.name as client, i.engagement_id, i.net_fils, i.vat_fils, i.disbursements_fils, i.gross_fils, i.currency, i.supply_date::text as supply, i.status
+        `select gulf(i.issued_at)::text as d, i.kind, i.number, r.number as reverses, c.name as client, i.engagement_id, i.net_fils, i.vat_fils, i.disbursements_fils, i.gross_fils, i.currency, i.supply_date::text as supply, i.status
          from invoices i join orgs c on c.id = i.client_org_id left join invoices r on r.id = i.reverses_invoice_id
-         where i.status = 'issued' and i.issued_at::date >= $1::date and i.issued_at::date <= $2::date order by i.issued_at, i.number`,
+         where i.status = 'issued' and gulf(i.issued_at) >= $1::date and gulf(i.issued_at) <= $2::date order by i.issued_at, i.number`,
         [from, toExcl],
       )
     ).rows;
@@ -190,10 +192,10 @@ export async function accountingExport(tx: Queryable, actor: SessionUser, set: E
     header = ["Date", "Type", "Client", "Engagement", "Kind", "Amount AED", "Provider", "Reference", "Invoice"];
     const r = (
       await tx.query<Record<string, unknown>>(
-        `select p.paid_at::date::text as paid, p.refunded_at::date::text as refunded, c.name as client, p.engagement_id, p.kind, p.amount_fils, p.provider, p.provider_ref, p.refund_reference,
+        `select gulf(p.paid_at)::text as paid, gulf(p.refunded_at)::text as refunded, c.name as client, p.engagement_id, p.kind, p.amount_fils, p.provider, p.provider_ref, p.refund_reference,
                 (select number from invoices i where i.payment_id = p.id and i.kind = 'tax_invoice' limit 1) as invoice
          from payments p join orgs c on c.id = p.client_org_id
-         where (p.paid_at::date >= $1::date and p.paid_at::date <= $2::date) or (p.refunded_at::date >= $1::date and p.refunded_at::date <= $2::date) order by coalesce(p.paid_at, p.refunded_at)`,
+         where (gulf(p.paid_at) >= $1::date and gulf(p.paid_at) <= $2::date) or (gulf(p.refunded_at) >= $1::date and gulf(p.refunded_at) <= $2::date) order by coalesce(p.paid_at, p.refunded_at)`,
         [from, toExcl],
       )
     ).rows;
@@ -207,9 +209,9 @@ export async function accountingExport(tx: Queryable, actor: SessionUser, set: E
     header = ["Date", "Partner", "Engagement", "Stage", "Amount AED", "Partner invoice", "Payout run", "Bank reference"];
     const r = (
       await tx.query<Record<string, unknown>>(
-        `select p.released_at::date::text as d, o.name as partner, p.engagement_id, p.stage, p.amount_fils, pi.number as invoice, r.reference as run, r.bank_reference
+        `select gulf(p.released_at)::text as d, o.name as partner, p.engagement_id, p.stage, p.amount_fils, pi.number as invoice, r.reference as run, r.bank_reference
          from payouts p join orgs o on o.id = p.partner_org_id left join partner_invoices pi on pi.payout_id = p.id left join payout_runs r on r.id = p.run_id
-         where p.status = 'released' and p.released_at::date >= $1::date and p.released_at::date <= $2::date order by p.released_at, o.name`,
+         where p.status = 'released' and gulf(p.released_at) >= $1::date and gulf(p.released_at) <= $2::date order by p.released_at, o.name`,
         [from, toExcl],
       )
     ).rows;
@@ -218,9 +220,9 @@ export async function accountingExport(tx: Queryable, actor: SessionUser, set: E
     header = ["Accepted", "Client", "Engagement", "Offer tier", "Service", "Qty", "Client price AED", "Partner cost AED", "Margin AED", "Margin %"];
     const r = (
       await tx.query<Record<string, unknown>>(
-        `select o.accepted_at::date::text as d, c.name as client, e.id as engagement_id, o.tier, l.code, d.name, l.qty, l.client_unit_fils, l.partner_unit_fils, l.margin_unit_fils
+        `select gulf(o.accepted_at)::text as d, c.name as client, e.id as engagement_id, o.tier, l.code, d.name, l.qty, l.client_unit_fils, l.partner_unit_fils, l.margin_unit_fils
          from offers o join orgs c on c.id = o.client_org_id join engagements e on e.offer_id = o.id join offer_lines l on l.offer_id = o.id join deliverables d on d.code = l.code
-         where o.accepted_at::date >= $1::date and o.accepted_at::date <= $2::date order by o.accepted_at, l.code`,
+         where gulf(o.accepted_at) >= $1::date and gulf(o.accepted_at) <= $2::date order by o.accepted_at, l.code`,
         [from, toExcl],
       )
     ).rows;

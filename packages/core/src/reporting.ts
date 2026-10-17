@@ -86,7 +86,8 @@ export function csvLine(values: Array<string | number | null | undefined>): stri
       if (v === null || v === undefined) return "";
       if (typeof v === "number") return String(v);
       let t = v.replace(/\r?\n/g, " ");
-      if (/^[=+\-@\t]/.test(t)) t = `'${t}`;
+      // A plain number (including a negative amount) stays a number; anything else that could start a formula is neutralised.
+      if (/^[=+\-@\t]/.test(t) && !/^-?\d+(\.\d+)?$/.test(t)) t = `'${t}`;
       return /[",;]/.test(t) || /^\s|\s$/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
     })
     .join(",");

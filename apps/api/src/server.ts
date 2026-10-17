@@ -16,7 +16,7 @@ import {
 } from "./lib/auth.ts";
 import { asPlatform, asUser, audit } from "./lib/context.ts";
 import { num, withClock, type Database } from "./lib/db.ts";
-import { badRequest, forbidden, HttpError, notFound } from "./lib/errors.ts";
+import { badRequest, conflict, forbidden, HttpError, notFound } from "./lib/errors.ts";
 import type { Notifier } from "./lib/notify.ts";
 import type { Storage } from "./lib/storage.ts";
 import type { PaymentProvider } from "./lib/payments.ts";
@@ -796,7 +796,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   // Reporting and compliance (O8) ------------------------------------------------------------------
   app.get<{ Querystring: { period?: string } }>("/api/admin/dashboard", async (req) => {
     const user = requireRole(req, ...PLATFORM_ROLES);
-    const period = req.query.period ?? `${new Date().toISOString().slice(0, 7)}`;
+    const period = req.query.period ?? new Date(Date.now() + 4 * 3600 * 1000).toISOString().slice(0, 7); // Gulf time
     return asPlatform(db, user, (tx) => dashboard(tx, user, period));
   });
   app.get("/api/partner/dashboard", async (req) => {
@@ -840,7 +840,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   });
   app.post<{ Params: { id: string } }>("/api/ops/obligations/:id/confirm", async (req) => {
     const user = requireRole(req, "ops", "founder");
-    const body = z.object({ dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), title: z.string().max(200).optional(), periodLabel: z.string().max(60).optional(), note: z.string().min(1).max(500) }).parse(req.body);
+    const body = z.object({ dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), title: z.string().max(200).optional(), periodLabel: z.string().max(60).optional(), note: z.string().min(1).max(500), allowPast: z.boolean().optional() }).parse(req.body);
     return asPlatform(db, user, (tx) => confirmObligation(tx, user, req.params.id, body));
   });
   app.post<{ Params: { id: string } }>("/api/ops/obligations/:id/waive", async (req) => {
@@ -856,8 +856,9 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   app.post<{ Params: { id: string } }>("/api/obligations/:id/evidence", async (req) => {
     const user = requireRole(req, ...CLIENT_ROLES, "ops", "founder");
     const body = fileBody.parse(req.body);
-    const o = await asPlatform(db, user, async (tx) => (await tx.query<{ client_org_id: string }>("select client_org_id from obligations where id = $1", [req.params.id])).rows[0]);
+    const o = await asPlatform(db, user, async (tx) => (await tx.query<{ client_org_id: string; status: string }>("select client_org_id, status from obligations where id = $1", [req.params.id])).rows[0]);
     if (!o || (user.orgType === "client" && o.client_org_id !== user.orgId)) throw notFound("Obligation not found");
+    if (!["open", "evidence_uploaded"].includes(o.status)) throw conflict(`Evidence can be attached to an open obligation only (this one is ${o.status})`);
     const key = await putFile(o.client_org_id, body.fileName, body.contentBase64);
     return asPlatform(db, user, (tx) => uploadObligationEvidence(tx, user, req.params.id, { key, name: body.fileName }));
   });

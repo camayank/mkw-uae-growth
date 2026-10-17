@@ -255,7 +255,7 @@ export function renderTemplate(template: TemplateName, audience: Audience, vars:
       return {
         inApp: true,
         subject: vars.when === "overdue" ? `Overdue: ${vars.title} was due ${vars.dueDate}` : `Reminder: ${vars.title} due ${vars.dueDate} (${vars.when})`,
-        body: `${vars.title} is due on ${vars.dueDate}${vars.when === "overdue" ? " and we have no filing evidence on record yet" : ""}.${vars.uncertain ? " This date is our estimate (UNCERTAIN); check it with MKW Advisors before relying on it." : ""}\n\nWhen it is filed, upload the confirmation at ${link("/compliance")} and we record it as met. We do not file on your behalf; ask us if you want this handled as a service.${sign}`,
+        body: `${vars.title} is due on ${vars.dueDate}${vars.when === "overdue" ? " and we have no filing confirmation from you yet" : ""}.${vars.uncertain ? " This date is our estimate (UNCERTAIN); check it with MKW Advisors before relying on it." : ""}\n\nWhen it is filed, upload the confirmation at ${link("/compliance")} and we record it as met. We do not file on your behalf; ask us if you want this handled as a service.${sign}`,
       };
     case "ops_digest":
       return {

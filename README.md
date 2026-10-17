@@ -21,7 +21,7 @@ Needs Node 22 and pnpm 10.
 pnpm install
 pnpm seed          # catalogue, margin rules and demo parties (invented firm names) into ./apps/api/data/pglite
 pnpm dev           # http://localhost:8787 with development sign-in (codes shown on screen)
-pnpm test          # 111 tests: pricing, allocation, rules, full HTTP flow, database security, admin, PDPL, storage
+pnpm test          # 113 tests: pricing, allocation, rules, full HTTP flow, database security, admin, PDPL, storage
 pnpm typecheck
 pnpm build         # compiles to dist/; `pnpm start` then runs the compiled build (what production and the Dockerfile run)
 npx playwright install chromium && pnpm smoke   # browser smoke test against a running demo; screenshots in ./smoke-shots

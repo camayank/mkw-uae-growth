@@ -66,13 +66,16 @@ table (additive migration) and restores the console notifier.
 
 | Claim | Evidence |
 | --- | --- |
-| Tests | `pnpm test`: 40 core + 71 API = 111 (O1: 99); `apps/api/test/notifications.test.ts` (12 tests) |
+| Tests | `pnpm test`: 40 core + 73 API = 113 (O1: 99); `apps/api/test/notifications.test.ts` (14 tests) |
 | Branding rule | templates test renders all 11 templates × 3 audiences: "Tasees" never to partners or staff, "Tasees, by MKW Advisors" always to clients |
 | Record and bell | flow test: rows with audience, sender, provider ref; bell per person; mark read; RLS denies other rows and internals |
 | No free text | QA note and change-order description never appear in a message (tests) |
 | Failure isolation | provider failure → row `failed`, business action 200, next message `sent` |
+| Rollback safety | a send inside a transaction that throws produces no row and no email; one that commits is delivered only after commit (test) |
+| Secrets | a sign-in code is in the email only: delivery log, bell, `vars` and subject never hold it (test reads the log as ops) |
+| Review | independent reviewer: 3 blockers (codes in the log, send before commit, cron path not recording) + 9 findings; all fixed with tests or recorded in KNOWN-GAPS |
 | Digest rule | fires once on Monday 08:30 GST, not at 09:30 same day, not Tuesday 11:00, Friday 18:30, Saturday; fires again next Monday |
-| SES transport | loopback fake recomputes the SigV4 signature for service `ses` and returns the message id; refusal reported |
+| SES transport | loopback fake recomputes the SigV4 signature for service `ses` (self-consistency; the algorithm itself is proven by the AWS vectors in the storage tests), checks the quoted display name, returns the message id; refusal reported |
 | Smoke | `docs/evidence/O2/log.txt` (21 checks OK, no page errors); audit chain of the run: 23 events |
 | Screenshots 1280 px | `docs/evidence/O2/22-client-notifications.png`, `23-partner-notifications.png`, `19-settings-retention-confirmed.png` (delivery log) |
 | Screenshots 390 px | `docs/evidence/O2/24-mobile-notifications.png` |

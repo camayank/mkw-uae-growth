@@ -81,10 +81,12 @@ its audience, wording and delivery result before any email leaves, and rows addr
 that user's in-app bell. Email is best-effort; the table is the record of truth, and the delivery log on the
 Settings page is how MKW answers "did they get it?". Sign-in codes are email-only.
 
-**D19. Notifications leave after the transaction.** The notifier queues sends and flushes once the request
-has finished (and `flush()` after each job), so a rolled-back change never produces an email and a slow
-provider never holds a database transaction open. A provider failure marks the row `failed` and is never
-thrown into business code.
+**D19. Notifications leave after the transaction commits.** `asPlatform`/`asUser` open an async scope; a
+`send()` inside it is held and released only after `db.transaction` returns, so a rolled-back change never
+produces an email (tested), and a slow provider never holds a database transaction open. The cron job path
+uses the same recording notifier and flushes at the end. A provider failure marks the row `failed` and is
+never thrown into business code. Sign-in codes are recorded as "sent" with no wording and no variables, so
+the delivery log can never be used to sign in as someone else.
 
 **D20. Amazon SES through its HTTPS API, signed in-house.** Same reasoning as D13: the SigV4 code already
 exists and is tested; one more SDK is one more supply chain. `EMAIL=console` keeps everything in the log for
@@ -92,8 +94,8 @@ development and for any environment without a verified sender.
 
 **D21. Wording by audience, no free text.** Each template exists once with typed variables; the audience
 (client, partner, staff) decides the sender name and sign-off. A QA note, a decline reason or a change-order
-description is read on the engagement page and never placed in a message, so nothing a person typed can reach
-an inbox under MKW's name.
+description is read on the engagement page and never placed in a message. The one typed value that does
+appear is an organisation's own name in its invitation (`user_invited`), entered by MKW staff.
 
 ## Open for the owner
 

@@ -50,12 +50,15 @@ in a browser; everything listed here is not.
     the start of each period.
 16. **Template wording approval.** The English wording in `templates.ts` needs the owner's sign-off before
     launch; Arabic versions are O9.
+17a. **UAE public holidays are not loaded.** `UAE_CALENDAR.holidays` is empty, so SLA clocks and the ops digest
+    treat Eid and National Day as working days until the dates are entered each year (moon-sighting holidays
+    are confirmed late). Add a settings entry and a founder screen for them.
 17. **Row-level security tests run on PGlite in CI.** They also pass on PostgreSQL 16 locally
     (`TEST_DATABASE_URL`); CI should add a Postgres service so that run is repeated on every pull request.
 
 ## Verified so far
 
-- 40 domain tests (`packages/core`) and 71 API tests (`apps/api`), all passing on PGlite and on PostgreSQL 16;
+- 40 domain tests (`packages/core`) and 73 API tests (`apps/api`), all passing on PGlite and on PostgreSQL 16;
   typecheck clean; `pnpm build` compiles and the compiled server runs in production mode from a fresh database.
 - O1: partner creation, invitations, role changes and deactivation (sessions revoked, codes refused) are tested as
   every role; PDPL export contains one person's data and no audit payloads (a test reproduces the leak that the

@@ -15,15 +15,13 @@ export async function sendOpsDigest(tx: Queryable, deps: Deps): Promise<number> 
   if (!isUaeWorkingDay(now)) return 0;
   const { date, hour } = dubaiDateHour(now);
   if (hour < DIGEST_WINDOW.fromHour || hour >= DIGEST_WINDOW.toHour) return 0;
-  const already = await tx.query(
-    "select 1 from notifications where template = 'ops_digest' and (created_at at time zone 'Asia/Dubai')::date = $1::date limit 1",
-    [date],
-  );
-  if (already.rows.length) return 0;
+  const staff = (await tx.query<{ email: string }>("select email from users where role in ('ops', 'founder') and status = 'active' order by email")).rows;
+  // Claim today's digest in this transaction: a second runner finds the row and sends nothing.
+  const claimed = await tx.query("insert into digest_runs (day, recipients) values ($1::date, $2) on conflict (day) do nothing returning day", [date, staff.length]);
+  if (!claimed.rows.length) return 0;
   const items = await exceptionQueue(tx);
   const counts: Record<string, number> = { total: items.length };
   for (const x of items) counts[x.kind] = (counts[x.kind] ?? 0) + 1;
-  const staff = (await tx.query<{ email: string }>("select email from users where role in ('ops', 'founder') and status = 'active' order by email")).rows;
   for (const u of staff) await deps.notify.send({ to: u.email, channel: "email", template: "ops_digest", vars: counts });
   return staff.length;
 }

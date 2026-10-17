@@ -188,7 +188,7 @@ async function refreshUnread() {
 }
 
 async function renderOnce() {
-  if (state.me) await refreshUnread();
+  if (state.me && route().page !== "notifications") await refreshUnread();
   chrome();
   if (!state.me) return renderSignIn();
   const { page, id } = route();
@@ -822,6 +822,8 @@ async function renderAudit() {
 
 async function renderNotifications() {
   const n = await api("GET", "/api/notifications");
+  state.unread = n.unread ?? 0;
+  chrome();
   $app.innerHTML = `
   <div class="row between"><h1>Notifications</h1>${n.unread ? `<button class="sm" data-act="read-all">Mark all as read</button>` : ""}</div>
   <p class="muted">${isClient() ? "Notices from Tasees, by MKW Advisors." : "Notices from MKW Advisors."} ${n.unread ? `${n.unread} unread.` : "All read."} The same notices are sent to your email.</p>

@@ -1,4 +1,4 @@
-import { asPlatform } from "./context.ts";
+import { asPlatform, txScope } from "./context.ts";
 import { withClock, type Database } from "./db.ts";
 import { signedFetch, type AwsCredentials } from "./sigv4.ts";
 import { renderTemplate, TEMPLATE_AUDIENCE, BRAND, type Audience, type TemplateName, type Vars } from "./templates.ts";
@@ -88,7 +88,8 @@ export function sesTransport(cfg: SesConfig): Transport {
     async deliver(email) {
       const url = new URL("/v2/email/outbound-emails", endpoint);
       const body = JSON.stringify({
-        FromEmailAddress: `${email.fromName.replace(/"/g, "")} <${email.from}>`,
+        // RFC 5322: a display name with a comma ("Tasees, by MKW Advisors") must be quoted.
+        FromEmailAddress: `"${email.fromName.replace(/["\\]/g, "")}" <${email.from}>`,
         Destination: { ToAddresses: [email.to] },
         Content: {
           Simple: {
@@ -143,17 +144,32 @@ export function recordingNotifier(opts: NotifierOptions): Notifier {
     const user = await asPlatform(db, null, async (tx) =>
       (await tx.query<{ id: string; type: "client" | "partner" | "platform"; status: string }>("select u.id, o.type, u.status from users u join orgs o on o.id = u.org_id where u.email = $1", [to])).rows[0],
     );
+    if (user && user.status !== "active") {
+      // Deactivated or erased people receive nothing; the fact is recorded without the wording.
+      await asPlatform(db, null, (tx) =>
+        tx.query(
+          `insert into notifications (user_id, to_email, channel, template, audience, subject, body, vars, in_app, status, error)
+           values ($1,$2,$3,$4,'staff','(recipient not active)','','{}',false,'skipped','recipient not active')`,
+          [user.id, to, n.channel, n.template],
+        ),
+      );
+      return;
+    }
     const fromOrg: Audience | undefined = user ? (user.type === "client" ? "client" : user.type === "partner" ? "partner" : "staff") : undefined;
     const templateAudience = TEMPLATE_AUDIENCE[n.template];
     const audience: Audience = n.audience ?? (templateAudience === "any" ? (fromOrg ?? "client") : templateAudience);
     const rendered = renderTemplate(n.template, audience, n.vars, opts.appUrl);
     const from = audience === "client" ? opts.fromClient : opts.fromPartner;
+    // A secret (sign-in code) is never written down: the record keeps who, what kind and whether it was sent.
+    const recordedSubject = rendered.secret ? "(sign-in code: not recorded)" : rendered.subject;
+    const recordedBody = rendered.secret ? "" : rendered.body;
+    const recordedVars = rendered.secret ? {} : n.vars;
     const id = await asPlatform(db, null, async (tx) =>
       (
         await tx.query<{ id: string }>(
           `insert into notifications (user_id, to_email, channel, template, audience, subject, body, vars, in_app, status)
            values ($1,$2,$3,$4,$5,$6,$7,$8,$9,'queued') returning id`,
-          [user?.id ?? null, to, n.channel, n.template, audience, rendered.subject, rendered.body, JSON.stringify(n.vars), rendered.inApp && !!user],
+          [user?.id ?? null, to, n.channel, n.template, audience, recordedSubject, recordedBody, JSON.stringify(recordedVars), rendered.inApp && !!user],
         )
       ).rows[0]!.id,
     );
@@ -191,14 +207,25 @@ export function recordingNotifier(opts: NotifierOptions): Notifier {
     return run;
   };
 
+  const enqueue = (n: Notification) => {
+    sent.push(n);
+    if (sent.length > 500) sent.shift();
+    if (queue.length >= 10_000) {
+      log(`[notify] queue full, dropping ${n.template} to ${n.to}`);
+      return;
+    }
+    queue.push(n);
+    // Deliver once the current request has finished; never inside the caller's transaction.
+    setImmediate(() => void flush());
+  };
+
   return {
     sent,
     async send(n) {
-      sent.push(n);
-      if (sent.length > 500) sent.shift();
-      queue.push(n);
-      // Deliver once the current transaction and request have finished; never inside the caller's transaction.
-      setImmediate(() => void flush());
+      // Inside a transaction: hold the message until that transaction has committed (see context.ts).
+      const scope = txScope.getStore();
+      if (scope) scope.push({ run: () => enqueue(n) });
+      else enqueue(n);
     },
     flush,
   };
@@ -216,6 +243,19 @@ export function consoleNotifier(log: (msg: string) => void = console.log): Notif
     },
     async flush() {},
   };
+}
+
+/** The production notifier: recorded in the database, delivered by the transport the environment names. */
+export function notifierFromEnv(db: Database, env: NodeJS.ProcessEnv = process.env): { notify: Notifier; transport: Transport } {
+  const transport = transportFromEnv(env);
+  const notify = recordingNotifier({
+    db,
+    transport,
+    appUrl: env.APP_URL ?? `http://localhost:${env.PORT ?? 8787}`,
+    fromClient: env.EMAIL_FROM_CLIENT ?? "tasees@mkwadvisors.com",
+    fromPartner: env.EMAIL_FROM_PARTNER ?? "partners@mkwadvisors.com",
+  });
+  return { notify, transport };
 }
 
 /** Pick the transport from the environment. `EMAIL=ses` needs the AWS variables; anything else prints. */

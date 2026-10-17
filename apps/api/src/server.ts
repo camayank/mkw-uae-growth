@@ -368,7 +368,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     await asPlatform(db, user, async (tx) => {
       await publishOffer(tx, user, req.params.id);
       const o = (await tx.query<{ client_org_id: string; id: string }>("select client_org_id, id from offers where id = $1", [req.params.id])).rows[0]!;
-      const owners = (await tx.query<{ email: string }>("select email from users where org_id = $1 and role = 'client_owner'", [o.client_org_id])).rows;
+      const owners = (await tx.query<{ email: string }>("select email from users where org_id = $1 and role = 'client_owner' and status = 'active'", [o.client_org_id])).rows;
       for (const u of owners) await opts.notify.send({ to: u.email, channel: "email", template: "offer_ready", vars: { offerId: o.id } });
     });
     return { ok: true };

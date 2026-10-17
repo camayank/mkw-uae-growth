@@ -666,7 +666,7 @@ async function notifyOrg(
 ) {
   const users = (
     await tx.query<{ email: string }>(
-      "select email from users where org_id = $1 and role in ('client_owner','partner_admin') order by email limit 3",
+      "select email from users where org_id = $1 and role in ('client_owner','partner_admin') and status = 'active' order by email limit 3",
       [orgId],
     )
   ).rows;

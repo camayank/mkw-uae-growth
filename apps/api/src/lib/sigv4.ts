@@ -77,5 +77,11 @@ export async function signedFetch(
     .join("&");
   const { authorization } = signV4({ method: init.method, path: url.pathname, query, headers, payloadHash, region: cfg.region, service: cfg.service, accessKeyId: cfg.accessKeyId, secretAccessKey: cfg.secretAccessKey, amzDate });
   const { host: _h, ...sendHeaders } = headers;
-  return (cfg.fetchImpl ?? fetch)(url.toString(), { method: init.method, headers: { ...sendHeaders, authorization }, body: body as unknown as RequestInit["body"] });
+  // A provider that hangs must not hold the queue: 20 seconds, then the call fails and is recorded as such.
+  return (cfg.fetchImpl ?? fetch)(url.toString(), {
+    method: init.method,
+    headers: { ...sendHeaders, authorization },
+    body: body as unknown as RequestInit["body"],
+    signal: AbortSignal.timeout(20_000),
+  });
 }

@@ -32,3 +32,18 @@ grant select (id, user_id, template, subject, body, in_app, status, created_at, 
 alter table notifications enable row level security;
 create policy notifications_platform on notifications for all to app_platform using (true) with check (true);
 create policy notifications_own on notifications for select to app_client, app_partner using (user_id = app_user() and in_app);
+
+-- One digest per Dubai working day, claimed inside the job's own transaction so two runners cannot both send.
+create table digest_runs (
+  day date primary key,
+  recipients int not null,
+  created_at timestamptz not null default app_now()
+);
+grant all on digest_runs to app_platform;
+alter table digest_runs enable row level security;
+create policy digest_runs_platform on digest_runs for all to app_platform using (true) with check (true);
+
+-- Notifications are personal data too: give them a retention period (UNCERTAIN until the founder confirms).
+update settings set value = jsonb_set(value, '{periods,notifications}',
+  '{"years": 2, "basis": "Copies of notices sent to a person; the engagement record itself is kept under its own period", "confidence": "UNCERTAIN"}'::jsonb)
+  where key = 'retention' and not (value->'periods' ? 'notifications');

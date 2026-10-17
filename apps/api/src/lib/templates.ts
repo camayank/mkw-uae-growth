@@ -29,6 +29,8 @@ export interface Rendered {
   body: string;
   /** Shown in the recipient's in-app bell. Sign-in codes are email-only. */
   inApp: boolean;
+  /** Contains a secret (a sign-in code): the record keeps the fact of the send, never the wording or variables. */
+  secret?: boolean;
 }
 
 /** The audience a template is written for; "any" means it depends on who receives it. */
@@ -71,6 +73,7 @@ export function renderTemplate(template: TemplateName, audience: Audience, vars:
     case "login_code":
       return {
         inApp: false,
+        secret: true,
         subject: `${vars.code} is your ${brand.name} sign-in code`,
         body: `Your sign-in code is ${vars.code}. It works for 10 minutes and only once.\n\nIf you did not ask for a code, you can ignore this email.${sign}`,
       };

@@ -1,7 +1,7 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { migrate, openDatabase } from "./lib/db.ts";
-import { recordingNotifier, transportFromEnv } from "./lib/notify.ts";
+import { notifierFromEnv } from "./lib/notify.ts";
 import { storageFromEnv } from "./lib/storage.ts";
 import { runJobs } from "./jobs/run.ts";
 import { buildApp } from "./server.ts";
@@ -15,14 +15,7 @@ if (applied.length) console.log(`Applied migrations: ${applied.join(", ")}`);
 await seedCatalogue(db);
 
 // Every message is recorded in the notifications table and delivered by the configured transport.
-const transport = transportFromEnv();
-const notify = recordingNotifier({
-  db,
-  transport,
-  appUrl: process.env.APP_URL ?? `http://localhost:${process.env.PORT ?? 8787}`,
-  fromClient: process.env.EMAIL_FROM_CLIENT ?? "tasees@mkwadvisors.com",
-  fromPartner: process.env.EMAIL_FROM_PARTNER ?? "partners@mkwadvisors.com",
-});
+const { notify, transport } = notifierFromEnv(db);
 if (process.env.NODE_ENV === "production" && transport.kind !== "ses") {
   console.warn("WARNING: EMAIL is not ses; messages are recorded and printed, not emailed. Set EMAIL=ses before real clients.");
 }

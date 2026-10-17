@@ -122,14 +122,62 @@ describe("notifications through a flow", () => {
     expect(log.body[0]).toHaveProperty("status");
   });
 
-  it("sign-in codes are emailed but never shown in the bell", async () => {
-    await env.call("anon", "POST", "/api/auth/request-code", { email: EMAILS.client });
-    const rows = await asPlatform(env.db, null, (tx) => tx.query<any>("select in_app, status from notifications where template = 'login_code'"));
+  it("sign-in codes are emailed but never written down: not in the bell, not in the delivery log, not in vars", async () => {
+    const r = await env.call("anon", "POST", "/api/auth/request-code", { email: EMAILS.client });
+    const code: string = r.body.devCode;
+    expect(code).toMatch(/^\d{6}$/);
+    const rows = await asPlatform(env.db, null, (tx) => tx.query<any>("select in_app, status, subject, body, vars from notifications where template = 'login_code'"));
     expect(rows.rows).toHaveLength(1);
-    expect(rows.rows[0]).toMatchObject({ in_app: false, status: "sent" });
+    expect(rows.rows[0]).toMatchObject({ in_app: false, status: "sent", subject: "(sign-in code: not recorded)", body: "", vars: {} });
     const mine = await env.call("client", "GET", "/api/notifications");
     expect(mine.body.items.map((i: any) => i.template)).not.toContain("login_code");
-    expect(env.emails.at(-1)!.subject).toMatch(/^\d{6} is your Tasees, by MKW Advisors sign-in code$/);
+    // The email itself carries the code; the delivery log that ops can read does not.
+    expect(env.emails.at(-1)!.subject).toBe(`${code} is your Tasees, by MKW Advisors sign-in code`);
+    const log = await env.call("ops", "GET", "/api/admin/notifications");
+    expect(JSON.stringify(log.body)).not.toContain(code);
+    const anyRow = await asPlatform(env.db, null, (tx) => tx.query<any>("select 1 from notifications where subject like $1 or body like $1 or vars::text like $1", [`%${code}%`]));
+    expect(anyRow.rows).toEqual([]);
+  });
+
+  it("sends nothing for a transaction that rolls back, and only after one that commits", async () => {
+    const before = env.emails.length;
+    await asPlatform(env.db, null, async (tx) => {
+      await env.notify.send({ to: EMAILS.client, channel: "email", template: "offer_ready", vars: { offerId: "rolled-back" } });
+      await tx.query("select 1");
+      throw new Error("rollback");
+    }).catch((e) => {
+      if ((e as Error).message !== "rollback") throw e;
+    });
+    await env.notify.flush();
+    await new Promise((r) => setImmediate(r));
+    await env.notify.flush();
+    expect(env.emails.length).toBe(before);
+    expect((await asPlatform(env.db, null, (tx) => tx.query("select 1 from notifications where vars->>'offerId' = 'rolled-back'"))).rows).toEqual([]);
+    let flushedDuringTx = false;
+    await asPlatform(env.db, null, async (tx) => {
+      await env.notify.send({ to: EMAILS.client, channel: "email", template: "offer_ready", vars: { offerId: "committed" } });
+      await new Promise((r) => setImmediate(r)); // give an eager flush every chance to run too early
+      await tx.query("select 1");
+      flushedDuringTx = env.emails.length > before;
+    });
+    expect(flushedDuringTx).toBe(false);
+    await env.notify.flush();
+    expect(env.emails.length).toBe(before + 1);
+    expect((await asPlatform(env.db, null, (tx) => tx.query("select status from notifications where vars->>'offerId' = 'committed'"))).rows).toEqual([{ status: "sent" }]);
+  });
+
+  it("skips deactivated recipients and records that it did", async () => {
+    const orgs = await env.call("founder", "GET", "/api/admin/orgs");
+    const member = orgs.body.flatMap((o: any) => o.users).find((u: any) => u.email === EMAILS.clientMember);
+    await env.call("founder", "POST", `/api/admin/users/${member.id}/deactivate`);
+    const before = env.emails.length;
+    await env.notify.send({ to: EMAILS.clientMember, channel: "email", template: "offer_ready", vars: { offerId: "x" } });
+    await env.notify.flush();
+    expect(env.emails.length).toBe(before);
+    const row = await asPlatform(env.db, null, (tx) => tx.query<any>("select status, error, in_app, subject from notifications where to_email = $1 and template = 'offer_ready'", [EMAILS.clientMember]));
+    expect(row.rows[0]).toMatchObject({ status: "skipped", error: "recipient not active", in_app: false });
+    expect(row.rows[0].subject).not.toContain("offers");
+    await env.call("founder", "POST", `/api/admin/users/${member.id}/reactivate`);
   });
 
   it("a provider failure is recorded and never blocks the business action", async () => {
@@ -187,6 +235,9 @@ describe("ops digest rule", () => {
   it("goes once to ops and the founder on a working morning, then not again that day", async () => {
     const first = await env.call("founder", "POST", "/api/ops/jobs/run");
     expect(first.body.opsDigests).toBe(2);
+    const claim = await asPlatform(env.db, null, (tx) => tx.query<any>("select day::text, recipients from digest_runs"));
+    expect(claim.rows).toEqual([{ day: "2026-10-19", recipients: 2 }]);
+    expect(env.emails.filter((e) => e.subject.startsWith("Ops digest")).length).toBe(2); // emailed from the job path too
     const rows = await digests();
     expect(rows.map((r) => r.to_email).sort()).toEqual([EMAILS.founder, EMAILS.ops].sort());
     expect(rows[0].body).toContain("Offers ready to publish: 1");
@@ -247,7 +298,8 @@ describe("SES transport", () => {
     const r = await t.deliver({ to: "client@example.test", from: "tasees@mkwadvisors.com", fromName: "Tasees, by MKW Advisors", subject: "Hello", text: "Body" });
     expect(r.providerRef).toBe("0100018-abc");
     expect(received[0]!.body).toMatchObject({
-      FromEmailAddress: "Tasees, by MKW Advisors <tasees@mkwadvisors.com>",
+      // Quoted: the display name has a comma, which an unquoted address header would split on.
+      FromEmailAddress: '"Tasees, by MKW Advisors" <tasees@mkwadvisors.com>',
       Destination: { ToAddresses: ["client@example.test"] },
       Content: { Simple: { Subject: { Data: "Hello" }, Body: { Text: { Data: "Body" } } } },
     });

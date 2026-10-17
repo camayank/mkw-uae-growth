@@ -22,5 +22,6 @@ export async function runJobs(db: Database, deps: Deps, actor: SessionUser | nul
   await step("offersExpired", () => asPlatform(db, actor, (tx) => expireOffers(tx)));
   await step("opsDigests", () => asPlatform(db, actor, (tx) => sendOpsDigest(tx, deps)));
   await asPlatform(db, actor, (tx) => audit(tx, actor, "jobs.ran", "system", null, result));
+  await deps.notify.flush();
   return result;
 }

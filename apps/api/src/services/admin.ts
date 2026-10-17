@@ -211,6 +211,7 @@ export async function exportPerson(tx: Queryable, actor: SessionUser, userId: st
     payoutsReleased: await q("select id, engagement_id, stage, released_at from payouts where released_by = $1 order by released_at"),
     usersInvited: await q("select id, role, created_at from users where invited_by = $1 order by created_at"),
     dataRequests: await q("select id, kind, status, created_at from data_requests where user_id = $1 order by created_at"),
+    notifications: await q("select id, template, subject, body, status, created_at, read_at from notifications where user_id = $1 order by created_at"),
     // Audit payloads are MKW's internal record of what was done and can carry figures (a change order's client
     // price under the partner who proposed it, margin under ops). The export lists what happened and when, never
     // the payload; the person's own words come from the live tables above.
@@ -252,6 +253,10 @@ export async function erasePerson(tx: Queryable, actor: SessionUser, userId: str
     TOMBSTONE_NAME,
     TOMBSTONE_TEXT,
   ]);
+  const notices = await tx.query(
+    "update notifications set to_email = $2, subject = $3, body = '', vars = '{}'::jsonb where user_id = $1 or to_email = $4 returning id",
+    [userId, tombstoneEmail(userId), TOMBSTONE_TEXT, user.email],
+  );
   await tx.query(
     "update users set name = $2, email = $3, status = 'erased', deactivated_at = coalesce(deactivated_at, app_now()), erased_at = app_now() where id = $1",
     [userId, TOMBSTONE_NAME, tombstoneEmail(userId)],
@@ -260,6 +265,7 @@ export async function erasePerson(tx: Queryable, actor: SessionUser, userId: str
     sessionsDeleted: sessions.rows.length,
     signInCodesDeleted: codes.rows.length,
     messagesTombstoned: messages.rows.length,
+    notificationsTombstoned: notices.rows.length,
     kept: ["payments", "payouts", "offers", "engagements", "evidence files", "audit events"],
   };
   await tx.query("insert into data_requests (user_id, kind, requested_by, summary) values ($1, 'erase', $2, $3)", [userId, actor.id, JSON.stringify(summary)]);

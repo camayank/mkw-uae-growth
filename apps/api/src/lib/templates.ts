@@ -34,7 +34,8 @@ export type TemplateName =
   | "step_delayed_client"
   | "step_delayed_partner"
   | "guarantee_credit"
-  | "rating_received";
+  | "rating_received"
+  | "obligation_reminder";
 
 export type Vars = Record<string, string | number | undefined>;
 
@@ -74,6 +75,7 @@ export const TEMPLATE_AUDIENCE: Record<TemplateName, Audience | "any"> = {
   step_delayed_partner: "partner",
   guarantee_credit: "client",
   rating_received: "partner",
+  obligation_reminder: "client",
 };
 
 export const BRAND: Record<Audience, { name: string; signOff: string }> = {
@@ -248,6 +250,12 @@ export function renderTemplate(template: TemplateName, audience: Audience, vars:
         inApp: true,
         subject: `Client rating on ${ref(vars.engagementId)}: ${vars.stars}/5`,
         body: `The client rated the completed work ${vars.stars} out of 5. Ratings feed your scorecard, which MKW Advisors recomputes weekly.\n\n${link(`/engagement/${vars.engagementId}`)}${sign}`,
+      };
+    case "obligation_reminder":
+      return {
+        inApp: true,
+        subject: vars.when === "overdue" ? `Overdue: ${vars.title} was due ${vars.dueDate}` : `Reminder: ${vars.title} due ${vars.dueDate} (${vars.when})`,
+        body: `${vars.title} is due on ${vars.dueDate}${vars.when === "overdue" ? " and we have no filing evidence on record yet" : ""}.${vars.uncertain ? " This date is our estimate (UNCERTAIN); check it with MKW Advisors before relying on it." : ""}\n\nWhen it is filed, upload the confirmation at ${link("/compliance")} and we record it as met. We do not file on your behalf; ask us if you want this handled as a service.${sign}`,
       };
     case "ops_digest":
       return {

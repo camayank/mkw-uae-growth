@@ -1,5 +1,6 @@
 import { recomputeScorecards, sweepLicences } from "../services/partners.ts";
 import { sweepDelays } from "../services/delivery.ts";
+import { sweepObligations } from "../services/compliance.ts";
 import { asPlatform, audit, type SessionUser } from "../lib/context.ts";
 import type { Database } from "../lib/db.ts";
 import { sweepAllocationTimeouts, sweepAutoApprovals, type Deps } from "../services/engagements.ts";
@@ -12,7 +13,7 @@ import { refreshCurrentRules } from "../services/rules.ts";
  * transaction so one failure does not block the others.
  */
 export async function runJobs(db: Database, deps: Deps, actor: SessionUser | null = null) {
-  const result = { allocationTimeouts: 0, autoApprovals: 0, offersExpired: 0, opsDigests: 0, rulesRefreshed: 0, licences: 0, delays: 0, credits: 0, scorecards: 0, errors: [] as string[] };
+  const result = { allocationTimeouts: 0, autoApprovals: 0, offersExpired: 0, opsDigests: 0, rulesRefreshed: 0, licences: 0, delays: 0, credits: 0, scorecards: 0, obligationReminders: 0, errors: [] as string[] };
   const step = async (name: keyof Omit<typeof result, "errors">, fn: () => Promise<number>) => {
     try {
       result[name] = await fn();
@@ -34,6 +35,7 @@ export async function runJobs(db: Database, deps: Deps, actor: SessionUser | nul
       return r.delays;
     }),
   );
+  await step("obligationReminders", () => asPlatform(db, actor, (tx) => sweepObligations(tx, deps.notify)));
   await step("scorecards", () =>
     asPlatform(db, actor, async (tx) => {
       // Monday in Gulf time, or seven days since the last card (a missed Monday does not skip the week).

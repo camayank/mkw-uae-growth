@@ -25,6 +25,7 @@ import type { Notifier } from "../lib/notify.ts";
 import type { PaymentProvider } from "../lib/payments.ts";
 import type { Storage } from "../lib/storage.ts";
 import { issueInvoiceForPayment } from "./invoices.ts";
+import { generateObligations } from "./compliance.ts";
 import { loadDeliverables, loadPartners, loadRateCards, loadRules, loadSettings, today } from "./repo.ts";
 
 export const ALLOCATION_SLA_HOURS = 4;
@@ -567,6 +568,8 @@ async function refreshPayouts(tx: Queryable, engagementId: string, deps: Deps) {
       )
     ).rows[0];
     await audit(tx, null, "engagement.completed", "engagement", engagementId);
+    // The client's compliance calendar (O8): obligations the delivered services imply, pending a person's confirmation.
+    await generateObligations(tx, engagementId);
     if (balance) {
       // Completion is the tested rule that makes the balance due: link it and tell the client.
       const payUrl = await attachPaymentLink(tx, deps, balance.id, engagementId, "balance", num(balance.amount_fils));

@@ -137,9 +137,9 @@ in a browser; everything listed here is not.
 - O9: every client-facing template has an Arabic version carrying the same links and references with no
   English placeholders; clients are refused Arabic (409) until the founder records the reviewer, staff may
   preview; Arabic emails go to an Arabic-speaking client after sign-off and partner emails stay English;
-  withdrawing the sign-off resets clients to English. Smoke: axe-core zero violations on 12 screens in both
+  withdrawing the sign-off resets clients to English. Smoke: axe-core zero violations on 15 screens in both
   languages (`docs/evidence/O9/axe.json`), keyboard-only sign-in and navigation, Arabic screenshots
-  (`docs/evidence/O9/`, 102 smoke checks).
+  (`docs/evidence/O9/`, 109 smoke checks).
 - `pricing.test.ts` reproduces the Google Sheet Offer Builder example exactly.
 - `security.test.ts` shows Postgres refusing margin and partner-cost columns to clients, client price to partners,
   and other organisations' rows; sign-in throttling; security headers.

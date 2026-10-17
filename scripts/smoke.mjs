@@ -625,6 +625,10 @@ await axeCheck(ap, "sign-in (en)");
 // Keyboard only: reach the email field, request a code, sign in, open the offer
 await ap.keyboard.press("Tab"); // skip link
 check("skip link is the first focus stop:", await ap.evaluate(() => document.activeElement?.classList.contains("skip")));
+await ap.keyboard.press("Enter");
+await ap.waitForTimeout(200);
+check("activating the skip link moves focus to the page without changing the route:", await ap.evaluate(() => document.activeElement?.id === "app" && location.hash !== "#app") && (await ap.locator("form").count()) >= 1);
+check("the document title follows the heading:", /Sign in/.test(await ap.title()));
 let focusedEmail = false;
 for (let i = 0; i < 6 && !focusedEmail; i++) { await ap.keyboard.press("Tab"); focusedEmail = await ap.evaluate(() => document.activeElement?.id === "email"); }
 check("keyboard reaches the email field:", focusedEmail);
@@ -707,8 +711,19 @@ await ap3.locator('form[data-form="verify"] button[type="submit"]').click();
 await ap3.waitForSelector("#nav a");
 await ap3.waitForSelector('html[dir="rtl"]');
 await axeCheck(ap3, "client home (ar)");
+await ap3.goto(BASE + "/" + standard[1]); await ap3.waitForSelector("main h1");
+await axeCheck(ap3, "client offer (ar)");
 await ap3.goto(engagementUrl); await ap3.waitForSelector("main h1");
 await axeCheck(ap3, "client engagement (ar)");
+await ap3.goto(BASE + "/#/compliance"); await ap3.waitForSelector("main h1");
+await axeCheck(ap3, "client compliance (ar)");
+await ap3.goto(BASE + "/#/new"); await ap3.waitForSelector('form[data-form="intake"]');
+await axeCheck(ap3, "client intake (ar)");
+check("the Arabic document title follows the heading:", /تأسيس/.test(await ap3.title()));
+// A message a partner wrote is never rewritten by the dictionary, even when it equals a dictionary key.
+await ap3.goto(engagementUrl); await ap3.reload(); await ap3.waitForSelector(".msg");
+const msgs = await ap3.locator(".msg div[data-no-i18n]").allInnerTexts();
+check("people's own words are left untranslated:", msgs.length >= 1 && msgs.every((m) => !/[\u0600-\u06FF]/.test(m)));
 await ap3.goto(BASE + "/intake.html?lang=ar"); await ap3.waitForSelector('html[dir="rtl"]');
 await axeCheck(ap3, "public intake (ar)");
 writeFileSync(`${OUT}/axe.json`, JSON.stringify(axeResults, null, 2));

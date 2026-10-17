@@ -68,11 +68,24 @@ Additive migration; without the sign-off nothing changes for clients.
 | Arabic templates | 13 client-facing templates render in Arabic with the brand, every link and reference of the English version, no `undefined`; partner and staff templates have none |
 | Gate | client `/api/me` says Arabic unavailable; `PUT /api/me/locale ar` 409; staff available as preview; ops cannot sign off (403); founder needs a reviewer name (400); after sign-off the client switches (200) and the audit event records before/after |
 | Emails | offer-ready email to the Arabic-speaking client is "عروضك جاهزة" with the offer link, recorded with `locale: ar`; partner allocation email has no Arabic; withdrawing the sign-off sets clients back to English and refuses Arabic again |
-| Accessibility | axe-core WCAG 2.1 A/AA: zero violations on sign-in, client home, offer, engagement, compliance, intake, partner home, partner firm, public intake (English) and client home, engagement, public intake (Arabic) — `docs/evidence/O9/axe.json`; skip link is the first focus stop; keyboard-only sign-in and navigation to the engagement |
+| Accessibility | axe-core WCAG 2.1 A/AA: zero violations on sign-in, client home, offer, engagement, compliance, intake, partner home, partner firm, public intake (English) and client home, offer, engagement, compliance, intake, public intake (Arabic); the skip link moves focus without changing the route; the document title follows the heading in both languages; people's own words are never rewritten by the dictionary — `docs/evidence/O9/axe.json`; skip link is the first focus stop; keyboard-only sign-in and navigation to the engagement |
 | Screens | no Arabic switch for clients before sign-off; founder records it on Settings; client home, offer (amounts kept LTR), engagement, compliance and the public intake page in Arabic, `html[lang=ar][dir=rtl]`; no horizontal overflow at 390 px |
-| Smoke | `docs/evidence/O9/log.txt` (102 checks OK); screenshots `55-client-home-ar.png`, `56-client-offer-ar.png`, `57-client-engagement-ar.png`, `58-client-compliance-ar.png`, `59-public-intake-ar.png` (1280 px), `60-mobile-home-ar.png` (390 px) |
+| Smoke | `docs/evidence/O9/log.txt` (109 checks OK); screenshots `55-client-home-ar.png`, `56-client-offer-ar.png`, `57-client-engagement-ar.png`, `58-client-compliance-ar.png`, `59-public-intake-ar.png` (1280 px), `60-mobile-home-ar.png` (390 px) |
 
 ## Could not verify
 
 The Arabic wording itself (the reviewer's job; until then it is a draft clients cannot see); screen-reader
 behaviour beyond what axe-core checks; the catalogue's service names and the PDFs remain English.
+
+## Review
+
+Sceptical review found 6 should-fix (the skip link re-routed to the queue; partners could choose Arabic
+against the contract; withdrawal reset clients without per-user audit and left partners on Arabic; the
+dictionary could rewrite people's own words that equal a key; staff "preview" could not show the client
+screens so the gap list was meaningless; no announcement of route changes after `aria-live` was removed from
+`main`) and 6 nits (Arabic axe only on three screens; untranslated `confirm()` and title; `reviewedAt` off
+the application clock; `user_invited` missing the role; health opening a transaction per ping; label linking
+past hidden inputs). All fixed with tests: partners 409; per-user `user.locale` audit on withdrawal; user
+content marked `data-no-i18n`; founder-listed preview client accounts see Arabic with the draft banner and
+report untranslated strings to the server for the reviewer; focus and title on every route change; Arabic
+axe on six screens; the health flag cached 30 s and reset on sign-off.

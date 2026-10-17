@@ -26,7 +26,7 @@ function ensureLabels(root) {
   for (const label of root.querySelectorAll("label:not([for])")) {
     if (label.querySelector("input, select, textarea")) continue;
     let el = label.nextElementSibling;
-    if (el && !el.matches("input, select, textarea")) el = el.querySelector?.("input, select, textarea") ?? null;
+    if (el && !el.matches("input:not([type=hidden]), select, textarea")) el = el.querySelector?.("input:not([type=hidden]), select, textarea") ?? null;
     if (!el || el.id) {
       if (el && el.id) label.htmlFor = el.id;
       continue;
@@ -48,8 +48,40 @@ function ensureLabels(root) {
 
 function translatePage() {
   if (lang() !== "ar") return;
-  for (const root of [$brand, $nav, $who, $app]) for (const m of translateTree(root)) state.untranslated.add(m);
+  const skip = document.querySelector(".skip");
+  for (const root of [$brand, $nav, $who, $app, skip].filter(Boolean)) {
+    const missing = translateTree(root);
+    // The gap list is for the reviewer: client screens only, never staff screens or people's own words.
+    if (root === $app && (isClient() || !state.me)) for (const m of missing) state.untranslated.add(m);
+  }
+  document.title = translateText(document.title);
+  reportGaps();
 }
+let reported = new Set();
+function reportGaps() {
+  if (!state.me || !isClient()) return;
+  const fresh = [...state.untranslated].filter((m) => !reported.has(m));
+  if (!fresh.length) return;
+  for (const m of fresh) reported.add(m);
+  api("POST", "/api/me/i18n-gaps", { strings: fresh.slice(0, 200) }).catch(() => {});
+}
+
+// Screen readers hear where they are after every route change: the page title follows the heading and the
+// main region takes focus. The skip link moves focus without changing the route.
+let lastAnnounced = "";
+function announceRoute() {
+  const h1 = $app.querySelector("h1")?.textContent?.trim();
+  document.title = h1 ? `${h1} · Tasees` : "Tasees workspace";
+  const key = location.hash;
+  if (key !== lastAnnounced) {
+    lastAnnounced = key;
+    if (document.activeElement === document.body || document.activeElement === null) $app.focus({ preventScroll: true });
+  }
+}
+document.querySelector(".skip")?.addEventListener("click", (ev) => {
+  ev.preventDefault();
+  $app.focus();
+});
 function translateText(text) {
   if (lang() !== "ar" || !text) return text;
   const span = document.createElement("span");
@@ -264,6 +296,7 @@ async function renderOnce() {
   if (!state.me) {
     renderSignIn();
     ensureLabels($app);
+    announceRoute();
     translatePage();
     return;
   }
@@ -275,6 +308,7 @@ async function renderOnce() {
     } finally {
       ensureLabels($app);
       ensureLabels($who);
+      announceRoute();
       if (lang() === "ar" && state.me.arabic?.preview) $app.insertAdjacentHTML("afterbegin", `<p class="notice small" data-no-i18n>النسخة العربية مسودة إلى أن يعتمدها المراجع؛ أنت تعاينها بصفتك من فريق MKW. <span lang="en" dir="ltr">Arabic is a draft until the reviewer signs it off; you are previewing it as MKW staff.</span></p>`);
       translatePage();
     }
@@ -593,7 +627,7 @@ async function renderEngagement(id) {
       let action = "";
       if (isClient() && ["requested", "rejected"].includes(r.status)) action = `<form class="row" data-form="doc-upload" data-id="${r.id}"><input type="file" name="file" required style="width:auto;max-width:100%" /><button class="sm primary" type="submit">Upload</button></form>`;
       if ((isPartner() || ["ops", "founder"].includes(role())) && r.status === "uploaded") action = `<button class="sm primary" data-act="doc-decide" data-id="${r.id}" data-decision="received">Received</button> <button class="sm" data-act="doc-decide" data-id="${r.id}" data-decision="rejected">Ask again</button>`;
-      return `<tr><td>${esc(words(r.kind))}${r.note ? `<br><span class="small muted">${esc(r.note)}</span>` : ""}<br><span class="small muted">${esc(step?.name ?? "")}</span></td><td>${badge(r.status === "received" ? "ok" : r.status === "rejected" ? "bad" : r.status, r.status === "rejected" ? `ask again: ${r.decisionNote ?? ""}` : words(r.status))}</td><td class="small">${file}</td><td>${action}</td></tr>`;
+      return `<tr><td>${esc(words(r.kind))}${r.note ? `<br><span class="small muted" data-no-i18n>${esc(r.note)}</span>` : ""}<br><span class="small muted">${esc(step?.name ?? "")}</span></td><td>${badge(r.status === "received" ? "ok" : r.status === "rejected" ? "bad" : r.status, r.status === "rejected" ? `ask again: ${r.decisionNote ?? ""}` : words(r.status))}</td><td class="small">${file}</td><td>${action}</td></tr>`;
     };
     const addForm = isPartner() && nextOpenId ? `<form class="pad row" data-form="doc-request" data-id="${nextOpenId}" style="padding-top:8px"><input name="kind" placeholder="Document to ask for" required minlength="3" style="max-width:240px" /><input name="note" placeholder="Note to the client (optional)" style="max-width:300px" /><button class="sm" type="submit">Ask the client</button></form>` : "";
     return `<div class="card flush"><h2>Documents from the client ${open ? badge("pending", `${open} to upload`) : badge("ok", "complete")}</h2>
@@ -612,7 +646,7 @@ async function renderEngagement(id) {
   const ratingCard = () => {
     if (e.engagement.status !== "completed") return "";
     const r = e.rating;
-    if (r) return `<div class="card"><h2>${isPartner() ? "Client rating" : "Your rating"}</h2><p>${"★".repeat(r.stars)}${"☆".repeat(5 - r.stars)} <span class="small muted">${date(r.createdAt)}</span></p>${(isPlatform() ? r.commentOriginal : r.comment) ? `<p class="small">${esc(isPlatform() ? r.commentOriginal : r.comment)}</p>` : ""}</div>`;
+    if (r) return `<div class="card"><h2>${isPartner() ? "Client rating" : "Your rating"}</h2><p>${"★".repeat(r.stars)}${"☆".repeat(5 - r.stars)} <span class="small muted">${date(r.createdAt)}</span></p>${(isPlatform() ? r.commentOriginal : r.comment) ? `<p class="small" data-no-i18n>${esc(isPlatform() ? r.commentOriginal : r.comment)}</p>` : ""}</div>`;
     if (isClient() && role() === "client_owner")
       return `<form class="card" data-form="rating" data-id="${e.engagement.id}"><h2>How did it go?</h2><p class="small muted">Your rating feeds the partner's scorecard, which decides who gets work.</p>
         <div class="row"><select name="stars" style="width:auto"><option value="5">5 ★ excellent</option><option value="4">4 ★ good</option><option value="3">3 ★ fair</option><option value="2">2 ★ poor</option><option value="1">1 ★ bad</option></select></div>
@@ -735,8 +769,8 @@ async function renderEngagement(id) {
                 <div class="small muted">Due ${date(m.dueDate)}${m.isKey ? " · key step" : ""} · Evidence: ${esc((m.evidenceRequired ?? []).map(words).join(", ") || "none")}</div>
                 ${delayLine(m)}
                 ${docsFor(m.id).length ? `<div class="small muted">Client documents: ${docsFor(m.id).filter((r) => r.status === "received").length}/${docsFor(m.id).length} received</div>` : ""}
-                ${m.qaNote ? `<div class="small">MKW note: ${esc(m.qaNote)}</div>` : ""}
-                ${m.disputeReason ? `<div class="small">Client issue: ${esc(m.disputeReason)}</div>` : ""}
+                ${m.qaNote ? `<div class="small">MKW note: <span data-no-i18n>${esc(m.qaNote)}</span></div>` : ""}
+                ${m.disputeReason ? `<div class="small">Client issue: <span data-no-i18n>${esc(m.disputeReason)}</span></div>` : ""}
                 ${evidenceFor(m.id).length ? `<div class="small">${evidenceFor(m.id).map((x) => `<a href="/api/evidence/${x.id}/file" target="_blank" rel="noopener">${esc(x.fileName)}</a> <span class="muted">(${esc(words(x.type))})</span>`).join(" · ")}</div>` : ""}
                 ${milestoneActions(m)}</div></li>`,
               )
@@ -755,8 +789,8 @@ async function renderEngagement(id) {
           e.messages.length
             ? e.messages
                 .map(
-                  (m) => `<div class="msg"><div class="meta">${esc(m.authorName)} · ${dateTime(m.createdAt)}${m.masked ? " · contact details hidden" : ""}</div>
-                  <div>${esc(isPlatform() ? m.bodyOriginal : m.bodyShown)}</div>${isPlatform() && m.masked ? `<div class="small muted">Shown to parties: ${esc(m.bodyShown)}</div>` : ""}</div>`,
+                  (m) => `<div class="msg"><div class="meta"><span data-no-i18n>${esc(m.authorName)}</span> · ${dateTime(m.createdAt)}${m.masked ? " · contact details hidden" : ""}</div>
+                  <div data-no-i18n>${esc(isPlatform() ? m.bodyOriginal : m.bodyShown)}</div>${isPlatform() && m.masked ? `<div class="small muted">Shown to parties: ${esc(m.bodyShown)}</div>` : ""}</div>`,
                 )
                 .join("")
             : `<p class="muted small">No messages yet.</p>`
@@ -1081,14 +1115,16 @@ async function renderPartnerPerformance() {
 async function renderArabicSection() {
   const a = await api("GET", "/api/admin/arabic");
   const founder = role() === "founder";
-  const missing = [...state.untranslated].sort();
+  const missing = [...new Set([...(a.gaps ?? []), ...state.untranslated])].sort();
   return `<h2 style="margin-top:20px">Arabic ${badge(a.reviewed ? "verified" : "UNCERTAIN", a.reviewed ? "reviewed" : "draft, not yet reviewed")}</h2>
   <div class="card" data-no-i18n>
-    <p class="muted small">${a.reviewed ? `Signed off by ${esc(a.reviewedBy)} on ${date(a.reviewedAt)}${a.note ? `: ${esc(a.note)}` : ""}. Clients may choose Arabic; their emails go out in Arabic.` : "Until an Arabic speaker signs off the screens and the emails, clients see English only. MKW staff can preview Arabic with the language button in the header; strings the dictionary does not cover stay in English and are listed here while you preview."}</p>
-    ${missing.length ? `<details><summary class="small">${missing.length} English string(s) seen without an Arabic entry in this session</summary><ul class="plain small">${missing.map((m) => `<li lang="en" dir="ltr">${esc(m)}</li>`).join("")}</ul></details>` : lang() === "ar" ? `<p class="small muted">No gaps seen on the screens visited in this session.</p>` : ""}
+    <p class="muted small">${a.reviewed ? `Signed off by ${esc(a.reviewedBy)} on ${date(a.reviewedAt)}${a.note ? `: ${esc(a.note)}` : ""}. Clients may choose Arabic; their emails go out in Arabic.` : "Until an Arabic speaker signs off the screens and the emails, clients see English only. Give the reviewer a test client account and list its email below: that account sees Arabic with a draft banner and its emails arrive in Arabic, and the strings the dictionary does not cover are listed here when that account signs in. MKW staff can preview the Arabic header and staff screens with the language button."}</p>
+    ${missing.length ? `<details><summary class="small">${missing.length} English string(s) seen on client screens without an Arabic entry</summary><ul class="plain small">${missing.map((m) => `<li lang="en" dir="ltr">${esc(m)}</li>`).join("")}</ul></details>` : lang() === "ar" ? `<p class="small muted">No gaps seen on the screens visited in this session.</p>` : ""}
     ${founder ? `<form class="row" data-form="arabic-review" style="margin-top:10px">
       <input name="reviewedBy" placeholder="Reviewer's name and role" style="max-width:260px" ${a.reviewed ? `value="${esc(a.reviewedBy ?? "")}"` : ""} />
       <input name="note" placeholder="What was reviewed (dictionary version, templates)" style="max-width:320px" />
+      <input name="previewEmails" placeholder="Preview client emails, comma-separated" value="${esc((a.previewEmails ?? []).join(", "))}" style="max-width:320px" />
+      <button class="sm" type="submit" name="reviewed" value="${a.reviewed ? "1" : "preview"}">Save preview accounts</button>
       <button class="sm primary" type="submit" name="reviewed" value="1">Record sign-off</button>${a.reviewed ? `<button class="sm danger" type="submit" name="reviewed" value="0">Withdraw</button>` : ""}</form>` : ""}
   </div>`;
 }
@@ -1346,8 +1382,8 @@ async function renderNotifications() {
       ? n.items
           .map(
             (i) => `<div class="card notice-item ${i.readAt ? "" : "unread"}" data-act="read-one" data-id="${i.id}">
-            <div class="row between"><b>${esc(i.subject)}</b><span class="small muted">${dateTime(i.createdAt)}</span></div>
-            <div class="small" style="white-space:pre-wrap;margin-top:6px">${linkify(i.body)}</div></div>`,
+            <div class="row between"><b data-no-i18n>${esc(i.subject)}</b><span class="small muted">${dateTime(i.createdAt)}</span></div>
+            <div class="small" style="white-space:pre-wrap;margin-top:6px" data-no-i18n>${linkify(i.body)}</div></div>`,
           )
           .join("")
       : `<p class="empty">Nothing yet.</p>`
@@ -1475,7 +1511,7 @@ const confBadge = (c) => badge(c === "verified" ? "ok" : c === "rule_of_thumb" ?
 const STRUCTURE_LABEL = { free_zone: "Free zone", mainland: "Mainland", offshore: "Offshore", difc_adgm: "DIFC or ADGM" };
 
 function adviceHtml(a, opts = {}) {
-  const item = (r) => `<li>${opts.editable && r.ruleKey ? `<label><input type="checkbox" name="keep" value="${esc(r.ruleKey)}" checked /> ` : ""}${esc(r.text)} ${confBadge(r.confidence)}${opts.editable && r.ruleKey ? "</label>" : ""}</li>`;
+  const item = (r) => `<li>${opts.editable && r.ruleKey ? `<label><input type="checkbox" name="keep" value="${esc(r.ruleKey)}" checked /> ` : ""}<span data-no-i18n>${esc(r.text)}</span> ${confBadge(r.confidence)}${opts.editable && r.ruleKey ? "</label>" : ""}</li>`;
   return `
   <div class="grid cols-2">
     <div class="card"><h2>Structure: ${esc(STRUCTURE_LABEL[a.structure.recommendation] ?? "to be confirmed")}</h2>
@@ -1756,7 +1792,7 @@ document.addEventListener("click", (ev) => {
     },
     demo: () => requestCode(el.dataset.email).catch((e) => toast(e.message, true)),
     "accept-offer": () => {
-      if (!confirm("Accept this offer? We will send the deposit invoice and start allocating the work once it is paid.")) return;
+      if (!confirm(translateText("Accept this offer? We will send the deposit invoice and start allocating the work once it is paid."))) return;
       act(async () => {
         const r = await api("POST", `/api/client/offers/${id}/accept`);
         location.hash = `#/engagement/${r.engagementId}`;
@@ -1994,9 +2030,11 @@ document.addEventListener("submit", (ev) => {
     }, "Uploaded; MKW Advisors will check it and mark the obligation met");
   }
   if (kind === "arabic-review") {
-    const reviewed = ev.submitter?.value !== "0";
-    if (!reviewed && !confirm("Withdraw the Arabic sign-off? Clients on Arabic go back to English at once.")) return;
-    return act(() => api("POST", "/api/admin/arabic/review", { reviewed, reviewedBy: String(fd.get("reviewedBy") || "") || undefined, note: String(fd.get("note") || "") }), reviewed ? "Arabic sign-off recorded; clients may now choose Arabic" : "Sign-off withdrawn");
+    const value = ev.submitter?.value;
+    const reviewed = value === "1";
+    const previewEmails = String(fd.get("previewEmails") || "").split(",").map((e) => e.trim()).filter(Boolean);
+    if (value === "0" && !confirm("Withdraw the Arabic sign-off? Clients on Arabic go back to English at once.")) return;
+    return act(() => api("POST", "/api/admin/arabic/review", { reviewed, reviewedBy: String(fd.get("reviewedBy") || "") || undefined, note: String(fd.get("note") || ""), previewEmails }), reviewed ? "Arabic sign-off recorded; clients may now choose Arabic" : value === "preview" ? "Preview accounts saved" : "Sign-off withdrawn");
   }
   if (kind === "obligation-add") return act(() => api("POST", `/api/ops/clients/${String(fd.get("client"))}/obligations`, { kind: String(fd.get("kind")), title: String(fd.get("title")), dueDate: String(fd.get("dueDate")), recurrence: String(fd.get("recurrence")), basis: String(fd.get("basis") || "") || undefined }), "Added");
   if (kind === "obligation-confirm") {

@@ -61,7 +61,7 @@ export function renderTemplateAr(template: TemplateName, vars: Vars, appUrl: str
         body: `${vars.title} مستحق في ${vars.dueDate}${vars.when === "overdue" ? " ولم نستلم منك تأكيد التقديم بعد" : ""}.${vars.uncertain ? " هذا التاريخ تقدير من جانبنا (غير مؤكد)؛ تحقق منه مع MKW Advisors قبل الاعتماد عليه." : ""}\n\nعند التقديم، ارفع التأكيد عبر ${link("/compliance")} ونسجله كمنجز. نحن لا نقدّم الإقرارات نيابة عنك؛ اطلب منا ذلك كخدمة إن رغبت.${sign}`,
       };
     case "user_invited":
-      return { inApp: false, subject: `تمت إضافتك إلى ${BRAND_AR.name}`, body: `تم إنشاء حساب لك لدى ${vars.orgName}. سجّل الدخول ببريد عملك عبر ${link("/")}؛ نرسل لك رمزاً من ستة أرقام في كل مرة، دون كلمة مرور.${sign}` };
+      return { inApp: false, subject: `تمت إضافتك إلى ${BRAND_AR.name}`, body: `تم إنشاء حساب لك لدى ${vars.orgName} بصفة ${String(vars.role ?? "").replace(/_/g, " ")}. سجّل الدخول ببريد عملك عبر ${link("/")}؛ نرسل لك رمزاً من ستة أرقام في كل مرة، دون كلمة مرور.${sign}` };
     default:
       return null;
   }

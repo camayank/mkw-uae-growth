@@ -143,7 +143,7 @@ export function recordingNotifier(opts: NotifierOptions): Notifier {
     const to = n.to.trim().toLowerCase();
     // Who is this? Decides the audience (branding) and whether the row is somebody's in-app notification.
     const user = await asPlatform(db, null, async (tx) =>
-      (await tx.query<{ id: string; type: "client" | "partner" | "platform"; status: string; locale: string; arabic: boolean }>("select u.id, o.type, u.status, u.locale, coalesce((select (value->>'reviewed')::boolean from settings where key = 'arabic'), false) as arabic from users u join orgs o on o.id = u.org_id where u.email = $1", [to])).rows[0],
+      (await tx.query<{ id: string; type: "client" | "partner" | "platform"; status: string; locale: string; arabic: boolean }>("select u.id, o.type, u.status, u.locale, coalesce((select (value->>'reviewed')::boolean from settings where key = 'arabic'), false) or coalesce((select value->'previewEmails' ? u.email from settings where key = 'arabic'), false) as arabic from users u join orgs o on o.id = u.org_id where u.email = $1", [to])).rows[0],
     );
     if (user && user.status !== "active") {
       // Deactivated or erased people receive nothing; the fact is recorded without the wording.

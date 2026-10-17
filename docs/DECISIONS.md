@@ -220,7 +220,8 @@ records; it never files.
 **D39. Arabic is a draft until a named reviewer signs it off.** The Arabic dictionary and the Arabic email
 templates were drafted by the build (AI output under rule 5), so clients cannot choose Arabic until the
 founder records the reviewer's name and date (`settings.arabic`, audited); MKW staff can preview it with a
-visible draft banner and see which strings have no Arabic entry. Numbers, amounts, references, emails and
+visible draft banner, and the founder can list the reviewer's test client accounts, which see Arabic before
+the sign-off and report the strings with no Arabic entry. Numbers, amounts, references, emails and
 codes are never translated. Withdrawing the sign-off puts clients back on English at once. Partner and
 staff screens stay English, as the specification says.
 

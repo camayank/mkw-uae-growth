@@ -46,7 +46,7 @@ invite: Invited
 role change: Role changed
 deactivate: Account deactivated
 deactivated user shows the badge and a reactivate button: OK
-export downloaded: person-e897a3c7-d025-4392-946f-0e6eb4ef575e.json
+export downloaded: person-b11bd74f-4451-4d85-86dd-2bcb20ae5fbc.json
 erase: Personal data erased and recorded
 erased person shown as a tombstone: OK
 17-people-after-changes
@@ -140,6 +140,8 @@ partner performance page has no client or margin figures: OK
 52-partner-performance
 axe: no WCAG 2.1 AA violations on sign-in (en): OK
 skip link is the first focus stop: OK
+activating the skip link moves focus to the page without changing the route: OK
+the document title follows the heading: OK
 keyboard reaches the email field: OK
 keyboard-only path opens the engagement: OK
 axe: no WCAG 2.1 AA violations on client offer (en): OK
@@ -163,7 +165,12 @@ compliance in Arabic: OK
 public intake in Arabic: OK
 59-public-intake-ar
 axe: no WCAG 2.1 AA violations on client home (ar): OK
+axe: no WCAG 2.1 AA violations on client offer (ar): OK
 axe: no WCAG 2.1 AA violations on client engagement (ar): OK
+axe: no WCAG 2.1 AA violations on client compliance (ar): OK
+axe: no WCAG 2.1 AA violations on client intake (ar): OK
+the Arabic document title follows the heading: OK
+people's own words are left untranslated: OK
 axe: no WCAG 2.1 AA violations on public intake (ar): OK
 Arabic home at 390 px has no horizontal overflow: OK
 people at 390 px has no horizontal overflow: OK

@@ -268,6 +268,8 @@ export const AR = {
   "other": "أخرى",
   "Choose a file": "اختر ملفاً",
   "Date": "التاريخ",
+  "Accept this offer? We will send the deposit invoice and start allocating the work once it is paid.": "هل تقبل هذا العرض؟ سنرسل فاتورة الدفعة المقدمة ونبدأ بتعيين العمل فور سدادها.",
+  "Tasees workspace": "مساحة عمل تأسيس",
   // Toasts
   "Done": "تم",
   "Sent": "تم الإرسال",
@@ -287,6 +289,7 @@ export const AR_PATTERNS = [
   [/^(\d+) to upload$/, (m) => `${m[1]} للرفع`],
   [/^(\d+) open · (\d+) done$/, (m) => `${m[1]} مفتوح · ${m[2]} منجز`],
   [/^Due (.+)$/, (m) => `الموعد ${m[1]}`],
+  [/^(.+) · Tasees$/, (m) => `${m[1]} · تأسيس`],
   [/^(.+) · (.+) · client (owner|member)$/, (m) => `${m[1]} · ${m[2]} · ${m[3] === "owner" ? "مالك الحساب" : "عضو الحساب"}`],
   [/^Valid until (.+)$/, (m) => `صالح حتى ${m[1]}`],
   [/^Engagement · (.+)$/, (m) => `العمل · ${m[1]}`],

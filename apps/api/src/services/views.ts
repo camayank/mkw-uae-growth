@@ -143,7 +143,8 @@ export function partnerHome(db: Database, user: SessionUser) {
     );
     const payouts = await tx.query(
       `select p.id, p.engagement_id, p.stage, p.amount_fils, p.status, p.released_at, p.run_id, pi.number as invoice_number
-       from payouts p left join partner_invoices pi on pi.payout_id = p.id order by p.engagement_id, p.stage`,
+       from payouts p left join partner_invoices pi on pi.payout_id = p.id
+       order by p.engagement_id, case p.stage when 'kickoff' then 0 when 'key_milestone' then 1 when 'completion' then 2 else 3 end`,
     );
     const bank = (await tx.query<{ bank: unknown }>("select app_partner_bank() as bank")).rows[0]?.bank ?? null;
     const cards = await tx.query(

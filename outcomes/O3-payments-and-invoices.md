@@ -1,6 +1,6 @@
 # O3 Payments and invoices
 
-Status: in-progress (branch `outcome/O3-payments-and-invoices`, stacked on O4)
+Status: verified-pending-merge (branch `outcome/O3-payments-and-invoices`, stacked on O4, 17 Oct 2026)
 
 ## Business result
 
@@ -67,3 +67,19 @@ provider is chosen); accounting export (O8); service guarantee credits (O6); e-i
 
 Additive migration; `PAYMENT=memory` keeps the flow working without a provider; reverting restores the
 shared-secret webhook of the starter.
+
+## Evidence
+
+| Claim | Evidence |
+| --- | --- |
+| Tests | `pnpm test`: 40 core + 96 API = 136 (O4: 126); `apps/api/test/payments.test.ts` (10 tests); flow test updated to the signed webhook and the partner-invoice rule |
+| Webhook | unsigned 401, wrong secret 401, 6 minutes old 401, tampered body 401, short amount 409; payment stays pending; refusals audited; good message 200 and idempotent |
+| Invoices | held without TRN (client sees none), TRN validated (15 digits), founder-only; live payment takes 000001, held one 000002; fee lines VAT 5%, disbursement lines no VAT, lines sum to the payment; PDF header/xref/EOF and text checked; client downloads own, partner 403, anonymous 401; RLS: other client sees nothing, `file_key` denied |
+| Refund | credit note CN-2026-000001 with negative totals, payment refunded, payouts withheld, second refund 409, statement totals move |
+| Partner invoices and runs | wrong amount 400, staff 403, only the owning partner 200; IBAN validated; bank change audited with last four digits only; run total = sum(payout + VAT) = bank file total, one line per partner; mark paid releases all, one audit event per payout, remittances from "MKW Advisors" without "Tasees"; ops 403 everywhere |
+| Smoke | `docs/evidence/O3/log.txt` (43 checks OK); screenshots `29-settings-company.png`, `30-client-statement.png`, `31-partner-payouts.png`, `32-finance-payout-runs.png` (1280 px), `33-mobile-partners-runs.png`, `34-mobile-statement.png` (390 px) |
+
+## Could not verify
+
+A real card payment end to end (no merchant account); the invoice against an accountant's review (no TRN yet);
+the bank file against the bank's importer (no sample file).

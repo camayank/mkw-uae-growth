@@ -137,7 +137,7 @@ document.addEventListener("visibilitychange", () => {
 });
 
 function navFor() {
-  if (isClient()) return [["home", "Overview"], ["new", "New request"]];
+  if (isClient()) return [["home", "Overview"], ["new", "New request"], ["statement", "Statement"]];
   if (isPartner()) return [["home", "Work"], ["rates", "Rate card"], ["payouts", "Payouts"]];
   return [["home", "Queue"], ["pipeline", "Pipeline"], ["partners", "Partners"], ["people", "People"], ["catalogue", "Catalogue"], ["rules", "Rules"], ["new", "New request"], ["settings", "Settings"], ["audit", "Audit trail"]];
 }
@@ -201,8 +201,10 @@ async function renderOnce() {
     await deliverables();
     if (page === "notifications") return await renderNotifications();
     if (page === "engagement" && id) return await renderEngagement(id);
+    if (page === "pay" && id) return renderPayPage(id);
     if (isClient()) {
       if (page === "offer" && id) return await renderClientOffer(id);
+      if (page === "statement") return await renderStatement();
       if (page === "new") return await renderIntake();
       return await renderClientHome();
     }
@@ -457,31 +459,40 @@ async function renderEngagement(id) {
   const moneyCard = () => {
     if (isClient())
       return `<div class="card flush"><h2>Payments</h2>${table(
-        ["What", "#Amount", "Status"],
-        (e.payments ?? []).map((p) => `<tr><td>${esc(words(p.kind))}</td><td class="num">${aed(p.amount)}</td><td>${badge(p.status)}${p.paidAt ? ` <span class="small muted">${date(p.paidAt)}</span>` : ""}</td></tr>`),
-      )}<p class="small muted pad" style="padding-top:0">Pay by bank transfer to MKW Advisors quoting the engagement reference, or by the card link we email you.</p></div>`;
+        ["What", "#Amount", "Status", ""],
+        (e.payments ?? []).map(
+          (p) => `<tr><td>${esc(words(p.kind))}</td><td class="num">${aed(p.amount)}</td><td>${badge(p.status)}${p.paidAt ? ` <span class="small muted">${date(p.paidAt)}</span>` : ""}</td>
+          <td>${p.status === "pending" && p.payUrl ? `<a class="btn sm primary" href="${esc(p.payUrl)}">Pay by card</a>` : ""}</td></tr>`,
+        ),
+      )}
+      ${(e.invoices ?? []).length ? `<h2 style="padding:16px 18px 0">Tax invoices</h2>${table(
+        ["Number", "Issued", "#Amount", ""],
+        e.invoices.map((i) => `<tr><td class="mono small">${esc(i.number)}${i.kind === "credit_note" ? ` ${badge("refunded", "credit note")}` : ""}</td><td>${date(i.issuedAt)}</td><td class="num">${aed(i.gross)}</td><td><a href="/api/invoices/${i.id}/pdf" target="_blank" rel="noopener">Download PDF</a></td></tr>`),
+      )}` : ""}
+      <p class="small muted pad" style="padding-top:0">Pay by bank transfer to MKW Advisors quoting reference ${esc(e.engagement.id.slice(0, 8).toUpperCase())}, or by card. A tax invoice is issued for every payment.</p></div>`;
     if (isPartner())
       return `<div class="card flush"><h2>Your payouts</h2>${table(
-        ["Stage", "#Amount", "Status"],
-        [...(e.payouts ?? [])].sort(byStage).map((p) => `<tr><td>${esc(words(p.stage))}</td><td class="num">${aed(p.amount)}</td><td>${badge(p.status)}</td></tr>`),
+        ["Stage", "#Amount", "Status", "Your invoice"],
+        [...(e.payouts ?? [])].sort(byStage).map((p) => `<tr><td>${esc(words(p.stage))}</td><td class="num">${aed(p.amount)}</td><td>${badge(p.status)}</td><td class="small">${p.invoiceNumber ? esc(p.invoiceNumber) : p.status === "eligible" ? `<a href="#/payouts">upload on Payouts</a>` : "–"}</td></tr>`),
         "Payouts appear once you accept the work.",
       )}</div>`;
     return `<div class="card flush"><h2>Money</h2>
       ${table(
         ["Client payment", "#Amount", "Status", ""],
         e.payments.map(
-          (p) => `<tr><td>${esc(words(p.kind))}</td><td class="num">${aed(p.amount)}</td><td>${badge(p.status)}</td>
-          <td>${p.status === "pending" && seesMargin() ? `<button class="sm" data-act="mark-paid" data-id="${p.id}">Mark received</button>` : ""}</td></tr>`,
+          (p) => `<tr><td>${esc(words(p.kind))}${p.payUrl ? `<br><span class="small muted">card link issued</span>` : ""}</td><td class="num">${aed(p.amount)}</td><td>${badge(p.status)}${p.refundReference ? `<br><span class="small muted">refund ${esc(p.refundReference)}</span>` : ""}</td>
+          <td>${p.status === "pending" && seesMargin() ? `<button class="sm" data-act="mark-paid" data-id="${p.id}">Mark received</button>` : p.status === "paid" && seesMargin() ? `<button class="sm danger" data-act="refund" data-id="${p.id}">Refund</button>` : ""}</td></tr>`,
         ),
       )}
+      ${(e.invoices ?? []).length ? table(["Invoice", "Status", "#Amount", ""], e.invoices.map((i) => `<tr><td class="mono small">${esc(i.number ?? "(held: no TRN)")} <span class="muted">${esc(words(i.kind))}</span></td><td>${badge(i.status === "issued" ? "ok" : "UNCERTAIN", i.status === "issued" ? "issued" : "held, no TRN")}</td><td class="num">${aed(i.gross)}</td><td>${i.status === "issued" ? `<a href="/api/invoices/${i.id}/pdf" target="_blank" rel="noopener">PDF</a>` : ""}</td></tr>`)) : ""}
       ${table(
         ["Partner payout", "#Amount", "Status", ""],
         e.payouts.map(
-          (p) => `<tr><td>${esc(p.partner)} · ${esc(words(p.stage))}</td><td class="num">${aed(p.amount)}</td><td>${badge(p.status)}</td>
-          <td>${p.status === "eligible" && seesMargin() ? `<button class="sm" data-act="release" data-id="${p.id}">Release</button>` : ""}</td></tr>`,
+          (p) => `<tr><td>${esc(p.partner)} · ${esc(words(p.stage))}${p.invoiceNumber ? `<br><span class="small muted">partner invoice ${esc(p.invoiceNumber)}</span>` : `<br><span class="small muted">no partner invoice yet</span>`}</td><td class="num">${aed(p.amount)}</td><td>${badge(p.status)}${p.runId ? ` <span class="small muted">in run</span>` : ""}</td>
+          <td>${p.status === "eligible" && seesMargin() && p.invoiceNumber && !p.runId ? `<button class="sm" data-act="release" data-id="${p.id}">Release</button>` : ""}</td></tr>`,
         ),
         "No payouts yet.",
-      )}</div>`;
+      )}<p class="small muted pad" style="padding-top:0">Payouts are normally paid in a weekly payout run from the Partners page; a single release here needs the partner's invoice too.</p></div>`;
   };
 
   const linesCard = () => {
@@ -578,6 +589,38 @@ async function renderEngagement(id) {
   </div>`;
 }
 
+async function renderStatement() {
+  const st = await api("GET", "/api/client/statement");
+  $app.innerHTML = `<h1>Statement of account</h1>
+  <div class="kpis">
+    <div class="kpi"><b>${aed(st.totals.paid)}</b><span>Paid to date</span></div>
+    <div class="kpi"><b>${aed(st.totals.due)}</b><span>Due now</span></div>
+    <div class="kpi"><b>${aed(st.totals.invoiced)}</b><span>Invoiced (net of credit notes)</span></div>
+  </div>
+  <div class="grid cols-2">
+    <div class="card flush"><h2>Payments</h2>${table(
+      ["Engagement", "What", "#Amount", "Status", ""],
+      st.payments.map((p) => `<tr><td><a href="#/engagement/${p.engagementId}">${esc(p.engagementId.slice(0, 8).toUpperCase())}</a></td><td>${esc(words(p.kind))}</td><td class="num">${aed(p.amount)}</td>
+        <td>${badge(p.status)}${p.paidAt ? `<br><span class="small muted">${date(p.paidAt)}</span>` : ""}</td><td>${p.status === "pending" && p.payUrl ? `<a class="btn sm primary" href="${esc(p.payUrl)}">Pay by card</a>` : ""}</td></tr>`),
+      "No payments yet.",
+    )}</div>
+    <div class="card flush"><h2>Tax invoices and credit notes</h2>${table(
+      ["Number", "Issued", "#Net", "#VAT", "#Govt fees", "#Total", ""],
+      st.invoices.map((i) => `<tr><td class="mono small">${esc(i.number)}</td><td>${date(i.issuedAt)}</td><td class="num">${aed(i.net)}</td><td class="num">${aed(i.vat)}</td><td class="num">${aed(i.disbursements)}</td><td class="num">${aed(i.gross)}</td><td><a href="/api/invoices/${i.id}/pdf" target="_blank" rel="noopener">PDF</a></td></tr>`),
+      "Invoices appear here once a payment is received.",
+    )}</div>
+  </div>
+  <p class="small muted" style="margin-top:12px">Invoices are issued by MKW Advisors. Government fees are passed through at cost and shown as disbursements.</p>`;
+}
+
+/** The target of a card payment link while no card provider is connected. Honest about what it is. */
+function renderPayPage(paymentId) {
+  $app.innerHTML = `<div class="signin"><div class="card"><h1>Pay by card</h1>
+    <p class="muted">Card payments switch on once MKW Advisors connects its payment provider. Until then, please pay by bank transfer to MKW Advisors and quote the reference shown on your engagement page; finance records it the same day and your tax invoice follows.</p>
+    <p class="small muted mono">Payment ${esc(paymentId.slice(0, 8))}</p>
+    <a class="btn" href="#/">Back to your overview</a></div></div>`;
+}
+
 // Partner -------------------------------------------------------------------------------
 
 async function renderPartnerHome() {
@@ -644,16 +687,33 @@ async function renderPartnerHome() {
 
 async function renderPartnerPayouts() {
   const h = await api("GET", "/api/partner/home");
+  const admin = role() === "partner_admin";
+  const bank = h.bank ?? {};
   $app.innerHTML = `<h1>Payouts</h1>
-  <p class="muted">Paid in three stages (kick-off, key step, completion) within 7 working days of each becoming due, once the client has paid.</p>
+  <p class="muted">Paid in three stages (kick-off, key step, completion) in MKW Advisors' weekly payout run, once the client has paid and your invoice for the stage is on file. Upload your invoice to MKW Advisors for each payout below.</p>
   <div class="card flush">${table(
-    ["Engagement", "Stage", "#Amount", "Status", "Released"],
+    ["Engagement", "Stage", "#Amount", "Status", "Your invoice", "Released"],
     h.payouts.map(
       (p) => `<tr><td><a href="#/engagement/${p.engagementId}">${esc(p.engagementId.slice(0, 8))}</a></td><td>${esc(words(p.stage))}</td>
-      <td class="num">${aed(p.amount)}</td><td>${badge(p.status)}</td><td>${date(p.releasedAt)}</td></tr>`,
+      <td class="num">${aed(p.amount)}</td><td>${badge(p.status)}${p.runId ? `<br><span class="small muted">in a payout run</span>` : ""}</td>
+      <td class="small">${
+        p.invoiceNumber
+          ? esc(p.invoiceNumber)
+          : admin && ["eligible", "pending"].includes(p.status)
+            ? `<form class="row" data-form="partner-invoice" data-id="${p.id}" data-amount="${p.amount}" style="flex-wrap:wrap;gap:4px">
+                <input name="number" placeholder="Invoice no." required style="width:110px" /><input name="vatAed" type="number" min="0" step="0.01" placeholder="VAT AED" style="width:90px" />
+                <input type="file" name="file" required style="width:auto;max-width:160px" /><button class="sm" type="submit">Upload</button></form>`
+            : "–"
+      }</td><td>${date(p.releasedAt)}</td></tr>`,
     ),
     "No payouts yet.",
-  )}</div>`;
+  )}</div>
+  <form class="card" data-form="bank" style="margin-top:16px"><h2>Bank account for payouts ${bank.iban ? badge("ok", "on file") : badge("pending", "needed before you can be paid")}</h2>
+    <div class="grid cols-3">
+      <div class="field"><label>Account name (as the bank has it)</label><input name="beneficiary" value="${esc(bank.beneficiary ?? "")}" required ${admin ? "" : "readonly"} /></div>
+      <div class="field"><label>IBAN (UAE)</label><input name="iban" value="${esc(bank.iban ?? "")}" placeholder="AE.. 21 digits" required ${admin ? "" : "readonly"} /></div>
+      <div class="field"><label>Bank</label><input name="bank" value="${esc(bank.bank ?? "")}" required ${admin ? "" : "readonly"} /></div>
+    </div>${admin ? `<button class="primary" type="submit">Save bank details</button>` : `<p class="small muted">Your admin keeps these details.</p>`}</form>`;
 }
 
 async function renderRateCards() {
@@ -803,9 +863,33 @@ async function renderPartners() {
     ["Partner", "Stage", "#Amount", "Status", ""],
     o.payouts.map(
       (p) => `<tr><td>${esc(p.partner)}</td><td>${esc(words(p.stage))}</td><td class="num">${aed(p.amount)}</td><td>${badge(p.status)}</td>
-      <td>${p.status === "eligible" && seesMargin() ? `<button class="sm" data-act="release" data-id="${p.id}">Release</button>` : `<a href="#/engagement/${p.engagementId}">Open</a>`}</td></tr>`,
+      <td><a href="#/engagement/${p.engagementId}">Open</a></td></tr>`,
     ),
     "Nothing due.",
+  )}</div>
+  ${seesMargin() ? await renderPayoutRuns() : ""}`;
+}
+
+async function renderPayoutRuns() {
+  const [payable, runs] = await Promise.all([api("GET", "/api/ops/payouts/payable"), api("GET", "/api/ops/payout-runs")]);
+  const ready = payable.filter((p) => p.payable);
+  const open = runs.find((r) => ["open", "exported"].includes(r.status));
+  return `<h2 style="margin-top:20px">Payout runs</h2>
+  <p class="muted">A payout is paid in the weekly run once the partner's invoice and bank details are on file. Create the run, download the bank bulk-transfer file, pay it at the bank, then mark the run paid: that releases the payouts and sends each partner a remittance advice.</p>
+  <div class="card flush"><h2 style="padding:16px 18px 0">Ready and blocked payouts</h2>${table(
+    ["Partner", "Stage", "#Amount", "Partner invoice", "Bank", "Status"],
+    payable.map((p) => `<tr><td>${esc(p.partner)}</td><td>${esc(words(p.stage))}</td><td class="num">${aed(p.amount)}${p.invoiceVat ? `<br><span class="small muted">+ VAT ${aed(p.invoiceVat)}</span>` : ""}</td>
+      <td class="small">${p.invoiceNumber ? esc(p.invoiceNumber) : badge("pending", "missing")}</td><td class="small">${p.bank?.iban ? "on file" : badge("pending", "missing")}</td><td>${p.payable ? badge("eligible", "ready") : badge("pending", p.blocked)}</td></tr>`),
+    "No eligible payouts.",
+  )}
+  <div class="pad" style="padding-top:8px">${open ? `<span class="small muted">Run ${esc(open.reference)} is ${esc(open.status)}; finish it before opening another.</span>` : `<button class="sm primary" data-act="run-create" ${ready.length ? "" : "disabled"}>Create payout run (${ready.length} ready)</button>`}</div></div>
+  <div class="card flush" style="margin-top:12px">${table(
+    ["Run", "Created", "#Payouts", "#Total", "Status", ""],
+    runs.map((r) => `<tr><td class="mono small">${esc(r.reference)}</td><td>${dateTime(r.createdAt)}<br><span class="small muted">${esc(r.createdBy ?? "")}</span></td><td class="num">${r.payouts}</td><td class="num">${aed(r.total)}</td>
+      <td>${badge(r.status === "paid" ? "paid" : r.status === "cancelled" ? "cancelled" : "pending", r.status)}${r.bankReference ? `<br><span class="small muted">${esc(r.bankReference)}</span>` : ""}</td>
+      <td><div class="actions">${["open", "exported"].includes(r.status) ? `<a class="btn sm" href="/api/ops/payout-runs/${r.id}/file" target="_blank" rel="noopener" data-act-link="run-file">Download bank file</a>` : ""}
+      ${r.status === "exported" ? `<button class="sm primary" data-act="run-paid" data-id="${r.id}">Mark paid</button>` : ""}${["open", "exported"].includes(r.status) ? `<button class="sm" data-act="run-cancel" data-id="${r.id}">Cancel</button>` : ""}</div></td></tr>`),
+    "No payout runs yet.",
   )}</div>`;
 }
 
@@ -1072,7 +1156,31 @@ async function renderSettings() {
         <button class="primary" type="submit">Confirm retention periods</button></div>`
       : `<p class="small muted pad">Only the founder can confirm these periods.</p>`
   }</form>
+  ${await renderCompany()}
   ${await renderDeliveryLog()}`;
+}
+
+async function renderCompany() {
+  const c = await api("GET", "/api/admin/company");
+  const founder = role() === "founder";
+  const fields = (ro) => `<div class="grid cols-3">
+    <div class="field"><label>Legal name on invoices</label><input name="legalName" value="${esc(c.legalName)}" ${ro} /></div>
+    <div class="field"><label>TRN (15 digits) ${c.trn ? badge("ok", "set") : badge("UNCERTAIN", "missing: invoices held")}</label><input name="trn" value="${esc(c.trn ?? "")}" inputmode="numeric" pattern="\\d{15}" ${ro} /></div>
+    <div class="field"><label>Address</label><input name="address" value="${esc(c.address ?? "")}" ${ro} /></div>
+    <div class="field"><label>Bank name (for client transfers)</label><input name="bankName" value="${esc(c.bankName ?? "")}" ${ro} /></div>
+    <div class="field"><label>IBAN</label><input name="iban" value="${esc(c.iban ?? "")}" ${ro} /></div>
+    <div class="field"><label>SWIFT</label><input name="swift" value="${esc(c.swift ?? "")}" ${ro} /></div>
+  </div>`;
+  return `<h2 style="margin-top:24px">Company details for invoices ${c.heldInvoices ? badge("UNCERTAIN", `${c.heldInvoices} invoice(s) held`) : ""}</h2>
+  <form class="card" data-form="company">${fields(founder ? "" : "readonly")}
+    <p class="small muted">Government fees are shown on invoices as disbursements at cost with no VAT: ${badge(c.govFeesAsDisbursements?.confidence ?? "UNCERTAIN")} ${esc(c.govFeesAsDisbursements?.basis ?? "")}</p>
+    ${
+      founder
+        ? `<div class="field"><label>Why</label><input name="note" required minlength="3" placeholder="e.g. TRN from the FTA certificate dated ..." /></div>
+           <label class="small"><input type="checkbox" name="govFeesConfirmed" /> The tax adviser has confirmed the disbursement treatment</label>
+           <div class="row" style="margin-top:8px"><button class="primary" type="submit">Save company details</button>${c.heldInvoices && c.trn ? `<button type="button" class="sm" data-act="issue-held">Issue ${c.heldInvoices} held invoice(s)</button>` : ""}</div>`
+        : `<p class="small muted">Only the founder changes these.</p>`
+    }</form>`;
 }
 
 // Events ----------------------------------------------------------------------------------
@@ -1150,6 +1258,36 @@ document.addEventListener("click", (ev) => {
         toast(`Timers run: ${r.allocationTimeouts} re-routed, ${r.autoApprovals} auto-approved, ${r.offersExpired} offers expired`);
       }, null),
     "partner-status": () => act(() => api("PUT", `/api/ops/partners/${id}`, { status: el.dataset.status }), "Partner updated"),
+    refund: () => {
+      const reference = prompt("Bank or card reference of the refund");
+      if (!reference) return;
+      const reason = prompt("Why is this payment being refunded? (recorded in the audit trail)");
+      if (!reason) return;
+      if (!confirm("Refund this payment in full? A credit note is issued and unreleased partner payouts on the engagement are withheld.")) return;
+      act(() => api("POST", `/api/ops/payments/${id}/refund`, { reference, reason }), "Refund recorded; credit note issued");
+    },
+    "run-create": () => {
+      if (!confirm("Create a payout run with every ready payout?")) return;
+      act(async () => {
+        const r = await api("POST", "/api/ops/payout-runs");
+        toast(`Run ${r.reference} created: ${r.payouts} payout(s), ${aed(r.total)}`);
+      }, null);
+    },
+    "run-paid": () => {
+      const bankReference = prompt("Bank reference of the bulk transfer");
+      if (!bankReference) return;
+      if (!confirm("Mark this run paid? Every payout in it is released and each partner receives a remittance advice.")) return;
+      act(() => api("POST", `/api/ops/payout-runs/${id}/paid`, { bankReference }), "Run paid; payouts released");
+    },
+    "run-cancel": () => {
+      const reason = prompt("Why cancel this run? Payouts return to the ready list.");
+      if (!reason) return;
+      act(() => api("POST", `/api/ops/payout-runs/${id}/cancel`, { reason }), "Run cancelled");
+    },
+    "issue-held": () => act(async () => {
+      const r = await api("POST", "/api/admin/invoices/issue-held");
+      toast(`Issued ${r.issued.length} invoice(s): ${r.issued.join(", ")}`);
+    }, null),
     "fee-verify": () => {
       const verifiedBy = prompt("Who verified this fee against its source? Name and qualification.");
       if (!verifiedBy) return;
@@ -1253,6 +1391,20 @@ document.addEventListener("submit", (ev) => {
       exclusions: String(fd.get("exclusions") || "").split("\n").map((s) => s.trim()).filter(Boolean),
     };
     return act(() => api("PUT", "/api/partner/rate-cards", { cards: [card] }), "Price saved for 90 days");
+  }
+  if (kind === "bank") return act(() => api("PUT", "/api/partner/bank", { beneficiary: String(fd.get("beneficiary")), iban: String(fd.get("iban")), bank: String(fd.get("bank")) }), "Bank details saved");
+  if (kind === "partner-invoice") {
+    const file = fd.get("file");
+    if (!(file instanceof File) || !file.size) return toast("Attach your invoice file", true);
+    return act(async () => {
+      await api("POST", `/api/payouts/${id}/invoice`, { number: String(fd.get("number")), amountAed: Number(form.dataset.amount) / 100, vatAed: Number(fd.get("vatAed") || 0), fileName: file.name, contentBase64: await fileToBase64(file) });
+    }, "Invoice uploaded; MKW Advisors pays it in the next run");
+  }
+  if (kind === "company") {
+    const body = { note: String(fd.get("note")), govFeesConfirmed: fd.get("govFeesConfirmed") === "on" };
+    for (const k of ["legalName", "trn", "address", "bankName", "iban", "swift"]) body[k] = String(fd.get(k) ?? "");
+    if (!body.trn) body.trn = null;
+    return act(() => api("PUT", "/api/admin/company", body), "Company details saved");
   }
   if (kind === "rule") {
     const body = { rateBp: Math.round(Number(fd.get("ratePct")) * 100), floorAed: Number(fd.get("floorAed")), effectiveFrom: String(fd.get("effectiveFrom")), note: String(fd.get("note")) };

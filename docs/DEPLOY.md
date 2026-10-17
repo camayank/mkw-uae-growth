@@ -10,7 +10,8 @@
 | `HOST` | `127.0.0.1` | Bind address. Use `0.0.0.0` in a container. |
 | `NODE_ENV` | unset | Set to `production` in production. Disables demo seeding and development sign-in. |
 | `DEV_LOGIN` | unset | `1` shows sign-in codes on screen and in API responses. Never set in production. |
-| `PAYMENT_WEBHOOK_SECRET` | unset | Shared secret the payment provider (or your integration) sends in `x-webhook-secret`. Unset rejects all webhooks. |
+| `PAYMENT_WEBHOOK_SECRET` | unset | Secret for the payment webhook signature: `x-webhook-signature: sha256=HMAC_SHA256(secret, "<x-webhook-timestamp>.<raw body>")`, five-minute window. Unset rejects all webhooks. |
+| `PAYMENT` | `memory` | Card payment provider. Only `memory` exists until the merchant account is chosen; its links lead to an explanatory page. |
 | `STORAGE` | `local` | `s3` stores evidence files in an S3-compatible bucket (production); anything else uses local disk. |
 | `S3_BUCKET` | unset | Bucket name. Required when `STORAGE=s3`. |
 | `S3_REGION` | `me-central-1` | Region used in the request signature (AWS UAE). Other providers accept any value. |

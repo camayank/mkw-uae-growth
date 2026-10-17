@@ -109,6 +109,7 @@ await client.waitForURL(/engagement/);
 const engagementUrl = client.url();
 await client.waitForTimeout(600);
 await shot(client, "08-client-engagement-awaiting-payment");
+check("client sees a card payment link for the deposit:", (await client.locator('a:text-is("Pay by card")').count()) >= 1);
 
 // Finance records the deposit
 await finance.goto(engagementUrl); await finance.reload();
@@ -218,6 +219,11 @@ await mp.waitForSelector('main h1:text-is("Notifications")');
 await mp.waitForTimeout(500);
 check("notifications at 390 px have no horizontal overflow:", !(await mp.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
 await mp.screenshot({ path: `${OUT}/24-mobile-notifications.png`, fullPage: false });
+await mp.goto(BASE + "/#/statement"); await mp.reload();
+await mp.waitForSelector('main h1:text-is("Statement of account")');
+await mp.waitForTimeout(500);
+check("statement at 390 px has no horizontal overflow:", !(await mp.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
+await mp.screenshot({ path: `${OUT}/34-mobile-statement.png`, fullPage: false });
 
 // Audit
 const founder = await session("founder@mkwadvisors.test");
@@ -283,19 +289,82 @@ check("finance sees no admin forms or deactivate buttons:", (await finance.locat
 // Settings: retention periods (O1)
 await founder.goto(BASE + "/#/settings");
 await founder.waitForSelector('form[data-form="retention"]');
-log.push("retention UNCERTAIN badges before: " + (await founder.locator('.badge:text-is("UNCERTAIN")').count()));
+log.push("retention UNCERTAIN badges before: " + (await founder.locator('form[data-form="retention"] .badge:text-is("UNCERTAIN")').count()));
 await shot(founder, "18-settings-retention");
 await founder.fill('form[data-form="retention"] input[name="note"]', "Smoke test: confirmed by the founder");
 await founder.locator('form[data-form="retention"] button[type="submit"]').click();
 await founder.waitForTimeout(800);
 log.push("retention: " + (await toastText(founder)));
-check("no UNCERTAIN retention badge after the founder confirms:", (await founder.locator('.badge:text-is("UNCERTAIN")').count()) === 0);
+check("no UNCERTAIN retention badge after the founder confirms:", (await founder.locator('form[data-form="retention"] .badge:text-is("UNCERTAIN")').count()) === 0);
 await shot(founder, "19-settings-retention-confirmed");
 await finance.goto(BASE + "/#/settings"); await finance.reload();
 await finance.waitForSelector("main h1");
 check("finance cannot confirm retention periods:", (await finance.locator('form[data-form="retention"] button[type="submit"]').count()) === 0);
 const logText = await finance.locator("main").innerText();
 check("delivery log lists sent messages for client and partner audiences:", /Delivery log/.test(logText) && /offer ready/i.test(logText) && /allocation offered/i.test(logText));
+
+// Payments and invoices (O3): TRN, held invoice issued, statement and PDF, partner invoice and bank, payout run
+await founder.goto(BASE + "/#/settings"); await founder.reload();
+await founder.waitForSelector('form[data-form="company"]');
+check("invoice held while TRN missing:", /invoice\(s\) held/.test(await founder.locator("main").innerText()));
+await founder.fill('form[data-form="company"] input[name="trn"]', "100123456700003");
+await founder.fill('form[data-form="company"] input[name="address"]', "Office 1, Dubai, UAE");
+await founder.fill('form[data-form="company"] input[name="note"]', "Smoke test: TRN entered");
+await founder.locator('form[data-form="company"] button[type="submit"]').click();
+await founder.waitForTimeout(800);
+log.push("company: " + (await toastText(founder)));
+await founder.locator('button[data-act="issue-held"]').click();
+await founder.waitForTimeout(800);
+log.push("issue held: " + (await toastText(founder)));
+check("held invoice issued with a sequential number:", /TI-\d{4}-000001/.test(await toastText(founder)));
+await shot(founder, "29-settings-company");
+await client.goto(BASE + "/#/statement"); await client.reload();
+await client.waitForSelector('main h1:text-is("Statement of account")');
+const stText = await client.locator("main").innerText();
+check("client statement shows the paid deposit and the tax invoice:", /TI-\d{4}-000001/.test(stText) && /Paid to date/.test(stText));
+check("client statement carries no partner cost or margin:", !/partner cost|margin|payout/i.test(stText));
+const [pdf] = await Promise.all([client.waitForEvent("download"), client.locator('a:text-is("PDF")').first().click()]);
+check("client downloads the tax invoice PDF:", /^TI-\d{4}-000001\.pdf$/.test(pdf.suggestedFilename()));
+await shot(client, "30-client-statement");
+const payoutPartner = partnerPages[0];
+await payoutPartner.goto(BASE + "/#/payouts"); await payoutPartner.reload();
+await payoutPartner.waitForSelector('form[data-form="bank"]');
+await payoutPartner.fill('form[data-form="bank"] input[name="beneficiary"]', "Example Setup Partners FZ-LLC");
+await payoutPartner.fill('form[data-form="bank"] input[name="iban"]', "AE07 0331 2345 6789 0123 456");
+await payoutPartner.fill('form[data-form="bank"] input[name="bank"]', "Emirates NBD");
+await payoutPartner.locator('form[data-form="bank"] button[type="submit"]').click();
+await payoutPartner.waitForTimeout(700);
+log.push("bank: " + (await toastText(payoutPartner)));
+const invForm = payoutPartner.locator('tr:has(.badge:text-is("eligible")) form[data-form="partner-invoice"]').first();
+await invForm.locator('input[name="number"]').fill("P-INV-001");
+await invForm.locator('input[name="vatAed"]').fill("0");
+await invForm.locator('input[type="file"]').setInputFiles({ name: "partner-invoice.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 partner invoice") });
+await invForm.locator('button[type="submit"]').click();
+await payoutPartner.waitForTimeout(800);
+log.push("partner invoice: " + (await toastText(payoutPartner)));
+check("partner payouts page shows the invoice number and no client price:", /P-INV-001/.test(await payoutPartner.locator("main").innerText()) && !/client price|margin/i.test(await payoutPartner.locator("main").innerText()));
+await shot(payoutPartner, "31-partner-payouts");
+await finance.goto(BASE + "/#/partners"); await finance.reload();
+await finance.waitForSelector('button[data-act="run-create"]');
+check("one payout is ready for the run:", /Create payout run \(1 ready\)/.test(await finance.locator("main").innerText()));
+await finance.locator('button[data-act="run-create"]').click();
+await finance.waitForTimeout(900);
+log.push("run: " + (await toastText(finance)));
+const [bankFile] = await Promise.all([finance.waitForEvent("download"), finance.locator('a[data-act-link="run-file"]').first().click()]);
+check("finance downloads the bank bulk-transfer file:", /^PR-\d{4}-0001\.csv$/.test(bankFile.suggestedFilename()));
+await finance.reload();
+await finance.waitForSelector('button[data-act="run-paid"]');
+await finance.locator('button[data-act="run-paid"]').click();
+await finance.waitForTimeout(900);
+log.push("run paid: " + (await toastText(finance)));
+check("payout run marked paid:", /paid/.test((await finance.locator("main tbody").last().innerText())));
+await shot(finance, "32-finance-payout-runs");
+await payoutPartner.goto(BASE + "/#/payouts"); await payoutPartner.reload();
+await payoutPartner.waitForSelector("main h1");
+check("partner sees the payout released:", (await payoutPartner.locator('.badge:text-is("released")').count()) >= 1);
+await ops.goto(BASE + "/#/partners"); await ops.reload();
+await ops.waitForSelector("main h1");
+check("ops has no payout run controls:", (await ops.locator('button[data-act="run-create"], button[data-act="run-paid"]').count()) === 0);
 
 // Catalogue and rules (O4)
 await founder.goto(BASE + "/#/catalogue");
@@ -344,7 +413,7 @@ await mfp.goto(BASE + "/");
 await mfp.locator('button[data-email="founder@mkwadvisors.test"]').click();
 await mfp.locator('form[data-form="verify"] button[type="submit"]').click();
 await mfp.waitForSelector("#nav a");
-for (const [route, name] of [["people", "20-mobile-people"], ["settings", "21-mobile-settings"], ["catalogue", "27-mobile-catalogue"], ["rules", "28-mobile-rules"]]) {
+for (const [route, name] of [["people", "20-mobile-people"], ["settings", "21-mobile-settings"], ["catalogue", "27-mobile-catalogue"], ["rules", "28-mobile-rules"], ["partners", "33-mobile-partners-runs"]]) {
   await mfp.goto(BASE + "/#/" + route); await mfp.reload();
   await mfp.waitForSelector("main h1");
   await mfp.waitForTimeout(600);

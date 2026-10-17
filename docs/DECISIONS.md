@@ -124,6 +124,30 @@ unchanged; 62 were added with the Sheet row recorded on each. Agent model (licen
 MKW fee disclosed) is used for FTA tax agency and representation, statutory, approved and RERA audits,
 liquidation, regulatory licensing, litigation and notary work.
 
+**D25. Money is recorded by a person or by a signed provider message, nothing else.** Finance marks a bank
+transfer received; the card provider's webhook is accepted only with a valid HMAC over the timestamp and the raw
+body, within five minutes, for the exact amount; every refusal is audited. The webhook is idempotent on the
+payment's status, so a replay pays nothing twice.
+
+**D26. One tax invoice per payment, numbered when issued, never without a TRN.** Numbers come from a per-year
+counter row locked in the issuing transaction (`TI-2026-000001`, `CN-...`), so they are sequential and gap-free
+across engagements. If MKW's TRN is not yet in settings the invoice is held and the founder issues the held
+batch after entering it; a held document never reaches a client. Government fees appear as disbursements at
+cost with no VAT, marked UNCERTAIN until the tax adviser confirms. PDFs are written by a small in-house writer
+(no dependency), stored through the storage adapter, and served only to the client that owns them (row-level
+security) and to MKW.
+
+**D27. A payout is paid against the partner's invoice, in a weekly run.** A partner admin uploads its invoice
+for the exact payout amount (its own VAT on top); without it, and without bank details, a payout is not
+payable. Finance batches payable payouts into one run, exports one bank file (one line per partner, amounts
+summed), and marks the run paid with the bank's reference; that single person's action releases the payouts,
+audits each, and sends remittance advices. A single release outside a run still needs the invoice.
+
+**D28. A refund withholds what has not been paid out.** A full refund (the only kind built) marks the payment
+refunded, issues a credit note and sets the engagement's unreleased payouts to withheld; it is refused once a
+payout has been released, so the money leak "client refunded, partner paid" cannot happen without finance
+first settling the partner side by hand.
+
 ## Open for the owner
 
 1. **Margin rates and floors per category.** Seeded from the Sheet (setup 20% / AED 500 and so on). Confirm.
@@ -145,4 +169,7 @@ liquidation, regulatory licensing, litigation and notary work.
 13. **Margin rules for the five new categories** (Private Client, HR, Advisory, Growth, Other): defaults of
     20% with floors of AED 300 to 500, shown as "default, confirm" on the Rules page.
 14. **Named fee verifier** and whether ops may add fee rows (built: ops adds, founder verifies).
+15. **Card payment provider**: the webhook contract is generic until chosen; Network International, Telr,
+    Checkout.com or Stripe UAE. **MKW's TRN, legal name and address** for invoices. **Bank bulk-transfer
+    sample** for the payout file. **Tax adviser's confirmation** that government fees are disbursements.
 12. **Ops digest time**: once per working day between 08:00 and 10:00 GST, to ops and the founder.

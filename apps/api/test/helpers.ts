@@ -5,6 +5,7 @@ import pg from "pg";
 import { migrate, openPglite, openPostgres, type Database } from "../src/lib/db.ts";
 import { memoryTransport, recordingNotifier, type Notifier, type OutboundEmail } from "../src/lib/notify.ts";
 import { memoryProvider } from "../src/lib/payments.ts";
+import { memoryModel } from "../src/lib/ai.ts";
 import { memoryStorage } from "../src/lib/storage.ts";
 import { seedCatalogue, seedDemo, type DemoIds } from "../src/db/seed.ts";
 import { DEMO } from "../src/db/seed-data.ts";
@@ -74,7 +75,7 @@ export async function makeEnv(start = new Date("2026-10-19T06:00:00Z")): Promise
   const notify = recordingNotifier({ db, transport, appUrl: "https://app.test", fromClient: "tasees@mkwadvisors.test", fromPartner: "partners@mkwadvisors.test", now: () => clock.now, log: (m) => (process.env.NOTIFY_DEBUG ? console.log(m) : undefined) });
   const storage = memoryStorage();
   const provider = memoryProvider("test-secret", "https://app.test", () => clock.now);
-  const app = await buildApp({ db, notify, storage, provider, now: () => clock.now, devLogin: true, webhookSecret: "test-secret" });
+  const app = await buildApp({ db, notify, storage, provider, model: memoryModel(), now: () => clock.now, devLogin: true, webhookSecret: "test-secret" });
   const tokens: Record<string, string> = {};
   for (const [k, email] of Object.entries(EMAILS)) tokens[k] = await createSession(db, email);
   const call = async (who: string, method: string, url: string, body?: unknown) => {

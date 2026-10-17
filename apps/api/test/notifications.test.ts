@@ -22,6 +22,8 @@ const SAMPLE_VARS = {
   runReference: "PR-2026-0001",
   bankReference: "FT26290ABC",
   count: 2,
+  company: "Example Client LLC",
+  newAccount: 1,
   role: "partner_admin",
   total: 3,
   qa: 2,

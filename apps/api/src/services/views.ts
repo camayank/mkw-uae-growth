@@ -28,7 +28,10 @@ const camel = (row: Record<string, unknown>) =>
 
 export function clientHome(db: Database, user: SessionUser) {
   return asUser(db, user, async (tx) => {
-    const requests = await tx.query("select id, status, scope, notes, created_at from requests order by created_at desc");
+    // Advice reaches the client only once ops has approved it; it keeps its confidence labels.
+    const requests = await tx.query(
+      "select id, status, scope, notes, created_at, advice_status, case when advice_status = 'approved' then advice end as advice, advice_reviewed_at from requests order by created_at desc",
+    );
     const offers = await tx.query(
       `select id, request_id, tier, status, valid_to, professional_fils, mkw_fees_fils, vat_fils, government_fils, client_total_fils
        from offers order by created_at desc`,
@@ -176,7 +179,7 @@ export function opsOverview(db: Database, user: SessionUser) {
   return asPlatform(db, user, async (tx) => {
     const [requests, offers, engagements, exceptions, partners, payouts] = await Promise.all([
       tx.query(
-        `select r.id, r.status, r.scope, r.notes, r.created_at, o.name as client from requests r join orgs o on o.id = r.client_org_id
+        `select r.id, r.status, r.scope, r.notes, r.created_at, r.advice_status, r.source->>'channel' as channel, o.name as client from requests r join orgs o on o.id = r.client_org_id
          order by r.created_at desc limit 100`,
       ),
       tx.query(
@@ -290,6 +293,10 @@ export async function exceptionQueue(tx: Queryable) {
                            and a.accepted_at is null and a.declined_at is null and a.timed_out_at is null))
      union all
      select 'payout', p.engagement_id::text, 'Payout ready to release: ' || p.stage, app_now()::text from payouts p where p.status = 'eligible'
+     union all
+     select 'scoping', r.id::text, 'Scoping advice to review before the client sees it', r.created_at::text from requests r where r.advice_status = 'pending_review'
+     union all
+     select 'ai_draft', d.id::text, 'AI draft waiting for a decision (' || d.kind || ')', d.created_at::text from ai_drafts d where d.status = 'pending'
      order by at`,
   );
   return rows.rows;

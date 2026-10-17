@@ -115,10 +115,19 @@ export function partyEngagement(db: Database, user: SessionUser, engagementId: s
       user.orgType === "client"
         ? (await tx.query("select id, kind, number, payment_id, issued_at, gross_fils, net_fils, vat_fils, disbursements_fils from invoices where engagement_id = $1 and status = 'issued' order by issued_at", [engagementId])).rows.map(camel)
         : [];
+    // O6: the client's document checklist, delays (without attribution), the client's credits, the rating.
+    const documentRequests = await tx.query("select id, engagement_id, milestone_id, kind, note, status, file_name, uploaded_at, decided_at, decision_note, created_at from document_requests where engagement_id = $1 order by created_at", [engagementId]);
+    const delays = await tx.query("select id, milestone_id, engagement_id, due_date, noticed_at, expected_date from delays where engagement_id = $1 order by noticed_at", [engagementId]);
+    const credits = user.orgType === "client" ? await tx.query("select id, engagement_id, milestone_id, amount_fils, status, settled_reference, created_at from guarantee_credits where engagement_id = $1 order by created_at", [engagementId]) : { rows: [] };
+    const rating = (await tx.query("select engagement_id, stars, comment_shown as comment, created_at from ratings where engagement_id = $1", [engagementId])).rows[0];
     return {
       engagement: camel(e),
       lines: lines.rows.map((l) => serialize("engagementLine", user.role, camel(l))),
       milestones: milestones.rows.map(camel),
+      documentRequests: documentRequests.rows.map(camel),
+      delays: delays.rows.map((d) => serialize("delay", user.role, camel(d) as Record<string, unknown>)),
+      ...(user.orgType === "client" ? { credits: credits.rows.map((c) => serialize("guaranteeCredit", user.role, { ...(camel(c) as Record<string, unknown>), amount: num((c as { amount_fils: number }).amount_fils) })) } : {}),
+      rating: rating ? serialize("rating", user.role, camel(rating) as Record<string, unknown>) : null,
       evidence: evidence.rows.map(camel),
       messages: messages.rows.map(camel),
       parties: parties.rows.map(camel),
@@ -156,7 +165,9 @@ export function partnerHome(db: Database, user: SessionUser) {
        from rate_cards c join deliverables d on d.code = c.code order by c.code`,
     );
     const deliverables = await tx.query("select code, name, category, model, billing from deliverables order by category, code");
+    const firm = (await tx.query<{ profile: Record<string, unknown> }>("select app_partner_profile() as profile")).rows[0]?.profile ?? {};
     return {
+      firm,
       allocations: allocations.rows.map((r) => {
         const row = camel(r) as Record<string, unknown>;
         const lines = (row.payoutLines as Array<{ qty: number; unitFils: number }>) ?? [];
@@ -267,6 +278,15 @@ export function opsEngagement(db: Database, user: SessionUser, engagementId: str
       ),
       invoices: await q("select id, kind, number, status, payment_id, issued_at, gross_fils from invoices where engagement_id = $1 order by created_at"),
       changeOrders: await q("select * from change_orders where engagement_id = $1 order by created_at"),
+      documentRequests: await q("select id, milestone_id, kind, note, status, file_name, uploaded_at, decided_at, decision_note, created_at from document_requests where engagement_id = $1 order by created_at"),
+      delays: await q("select d.*, m.name as step from delays d join milestones m on m.id = d.milestone_id where d.engagement_id = $1 order by d.noticed_at"),
+      credits: await q("select g.*, m.name as step from guarantee_credits g join milestones m on m.id = g.milestone_id where g.engagement_id = $1 order by g.created_at"),
+      rating: (await q("select r.stars, r.comment_original, r.comment_shown, r.created_at, u.name as author_name from ratings r join users u on u.id = r.author_user_id where r.engagement_id = $1"))[0] ?? null,
+      // Partners who could take the open lines by hand: ops sees names and eligibility, never costs.
+      candidates: await q(
+        `select o.id, o.name, o.profile->>'status' as status, (o.profile->>'quality')::int as quality from orgs o where o.type = 'partner'
+           and exists (select 1 from engagement_lines l where l.engagement_id = $1 and l.partner_org_id is null) order by o.name`,
+      ),
     };
   });
 }
@@ -299,6 +319,14 @@ export async function exceptionQueue(tx: Queryable) {
      select 'ai_draft', d.id::text, 'AI draft waiting for a decision (' || d.kind || ')', d.created_at::text from ai_drafts d where d.status = 'pending'
      union all
      select 'lead', l.id::text, 'Public lead for an email that already has an account: ' || l.company, l.created_at::text from intake_leads l where l.status = 'held'
+     union all
+     select 'delay', d.id::text, 'Late step to attribute: ' || m.name, d.noticed_at::text from delays d join milestones m on m.id = d.milestone_id where d.cause is null and m.status <> 'client_approved'
+     union all
+     select 'credit', g.id::text, 'Service guarantee credit for finance to decide', g.created_at::text from guarantee_credits g where g.status = 'pending'
+     union all
+     select 'partner_document', pd.id::text, 'Partner document to verify: ' || pd.kind || ' (' || o.name || ')', pd.uploaded_at::text from partner_documents pd join orgs o on o.id = pd.partner_org_id where pd.status = 'uploaded'
+     union all
+     select 'partner_review', o.id::text, 'Partner application to review: ' || o.name, (o.profile->>'appliedAt')::timestamptz::text from orgs o where o.type = 'partner' and o.profile->>'status' = 'applied'
      order by at`,
   );
   return rows.rows;

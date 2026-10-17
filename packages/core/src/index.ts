@@ -10,3 +10,4 @@ export * from "./masking.ts";
 export * from "./states.ts";
 export * from "./scope.ts";
 export * from "./advice.ts";
+export * from "./scorecard.ts";

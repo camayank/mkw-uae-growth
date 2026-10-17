@@ -25,6 +25,8 @@ import { approveAdvice, recomputeAdvice, requestScoping, scopingOverview, search
 import { draftScopeForRequest, listDrafts, reviewDraft } from "./services/drafts.ts";
 import { publicIntake, PublicIntakeSchema, listLeads, handleLead } from "./services/intake.ts";
 import type { AiModel } from "./lib/ai.ts";
+import { DOCUMENT_KINDS, invitePartnerStaff, movePartner, partnerOnboarding, recomputeScorecards, reviewDocument, setPartnerStaffActive, submitApplication, uploadDocument as uploadPartnerDocument, scorecardHistory } from "./services/partners.ts";
+import { addDocumentRequest, allocateManually, attributeDelay, decideCredit, decideDocument, delayQueue, documentFileKey, offerDocument, rateEngagement, settleCredit, uploadDocument as uploadClientDocument } from "./services/delivery.ts";
 import { cancelPayoutRun, createPayoutRun, exportPayoutRun, listPayoutRuns, markPayoutRunPaid, payablePayouts, setPartnerBank, uploadPartnerInvoice } from "./services/payouts.ts";
 import {
   acceptOffer,
@@ -634,6 +636,159 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     const user = requireRole(req, "ops", "founder");
     const { reason } = z.object({ reason: z.string().min(3).max(300) }).parse(req.body);
     return asPlatform(db, user, (tx) => retireFee(tx, user, req.params.id, reason));
+  });
+
+  // Partners and delivery (O6) -------------------------------------------------------------------------
+  const fileBody = z.object({ fileName: z.string().min(1).max(200), contentBase64: z.string().min(1) });
+  const putFile = async (folder: string, fileName: string, contentBase64: string) => {
+    try {
+      return await opts.storage.put(folder, fileName, Buffer.from(contentBase64, "base64"));
+    } catch (e) {
+      throw badRequest((e as Error).message);
+    }
+  };
+
+  // Onboarding: the partner's own firm, or any firm for MKW staff.
+  app.get<{ Params: { id: string } }>("/api/partners/:id/onboarding", async (req) => {
+    const user = requireRole(req, ...PARTNER_ROLES, ...PLATFORM_ROLES);
+    return asPlatform(db, user, (tx) => partnerOnboarding(tx, user, req.params.id));
+  });
+  app.put("/api/partner/application", async (req) => {
+    const user = requireRole(req, "partner_admin");
+    const body = z
+      .object({
+        emirates: z.array(z.string().max(40)).max(8),
+        codes: z.array(z.string().max(20)).max(100),
+        capacity: z.number().int().min(0).max(500),
+        licenceNumber: z.string().min(2).max(60),
+        licenceExpiry: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        ftaTaxAgent: z.boolean().optional(),
+        licensedLawFirm: z.boolean().optional(),
+        regulatoryAdviser: z.boolean().optional(),
+        registeredLiquidator: z.boolean().optional(),
+        approvedAuditorZones: z.array(z.string().max(40)).max(20).optional(),
+        about: z.string().max(2000).optional(),
+      })
+      .parse(req.body);
+    return asPlatform(db, user, (tx) => submitApplication(tx, user, body));
+  });
+  app.post<{ Params: { id: string } }>("/api/partners/:id/documents", async (req) => {
+    const user = requireRole(req, "partner_admin", "ops", "founder");
+    const body = fileBody.extend({ kind: z.enum(DOCUMENT_KINDS as [string, ...string[]]), reference: z.string().max(80).optional(), expiresOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }).parse(req.body);
+    if (user.orgType === "partner" && user.orgId !== req.params.id) throw forbidden("Not your firm");
+    const key = await putFile(req.params.id, body.fileName, body.contentBase64); // the firm's own folder
+    return asPlatform(db, user, (tx) => uploadPartnerDocument(tx, user, req.params.id, { kind: body.kind as (typeof DOCUMENT_KINDS)[number], key, name: body.fileName, reference: body.reference, expiresOn: body.expiresOn }));
+  });
+  app.post<{ Params: { id: string } }>("/api/ops/partner-documents/:id/review", async (req) => {
+    const user = requireRole(req, "ops", "founder");
+    const body = z.object({ decision: z.enum(["verified", "rejected"]), note: z.string().max(500).default("") }).parse(req.body);
+    return asPlatform(db, user, (tx) => reviewDocument(tx, user, req.params.id, body.decision, body.note, opts.notify));
+  });
+  app.get<{ Params: { id: string } }>("/api/partner-documents/:id/file", async (req, reply) => {
+    const user = requireRole(req, "partner_admin", ...PLATFORM_ROLES);
+    const row = await asPlatform(db, user, async (tx) => (await tx.query<{ partner_org_id: string; file_key: string; file_name: string }>("select partner_org_id, file_key, file_name from partner_documents where id = $1", [req.params.id])).rows[0]);
+    if (!row || (user.orgType === "partner" && row.partner_org_id !== user.orgId)) throw notFound("File not found");
+    const data = await opts.storage.get(row.file_key);
+    reply.header("content-disposition", `attachment; filename="${row.file_name.replace(/"/g, "")}"`);
+    return reply.type("application/octet-stream").send(data);
+  });
+  app.post<{ Params: { id: string } }>("/api/ops/partners/:id/status", async (req) => {
+    const user = requireRole(req, "ops", "founder");
+    const body = z.object({ status: z.enum(["prospect", "contacted", "applied", "under_review", "pilot", "signed", "paused"]), note: z.string().max(500).default("") }).parse(req.body);
+    return asPlatform(db, user, (tx) => movePartner(tx, user, req.params.id, body.status, body.note, opts.notify));
+  });
+  app.get<{ Params: { id: string } }>("/api/partners/:id/scorecards", async (req) => {
+    const user = requireRole(req, ...PARTNER_ROLES, ...PLATFORM_ROLES);
+    if (user.orgType === "partner" && user.orgId !== req.params.id) throw forbidden("Not your firm");
+    return asPlatform(db, user, (tx) => scorecardHistory(tx, req.params.id));
+  });
+  app.post("/api/ops/scorecards/recompute", async (req) => {
+    const user = requireRole(req, "ops", "founder");
+    return asPlatform(db, user, async (tx) => ({ partners: await recomputeScorecards(tx, user) }));
+  });
+
+  // Partner staff
+  app.post("/api/partner/staff", async (req) => {
+    const user = requireRole(req, "partner_admin");
+    const body = z.object({ email: z.string().email(), name: z.string().min(2).max(120) }).parse(req.body);
+    const { notification, ...result } = await asPlatform(db, user, (tx) => invitePartnerStaff(tx, user, body));
+    await opts.notify.send(notification);
+    return result;
+  });
+  app.post<{ Params: { id: string } }>("/api/partner/staff/:id/active", async (req) => {
+    const user = requireRole(req, "partner_admin");
+    const { active } = z.object({ active: z.boolean() }).parse(req.body);
+    return asPlatform(db, user, (tx) => setPartnerStaffActive(tx, user, req.params.id, active));
+  });
+
+  // Client document requests
+  app.post<{ Params: { id: string } }>("/api/milestones/:id/document-requests", async (req) => {
+    const user = requireRole(req, ...PARTNER_ROLES);
+    const body = z.object({ kind: z.string().min(3).max(60), note: z.string().max(300).default("") }).parse(req.body);
+    return asPlatform(db, user, (tx) => addDocumentRequest(tx, user, req.params.id, body.kind, body.note, deps));
+  });
+  app.post<{ Params: { id: string } }>("/api/document-requests/:id/upload", async (req) => {
+    const user = requireRole(req, ...CLIENT_ROLES);
+    const body = fileBody.parse(req.body);
+    const r = await asUser(db, user, async (tx) => (await tx.query<{ engagement_id: string }>("select engagement_id from document_requests where id = $1", [req.params.id])).rows[0]);
+    if (!r) throw notFound("Document request not found");
+    const key = await putFile(r.engagement_id, body.fileName, body.contentBase64);
+    return asPlatform(db, user, (tx) => uploadClientDocument(tx, user, req.params.id, { key, name: body.fileName }, deps));
+  });
+  app.post<{ Params: { id: string } }>("/api/document-requests/:id/decide", async (req) => {
+    const user = requireRole(req, ...PARTNER_ROLES, "ops", "founder");
+    const body = z.object({ decision: z.enum(["received", "rejected"]), note: z.string().max(300).default("") }).parse(req.body);
+    return asPlatform(db, user, (tx) => decideDocument(tx, user, req.params.id, body.decision, body.note, deps));
+  });
+  app.get<{ Params: { id: string } }>("/api/document-requests/:id/file", async (req, reply) => {
+    const user = requireUser(req);
+    const f = await asPlatform(db, user, (tx) => documentFileKey(tx, user, req.params.id));
+    const data = await opts.storage.get(f.key);
+    reply.header("content-disposition", `attachment; filename="${f.name.replace(/"/g, "")}"`);
+    return reply.type("application/octet-stream").send(data);
+  });
+
+  // Delay watch and service guarantee
+  app.get("/api/ops/delays", async (req) => {
+    const user = requireRole(req, ...PLATFORM_ROLES);
+    return asPlatform(db, user, (tx) => delayQueue(tx));
+  });
+  app.post<{ Params: { id: string } }>("/api/ops/delays/:id/attribute", async (req) => {
+    const user = requireRole(req, "ops", "founder");
+    const body = z.object({ cause: z.enum(["partner", "client", "government", "mkw"]), note: z.string().min(1).max(500) }).parse(req.body);
+    return asPlatform(db, user, (tx) => attributeDelay(tx, user, req.params.id, body.cause, body.note));
+  });
+  app.post<{ Params: { id: string } }>("/api/ops/credits/:id/decide", async (req) => {
+    const user = requireRole(req, "finance", "founder");
+    const body = z.object({ decision: z.enum(["approve", "waive"]), note: z.string().max(500).default("") }).parse(req.body);
+    return asPlatform(db, user, (tx) => decideCredit(tx, user, req.params.id, body.decision, body.note, deps));
+  });
+  app.post<{ Params: { id: string } }>("/api/ops/credits/:id/settle", async (req) => {
+    const user = requireRole(req, "finance", "founder");
+    const { reference } = z.object({ reference: z.string().min(3).max(120) }).parse(req.body);
+    return asPlatform(db, user, (tx) => settleCredit(tx, user, req.params.id, reference));
+  });
+
+  // Ratings
+  app.post<{ Params: { id: string } }>("/api/engagements/:id/rating", async (req) => {
+    const user = requireRole(req, "client_owner");
+    const body = z.object({ stars: z.number().int().min(1).max(5), comment: z.string().max(1000).default("") }).parse(req.body);
+    return asPlatform(db, user, (tx) => rateEngagement(tx, user, req.params.id, body.stars, body.comment, deps));
+  });
+
+  // Manual allocation
+  app.post<{ Params: { id: string } }>("/api/ops/engagements/:id/allocate", async (req) => {
+    const user = requireRole(req, "ops", "founder");
+    const body = z.object({ partnerId: z.string().uuid(), codes: z.array(z.string().max(20)).min(1).max(50), reason: z.string().min(5).max(500) }).parse(req.body);
+    return asPlatform(db, user, (tx) => allocateManually(tx, user, req.params.id, body.partnerId, body.codes, body.reason, deps));
+  });
+
+  // Offer document
+  app.get<{ Params: { id: string } }>("/api/client/offers/:id/pdf", async (req, reply) => {
+    const user = requireRole(req, ...CLIENT_ROLES, ...PLATFORM_ROLES);
+    const { pdf, fileName } = await asPlatform(db, user, (tx) => offerDocument(tx, user, req.params.id));
+    reply.header("content-disposition", `attachment; filename="${fileName}"`);
+    return reply.type("application/pdf").send(pdf);
   });
 
   // Public intake (O5): the Tasees lead page posts here. Rate-limited per IP; consent required; honeypot.

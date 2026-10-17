@@ -24,7 +24,17 @@ export type TemplateName =
   | "invoice_issued"
   | "payout_remittance"
   | "intake_received"
-  | "intake_signin";
+  | "intake_signin"
+  | "partner_status_changed"
+  | "partner_document_reviewed"
+  | "licence_expiring"
+  | "licence_expired"
+  | "documents_requested"
+  | "documents_complete"
+  | "step_delayed_client"
+  | "step_delayed_partner"
+  | "guarantee_credit"
+  | "rating_received";
 
 export type Vars = Record<string, string | number | undefined>;
 
@@ -54,6 +64,16 @@ export const TEMPLATE_AUDIENCE: Record<TemplateName, Audience | "any"> = {
   payout_remittance: "partner",
   intake_received: "client",
   intake_signin: "client",
+  partner_status_changed: "partner",
+  partner_document_reviewed: "partner",
+  licence_expiring: "any",
+  licence_expired: "any",
+  documents_requested: "client",
+  documents_complete: "partner",
+  step_delayed_client: "client",
+  step_delayed_partner: "partner",
+  guarantee_credit: "client",
+  rating_received: "partner",
 };
 
 export const BRAND: Record<Audience, { name: string; signOff: string }> = {
@@ -168,6 +188,66 @@ export function renderTemplate(template: TemplateName, audience: Audience, vars:
         inApp: false,
         subject: "Continue with your request",
         body: `Thank you for getting in touch. To continue, sign in with this email address at ${link("/")}: we send a six-digit code each time, no password needed. If you did not fill in our form, you can ignore this message.${sign}`,
+      };
+    case "partner_status_changed":
+      return {
+        inApp: true,
+        subject: `Your firm is now ${String(vars.status).replace("_", " ")} with ${brand.name}`,
+        body: `${vars.firm} has moved to "${String(vars.status).replace("_", " ")}" in the ${brand.signOff}.${vars.note ? `\n\nNote from MKW Advisors: ${vars.note}` : ""}${vars.status === "pilot" ? "\n\nDuring the pilot you can take up to three jobs at a time until five have been delivered on time." : ""}${vars.status === "signed" ? "\n\nYou can now receive work across your covered emirates and services." : ""}${vars.status === "paused" ? "\n\nNo new work is offered while paused; work already accepted continues." : ""}\n\nSee your profile at ${link("/partner")}.${sign}`,
+      };
+    case "partner_document_reviewed":
+      return {
+        inApp: true,
+        subject: `${roleWords(vars.kind)}: ${vars.status}`,
+        body: `MKW Advisors has reviewed the ${roleWords(vars.kind)} you uploaded: ${vars.status}.${vars.note ? `\n\n${vars.note}` : ""}\n\nDocuments: ${link("/partner/onboarding")}.${sign}`,
+      };
+    case "licence_expiring":
+      return {
+        inApp: true,
+        subject: `Trade licence expires on ${vars.expiresOn}: ${vars.firm}`,
+        body: `The trade licence on file for ${vars.firm} expires on ${vars.expiresOn}. Upload the renewed licence before then; on expiry the firm is paused automatically and receives no new work until the new licence is verified.\n\n${link("/partner/onboarding")}${sign}`,
+      };
+    case "licence_expired":
+      return {
+        inApp: true,
+        subject: `Trade licence expired: ${vars.firm} paused`,
+        body: `The trade licence on file for ${vars.firm} expired on ${vars.expiresOn}. The firm is paused: work already accepted continues, no new work is offered. Upload the renewed licence at ${link("/partner/onboarding")}; MKW Advisors verifies it and lifts the pause.${sign}`,
+      };
+    case "documents_requested":
+      return {
+        inApp: true,
+        subject: `Documents needed for your engagement ${ref(vars.engagementId)}`,
+        body: `To start "${vars.step}" we need ${vars.count} document(s) from you: ${vars.kinds}. Upload them at ${link(`/engagement/${vars.engagementId}`)}. Your files are stored in the UAE and shared only with the firm doing this work.${sign}`,
+      };
+    case "documents_complete":
+      return {
+        inApp: true,
+        subject: `Client documents complete for ${ref(vars.engagementId)}`,
+        body: `All documents requested for "${vars.step}" have been uploaded by the client. Review them at ${link(`/engagement/${vars.engagementId}`)} and mark each received or ask again.${sign}`,
+      };
+    case "step_delayed_client":
+      return {
+        inApp: true,
+        subject: `Update on your engagement ${ref(vars.engagementId)}: "${vars.step}" is running late`,
+        body: `"${vars.step}" was due on ${vars.dueDate} and is not yet complete. The new expected date is ${vars.expectedDate}. We are on it; if a step runs more than five working days late, our service guarantee applies and we credit part of the fee automatically.\n\n${link(`/engagement/${vars.engagementId}`)}${sign}`,
+      };
+    case "step_delayed_partner":
+      return {
+        inApp: true,
+        subject: `Overdue: "${vars.step}" on ${ref(vars.engagementId)}`,
+        body: `"${vars.step}" was due on ${vars.dueDate}. The client has been told to expect it by ${vars.expectedDate}. Submit the evidence or message MKW Advisors with the reason today; delays attributed to the partner reduce the completion payout under the service guarantee.\n\n${link(`/engagement/${vars.engagementId}`)}${sign}`,
+      };
+    case "guarantee_credit":
+      return {
+        inApp: true,
+        subject: `Service guarantee credit of AED ${vars.amountAed} on ${ref(vars.engagementId)}`,
+        body: `"${vars.step}" ran more than five working days late, so under our service guarantee AED ${vars.amountAed} is credited to you${vars.how === "applied" ? " and deducted from your balance payment" : "; our finance team will arrange the refund"}.\n\n${link(`/engagement/${vars.engagementId}`)}${sign}`,
+      };
+    case "rating_received":
+      return {
+        inApp: true,
+        subject: `Client rating on ${ref(vars.engagementId)}: ${vars.stars}/5`,
+        body: `The client rated the completed work ${vars.stars} out of 5. Ratings feed your scorecard, which MKW Advisors recomputes weekly.\n\n${link(`/engagement/${vars.engagementId}`)}${sign}`,
       };
     case "ops_digest":
       return {

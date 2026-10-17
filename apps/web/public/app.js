@@ -134,7 +134,7 @@ document.addEventListener("visibilitychange", () => {
 function navFor() {
   if (isClient()) return [["home", "Overview"], ["new", "New request"]];
   if (isPartner()) return [["home", "Work"], ["rates", "Rate card"], ["payouts", "Payouts"]];
-  return [["home", "Queue"], ["pipeline", "Pipeline"], ["partners", "Partners"], ["people", "People"], ["new", "New request"], ["settings", "Settings"], ["audit", "Audit trail"]];
+  return [["home", "Queue"], ["pipeline", "Pipeline"], ["partners", "Partners"], ["people", "People"], ["catalogue", "Catalogue"], ["rules", "Rules"], ["new", "New request"], ["settings", "Settings"], ["audit", "Audit trail"]];
 }
 
 function chrome() {
@@ -212,6 +212,8 @@ async function renderOnce() {
     if (page === "new") return await renderIntake();
     if (page === "audit") return await renderAudit();
     if (page === "people") return await renderPeople();
+    if (page === "catalogue") return await renderCatalogue();
+    if (page === "rules") return await renderRules();
     if (page === "settings") return await renderSettings();
     return await renderQueue();
   } catch (e) {
@@ -864,6 +866,94 @@ async function renderDeliveryLog() {
   )}</div>`;
 }
 
+// Catalogue and rules (O4) -------------------------------------------------------------------------
+
+async function renderCatalogue() {
+  const list = await api("GET", "/api/admin/catalogue");
+  const { id: filter } = route();
+  const cats = [...new Set(list.map((d) => d.category))];
+  const shown = filter ? list.filter((d) => d.category === filter) : list;
+  $app.innerHTML = `
+  <h1>Service catalogue</h1>
+  <p class="muted">${list.length} services from the Service Catalogue (83 services; business setup is two codes, free zone and mainland). Market mids are tentative Oct 2026 figures and the government fee table is UNCERTAIN until a named person verifies each row on the Rules page.</p>
+  <div class="row" style="flex-wrap:wrap;gap:6px;margin-bottom:12px"><a class="sm btn ${filter ? "" : "primary"}" href="#/catalogue">All</a>${cats.map((c) => `<a class="sm btn ${filter === c ? "primary" : ""}" href="#/catalogue/${encodeURIComponent(c)}">${esc(c)}</a>`).join("")}</div>
+  <div class="card flush">${table(
+    ["Code", "Service", "Category", "Model", "Billing", "#Market mid", "Basis", "Rule", "Govt fee rows", "#Rate cards", "Evidence", "Sheet row"],
+    shown.map(
+      (d) => `<tr><td class="mono small">${esc(d.code)}</td><td>${esc(d.name)}</td><td class="small">${esc(d.category)}</td><td>${badge(d.model === "agent" ? "pilot" : "ok", d.model)}</td><td class="small">${esc(words(d.billing))}</td>
+      <td class="num">${aed(d.marketMid)}</td><td class="small">${d.midBasis === "incl_govt" ? "incl. govt" : "service only"}</td>
+      <td class="small">${d.rule ? `${pct(d.rule.rateBp)} / ${aed(d.rule.floor)}` : badge("UNCERTAIN", "no rule")}</td>
+      <td class="small">${d.feeRows ? `${d.verifiedFeeRows} verified of ${d.feeRows}` : `<span class="muted">none</span>`}</td><td class="num">${d.rateCards}</td>
+      <td class="small">${esc((d.requiredEvidence ?? []).map(words).join(", "))}</td><td class="num small">${d.sheetRow ?? "–"}</td></tr>`,
+    ),
+  )}</div>`;
+}
+
+async function renderRules() {
+  const r = await api("GET", "/api/admin/rules");
+  const founder = role() === "founder";
+  const canFees = ["ops", "founder"].includes(role());
+  const list = await deliverables();
+  const emirates = ["Dubai", "Abu Dhabi", "Sharjah", "Ajman", "Ras Al Khaimah", "Umm Al Quwain", "Fujairah"];
+  $app.innerHTML = `
+  <h1>Pricing rules and government fees</h1>
+  <p class="muted">One margin rule prices every offer, change order and re-allocation: price = max(cost × (1 + rate), cost + floor), rounded up to ${aed(r.settings.roundTo)}, capped at ${(r.settings.capFactorBp / 10000).toFixed(2)}× the market mid. Rule changes take effect from a date you choose; offers already built keep the rule they were priced under. Government fees are charged at cost from the table below and are UNCERTAIN until a named person verifies them; a verified fee is stale after ${r.staleAfterDays} days.</p>
+  <h2>Margin rules by category</h2>
+  <div class="card flush">${table(
+    ["Category", "#Services", "Rate", "#Floor", "Scheduled change", ...(founder ? ["Schedule a change"] : [])],
+    r.categories.map(
+      (c) => `<tr><td>${esc(c.category)}${c.history[0]?.note?.includes("UNCERTAIN") ? ` ${badge("UNCERTAIN", "default, confirm")}` : ""}</td><td class="num">${c.codes}</td>
+      <td>${c.current ? pct(c.current.rateBp) : "–"}</td><td class="num">${c.current ? aed(c.current.floor) : "–"}</td>
+      <td class="small">${c.scheduled.length ? c.scheduled.map((v) => `${pct(v.rateBp)} / ${aed(v.floor)} from ${date(v.effectiveFrom)}<br><span class="muted">${esc(v.note)}</span>`).join("<br>") : `<span class="muted">none</span>`}</td>
+      ${
+        founder
+          ? `<td><form class="row" data-form="rule" data-id="${esc(c.category)}" style="flex-wrap:wrap;gap:4px">
+              <input name="ratePct" type="number" min="0" max="100" step="0.5" value="${c.current ? c.current.rateBp / 100 : 20}" style="width:70px" title="Rate %" />%
+              <input name="floorAed" type="number" min="0" value="${c.current ? c.current.floor / 100 : 500}" style="width:90px" title="Floor AED" />
+              <input name="effectiveFrom" type="date" value="${r.asOf}" min="${r.asOf}" style="width:150px" />
+              <input name="note" placeholder="Why" required minlength="3" style="width:160px" />
+              <button class="sm" type="submit">Schedule</button></form></td>`
+          : ""
+      }</tr>`,
+    ),
+  )}</div>
+  ${
+    founder
+      ? `<form class="card" data-form="pricing-settings" style="margin-top:16px"><h2>Pricing settings</h2><div class="grid cols-3">
+          <div class="field"><label>Market cap factor (× market mid)</label><input name="capFactor" type="number" min="1" max="3" step="0.05" value="${(r.settings.capFactorBp / 10000).toFixed(2)}" /></div>
+          <div class="field"><label>Round client prices up to, AED</label><select name="roundToAed">${[1, 5, 10, 50, 100].map((v) => `<option value="${v}" ${r.settings.roundTo === v * 100 ? "selected" : ""}>${v}</option>`).join("")}</select></div>
+          <div class="field"><label>VAT</label><input value="5% (set by law)" readonly /></div>
+          <div class="field" style="grid-column:1/-1"><label>Why</label><input name="note" required minlength="3" /></div></div>
+          <button class="primary" type="submit">Save settings</button></form>`
+      : `<p class="small muted">Market cap ${(r.settings.capFactorBp / 10000).toFixed(2)}×, rounding ${aed(r.settings.roundTo)}, VAT ${pct(r.settings.vatBp)}. Only the founder changes rules and settings.</p>`
+  }
+  <h2 style="margin-top:20px">Government fee table</h2>
+  <div class="card flush">${table(
+    ["Service", "Emirate", "Free zone", "#Fee", "Source", "From", "Confidence", "Verified", ""],
+    r.fees.filter((f) => !f.retired).map(
+      (f) => `<tr><td class="small">${esc(f.name)}<br><span class="mono muted">${esc(f.code)}</span></td><td>${esc(f.emirate)}</td><td>${esc(f.freeZone ?? "–")}</td><td class="num">${aed(f.fee)}</td>
+      <td class="small">${f.sourceUrl ? `<a href="${esc(f.sourceUrl)}" target="_blank" rel="noopener noreferrer">source</a>` : `<span class="muted">none</span>`}${f.sourceNote ? `<br><span class="muted">${esc(f.sourceNote)}</span>` : ""}</td>
+      <td>${date(f.effectiveFrom)}</td><td>${badge(f.confidence)}${f.stale ? ` ${badge("expired", "stale")}` : ""}</td>
+      <td class="small">${f.verifiedBy ? `${esc(f.verifiedBy)}<br><span class="muted">${date(f.verifiedAt)}</span>` : "–"}</td>
+      <td><div class="actions">${founder && (f.confidence === "UNCERTAIN" || f.stale) ? `<button class="sm primary" data-act="fee-verify" data-id="${f.id}">Mark verified</button>` : ""}${canFees ? `<button class="sm" data-act="fee-retire" data-id="${f.id}">Retire</button>` : ""}</div></td></tr>`,
+    ),
+    "No fees in the table yet: partners' stated fees are used and every such line says so on the offer.",
+  )}
+  ${
+    canFees
+      ? `<form class="pad grid cols-3" data-form="fee" style="padding-top:8px;border-top:1px solid var(--line)">
+        <div class="field"><label>Service</label><select name="code">${list.map((d) => `<option value="${d.code}">${esc(d.name)}</option>`).join("")}</select></div>
+        <div class="field"><label>Emirate</label><select name="emirate">${emirates.map((e) => `<option>${e}</option>`).join("")}</select></div>
+        <div class="field"><label>Free zone (blank = emirate-wide)</label><input name="freeZone" placeholder="e.g. IFZA" /></div>
+        <div class="field"><label>Fee, AED</label><input name="feeAed" type="number" min="0" required /></div>
+        <div class="field"><label>Source link</label><input name="sourceUrl" type="url" placeholder="https://..." /></div>
+        <div class="field"><label>Source note</label><input name="sourceNote" placeholder="Page, package, date seen" /></div>
+        <div class="field"><label>Effective from</label><input name="effectiveFrom" type="date" value="${r.asOf}" /></div>
+        <div class="field" style="align-self:end"><button class="sm primary" type="submit">Add fee (UNCERTAIN until verified)</button></div></form>`
+      : ""
+  }</div>`;
+}
+
 // People: organisations, users, data requests ------------------------------------------------
 
 const ROLES_FOR = {
@@ -1050,6 +1140,16 @@ document.addEventListener("click", (ev) => {
         toast(`Timers run: ${r.allocationTimeouts} re-routed, ${r.autoApprovals} auto-approved, ${r.offersExpired} offers expired`);
       }, null),
     "partner-status": () => act(() => api("PUT", `/api/ops/partners/${id}`, { status: el.dataset.status }), "Partner updated"),
+    "fee-verify": () => {
+      const verifiedBy = prompt("Who verified this fee against its source? Name and qualification.");
+      if (!verifiedBy) return;
+      act(() => api("POST", `/api/admin/fees/${id}/verify`, { verifiedBy }), "Fee marked verified");
+    },
+    "fee-retire": () => {
+      const reason = prompt("Why is this fee row being retired?");
+      if (!reason) return;
+      act(() => api("POST", `/api/admin/fees/${id}/retire`, { reason }), "Fee retired");
+    },
     "read-all": () => act(() => api("POST", "/api/notifications/read", {}), "All read"),
     "read-one": () => {
       if (!el.classList.contains("unread") || ev.target.closest("a")) return;
@@ -1143,6 +1243,25 @@ document.addEventListener("submit", (ev) => {
       exclusions: String(fd.get("exclusions") || "").split("\n").map((s) => s.trim()).filter(Boolean),
     };
     return act(() => api("PUT", "/api/partner/rate-cards", { cards: [card] }), "Price saved for 90 days");
+  }
+  if (kind === "rule") {
+    const body = { rateBp: Math.round(Number(fd.get("ratePct")) * 100), floorAed: Number(fd.get("floorAed")), effectiveFrom: String(fd.get("effectiveFrom")), note: String(fd.get("note")) };
+    if (!confirm(`Set ${id} to ${Number(fd.get("ratePct"))}% with a floor of AED ${body.floorAed} from ${body.effectiveFrom}? Offers already built keep their rules.`)) return;
+    return act(() => api("PUT", `/api/admin/rules/${encodeURIComponent(id)}`, body), "Rule scheduled");
+  }
+  if (kind === "pricing-settings")
+    return act(() => api("PUT", "/api/admin/pricing-settings", { capFactorBp: Math.round(Number(fd.get("capFactor")) * 10000), roundToAed: Number(fd.get("roundToAed")), note: String(fd.get("note")) }), "Settings saved");
+  if (kind === "fee") {
+    const body = {
+      code: String(fd.get("code")),
+      emirate: String(fd.get("emirate")),
+      freeZone: String(fd.get("freeZone") || "") || null,
+      feeAed: Number(fd.get("feeAed")),
+      sourceUrl: String(fd.get("sourceUrl") || ""),
+      sourceNote: String(fd.get("sourceNote") || ""),
+      effectiveFrom: String(fd.get("effectiveFrom") || "") || undefined,
+    };
+    return act(() => api("POST", "/api/admin/fees", body), "Fee added as UNCERTAIN");
   }
   if (kind === "new-partner") {
     const list = (v) => String(v || "").split(",").map((x) => x.trim()).filter(Boolean);

@@ -1,6 +1,6 @@
 # O4 Catalogue and fees
 
-Status: in-progress (branch `outcome/O4-catalogue-and-fees`, stacked on O2)
+Status: verified-pending-merge (branch `outcome/O4-catalogue-and-fees`, stacked on O2, 17 Oct 2026)
 
 ## Business result
 
@@ -59,3 +59,21 @@ import changes; Arabic names (O9).
 
 Additive migration; `STORAGE`, notifications and the pricing formula are untouched. Reverting the pull request
 leaves the extra catalogue rows in place (harmless) and returns to the single current rule per category.
+
+## Evidence
+
+| Claim | Evidence |
+| --- | --- |
+| Tests | `pnpm test`: 40 core + 85 API = 125 (O2: 113); `apps/api/test/catalogue.test.ts` (12 tests) |
+| 83 services | 82 codes; the test maps every code to its Service Catalogue rows and proves rows 1..83 are all covered |
+| Fee table | emirate and zone rows, UNCERTAIN → review, verified → clear, 91 days → stale → review, retire → fallback, other emirate unaffected, source required to verify |
+| Effective dates | rule scheduled for tomorrow leaves today's rebuild unchanged; tomorrow's build uses it; earlier offer rows and `rules_as_of` unchanged; past dates refused; audit before/after |
+| Access | ops and finance cannot schedule rules; clients and partners are refused at the API and `permission denied` at the database for fees, versions and rules |
+| Ten samples | 10 requests, 30+ lines, every line and total recomputed independently from the rule; OF-0001 totals reproduced |
+| Smoke | `docs/evidence/O4/log.txt` (28 checks OK); screenshots `25-catalogue.png`, `26-rules.png` (1280 px), `27-mobile-catalogue.png`, `28-mobile-rules.png` (390 px) |
+
+## Could not verify
+
+The figures themselves: market mids and the empty fee table need the named verifier. The Offer Builder tab was
+reproduced for its one worked example (OF-0001); the other nine samples are checked against the rule, not
+against figures the owner has typed into the Sheet.

@@ -297,6 +297,41 @@ check("finance cannot confirm retention periods:", (await finance.locator('form[
 const logText = await finance.locator("main").innerText();
 check("delivery log lists sent messages for client and partner audiences:", /Delivery log/.test(logText) && /offer ready/i.test(logText) && /allocation offered/i.test(logText));
 
+// Catalogue and rules (O4)
+await founder.goto(BASE + "/#/catalogue");
+await founder.waitForSelector('main h1:text-is("Service catalogue")');
+check("catalogue lists 82 services:", (await founder.locator("main tbody tr").count()) === 82);
+await shot(founder, "25-catalogue");
+await founder.goto(BASE + "/#/rules");
+await founder.waitForSelector('main h1:text-is("Pricing rules and government fees")');
+await founder.selectOption('form[data-form="fee"] select[name="code"]', "SET-FZ-LIC");
+await founder.selectOption('form[data-form="fee"] select[name="emirate"]', "Dubai");
+await founder.fill('form[data-form="fee"] input[name="freeZone"]', "IFZA");
+await founder.fill('form[data-form="fee"] input[name="feeAed"]', "8900");
+await founder.fill('form[data-form="fee"] input[name="sourceUrl"]', "https://example.gov.ae/fees");
+await founder.fill('form[data-form="fee"] input[name="sourceNote"]', "Smoke test row");
+await founder.locator('form[data-form="fee"] button[type="submit"]').click();
+await founder.waitForTimeout(700);
+log.push("fee: " + (await toastText(founder)));
+check("new fee shows as UNCERTAIN:", (await founder.locator('.badge:text-is("UNCERTAIN")').count()) >= 1 && (await founder.locator("main").innerText()).includes("IFZA"));
+await founder.locator('button[data-act="fee-verify"]').first().click();
+await founder.waitForTimeout(700);
+log.push("verify: " + (await toastText(founder)));
+check("verified fee shows the verifier and no stale badge:", (await founder.locator("main tbody").last().innerText()).includes("REF-12345") && (await founder.locator('.badge:text-is("stale")').count()) === 0);
+const otherRow = founder.locator('form[data-form="rule"][data-id="Other"]');
+await otherRow.locator('input[name="ratePct"]').fill("22");
+await otherRow.locator('input[name="floorAed"]').fill("350");
+await otherRow.locator('input[name="effectiveFrom"]').fill("2030-01-01");
+await otherRow.locator('input[name="note"]').fill("Smoke test schedule");
+await otherRow.locator('button[type="submit"]').click();
+await founder.waitForTimeout(700);
+log.push("rule: " + (await toastText(founder)));
+check("scheduled rule change is listed with its date:", /22\.0%.*AED 350.*from 1 Jan 2030/s.test(await founder.locator("main").innerText()));
+await shot(founder, "26-rules");
+await ops.goto(BASE + "/#/rules"); await ops.reload();
+await ops.waitForSelector('main h1:text-is("Pricing rules and government fees")');
+check("ops sees rules but cannot schedule, verify or change settings:", (await ops.locator('form[data-form="rule"], form[data-form="pricing-settings"], button[data-act="fee-verify"]').count()) === 0 && (await ops.locator('form[data-form="fee"]').count()) === 1);
+
 // Mobile views of the new screens
 const mf = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
 const mfp = await mf.newPage();
@@ -305,7 +340,7 @@ await mfp.goto(BASE + "/");
 await mfp.locator('button[data-email="founder@mkwadvisors.test"]').click();
 await mfp.locator('form[data-form="verify"] button[type="submit"]').click();
 await mfp.waitForSelector("#nav a");
-for (const [route, name] of [["people", "20-mobile-people"], ["settings", "21-mobile-settings"]]) {
+for (const [route, name] of [["people", "20-mobile-people"], ["settings", "21-mobile-settings"], ["catalogue", "27-mobile-catalogue"], ["rules", "28-mobile-rules"]]) {
   await mfp.goto(BASE + "/#/" + route); await mfp.reload();
   await mfp.waitForSelector("main h1");
   await mfp.waitForTimeout(600);

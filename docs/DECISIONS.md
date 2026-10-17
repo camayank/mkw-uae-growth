@@ -97,6 +97,22 @@ development and for any environment without a verified sender.
 description is read on the engagement page and never placed in a message. The one typed value that does
 appear is an organisation's own name in its invitation (`user_invited`), entered by MKW staff.
 
+**D22. Rules are versioned by effective date; offers remember the date.** `margin_rule_versions` keeps every
+rate and floor with the day it took effect; pricing loads the version in force on the build date and stamps
+`offers.rules_as_of`. A change can only be scheduled for today or later, so an offer is never re-priced by a
+later decision. `margin_rules` stays as a cache of today's rule, refreshed by the jobs sweep.
+
+**D23. Government fees come from MKW's table, or say that they do not.** A fee row has a source link, who
+verified it and when; it is UNCERTAIN until a named person verifies it and stale 90 days after. Pricing uses
+the most specific row for the request's place (free zone over emirate), sends a line on an UNCERTAIN or stale
+fee to ops review with the reason, and when there is no row at all uses the partner's stated fee and labels
+the line, so gaps in the table are visible on every offer rather than hidden.
+
+**D24. One code per Service Catalogue row, agent model for the regulated ones.** The 20 starter codes are
+unchanged; 62 were added with the Sheet row recorded on each. Agent model (licensed firm contracts the client,
+MKW fee disclosed) is used for FTA tax agency and representation, statutory, approved and RERA audits,
+liquidation, regulatory licensing, litigation and notary work.
+
 ## Open for the owner
 
 1. **Margin rates and floors per category.** Seeded from the Sheet (setup 20% / AED 500 and so on). Confirm.
@@ -115,4 +131,7 @@ appear is an organisation's own name in its invitation (`user_invited`), entered
 10. **Cloud provider and region for O1 staging.** AWS me-central-1 suggested (native S3 and RDS); see DEPLOY.md.
 11. **Template wording** in `apps/api/src/lib/templates.ts` and the two sender addresses (suggested
     `tasees@mkwadvisors.com` for clients, `partners@mkwadvisors.com` for partners).
+13. **Margin rules for the five new categories** (Private Client, HR, Advisory, Growth, Other): defaults of
+    20% with floors of AED 300 to 500, shown as "default, confirm" on the Rules page.
+14. **Named fee verifier** and whether ops may add fee rows (built: ops adds, founder verifies).
 12. **Ops digest time**: once per working day between 08:00 and 10:00 GST, to ops and the founder.

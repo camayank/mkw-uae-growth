@@ -782,12 +782,13 @@ const EXCEPTION_LABEL = {
   payout: "Payout ready",
   scoping: "Scoping advice to review",
   ai_draft: "AI draft to decide",
+  lead: "Public lead for an existing account",
 };
 
 async function renderQueue() {
   const o = await api("GET", "/api/ops/overview");
   const linkFor = (x) =>
-    ["offer_review", "offer_ready"].includes(x.kind) ? `#/offer/${x.ref}` : x.kind === "needs_quote" ? `#/pipeline` : x.kind === "scoping" ? `#/request/${x.ref}` : x.kind === "ai_draft" ? `#/agent` : `#/engagement/${x.ref}`;
+    ["offer_review", "offer_ready"].includes(x.kind) ? `#/offer/${x.ref}` : x.kind === "needs_quote" ? `#/pipeline` : x.kind === "scoping" ? `#/request/${x.ref}` : x.kind === "ai_draft" || x.kind === "lead" ? `#/agent` : `#/engagement/${x.ref}`;
   const counts = Object.fromEntries(Object.keys(EXCEPTION_LABEL).map((k) => [k, o.exceptions.filter((x) => x.kind === k).length]));
   $app.innerHTML = `
   <h1>What needs a person today</h1>
@@ -1155,6 +1156,7 @@ async function renderScoping() {
 async function renderAgentQueue() {
   const drafts = await api("GET", "/api/ops/drafts");
   const canAct = ["ops", "founder"].includes(role());
+  const leads = canAct ? (await api("GET", "/api/ops/leads")).filter((l) => l.status === "held") : [];
   $app.innerHTML = `<h1>AI review queue</h1>
   <p class="muted">Drafts written by the model from what founders typed. Nothing here changes a request or reaches a client until a person approves it; discarded drafts are kept for the record.</p>
   <div class="stack">${
@@ -1166,7 +1168,12 @@ async function renderAgentQueue() {
         <p class="small muted">${esc(d.output?.summary ?? "")} <a href="#/request/${d.requestId}">Open the request</a></p>
         ${canAct ? `<div class="row"><input name="note" placeholder="Note (optional)" style="max-width:300px" /><button class="sm primary" type="submit" name="decision" value="approve">Approve: set the scope from the ticked lines</button><button class="sm" type="submit" name="decision" value="discard">Discard</button></div>` : ""}</form>`).join("")
       : `<p class="empty">Nothing waiting.</p>`
-  }</div>`;
+  }</div>
+  ${canAct ? `<h2 style="margin-top:24px">Held leads</h2>
+  <p class="muted small">Public-page submissions for an email that already has an account. Nothing was attached to that account; a person decides whether to call, merge or discard.</p>
+  <div class="card flush">${table(["Received", "Email", "Company", "Name", "Answers", ""], leads.map((l) => `<tr><td class="small">${dateTime(l.createdAt ?? l.created_at)}</td><td class="mono small">${esc(l.email)}</td><td>${esc(l.company)}</td><td>${esc(l.name)}${l.phone_given ? ' <span class="small muted">(phone given)</span>' : ""}</td>
+    <td class="small">${esc(words(l.answers?.jurisdiction ?? ""))} · ${esc(l.answers?.emirate ?? "")} · ${l.answers?.visas ?? 0} visa(s)${l.answers?.description ? `<br><span class="muted">${esc(l.answers.description.slice(0, 160))}</span>` : ""}</td>
+    <td><form data-form="lead" data-id="${l.id}" class="row"><input name="note" placeholder="What was done" style="max-width:180px" /><button class="sm" type="submit">Handled</button></form></td></tr>`), "No held leads.")}</div>` : ""}`;
 }
 
 async function renderSearch(q) {
@@ -1561,6 +1568,7 @@ document.addEventListener("submit", (ev) => {
     if (decision === "approve" && !confirm("Set the request's scope from the ticked lines? The request is then priced from them.")) return;
     return act(() => api("POST", `/api/ops/drafts/${id}/review`, { decision, note: String(fd.get("note") || ""), ...(decision === "approve" ? { keepCodes } : {}) }), decision === "approve" ? "Draft approved and applied" : "Draft discarded");
   }
+  if (kind === "lead") return act(() => api("POST", `/api/ops/leads/${id}/handle`, { note: String(fd.get("note") || "") }), "Lead marked handled");
   if (kind === "bank") return act(() => api("PUT", "/api/partner/bank", { beneficiary: String(fd.get("beneficiary")), iban: String(fd.get("iban")), bank: String(fd.get("bank")) }), "Bank details saved");
   if (kind === "partner-invoice") {
     const file = fd.get("file");

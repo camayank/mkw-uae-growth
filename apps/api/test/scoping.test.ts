@@ -49,11 +49,11 @@ describe("advice engine: 20 founder cases", () => {
     });
   }
 
-  it("a case where the founder names a jurisdiction the answers do not support says so as a rule of thumb", () => {
+  it("a case where the founder names a jurisdiction the answers do not support says so, as confident as its rule", () => {
     const a = advise({ mode: "new_company", jurisdiction: "mainland", emirate: "Dubai", activity: "consulting", customers: "international", visas: 1 }, rules, zones);
-    const note = a.structure.reasons.find((r) => !r.ruleKey)!;
+    const note = a.structure.reasons.find((r) => r.ruleKey === "structure.requested_differs")!;
     expect(note.text).toMatch(/You asked for mainland/);
-    expect(note.confidence).toBe("rule_of_thumb");
+    expect(note.confidence).toBe("UNCERTAIN"); // a rule like any other: unverified until a person signs it off
   });
 
   it("the advice is exactly as confident as the rules: a verified rule shows as verified", () => {
@@ -109,12 +109,24 @@ describe("advice on requests: review before the client sees it", () => {
     expect(JSON.stringify(after.advice)).not.toMatch(/margin|partner/i);
     const ev = await asPlatform(env.db, null, (tx) => tx.query<any>("select data from audit_events where action = 'scoping.approved'"));
     expect(ev.rows[0].data).toMatchObject({ removedRules: ["obligation.goaml_dnfbp"], uncertainShown: true, note: "Not a DNFBP" });
+    // At the database the client role cannot read the advice column at all; approved advice comes through a function.
+    const clientUser = (await env.call("client", "GET", "/api/me")).body;
+    await expect(asUser(env.db, clientUser, (tx) => tx.query("select advice from requests"))).rejects.toThrow(/permission denied/);
+    const viaFn = await asUser(env.db, clientUser, (tx) => tx.query<any>("select app_approved_advice(id) as a from requests where id = $1", [requestId]));
+    expect(viaFn.rows[0].a.structure.recommendation).toBe("free_zone");
+    // Changing the structure at approval ranks the places again for that structure.
+    const r3 = await env.call("client", "POST", "/api/requests", { answers: { mode: "new_company", jurisdiction: "not_sure", emirate: "Dubai", visas: 1, activity: "consulting", customers: "both" } });
+    const asMainland = await env.call("ops", "POST", `/api/ops/requests/${r3.body.id}/scoping/approve`, { structure: "mainland", note: "Will sell onshore" });
+    expect(asMainland.body.structure.recommendation).toBe("mainland");
+    expect(asMainland.body.places.length).toBeGreaterThan(0);
+    expect(asMainland.body.places.every((p: any) => p.type === "mainland")).toBe(true);
   });
 
   it("verifying a rule is founder-only, needs a name and a source, and changes recomputed advice", async () => {
     expect((await env.call("ops", "PUT", "/api/admin/scoping/rules/obligation.vat_mandatory", { confidence: "verified", verifiedBy: "X", sourceUrl: "https://tax.gov.ae/" })).status).toBe(403);
     expect((await env.call("founder", "PUT", "/api/admin/scoping/rules/obligation.vat_mandatory", { confidence: "verified", verifiedBy: "", sourceUrl: "https://tax.gov.ae/" })).status).toBe(400);
     expect((await env.call("founder", "PUT", "/api/admin/scoping/rules/obligation.vat_mandatory", { confidence: "verified", verifiedBy: "A. Qualified, tax agent", sourceUrl: "" })).status).toBe(400);
+    expect((await env.call("founder", "PUT", "/api/admin/scoping/rules/obligation.vat_mandatory", { confidence: "rule_of_thumb", sourceUrl: "javascript:alert(1)" })).status).toBe(400);
     expect((await env.call("founder", "PUT", "/api/admin/scoping/rules/obligation.vat_mandatory", { confidence: "verified", verifiedBy: "A. Qualified, tax agent", sourceUrl: "https://tax.gov.ae/en/taxes/vat" })).status).toBe(200);
     const overview = await env.call("ops", "GET", "/api/admin/scoping");
     const rule = overview.body.rules.find((r: any) => r.key === "obligation.vat_mandatory");
@@ -150,15 +162,21 @@ describe("advice on requests: review before the client sees it", () => {
     expect(approved.status).toBe(200);
     const after = (await env.call("ops", "GET", `/api/ops/requests/${requestId}/scoping`)).body;
     expect(after.scope.lines.map((l: any) => l.code).sort()).toEqual(["BANK-ACC", "SET-FZ-LIC", "VAT-RET", "VISA-RES"]);
-    expect(after.notes.at(-1)).toMatch(/AI draft approved by/);
+    expect(after.notes.join(" ")).not.toMatch(/AI draft|approved by/); // partners and clients read notes
+    expect((await asPlatform(env.db, null, (tx) => tx.query<any>("select data from audit_events where action = 'ai.draft_approved'"))).rows[0].data.appliedBy).toBe("Ops Manager");
     expect((await env.call("ops", "POST", `/api/ops/drafts/${d.id}/review`, { decision: "discard" })).status).toBe(409);
     // After pricing, a new draft cannot change the scope any more.
     const r2 = await env.call("client", "POST", "/api/requests", { answers: { mode: "new_company", jurisdiction: "free_zone", emirate: "Dubai", visas: 1, description: "set up a company and open a bank account" } });
     await env.call("ops", "POST", `/api/ops/requests/${r2.body.id}/build-offers`, { tiers: ["standard"] });
     expect((await env.call("ops", "POST", `/api/ops/drafts/${r2.body.aiDraft}/review`, { decision: "approve" })).status).toBe(409);
     expect((await env.call("ops", "POST", `/api/ops/drafts/${r2.body.aiDraft}/review`, { decision: "discard", note: "priced already" })).status).toBe(200);
+    // Once partners have been asked to quote, the scope they quoted cannot change from a draft either.
+    const r4 = await env.call("client", "POST", "/api/requests", { answers: { mode: "new_company", jurisdiction: "free_zone", emirate: "Dubai", visas: 1, description: "set up a company and open a bank account" } });
+    expect((await env.call("ops", "POST", `/api/ops/requests/${r4.body.id}/rfq`, { codes: ["SET-FZ-LIC"] })).status).toBe(200);
+    expect((await env.call("ops", "POST", `/api/ops/drafts/${r4.body.aiDraft}/review`, { decision: "approve" })).status).toBe(409);
+    await env.call("ops", "POST", `/api/ops/drafts/${r4.body.aiDraft}/review`, { decision: "discard", note: "RFQ out" });
     const actions = await asPlatform(env.db, null, (tx) => tx.query<any>("select action from audit_events where action like 'ai.%' order by id"));
-    expect(actions.rows.map((a) => a.action)).toEqual(["ai.draft_created", "ai.draft_approved", "ai.draft_created", "ai.draft_discarded"]);
+    expect(actions.rows.map((a) => a.action)).toEqual(["ai.draft_created", "ai.draft_approved", "ai.draft_created", "ai.draft_discarded", "ai.draft_created", "ai.draft_discarded"]);
   });
 
   it("search finds by name and reference for MKW staff only", async () => {
@@ -173,6 +191,7 @@ describe("advice on requests: review before the client sees it", () => {
     expect((await env.call("client", "GET", "/api/ops/search?q=sample")).status).toBe(403);
     expect((await env.call("setup", "GET", "/api/ops/search?q=sample")).status).toBe(403);
     expect((await env.call("ops", "GET", "/api/ops/search?q=x")).body.clients).toEqual([]);
+    expect((await env.call("ops", "GET", "/api/ops/search?q=%25%25")).body.clients).toEqual([]); // wildcards are literal
   });
 });
 
@@ -195,36 +214,77 @@ describe("public intake", () => {
     ...extra,
   });
 
-  it("refuses without consent, swallows bots, and creates the company, owner, consent record and request", async () => {
+  it("refuses without consent, swallows bots, and creates the company, owner, consent record, request and AI draft", async () => {
     expect((await env.call("anon", "POST", "/api/public/intake", lead({ consent: false }))).status).toBe(400);
     const bot = await env.call("anon", "POST", "/api/public/intake", lead({ website: "http://spam.example" }));
     expect(bot.status).toBe(200);
-    expect(bot.body).toMatchObject({ ok: true, created: false });
+    expect(bot.body).toEqual({ ok: true });
     expect((await asPlatform(env.db, null, (tx) => tx.query("select 1 from users where email = 'nadia@new-founder.test'"))).rows).toEqual([]);
-    const ok = await env.call("anon", "POST", "/api/public/intake", lead());
+    const ok = await env.call("anon", "POST", "/api/public/intake", lead({ answers: { ...lead().answers, description: "consulting company, one visa, bank account" } }));
     expect(ok.status).toBe(200);
-    expect(ok.body).toMatchObject({ ok: true, created: true, newAccount: true });
+    expect(ok.body).toEqual({ ok: true }); // the body never says whether the email was known
     const user = (await asPlatform(env.db, null, (tx) => tx.query<any>("select u.*, o.name as org from users u join orgs o on o.id = u.org_id where email = 'nadia@new-founder.test'"))).rows[0];
     expect(user).toMatchObject({ role: "client_owner", status: "active", org: "New Founder Ventures" });
     expect(user.consent).toMatchObject({ given: true, version: "2026-10-privacy-v1", channel: "public_intake" });
     expect(user.consent.at).toMatch(/^\d{4}-/);
-    const req = (await asPlatform(env.db, null, (tx) => tx.query<any>("select advice_status, source from requests where id = $1", [ok.body.requestId]))).rows[0];
+    const req = (await asPlatform(env.db, null, (tx) => tx.query<any>("select id, advice_status, source from requests where created_by = $1", [user.id]))).rows[0];
     expect(req.advice_status).toBe("pending_review");
     expect(req.source).toMatchObject({ channel: "public_intake", campaign: "oct-launch" });
+    expect((await asPlatform(env.db, null, (tx) => tx.query("select 1 from ai_drafts where request_id = $1 and status = 'pending'", [req.id]))).rows).toHaveLength(1);
     const email = env.emails.find((e) => e.to === "nadia@new-founder.test")!;
     expect(email.subject).toBe("We have your request");
     expect(email.fromName).toBe("Tasees, by MKW Advisors");
     expect(email.text).toContain("An account has been created");
     const code = await env.call("anon", "POST", "/api/auth/request-code", { email: "nadia@new-founder.test" });
     expect(code.body.devCode).toMatch(/^\d{6}$/);
-    // The same person again: no second account, a second request.
-    const again = await env.call("anon", "POST", "/api/public/intake", lead());
-    expect(again.body).toMatchObject({ created: true, newAccount: false });
-    expect((await asPlatform(env.db, null, (tx) => tx.query("select 1 from orgs where name = 'New Founder Ventures'"))).rows).toHaveLength(1);
-    // A partner's email through the public form is accepted quietly and creates nothing.
+  });
+
+  it("holds a lead for an email that already has an account: nothing written as that person, consent untouched, neutral email", async () => {
+    const before = (await asPlatform(env.db, null, (tx) => tx.query<any>("select consent from users where email = 'nadia@new-founder.test'"))).rows[0].consent;
+    env.clock.now = new Date(env.clock.now.getTime() + 60_000);
+    const again = await env.call("anon", "POST", "/api/public/intake", lead({ company: "Attacker Co", name: "Mallory", answers: { ...lead().answers, description: "CLICK http://evil.example to pay" } }));
+    expect(again.status).toBe(200);
+    expect(again.body).toEqual({ ok: true });
+    const db = env.db;
+    expect((await asPlatform(db, null, (tx) => tx.query("select 1 from orgs where name in ('New Founder Ventures', 'Attacker Co')"))).rows).toHaveLength(1);
+    expect((await asPlatform(db, null, (tx) => tx.query("select 1 from requests r join users u on u.id = r.created_by where u.email = 'nadia@new-founder.test'"))).rows).toHaveLength(1);
+    expect((await asPlatform(db, null, (tx) => tx.query<any>("select consent from users where email = 'nadia@new-founder.test'"))).rows[0].consent).toEqual(before);
+    const held = (await asPlatform(db, null, (tx) => tx.query<any>("select * from intake_leads"))).rows;
+    expect(held).toHaveLength(1);
+    expect(held[0]).toMatchObject({ email: "nadia@new-founder.test", company: "Attacker Co", status: "held" });
+    const mails = env.emails.filter((e) => e.to === "nadia@new-founder.test" && !/sign-in code/.test(e.subject));
+    expect(mails.map((m) => m.subject)).toEqual(["We have your request", "Continue with your request"]);
+    expect(mails[1]!.text).not.toMatch(/Attacker|evil|Mallory/);
+    expect((await asPlatform(db, null, (tx) => tx.query<any>("select actor_user_id from audit_events where action = 'intake.lead_held'"))).rows[0].actor_user_id).toBeNull();
+    // Ops sees it in the queue and closes it; clients and partners never see leads.
+    const queue = await env.call("ops", "GET", "/api/ops/overview");
+    expect(queue.body.exceptions.some((x: any) => x.kind === "lead" && x.ref === held[0].id)).toBe(true);
+    expect((await env.call("client", "GET", "/api/ops/leads")).status).toBe(403);
+    expect((await env.call("setup", "GET", "/api/ops/leads")).status).toBe(403);
+    expect((await env.call("ops", "GET", "/api/ops/leads")).body[0].company).toBe("Attacker Co");
+    expect((await env.call("ops", "POST", `/api/ops/leads/${held[0].id}/handle`, { note: "Called; duplicate" })).status).toBe(200);
+    expect((await env.call("ops", "POST", `/api/ops/leads/${held[0].id}/handle`, { note: "again" })).status).toBe(409);
+    // A partner's or staff email gets exactly the same answer and creates nothing but a held lead.
     const partner = await env.call("anon", "POST", "/api/public/intake", lead({ email: EMAILS.setup }));
-    expect(partner.body).toMatchObject({ ok: true, created: false });
-    expect((await asPlatform(env.db, null, (tx) => tx.query<any>("select count(*)::int as n from audit_events where action = 'intake.consent_recorded'"))).rows[0].n).toBe(2);
+    expect(partner.body).toEqual({ ok: true });
+    expect((await asPlatform(db, null, (tx) => tx.query<any>("select count(*)::int as n from intake_leads where email = $1", [EMAILS.setup]))).rows[0].n).toBe(1);
+    expect((await asPlatform(db, null, (tx) => tx.query<any>("select count(*)::int as n from audit_events where action = 'intake.consent_recorded'"))).rows[0].n).toBe(1);
+  });
+
+  it("honours X-Forwarded-For only when a proxy is trusted", async () => {
+    const spoof = async (app: TestEnv["app"], i: number) =>
+      app.inject({ method: "POST", url: "/api/public/intake", headers: { "x-forwarded-for": `203.0.113.${i}` }, payload: lead({ email: `xff${i}@many.test`, company: `XFF ${i}` }) });
+    let limited = 0;
+    for (let i = 0; i < 12; i++) if ((await spoof(env.app, i)).statusCode === 429) limited += 1;
+    expect(limited).toBeGreaterThan(0); // spoofed addresses share one bucket when no proxy is trusted
+    const trusting = await makeEnv(undefined, { trustProxy: 1 });
+    try {
+      let limited2 = 0;
+      for (let i = 0; i < 12; i++) if ((await spoof(trusting.app, i)).statusCode === 429) limited2 += 1;
+      expect(limited2).toBe(0); // behind a trusted proxy each visitor is their own address
+    } finally {
+      await trusting.db.close();
+    }
   });
 
   it("is rate-limited per IP", async () => {

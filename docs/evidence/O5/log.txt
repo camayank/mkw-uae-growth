@@ -46,7 +46,7 @@ invite: Invited
 role change: Role changed
 deactivate: Account deactivated
 deactivated user shows the badge and a reactivate button: OK
-export downloaded: person-e6bc5ccd-9e92-4ad0-8e3d-29972c755c97.json
+export downloaded: person-dfd5c718-31e6-4a61-98d9-21770b1341b7.json
 erase: Personal data erased and recorded
 erased person shown as a tombstone: OK
 17-people-after-changes
@@ -96,6 +96,10 @@ verified rule shows the verifier: OK
 public intake accepted the lead: OK
 lead from the public page appears in the pipeline: OK
 search finds the new client: OK
+repeat lead gets the same answer: OK
+repeat lead is held for ops, not attached: OK
+42-held-leads
+held lead marked handled: OK
 catalogue lists 82 services: OK
 25-catalogue
 fee: Fee added as UNCERTAIN
@@ -115,3 +119,4 @@ partners at 390 px has no horizontal overflow: OK
 scoping at 390 px has no horizontal overflow: OK
 agent at 390 px has no horizontal overflow: OK
 ERRORS:
+SMOKE TEST PASSED

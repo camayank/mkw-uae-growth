@@ -202,13 +202,14 @@ export async function exportPerson(tx: Queryable, actor: SessionUser, userId: st
   const q = <T = Record<string, unknown>>(sql: string, params: unknown[] = [userId]) => tx.query<T>(sql, params).then((r) => r.rows);
   const data = {
     exportedAt: new Date().toISOString(),
-    person: { id: user.id, name: user.name, email: user.email, role: user.role, status: user.status },
+    person: { id: user.id, name: user.name, email: user.email, role: user.role, status: user.status, consent: (user as { consent?: unknown }).consent ?? null },
     organisation: { id: org.id, name: org.name, type: org.type },
     sessions: await q("select created_at, expires_at from sessions where user_id = $1 order by created_at"),
     signInCodes: await q("select expires_at, attempts, used_at from login_codes where email = $1 order by expires_at", [user.email]),
     messages: await q("select id, engagement_id, body_original as body, created_at from messages where author_user_id = $1 order by created_at"),
     evidenceUploaded: await q("select id, engagement_id, milestone_id, type, file_name, created_at from evidence where uploaded_by = $1 order by created_at"),
-    requestsCreated: await q("select id, client_org_id, created_at from requests where created_by = $1 order by created_at"),
+    requestsCreated: await q("select id, client_org_id, answers, source, created_at from requests where created_by = $1 order by created_at"),
+    leadsHeld: await q("select id, company, name, answers, consent, source, created_at from intake_leads where email = $1 order by created_at", [user.email]),
     payoutsReleased: await q("select id, engagement_id, stage, released_at from payouts where released_by = $1 order by released_at"),
     usersInvited: await q("select id, role, created_at from users where invited_by = $1 order by created_at"),
     dataRequests: await q("select id, kind, status, created_at from data_requests where user_id = $1 order by created_at"),
@@ -258,6 +259,7 @@ export async function erasePerson(tx: Queryable, actor: SessionUser, userId: str
     "update notifications set to_email = $2, subject = $3, body = '', vars = '{}'::jsonb where user_id = $1 or to_email = $4 returning id",
     [userId, tombstoneEmail(userId), TOMBSTONE_TEXT, user.email],
   );
+  const leads = await tx.query("update intake_leads set email = $2, name = $3, company = $3, answers = '{}'::jsonb, ip = null where email = $1 returning id", [user.email, tombstoneEmail(userId), TOMBSTONE_NAME]);
   await tx.query(
     "update users set name = $2, email = $3, status = 'erased', deactivated_at = coalesce(deactivated_at, app_now()), erased_at = app_now() where id = $1",
     [userId, TOMBSTONE_NAME, tombstoneEmail(userId)],
@@ -267,6 +269,7 @@ export async function erasePerson(tx: Queryable, actor: SessionUser, userId: str
     signInCodesDeleted: codes.rows.length,
     messagesTombstoned: messages.rows.length,
     notificationsTombstoned: notices.rows.length,
+    leadsTombstoned: leads.rows.length,
     kept: ["payments", "payouts", "offers", "engagements", "evidence files", "audit events"],
   };
   await tx.query("insert into data_requests (user_id, kind, requested_by, summary) values ($1, 'erase', $2, $3)", [userId, actor.id, JSON.stringify(summary)]);

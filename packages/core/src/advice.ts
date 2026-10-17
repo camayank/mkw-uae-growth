@@ -106,7 +106,7 @@ export function advise(a: AdviceInput, rules: ScopingRule[], zones: Zone[]): Adv
       if (wantsOnshore) reasons.push(say(rules, "structure.free_zone_mainland_sales", "Selling into the mainland from a free zone usually goes through a distributor or a dual licence; check before relying on it."));
     }
     if (a.jurisdiction && a.jurisdiction !== "not_sure" && a.jurisdiction !== recommendation) {
-      reasons.push({ text: `You asked for ${a.jurisdiction.replace("_", " ")}; the answers above point to ${String(recommendation).replace("_", " ")}. Ops will confirm which fits before pricing.`, confidence: "rule_of_thumb" });
+      reasons.push(say(rules, "structure.requested_differs", `You asked for ${a.jurisdiction.replace("_", " ")}; the answers above point to ${String(recommendation).replace("_", " ")}. Ops will confirm which fits before pricing.`));
     }
   }
 
@@ -126,45 +126,45 @@ export function advise(a: AdviceInput, rules: ScopingRule[], zones: Zone[]): Adv
   if (["trading", "holding", "finance", "other"].includes(a.activity ?? "other")) obligations.push(say(rules, "obligation.goaml_dnfbp", "If the activity is a designated non-financial business (real estate, precious metals, corporate services, audit), register on goAML and run an AML programme."));
   if ((a.visas ?? 0) > 0 && recommendation !== "offshore") obligations.push(say(rules, "obligation.wps", "Employees on visas must be paid through the Wage Protection System; medical insurance is mandatory."));
 
-  // Candidate places for the recommended structure, in the chosen emirate first.
-  const type: Zone["type"] | null = recommendation === "free_zone" ? "free_zone" : recommendation === "mainland" ? "mainland" : recommendation === "offshore" ? "offshore" : recommendation === "difc_adgm" ? "financial" : null;
-  const places: Candidate[] = [];
-  if (type) {
-    const fit = zones
-      .filter((z) => z.type === type)
-      .map((z) => {
-        const why: string[] = [];
-        let score = 0;
-        if (z.emirate === a.emirate) {
-          score += 3;
-          why.push(`in ${a.emirate}`);
-        }
-        if (a.activity && z.activities.includes(a.activity)) {
-          score += 2;
-          why.push(`known for ${a.activity}`);
-        }
-        if ((a.visas ?? 0) <= z.visaQuota) {
-          score += 1;
-          why.push(`${z.visaQuota} visa(s) in the standard package`);
-        } else why.push(`standard package covers ${z.visaQuota} visa(s); more cost extra`);
-        if (a.budgetAed && z.costMinFils <= a.budgetAed * 100) {
-          score += 1;
-          why.push("within budget");
-        }
-        if (a.freeZone && z.name.toLowerCase() === a.freeZone.toLowerCase()) {
-          score += 5;
-          why.push("the zone you named");
-        }
-        return { z, score, why };
-      })
-      .sort((x, y) => y.score - x.score || x.z.costMinFils - y.z.costMinFils)
-      .slice(0, 3);
-    for (const { z, why } of fit) {
-      places.push({ zone: z.name, emirate: z.emirate, type: z.type, visaQuota: z.visaQuota, costMinFils: z.costMinFils, costMaxFils: z.costMaxFils, timelineDays: z.timelineDays, confidence: z.confidence, why });
-    }
-  }
+  const places = rankPlaces(a, zones, recommendation);
 
   const all = [...reasons, ...licences, ...obligations];
   const hasUncertain = all.some((r) => r.confidence !== "verified") || places.some((p) => p.confidence !== "verified");
   return { structure: { recommendation, reasons }, places, licences, obligations, hasUncertain };
+}
+
+/** The two or three best places for a structure, in the founder's emirate first. */
+export function rankPlaces(a: AdviceInput, zones: Zone[], recommendation: IntakeAnswers["jurisdiction"] | null | undefined): Candidate[] {
+  const type: Zone["type"] | null = recommendation === "free_zone" ? "free_zone" : recommendation === "mainland" ? "mainland" : recommendation === "offshore" ? "offshore" : recommendation === "difc_adgm" ? "financial" : null;
+  if (!type) return [];
+  return zones
+    .filter((z) => z.type === type)
+    .map((z) => {
+      const why: string[] = [];
+      let score = 0;
+      if (z.emirate === a.emirate) {
+        score += 3;
+        why.push(`in ${a.emirate}`);
+      }
+      if (a.activity && z.activities.includes(a.activity)) {
+        score += 2;
+        why.push(`known for ${a.activity}`);
+      }
+      if ((a.visas ?? 0) <= z.visaQuota) {
+        score += 1;
+        why.push(`${z.visaQuota} visa(s) in the standard package`);
+      } else why.push(`standard package covers ${z.visaQuota} visa(s); more cost extra`);
+      if (a.budgetAed && z.costMinFils <= a.budgetAed * 100) {
+        score += 1;
+        why.push("within budget");
+      }
+      if (a.freeZone && z.name.toLowerCase() === a.freeZone.toLowerCase()) {
+        score += 5;
+        why.push("the zone you named");
+      }
+      return { z, score, why };
+    })
+    .sort((x, y) => y.score - x.score || x.z.costMinFils - y.z.costMinFils)
+    .slice(0, 3)
+    .map(({ z, why }) => ({ zone: z.name, emirate: z.emirate, type: z.type, visaQuota: z.visaQuota, costMinFils: z.costMinFils, costMaxFils: z.costMaxFils, timelineDays: z.timelineDays, confidence: z.confidence, why }));
 }

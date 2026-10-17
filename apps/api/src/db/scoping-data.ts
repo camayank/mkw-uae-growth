@@ -5,6 +5,7 @@
  */
 export const SCOPING_RULES: Array<[string, "structure" | "zone" | "licence" | "obligation", string, Record<string, unknown>, string]> = [
   ["structure.free_zone_default", "structure", "A free zone licence suits services, technology and online businesses that sell outside the UAE mainland or internationally: 100% ownership, fast setup, low entry cost.", {}, ""],
+  ["structure.requested_differs", "structure", "When the founder asks for one structure and the answers point to another, ops confirms which fits before pricing.", {}, ""],
   ["structure.free_zone_mainland_sales", "structure", "A free zone company selling into the mainland normally needs a distributor or a dual licence arrangement.", {}, ""],
   ["structure.mainland_onshore", "structure", "Selling to mainland customers, or needing a shop, warehouse or site, points to a mainland (DED/DET) licence.", {}, ""],
   ["structure.mainland_tenders", "structure", "A mainland licence can bid for government work and trade anywhere onshore.", {}, ""],

@@ -40,6 +40,37 @@ alter table requests add column source jsonb not null default '{}'::jsonb;
 -- PDPL consent captured at intake: when, which text version, from where.
 alter table users add column consent jsonb;
 
+-- Advice is held from the client until ops approves it, at the database too: the client role cannot read the
+-- advice column at all and gets approved advice through a definer function.
+revoke select on requests from app_client;
+grant select (id, client_org_id, answers, scope, notes, status, sourced_by_partner_id, created_by, created_at, advice_status, advice_reviewed_at)
+  on requests to app_client;
+create function app_approved_advice(r uuid) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select advice from requests where id = r and advice_status = 'approved' and client_org_id = app_org()
+$$;
+revoke all on function app_approved_advice(uuid) from public;
+grant execute on function app_approved_advice(uuid) to app_client, app_platform;
+
+-- A lead from the public page whose email already has an account is held here for a person to look at; it
+-- never attaches to the existing account, writes nothing as that person and never overwrites their consent.
+create table intake_leads (
+  id uuid primary key default gen_random_uuid(),
+  email text not null,
+  company text not null,
+  name text not null,
+  phone_given boolean not null default false,
+  answers jsonb not null,
+  consent jsonb not null,
+  source jsonb not null default '{}'::jsonb,
+  ip text,
+  status text not null default 'held' check (status in ('held', 'handled')),
+  handled_by uuid references users(id),
+  handled_at timestamptz,
+  created_at timestamptz not null default app_now()
+);
+create index on intake_leads (status, created_at desc);
+
 -- AI output is a draft until a person approves or discards it.
 create table ai_drafts (
   id uuid primary key default gen_random_uuid(),
@@ -58,7 +89,9 @@ create table ai_drafts (
 );
 create index on ai_drafts (status, created_at desc);
 
-grant all on scoping_rules, zones, ai_drafts to app_platform;
+grant all on scoping_rules, zones, ai_drafts, intake_leads to app_platform;
+alter table intake_leads enable row level security;
+create policy intake_leads_platform on intake_leads for all to app_platform using (true) with check (true);
 alter table scoping_rules enable row level security;
 alter table zones enable row level security;
 alter table ai_drafts enable row level security;

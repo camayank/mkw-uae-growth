@@ -65,7 +65,7 @@ async function openTestDatabase(): Promise<Database> {
   };
 }
 
-export async function makeEnv(start = new Date("2026-10-19T06:00:00Z")): Promise<TestEnv> {
+export async function makeEnv(start = new Date("2026-10-19T06:00:00Z"), extra: { trustProxy?: number } = {}): Promise<TestEnv> {
   const db = await openTestDatabase();
   await migrate(db);
   await seedCatalogue(db);
@@ -75,7 +75,7 @@ export async function makeEnv(start = new Date("2026-10-19T06:00:00Z")): Promise
   const notify = recordingNotifier({ db, transport, appUrl: "https://app.test", fromClient: "tasees@mkwadvisors.test", fromPartner: "partners@mkwadvisors.test", now: () => clock.now, log: (m) => (process.env.NOTIFY_DEBUG ? console.log(m) : undefined) });
   const storage = memoryStorage();
   const provider = memoryProvider("test-secret", "https://app.test", () => clock.now);
-  const app = await buildApp({ db, notify, storage, provider, model: memoryModel(), now: () => clock.now, devLogin: true, webhookSecret: "test-secret" });
+  const app = await buildApp({ db, notify, storage, provider, model: memoryModel(), now: () => clock.now, devLogin: true, webhookSecret: "test-secret", ...extra });
   const tokens: Record<string, string> = {};
   for (const [k, email] of Object.entries(EMAILS)) tokens[k] = await createSession(db, email);
   const call = async (who: string, method: string, url: string, body?: unknown) => {

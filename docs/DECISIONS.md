@@ -172,9 +172,13 @@ lands in `ai_drafts` as UNCERTAIN; ops approves (which sets the request's scope 
 while the request is unpriced) or discards. The in-memory model is keyword rules, so tests never call the
 internet; the Claude adapter will implement the same interface behind an API key and a monthly cap.
 
-**D32. Public intake records consent and tells bots nothing.** The lead page posts to one endpoint that
+**D32. Public intake records consent and tells nobody anything.** The lead page posts to one endpoint that
 requires an explicit consent flag (stored with timestamp, version and channel), silently accepts a filled
-honeypot, is rate-limited per IP, and never reveals whether an email already has an account.
+honeypot, is rate-limited per IP, and answers `{ok:true}` whatever the email. A submission for an email that
+already has an account (client, partner or staff, any status) is never attached to that account: it is held
+in `intake_leads` for ops, nothing is written or audited as the account holder, their consent record is left
+alone, and the only email is a neutral "sign in to continue" with none of the submitted text. The client role
+cannot read `requests.advice` at the database; approved advice comes through `app_approved_advice()`.
 
 ## Open for the owner
 

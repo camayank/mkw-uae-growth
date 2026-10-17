@@ -1,4 +1,4 @@
-import { advise, type Advice, type AdviceInput, type ScopingRule, type Zone } from "@tasees/core";
+import { advise, rankPlaces, type Advice, type AdviceInput, type ScopingRule, type Zone } from "@tasees/core";
 import { audit, type SessionUser } from "../lib/context.ts";
 import { num, type Queryable } from "../lib/db.ts";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.ts";
@@ -57,9 +57,10 @@ export async function verifyRule(tx: Queryable, actor: SessionUser, key: string,
   const before = (await tx.query<Record<string, unknown>>("select * from scoping_rules where key = $1", [key])).rows[0];
   if (!before) throw notFound("Rule not found");
   const sourceUrl = (input.sourceUrl ?? String(before.source_url ?? "")).trim();
+  if (sourceUrl && !httpUrl(sourceUrl)) throw badRequest("The source must be an http(s) link");
   if (input.confidence === "verified") {
     if (!input.verifiedBy || input.verifiedBy.trim().length < 2) throw badRequest("Name the person who verified the rule");
-    if (!httpUrl(sourceUrl)) throw badRequest("A verified rule needs an http(s) source link");
+    if (!sourceUrl) throw badRequest("A verified rule needs an http(s) source link");
   }
   await tx.query(
     `update scoping_rules set confidence = $2, verified_by = $3, verified_at = case when $2 = 'verified' then app_now()::date else null end,
@@ -121,15 +122,19 @@ export async function recomputeAdvice(tx: Queryable, actor: SessionUser, request
  */
 export async function approveAdvice(tx: Queryable, actor: SessionUser, requestId: string, edits: { removeRuleKeys?: string[]; structure?: AdviceInput["jurisdiction"]; removePlaces?: string[]; note?: string }) {
   if (!["ops", "founder"].includes(actor.role)) throw forbidden("Only ops approves scoping advice");
-  const r = (await tx.query<{ advice: Advice | null; advice_status: string }>("select advice, advice_status from requests where id = $1", [requestId])).rows[0];
+  const r = (await tx.query<{ advice: Advice | null; advice_status: string; answers: AdviceInput }>("select advice, advice_status, answers from requests where id = $1", [requestId])).rows[0];
   if (!r) throw notFound("Request not found");
   if (!r.advice) throw conflict("This request has no scoping advice to approve");
   const drop = new Set(edits.removeRuleKeys ?? []);
   const dropPlaces = new Set(edits.removePlaces ?? []);
   const keep = <T extends { ruleKey?: string }>(items: T[]) => items.filter((i) => !i.ruleKey || !drop.has(i.ruleKey));
+  const recommendation = edits.structure ?? r.advice.structure.recommendation;
+  // A different structure means different places: rank them again for that structure rather than show a
+  // mainland recommendation over free-zone candidates.
+  const places = recommendation === r.advice.structure.recommendation ? r.advice.places : rankPlaces(r.answers, await loadZones(tx), recommendation);
   const approved: Advice = {
-    structure: { recommendation: edits.structure ?? r.advice.structure.recommendation, reasons: keep(r.advice.structure.reasons) },
-    places: r.advice.places.filter((p) => !dropPlaces.has(p.zone)),
+    structure: { recommendation, reasons: keep(r.advice.structure.reasons) },
+    places: places.filter((p) => !dropPlaces.has(p.zone)),
     licences: keep(r.advice.licences),
     obligations: keep(r.advice.obligations),
     hasUncertain: false,
@@ -140,6 +145,7 @@ export async function approveAdvice(tx: Queryable, actor: SessionUser, requestId
     removedRules: [...drop],
     removedPlaces: [...dropPlaces],
     structure: approved.structure.recommendation,
+    structureChanged: recommendation !== r.advice.structure.recommendation,
     uncertainShown: approved.hasUncertain,
     note: edits.note ?? "",
   });
@@ -150,7 +156,7 @@ export async function approveAdvice(tx: Queryable, actor: SessionUser, requestId
 export async function search(tx: Queryable, q: string) {
   const term = q.trim();
   if (term.length < 2) return { clients: [], partners: [], engagements: [], offers: [] };
-  const like = `%${term.toLowerCase()}%`;
+  const like = `%${term.toLowerCase().replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
   const prefix = term.toLowerCase().replace(/[^0-9a-f]/g, "");
   const [clients, partners, engagements, offers] = await Promise.all([
     tx.query("select id, name from orgs where type = 'client' and lower(name) like $1 order by name limit 10", [like]),

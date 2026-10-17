@@ -431,6 +431,23 @@ await ops.fill('form[data-form="search"] input[name="q"]', "smoke lead");
 await ops.locator('form[data-form="search"] input[name="q"]').press("Enter");
 await ops.waitForSelector('main h1:text-is("Search: smoke lead")');
 check("search finds the new client:", /Smoke Lead Ventures/.test(await ops.locator("main").innerText()));
+// The same email again from the public page: held for a person, never attached to the account.
+await pp.goto(BASE + "/intake.html");
+await pp.fill("#company", "Second Try Co");
+await pp.fill("#name", "Smoke Lead");
+await pp.fill("#email", `lead-${stamp}@smoke.test`);
+await pp.check('input[name="consent"]');
+await pp.locator('button[type="submit"]').click();
+await pp.waitForTimeout(1200);
+check("repeat lead gets the same answer:", /Thank you. We have your request/.test(await pp.locator("#msg").innerText()));
+await ops.goto(BASE + "/#/agent"); await ops.reload();
+await ops.waitForSelector('main h1:text-is("AI review queue")');
+check("repeat lead is held for ops, not attached:", /Held leads/.test(await ops.locator("main").innerText()) && /Second Try Co/.test(await ops.locator("main").innerText()));
+await shot(ops, "42-held-leads");
+await ops.fill('form[data-form="lead"] input[name="note"]', "Duplicate of the first lead");
+await ops.locator('form[data-form="lead"] button[type="submit"]').click();
+await ops.waitForTimeout(600);
+check("held lead marked handled:", !/Second Try Co/.test(await ops.locator("main").innerText()));
 
 // Catalogue and rules (O4)
 await founder.goto(BASE + "/#/catalogue");

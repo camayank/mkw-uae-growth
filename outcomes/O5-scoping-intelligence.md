@@ -68,16 +68,26 @@ without a model.
 
 | Claim | Evidence |
 | --- | --- |
-| Tests | `pnpm test`: 40 core + 126 API = 166 (O3: 138); `apps/api/test/scoping.test.ts` (28 tests) |
+| Tests | `pnpm test`: 40 core + 128 API = 168 (O3: 138); `apps/api/test/scoping.test.ts` (30 tests) |
 | 20 founder cases | each case's expected structure, obligations, licences and first place written in the test; all pass; every statement UNCERTAIN while rules are unverified; verifying a rule flips only that statement |
-| Review gate | advice pending → client sees none, ops queue shows it; approve with removals → client sees it with labels; audit records removals and whether UNCERTAIN items were shown; recompute returns it to review |
+| Review gate | advice pending → client sees none (the API and the `app_client` role, which cannot read the column), ops queue shows it; approve with removals → client sees it with labels; a changed structure re-ranks the places for it; audit records removals and whether UNCERTAIN items were shown; recompute returns it to review |
 | Verification | ops 403; founder needs a name and an http(s) source; zone verification with cost edit; clients and partners denied at the database |
-| AI queue | draft created from the description, lines and quantities recognised; finance 403; approve applies ticked lines and notes it; approve after pricing 409; discard works; audit trail of create/approve/discard |
-| Public intake | no consent 400; honeypot 200 with nothing created; new company, owner, consent (version, time, channel), request with source and campaign; sign-in code obtainable; repeat lead reuses the account; partner email accepted quietly; 429 under load |
-| Smoke | `docs/evidence/O5/log.txt` (53 checks OK); screenshots `35-ops-scoping-review.png`, `36-client-advice.png`, `37-ai-queue.png`, `38-scoping-rules.png`, `39-public-intake.png` (1280 px), `40-mobile-scoping.png`, `41-mobile-ai-queue.png` (390 px) |
+| AI queue | draft created from the description, lines and quantities recognised; finance 403; approve applies ticked lines and notes it; approve after pricing or once an RFQ is out 409; nothing about the draft or reviewer in request notes; discard works; audit trail of create/approve/discard |
+| Public intake | no consent 400; honeypot 200 with nothing created; body is `{ok:true}` for every email; new company, owner, consent (version, time, channel), request with source and campaign, AI draft queued; sign-in code obtainable; repeat email held in `intake_leads` with nothing written as the account holder and consent untouched, neutral email only, ops closes it, clients/partners 403; staff/partner email the same; 429 under load; `X-Forwarded-For` honoured only with `TRUST_PROXY` |
+| Smoke | `docs/evidence/O5/log.txt` (56 checks OK); screenshots `35-ops-scoping-review.png`, `36-client-advice.png`, `37-ai-queue.png`, `38-scoping-rules.png`, `39-public-intake.png` (1280 px), `40-mobile-scoping.png`, `41-mobile-ai-queue.png` (390 px), `42-held-leads.png` |
 
 ## Could not verify
 
 The rules and zone figures against a qualified person; the AI adapter against the real model (no key); the
 pack's own lead page is a separate artifact and still posts to the Sheet until it is pointed at
 `/api/public/intake`.
+
+## Review
+
+Sceptical review found 2 blockers (public intake attached a repeat email's submission to the existing
+account and wrote audit and consent as that person; the response body classified emails as client / staff /
+unknown), 6 should-fix (structure change at approval kept the old places; no `trustProxy`; AI drafts could
+change a scope under an open RFQ; public intake made no draft; the client DB role could read pending advice;
+the draft note leaked the reviewer's name into partner-visible notes) and 4 nits (non-http sources on
+unverified rules, a keyless statement, consent and answers missing from the PDPL export, unescaped LIKE
+wildcards). All fixed with tests; the review's "confirmed OK" list stands.

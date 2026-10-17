@@ -23,7 +23,7 @@ import type { PaymentProvider } from "./lib/payments.ts";
 import { issueHeldInvoices, loadCompany, refundPayment, statement, updateCompany } from "./services/invoices.ts";
 import { approveAdvice, recomputeAdvice, requestScoping, scopingOverview, search, verifyRule, verifyZone } from "./services/scoping.ts";
 import { draftScopeForRequest, listDrafts, reviewDraft } from "./services/drafts.ts";
-import { publicIntake, PublicIntakeSchema } from "./services/intake.ts";
+import { publicIntake, PublicIntakeSchema, listLeads, handleLead } from "./services/intake.ts";
 import type { AiModel } from "./lib/ai.ts";
 import { cancelPayoutRun, createPayoutRun, exportPayoutRun, listPayoutRuns, markPayoutRunPaid, payablePayouts, setPartnerBank, uploadPartnerInvoice } from "./services/payouts.ts";
 import {
@@ -72,6 +72,8 @@ export interface AppOptions {
   now?: () => Date;
   /** Return one-time login codes in the response. Development only. */
   devLogin?: boolean;
+  /** Number of trusted proxy hops in front of the API; 0/undefined ignores X-Forwarded-For. */
+  trustProxy?: number;
   webhookSecret?: string;
   webDir?: string;
   logger?: boolean;
@@ -80,7 +82,9 @@ export interface AppOptions {
 const COOKIE = "tasees_session";
 
 export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
-  const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 25 * 1024 * 1024 });
+  // trustProxy: only when told how many proxy hops sit in front (TRUST_PROXY=1 behind one load balancer), so
+  // X-Forwarded-For cannot be spoofed by a direct caller and every visitor behind a proxy is not one address.
+  const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 25 * 1024 * 1024, trustProxy: opts.trustProxy ?? false });
   const db = withClock(opts.db, opts.now);
   const deps: Deps = { notify: opts.notify, now: opts.now, provider: opts.provider, storage: opts.storage };
 
@@ -636,7 +640,16 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   app.post("/api/public/intake", async (req) => {
     throttle(req, "public-intake", 10);
     const body = PublicIntakeSchema.parse(req.body);
-    return asPlatform(db, null, (tx) => publicIntake(tx, body, req.ip, opts.notify));
+    return asPlatform(db, null, (tx) => publicIntake(tx, body, req.ip, opts.notify, opts.model));
+  });
+  app.get("/api/ops/leads", async (req) => {
+    const user = requireRole(req, "ops", "founder");
+    return asPlatform(db, user, (tx) => listLeads(tx, user));
+  });
+  app.post<{ Params: { id: string } }>("/api/ops/leads/:id/handle", async (req) => {
+    const user = requireRole(req, "ops", "founder");
+    const { note } = z.object({ note: z.string().max(300).default("") }).parse(req.body ?? {});
+    return asPlatform(db, user, (tx) => handleLead(tx, user, req.params.id, note));
   });
 
   // Scoping intelligence (O5) --------------------------------------------------------------------

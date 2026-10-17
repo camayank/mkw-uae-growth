@@ -76,7 +76,7 @@ in a browser; everything listed here is not.
 
 ## Verified so far
 
-- 40 domain tests (`packages/core`) and 126 API tests (`apps/api`), all passing on PGlite and on PostgreSQL 16;
+- 40 domain tests (`packages/core`) and 128 API tests (`apps/api`), all passing on PGlite and on PostgreSQL 16;
   typecheck clean; `pnpm build` compiles and the compiled server runs in production mode from a fresh database.
 - O1: partner creation, invitations, role changes and deactivation (sessions revoked, codes refused) are tested as
   every role; PDPL export contains one person's data and no audit payloads (a test reproduces the leak that the
@@ -107,7 +107,8 @@ in a browser; everything listed here is not.
   labels; recomputing after a rule is verified puts it back under review; founder-only verification with name
   and source; AI drafts change nothing until approved and never after pricing; public intake refuses without
   consent, swallows bots, records consent with version and timestamp, is rate-limited; search is staff-only
-  (`docs/evidence/O5/`, 53 smoke checks).
+  a repeat email is held for ops rather than attached; the client role cannot read unapproved advice at the
+  database; changing the structure at approval ranks places again (`docs/evidence/O5/`, 56 smoke checks).
 - `pricing.test.ts` reproduces the Google Sheet Offer Builder example exactly.
 - `security.test.ts` shows Postgres refusing margin and partner-cost columns to clients, client price to partners,
   and other organisations' rows; sign-in throttling; security headers.

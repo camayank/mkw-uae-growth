@@ -44,14 +44,17 @@ export async function reviewDraft(tx: Queryable, actor: SessionUser, draftId: st
   if (d.status !== "pending") throw conflict(`This draft was already ${String(d.status)}`);
   if (decision === "approve" && d.kind === "scope" && d.request_id) {
     const req = (await tx.query<{ status: string }>("select status from requests where id = $1", [String(d.request_id)])).rows[0];
-    if (!req || !["scoped", "quoting"].includes(req.status)) throw conflict("The request has already been priced; the scope can no longer change from a draft");
+    // Only before partners are asked to quote: once an RFQ is out, sealed quotes are for the scope as sent.
+    if (!req || req.status !== "scoped") throw conflict("Partners have already been asked to quote this scope (or it has been priced); the scope can no longer change from a draft");
     const output = d.output as { lines: Array<{ code: string; qty: number }> };
     const known = await loadDeliverables(tx);
     const lines = output.lines.filter((l) => known.has(l.code) && (!keepCodes || keepCodes.includes(l.code))).map((l) => ({ code: l.code, qty: Math.max(1, Math.floor(l.qty)) }));
     if (!lines.length) throw conflict("Nothing left to apply: discard the draft instead");
-    await tx.query("update requests set scope = $2, notes = array_append(notes, $3) where id = $1", [String(d.request_id), JSON.stringify({ lines }), `Scope set from an AI draft approved by ${actor.name}`]);
+    // The audit event records who approved what; request notes are read by clients and partners, so nothing
+    // about the draft or the reviewer goes there.
+    await tx.query("update requests set scope = $2 where id = $1", [String(d.request_id), JSON.stringify({ lines })]);
   }
   await tx.query("update ai_drafts set status = $2, reviewed_by = $3, reviewed_at = app_now(), review_note = $4 where id = $1", [draftId, decision === "approve" ? "approved" : "discarded", actor.id, note]);
-  await audit(tx, actor, decision === "approve" ? "ai.draft_approved" : "ai.draft_discarded", "ai_draft", draftId, { kind: d.kind, requestId: d.request_id, note, keepCodes: keepCodes ?? null });
+  await audit(tx, actor, decision === "approve" ? "ai.draft_approved" : "ai.draft_discarded", "ai_draft", draftId, { kind: d.kind, requestId: d.request_id, note, keepCodes: keepCodes ?? null, appliedBy: actor.name });
   return { ok: true };
 }

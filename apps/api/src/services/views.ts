@@ -30,7 +30,7 @@ export function clientHome(db: Database, user: SessionUser) {
   return asUser(db, user, async (tx) => {
     // Advice reaches the client only once ops has approved it; it keeps its confidence labels.
     const requests = await tx.query(
-      "select id, status, scope, notes, created_at, advice_status, case when advice_status = 'approved' then advice end as advice, advice_reviewed_at from requests order by created_at desc",
+      "select id, status, scope, notes, created_at, advice_status, app_approved_advice(id) as advice, advice_reviewed_at from requests order by created_at desc",
     );
     const offers = await tx.query(
       `select id, request_id, tier, status, valid_to, professional_fils, mkw_fees_fils, vat_fils, government_fils, client_total_fils
@@ -297,6 +297,8 @@ export async function exceptionQueue(tx: Queryable) {
      select 'scoping', r.id::text, 'Scoping advice to review before the client sees it', r.created_at::text from requests r where r.advice_status = 'pending_review'
      union all
      select 'ai_draft', d.id::text, 'AI draft waiting for a decision (' || d.kind || ')', d.created_at::text from ai_drafts d where d.status = 'pending'
+     union all
+     select 'lead', l.id::text, 'Public lead for an email that already has an account: ' || l.company, l.created_at::text from intake_leads l where l.status = 'held'
      order by at`,
   );
   return rows.rows;

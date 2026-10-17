@@ -44,13 +44,13 @@ invite: Invited
 role change: Role changed
 deactivate: Account deactivated
 deactivated user shows the badge and a reactivate button: OK
-export downloaded: person-21e2f46f-c2e0-4f75-bdc2-0aa04adb4595.json
+export downloaded: person-4c0ca57e-8a52-470b-9546-048cb8f3055b.json
 erase: Personal data erased and recorded
 erased person shown as a tombstone: OK
 17-people-after-changes
 ops cannot invite MKW staff or erase anyone: OK
 finance sees no admin forms or deactivate buttons: OK
-retention UNCERTAIN badges before: 4
+retention UNCERTAIN badges before: 5
 18-settings-retention
 retention: Retention periods confirmed
 no UNCERTAIN retention badge after the founder confirms: OK

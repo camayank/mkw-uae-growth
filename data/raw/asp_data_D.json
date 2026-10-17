@@ -1,0 +1,581 @@
+[
+  {
+    "id": 52,
+    "name": "Tally Software Solutions FZCO",
+    "website": "https://www.tallysolutions.com",
+    "type": "erp_vendor",
+    "origin": "India",
+    "erp_integrations": {
+      "native": ["Other ERP"],
+      "connector_or_api": [],
+      "evidence_url": "https://tallysolutions.com/mena/tallyprime-e-invoicing-uae/"
+    },
+    "segments": ["sme", "micro", "mid_market"],
+    "multi_entity": null,
+    "free_zone_qfzp_support": null,
+    "ksa_zatca_experience": null,
+    "other_countries": ["India"],
+    "pricing": {
+      "model": "subscription",
+      "published": false,
+      "indicative": "Monthly subscription or lifetime licence options listed; no AED figures shown on fetched pages",
+      "evidence_url": "https://www.tallysolutions.com"
+    },
+    "free_trial_or_sandbox": true,
+    "arabic_ui": true,
+    "onboarding_claim": "Get started in minutes, with no prior training required",
+    "support": ["phone", "email", "chat"],
+    "also_provides_accounting_or_tax_advisory": false,
+    "notable": "TallyPrime accounting software with UAE e-invoicing built in (MoF-listed ASP #162503); work in English or Arabic and print invoices in either or both",
+    "confidence": "medium",
+    "sources": [
+      "https://www.tallysolutions.com",
+      "https://tallysolutions.com/mena/",
+      "https://tallysolutions.com/mena/tallyprime-e-invoicing-uae/",
+      "https://mof.gov.ae/en/about-us/initiatives/einvoicing/einvoicing-accredited-service-providers-asps/"
+    ]
+  },
+  {
+    "id": 53,
+    "name": "TAXILLA FINOPS 360 – FZCO",
+    "website": "https://www.taxilla.com/",
+    "type": "tax_tech",
+    "origin": "India",
+    "erp_integrations": {
+      "native": [],
+      "connector_or_api": ["SAP", "Oracle", "NetSuite", "Dynamics 365", "Custom API", "Excel/CSV upload"],
+      "evidence_url": "https://www.taxilla.com/eninvoice-taxilla"
+    },
+    "segments": ["enterprise", "mid_market", "sme"],
+    "multi_entity": true,
+    "free_zone_qfzp_support": null,
+    "ksa_zatca_experience": true,
+    "other_countries": ["Malaysia", "India", "Singapore", "Philippines", "Australia", "New Zealand", "Japan", "Kenya", "Zambia", "Belgium", "Poland", "Serbia", "Romania", "Croatia", "France", "Latvia", "Saudi Arabia", "Jordan", "Oman"],
+    "pricing": {
+      "model": "tiered",
+      "published": false,
+      "indicative": "Starter (single country), Growth (2-5 countries) and Enterprise (global) packages plus industry add-ons; no prices shown, request for quote",
+      "evidence_url": "https://www.taxilla.com/eninvoice-taxilla"
+    },
+    "free_trial_or_sandbox": null,
+    "arabic_ui": null,
+    "onboarding_claim": "Setup is complete in under 48 hours",
+    "support": ["phone"],
+    "also_provides_accounting_or_tax_advisory": false,
+    "notable": "Hyderabad-founded multi-country e-invoicing platform (20 countries listed incl. UAE, Oman, KSA, India) connecting via REST API or SFTP with no ERP modifications",
+    "confidence": "medium",
+    "sources": [
+      "https://www.taxilla.com/",
+      "https://www.taxilla.com/taxilla-pre-approved-e-invoicing-service-provider-uae",
+      "https://www.taxilla.com/eninvoice-taxilla",
+      "https://www.taxilla.com/eninvoice-oman",
+      "https://www.softwaresuggest.com/services/taxilla-inc",
+      "https://mof.gov.ae/en/about-us/initiatives/einvoicing/einvoicing-accredited-service-providers-asps/"
+    ]
+  },
+  {
+    "id": 54,
+    "name": "Tax Star L.L.C-FZ",
+    "website": "https://www.taxstar.app",
+    "type": "tax_tech",
+    "origin": "UAE",
+    "erp_integrations": {
+      "native": ["Xero", "QuickBooks", "Zoho Books", "Other ERP"],
+      "connector_or_api": ["Custom API", "Excel/CSV upload"],
+      "evidence_url": "https://www.taxstar.app"
+    },
+    "segments": ["enterprise", "mid_market", "sme"],
+    "multi_entity": true,
+    "free_zone_qfzp_support": null,
+    "ksa_zatca_experience": null,
+    "other_countries": [],
+    "pricing": {
+      "model": "quote_only",
+      "published": false,
+      "indicative": "E-invoicing 'Premium' plan: contact sales, priced by invoice volume; corporate-tax software plans published at AED 0 / 500 / 1,000 per year",
+      "evidence_url": "https://www.taxstar.app/pricing"
+    },
+    "free_trial_or_sandbox": null,
+    "arabic_ui": true,
+    "onboarding_claim": "ASP appointment takes a few minutes; go-live before 1 January 2027 guaranteed",
+    "support": ["phone", "email"],
+    "also_provides_accounting_or_tax_advisory": false,
+    "notable": "Dubai tax-tech aimed at accounting practices: ASP plus corporate-tax tools, native connectors for Xero, QuickBooks, Zoho Books and Wafeq, bulk upload for other systems",
+    "confidence": "high",
+    "sources": [
+      "https://www.taxstar.app",
+      "https://www.taxstar.app/pricing",
+      "https://www.taxstar.app/e-invoice",
+      "https://www.taxstar.app/uae-e-invoicing",
+      "https://mof.gov.ae/en/about-us/initiatives/einvoicing/einvoicing-accredited-service-providers-asps/"
+    ]
+  },
+  {
+    "id": 55,
+    "name": "Taxlabs.ai",
+    "website": "https://www.taxlab.ai/",
+    "type": "tax_tech",
+    "origin": "UAE",
+    "erp_integrations": {
+      "native": ["SAP", "Oracle", "Dynamics 365", "NetSuite", "Infor", "Sage", "Epicor", "Odoo", "Tally", "Zoho Books", "QuickBooks", "Xero", "Other ERP"],
+      "connector_or_api": ["Custom API"],
+      "evidence_url": "https://www.taxlab.ai/"
+    },
+    "segments": ["enterprise"],
+    "multi_entity": null,
+    "free_zone_qfzp_support": null,
+    "ksa_zatca_experience": true,
+    "other_countries": ["Saudi Arabia", "Oman", "Spain"],
+    "pricing": {
+      "model": "quote_only",
+      "published": false,
+      "indicative": "",
+      "evidence_url": "https://www.taxlab.ai/"
+    },
+    "free_trial_or_sandbox": null,
+    "arabic_ui": null,
+    "onboarding_claim": "",
+    "support": ["phone", "email"],
+    "also_provides_accounting_or_tax_advisory": false,
+    "notable": "DIFC-based AI tax platform (Jurist e-invoicing plus VAT, excise, corporate tax, transfer pricing modules) with 18+ named ERP connectors via Axon; live in UAE and KSA, Peppol AP and SMP certified",
+    "confidence": "medium",
+    "sources": [
+      "https://www.taxlab.ai/",
+      "https://taxlab.ai/peppol-uae/",
+      "https://mof.gov.ae/en/about-us/initiatives/einvoicing/einvoicing-accredited-service-providers-asps/"
+    ]
+  },
+  {
+    "id": 56,
+    "name": "Techventures Information Technology Services",
+    "website": "https://techventuresglobal.com",
+    "type": "it_services",
+    "origin": "UAE",
+    "erp_integrations": {
+      "native": ["Dynamics 365", "Odoo"],
+      "connector_or_api": ["SAP", "Oracle", "Sage", "Zoho Books", "QuickBooks", "Custom API"],
+      "evidence_url": "https://www.techventuresglobal.com/uae-e-invoicing/"
+    },
+    "segments": ["enterprise", "mid_market", "sme", "government"],
+    "multi_entity": true,
+    "free_zone_qfzp_support": null,
+    "ksa_zatca_experience": true,
+    "other_countries": ["Saudi Arabia"],
+    "pricing": {
+      "model": "quote_only",
+      "published": false,
+      "indicative": "",
+      "evidence_url": "https://www.techventuresglobal.com/uae-e-invoicing/"
+    },
+    "free_trial_or_sandbox": true,
+    "arabic_ui": true,
+    "onboarding_claim": "Dynamics add-on installs in hours, not weeks; full implementation 4 to 14 weeks depending on ERP and deployment mode",
+    "support": ["phone", "email", "24/7"],
+    "also_provides_accounting_or_tax_advisory": false,
+    "notable": "Microsoft Dynamics partner whose own MoF-accredited ASP ships as an AppSource add-on for Business Central, F&O, NAV and GP (free trial) with full Arabic/English UI; Odoo module also offered",
+    "confidence": "medium",
+    "sources": [
+      "https://techventuresglobal.com",
+      "https://www.techventuresglobal.com/uae-e-invoicing/",
+      "https://www.techventuresglobal.com/ksa-einvoicing-for-microsoft-dynamics-365-business-central/",
+      "https://mof.gov.ae/en/about-us/initiatives/einvoicing/einvoicing-accredited-service-providers-asps/"
+    ]
+  },
+  {
+    "id": 57,
+    "name": "TronStride FZC",
+    "website": "https://www.tronstride.com/",
+    "type": "tax_tech",
+    "origin": "UAE",
+    "erp_integrations": {
+      "native": ["Odoo", "SAP", "Tally", "QuickBooks", "Dynamics 365", "Zoho Books", "Other ERP"],
+      "connector_or_api": ["Oracle", "Custom API"],
+      "evidence_url": "https://www.tronstride.com/"
+    },
+    "segments": ["enterprise", "mid_market", "sme", "micro"],
+    "multi_entity": true,
+    "free_zone_qfzp_support": null,
+    "ksa_zatca_experience": true,
+    "other_countries": ["Saudi Arabia", "Malaysia", "Oman"],
+    "pricing": {
+      "model": "tiered",
+      "published": true,
+      "indicative": "Free plan (100 docs/year, 1 TRN); paid annual plans from AED 1,470 (500 docs) to AED 39,690 (120,000 docs, multi-entity); bulk plans up to AED 385,875; optional onboarding USD 1,500/entity, ERP integration USD 1,500-2,500/entity",
+      "evidence_url": "https://www.tronstride.com/pricing/"
+    },
+    "free_trial_or_sandbox": true,
+    "arabic_ui": null,
+    "onboarding_claim": "Go live in one day with no IT team; first e-invoice within minutes; integrations in under 2 weeks",
+    "support": ["email", "chat", "phone", "dedicated_manager"],
+    "also_provides_accounting_or_tax_advisory": false,
+    "notable": "Aigentrix platform with fully published tiered pricing, a free-forever 100-document plan, sandbox on all plans and 5-year document storage on OCI in the UAE; also live in KSA and Malaysia",
+    "confidence": "high",
+    "sources": [
+      "https://www.tronstride.com/",
+      "https://www.tronstride.com/pricing/",
+      "https://mof.gov.ae/en/about-us/initiatives/einvoicing/einvoicing-accredited-service-providers-asps/"
+    ]
+  },
+  {
+    "id": 58,
+    "name": "UHY James Advisory LLC",
+    "website": "https://www.uhy-ae.com",
+    "type": "accounting_firm",
+    "origin": "UAE (UHY International member firm)",
+    "erp_integrations": {
+      "native": [],
+      "connector_or_api": [],
+      "evidence_url": ""
+    },
+    "segments": ["sme", "enterprise"],
+    "multi_entity": null,
+    "free_zone_qfzp_support": null,
+    "ksa_zatca_experience": null,
+    "other_countries": [],
+    "pricing": {
+      "model": "quote_only",
+      "published": false,
+      "indicative": "",
+      "evidence_url": "https://www.uhy-ae.com"
+    },
+    "free_trial_or_sandbox": null,
+    "arabic_ui": null,
+    "onboarding_claim": "",
+    "support": ["phone", "email", "chat"],
+    "also_provides_accounting_or_tax_advisory": true,
+    "notable": "30-year UAE audit, tax and advisory firm (offices in Dubai, Abu Dhabi, Sharjah, Fujairah) accredited as ASP #148957, but its website publishes no e-invoicing product information",
+    "confidence": "low",
+    "sources": [
+      "https://www.uhy-ae.com",
+      "https://www.uhy-ae.com/services/technology-consulting",
+      "https://www.uhy-ae.com/services/vat",
+      "https://www.uhy-ae.com/services/tax-advisory",
+      "https://mof.gov.ae/en/about-us/initiatives/einvoicing/einvoicing-accredited-service-providers-asps/"
+    ]
+  },
+  {
+    "id": 59,
+    "name": "Unified SSK Information Technology L.L.C",
+    "website": "https://www.unifiedssk.com/",
+    "type": "unknown",
+    "origin": "unknown",
+    "erp_integrations": {
+      "native": [],
+      "connector_or_api": [],
+      "evidence_url": ""
+    },
+    "segments": [],
+    "multi_entity": null,
+    "free_zone_qfzp_support": null,
+    "ksa_zatca_experience": null,
+    "other_countries": [],
+    "pricing": {
+      "model": "unknown",
+      "published": false,
+      "indicative": "",
+      "evidence_url": ""
+    },
+    "free_trial_or_sandbox": null,
+    "arabic_ui": null,
+    "onboarding_claim": "",
+    "support": [],
+    "also_provides_accounting_or_tax_advisory": false,
+    "notable": "Website renders an empty page; MoF register confirms ASP #163006. Only public trace found is a third-party (Pandoratech) Odoo connector scaffold targeting Unified SSK, not a Unified SSK product",
+    "confidence": "low",
+    "sources": [
+      "https://www.unifiedssk.com/",
+      "https://unifiedssk.com/",
+      "https://apps.odoo.com/apps/modules/18.0/pandora_uae_einvoice_unified_ssk",
+      "https://mof.gov.ae/en/about-us/initiatives/einvoicing/einvoicing-accredited-service-providers-asps/"
+    ]
+  },
+  {
+    "id": 60,
+    "name": "VATit Consultant Gulf Ltd",
+    "website": "https://eezi.io/",
+    "type": "tax_tech",
+    "origin": "Global (VAT IT group; HQ not stated on site)",
+    "erp_integrations": {
+      "native": [],
+      "connector_or_api": ["Custom API", "Excel/CSV upload", "Web portal"],
+      "evidence_url": "https://eezi.io/"
+    },
+    "segments": ["enterprise", "sme", "micro"],
+    "multi_entity": true,
+    "free_zone_qfzp_support": null,
+    "ksa_zatca_experience": true,
+    "other_countries": ["Saudi Arabia", "Germany", "France", "Mexico", "Australia", "Spain", "Malaysia"],
+    "pricing": {
+      "model": "quote_only",
+      "published": false,
+      "indicative": "",
+      "evidence_url": "https://eezi.io/"
+    },
+    "free_trial_or_sandbox": null,
+    "arabic_ui": null,
+    "onboarding_claim": "Fastest integration on record: 27 hours",
+    "support": ["dedicated_manager"],
+    "also_provides_accounting_or_tax_advisory": true,
+    "notable": "eezi, the VAT IT group's e-invoicing platform live in ~50 countries (30 more planned), with zero-code UI, batch upload and real-time API; UAE ASP go-live dated 1 January 2027; group offers VAT registrations, filings and fiscal representation",
+    "confidence": "medium",
+    "sources": [
+      "https://eezi.io/",
+      "https://docs.eezi.io/docs/overview",
+      "https://docs.eezi.io/docs/getting-started",
+      "https://vatit.com/compliance/",
+      "https://mof.gov.ae/en/about-us/initiatives/einvoicing/einvoicing-accredited-service-providers-asps/"
+    ]
+  },
+  {
+    "id": 61,
+    "name": "Veutel International FZC LLC",
+    "website": "https://veutel.com",
+    "type": "it_services",
+    "origin": "UAE",
+    "erp_integrations": {
+      "native": ["Other ERP"],
+      "connector_or_api": ["Custom API"],
+      "evidence_url": "https://veutel.com/services/e-invoicing"
+    },
+    "segments": ["enterprise", "mid_market", "government"],
+    "multi_entity": null,
+    "free_zone_qfzp_support": null,
+    "ksa_zatca_experience": null,
+    "other_countries": [],
+    "pricing": {
+      "model": "quote_only",
+      "published": false,
+      "indicative": "Commercial model described as built around transaction needs and growth; no figures",
+      "evidence_url": "https://veutel.com/services/e-invoicing"
+    },
+    "free_trial_or_sandbox": null,
+    "arabic_ui": null,
+    "onboarding_claim": "Personalized rollout plan in 7 days",
+    "support": ["phone", "email", "chat"],
+    "also_provides_accounting_or_tax_advisory": false,
+    "notable": "Dubai IT firm with its own Veutel ERP and CRM; MoF-approved ASP and Peppol-certified Access Point offering API-as-a-service, reseller and referral partner models",
+    "confidence": "medium",
+    "sources": [
+      "https://veutel.com",
+      "https://veutel.com/services/e-invoicing",
+      "https://mof.gov.ae/en/about-us/initiatives/einvoicing/einvoicing-accredited-service-providers-asps/"
+    ]
+  },
+  {
+    "id": 62,
+    "name": "Victorian Fin Technology L.L.C",
+    "website": "https://victorianuae.com/",
+    "type": "it_services",
+    "origin": "UAE",
+    "erp_integrations": {
+      "native": [],
+      "connector_or_api": ["SAP", "Oracle", "Dynamics 365", "NetSuite", "Odoo", "Tally", "Infor", "Custom API"],
+      "evidence_url": "https://victorianuae.com/featured_item/digital-payments-and-e-invoicing-solution/"
+    },
+    "segments": ["enterprise", "government"],
+    "multi_entity": true,
+    "free_zone_qfzp_support": null,
+    "ksa_zatca_experience": true,
+    "other_countries": ["Saudi Arabia", "India", "European Union (Peppol)"],
+    "pricing": {
+      "model": "quote_only",
+      "published": false,
+      "indicative": "",
+      "evidence_url": "https://victorianuae.com/featured_item/digital-payments-and-e-invoicing-solution/"
+    },
+    "free_trial_or_sandbox": null,
+    "arabic_ui": null,
+    "onboarding_claim": "Most projects go live in 2 to 8 weeks, depending on complexity",
+    "support": ["phone", "email", "chat"],
+    "also_provides_accounting_or_tax_advisory": false,
+    "notable": "Dubai IT consultancy serving large enterprise and government clients (Emirates, Etihad, Emaar cited); ISO 27001/22301 e-invoicing solution covering UAE FTA, KSA ZATCA, EU Peppol and India GST; support hours 08:00-17:00 GST",
+    "confidence": "medium",
+    "sources": [
+      "https://victorianuae.com/",
+      "https://victorianuae.com/featured_item/digital-payments-and-e-invoicing-solution/",
+      "https://victorianuae.com/e-invoicing/uae-e-invoicing-via-peppol-asp-complete-guide-to-fta-compliance-peppol-5-corners-model/",
+      "https://mof.gov.ae/en/about-us/initiatives/einvoicing/einvoicing-accredited-service-providers-asps/"
+    ]
+  },
+  {
+    "id": 63,
+    "name": "Vostok Trading LLC",
+    "website": "https://www.vostok.ae",
+    "type": "it_services",
+    "origin": "UAE",
+    "erp_integrations": {
+      "native": [],
+      "connector_or_api": [],
+      "evidence_url": ""
+    },
+    "segments": [],
+    "multi_entity": null,
+    "free_zone_qfzp_support": null,
+    "ksa_zatca_experience": null,
+    "other_countries": [],
+    "pricing": {
+      "model": "unknown",
+      "published": false,
+      "indicative": "",
+      "evidence_url": ""
+    },
+    "free_trial_or_sandbox": null,
+    "arabic_ui": null,
+    "onboarding_claim": "",
+    "support": [],
+    "also_provides_accounting_or_tax_advisory": false,
+    "notable": "Dubai security-systems integrator (CCTV, ANPR, biometrics, queue management, CRM) listed as ASP #194753; its website contains no e-invoicing, Peppol or tax content",
+    "confidence": "low",
+    "sources": [
+      "https://www.vostok.ae",
+      "https://www.vostok.ae/vostok-solution.html",
+      "https://www.vostok.ae/vostok-crm-solution.html",
+      "https://mof.gov.ae/en/about-us/initiatives/einvoicing/einvoicing-accredited-service-providers-asps/"
+    ]
+  },
+  {
+    "id": 64,
+    "name": "Wafeq FZ-LLC",
+    "website": "https://wafeq.com/en-ae",
+    "type": "erp_vendor",
+    "origin": "UAE",
+    "erp_integrations": {
+      "native": ["Other ERP"],
+      "connector_or_api": ["Custom API"],
+      "evidence_url": "https://www.wafeq.com/en-ae/asp-e-invoicing-uae"
+    },
+    "segments": ["sme", "mid_market", "enterprise"],
+    "multi_entity": null,
+    "free_zone_qfzp_support": null,
+    "ksa_zatca_experience": null,
+    "other_countries": [],
+    "pricing": {
+      "model": "tiered",
+      "published": true,
+      "indicative": "Starter AED 69/month (AED 57/month billed yearly), Plus AED 99/month, Premium AED 249/month, Enterprise on request; e-invoicing included in the plan with no separate ASP contract; Branch add-on AED 29/month",
+      "evidence_url": "https://www.wafeq.com/en-ae/pricing"
+    },
+    "free_trial_or_sandbox": true,
+    "arabic_ui": true,
+    "onboarding_claim": "",
+    "support": ["phone"],
+    "also_provides_accounting_or_tax_advisory": false,
+    "notable": "Wafeq accounting software (18,000+ companies) is itself the ASP (#129932), already transmitting live PINT AE invoices in the pilot; e-invoicing bundled into plans from AED 69/month; Arabic and English; external ERPs via API",
+    "confidence": "high",
+    "sources": [
+      "https://wafeq.com/en-ae",
+      "https://www.wafeq.com/en-ae/pricing",
+      "https://www.wafeq.com/en-ae/asp-e-invoicing-uae",
+      "https://mof.gov.ae/en/about-us/initiatives/einvoicing/einvoicing-accredited-service-providers-asps/"
+    ]
+  },
+  {
+    "id": 65,
+    "name": "Webtel Technologies solutions- FZCO",
+    "website": "https://webtel.in/",
+    "type": "tax_tech",
+    "origin": "India",
+    "erp_integrations": {
+      "native": ["SAP"],
+      "connector_or_api": ["Oracle", "Dynamics 365", "Custom API", "Excel/CSV upload"],
+      "evidence_url": "https://webtel.in/E-invoicing-UAE.aspx"
+    },
+    "segments": ["enterprise", "sme"],
+    "multi_entity": null,
+    "free_zone_qfzp_support": null,
+    "ksa_zatca_experience": true,
+    "other_countries": ["India", "Saudi Arabia", "Mauritius", "Romania", "Malaysia", "Oman"],
+    "pricing": {
+      "model": "unknown",
+      "published": false,
+      "indicative": "",
+      "evidence_url": "https://webtel.in/E-invoicing-UAE.aspx"
+    },
+    "free_trial_or_sandbox": null,
+    "arabic_ui": null,
+    "onboarding_claim": "E-invoicing ready in just a few days",
+    "support": ["phone", "email", "chat"],
+    "also_provides_accounting_or_tax_advisory": false,
+    "notable": "New Delhi compliance-software house (GST, e-invoicing, TDS, XBRL; SAP Silver Partner) authorised by ZATCA in KSA, with e-invoicing offerings for UAE, Oman, Malaysia, Romania and Mauritius",
+    "confidence": "medium",
+    "sources": [
+      "https://webtel.in/",
+      "https://webtel.in/E-invoicing-UAE.aspx",
+      "https://www.webtel.in/e-invoicing-solution.aspx",
+      "https://mof.gov.ae/en/about-us/initiatives/einvoicing/einvoicing-accredited-service-providers-asps/"
+    ]
+  },
+  {
+    "id": 66,
+    "name": "Zennovate IT Solutions",
+    "website": "https://zennovatesystems.com",
+    "type": "tax_tech",
+    "origin": "India (Zennovate Systems LLP; GCC delivery from UAE and Oman)",
+    "erp_integrations": {
+      "native": [],
+      "connector_or_api": ["SAP", "Oracle", "Dynamics 365", "Custom API"],
+      "evidence_url": "https://zennovatesystems.com/uae-e-invoicing/"
+    },
+    "segments": ["enterprise", "sme"],
+    "multi_entity": true,
+    "free_zone_qfzp_support": true,
+    "ksa_zatca_experience": true,
+    "other_countries": ["Saudi Arabia", "Oman", "Qatar"],
+    "pricing": {
+      "model": "quote_only",
+      "published": false,
+      "indicative": "",
+      "evidence_url": "https://zennovatesystems.com/uae-e-invoicing/"
+    },
+    "free_trial_or_sandbox": null,
+    "arabic_ui": null,
+    "onboarding_claim": "",
+    "support": ["phone", "email"],
+    "also_provides_accounting_or_tax_advisory": false,
+    "notable": "Enterprise GCC e-invoicing platform (ZENvy, accreditation #116145) with 50M+ KSA e-invoices processed; on-premise, private cloud or locally hosted SaaS; covers all seven emirates incl. DIFC, ADGM and JAFZA free zones (QFZP tax status not addressed)",
+    "confidence": "medium",
+    "sources": [
+      "https://zennovatesystems.com",
+      "https://zennovatesystems.com/uae-e-invoicing/",
+      "https://zennovatesystems.com/solutions/",
+      "https://mof.gov.ae/en/about-us/initiatives/einvoicing/einvoicing-accredited-service-providers-asps/"
+    ]
+  },
+  {
+    "id": 67,
+    "name": "Zoho Software Trading LLC",
+    "website": "https://www.zoho.com",
+    "type": "erp_vendor",
+    "origin": "India",
+    "erp_integrations": {
+      "native": ["Other ERP"],
+      "connector_or_api": ["Custom API"],
+      "evidence_url": "https://www.zoho.com/ae/books/e-invoicing/"
+    },
+    "segments": ["micro", "sme", "mid_market", "enterprise"],
+    "multi_entity": null,
+    "free_zone_qfzp_support": null,
+    "ksa_zatca_experience": true,
+    "other_countries": ["Saudi Arabia"],
+    "pricing": {
+      "model": "tiered",
+      "published": true,
+      "indicative": "Zoho Books UAE: Free plan (revenue under AED 200k), Standard AED 69/month, Professional AED 129/month (e-invoicing add-on starts here) up to Ultimate AED 799/month; first 100 e-invoicing transactions free, then packs from AED 41 per 100 transactions",
+      "evidence_url": "https://www.zoho.com/ae/books/pricing/"
+    },
+    "free_trial_or_sandbox": true,
+    "arabic_ui": true,
+    "onboarding_claim": "",
+    "support": ["email", "phone", "chat"],
+    "also_provides_accounting_or_tax_advisory": false,
+    "notable": "Zoho Books accounting suite is itself the accredited ASP (#121988); e-invoicing is an add-on from the Professional plan with transparent per-transaction packs; ZATCA Phase 2 approved in KSA; support Sun-Fri 9am-6pm",
+    "confidence": "high",
+    "sources": [
+      "https://www.zoho.com",
+      "https://www.zoho.com/ae/books/e-invoicing/",
+      "https://www.zoho.com/ae/books/pricing/",
+      "https://www.zoho.com/sa/books/e-invoicing/",
+      "https://mof.gov.ae/en/about-us/initiatives/einvoicing/einvoicing-accredited-service-providers-asps/"
+    ]
+  }
+]

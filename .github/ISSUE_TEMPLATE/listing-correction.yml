@@ -1,0 +1,30 @@
+name: Listing correction
+description: A provider record in the selector or Market Map is out of date
+title: "Correction: <provider name>"
+labels: [correction]
+body:
+  - type: input
+    id: provider
+    attributes: { label: Provider name as listed, placeholder: "e.g. Fynamics Techno Solutions – FZCO" }
+    validations: { required: true }
+  - type: dropdown
+    id: field
+    attributes:
+      label: Which field is wrong?
+      options: [ERP connectors (native), ERP connectors (API/middleware), Segments, Pricing model or amounts, Multi-entity, Free zone handling, KSA/ZATCA experience, Other countries, Trial or sandbox, Arabic interface, Onboarding claim, Support channels, Also provides accounting or tax advice, Type or origin, Website or contact, Other]
+    validations: { required: true }
+  - type: textarea
+    id: correct
+    attributes: { label: Correct value, description: "What the record should say" }
+    validations: { required: true }
+  - type: input
+    id: proof
+    attributes: { label: Public page that proves it, placeholder: "https://..." }
+    validations: { required: true }
+  - type: checkboxes
+    id: role
+    attributes:
+      label: Your relationship to the provider
+      options:
+        - label: I work for this provider
+        - label: I am a customer or adviser

@@ -1,0 +1,530 @@
+<title>E-Invoice Data Check</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@500;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+/* Layout concept: a lab bench — drop the files on top, read the verdict as four tiles, then the findings table and the fix plan.
+   Same family as the ASP Selector (teal ink, signal orange for risk) so the two tools read as one practice. */
+:root{
+  --bg:#F5F7F6; --surface:#FFFFFF; --surface-2:#EDF2F0; --ink:#13213A; --muted:#5B6578; --line:#D6DDE3; --line-strong:#B7C2CC;
+  --accent:#0F766E; --accent-ink:#FFFFFF; --accent-soft:#D9F0EC;
+  --risk:#C2410C; --risk-soft:#FDE8DC;
+  --good:#1F7A4D; --good-soft:#DCF3E6; --warn:#9A6700; --warn-soft:#FBF0D0; --bad:#B42318; --bad-soft:#FCE4E1;
+  --shadow:0 1px 2px rgba(19,33,58,.06),0 8px 24px rgba(19,33,58,.08);
+  --display:"Schibsted Grotesk","Helvetica Neue",Arial,sans-serif;
+  --body:"IBM Plex Sans","Segoe UI",Roboto,Arial,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --radius:14px; --radius-sm:9px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0E131C; --surface:#161D2A; --surface-2:#1E2736; --ink:#E8EDF3; --muted:#9AA7B8; --line:#2A3446; --line-strong:#3B4759;
+    --accent:#3CCFBB; --accent-ink:#06211E; --accent-soft:#143B37; --risk:#FB923C; --risk-soft:#3A2415;
+    --good:#4ADE80; --good-soft:#143322; --warn:#FBBF24; --warn-soft:#3A2E0C; --bad:#F87171; --bad-soft:#3F1715;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35); color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0E131C; --surface:#161D2A; --surface-2:#1E2736; --ink:#E8EDF3; --muted:#9AA7B8; --line:#2A3446; --line-strong:#3B4759;
+  --accent:#3CCFBB; --accent-ink:#06211E; --accent-soft:#143B37; --risk:#FB923C; --risk-soft:#3A2415;
+  --good:#4ADE80; --good-soft:#143322; --warn:#FBBF24; --warn-soft:#3A2E0C; --bad:#F87171; --bad-soft:#3F1715;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35); color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.5;-webkit-text-size-adjust:100%}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--surface)}
+h1,h2,h3{font-family:var(--display);letter-spacing:-.01em;text-wrap:balance;margin:0}
+h1{font-size:clamp(1.6rem,5vw,2.3rem);line-height:1.12;font-weight:800}
+h2{font-size:1.25rem;font-weight:700} h3{font-size:1.05rem;font-weight:700}
+p{margin:0} a{color:var(--accent)} button{font:inherit;color:inherit}
+.wrap{max-width:900px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)} .small{font-size:.875rem}
+.eyebrow{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px;border-radius:6px}
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:9;background:var(--surface);border-bottom:1px solid var(--line)}
+.top .wrap{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-block:10px;flex-wrap:wrap}
+.brand{display:flex;align-items:baseline;gap:8px;font-family:var(--display);font-weight:800;font-size:1.05rem;white-space:nowrap}
+.brand span{font-family:var(--body);font-weight:500;color:var(--muted);font-size:.8rem}
+.privacy{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:4px 10px;font-size:.78rem;background:var(--surface)}
+.privacy i{width:8px;height:8px;border-radius:50%;background:var(--good)}
+.pbanner{background:var(--accent-soft);border-bottom:1px solid var(--line)}
+.pbanner .wrap{display:flex;justify-content:space-between;align-items:center;gap:10px;padding-block:8px;flex-wrap:wrap}
+.pbanner b{font-family:var(--display)}
+.hero{padding-block:26px 8px}
+.hero .lead{margin-top:10px;max-width:62ch;color:var(--muted);font-size:1.02rem}
+.section{padding-block:22px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:10px 18px;border-radius:999px;border:1.5px solid var(--line-strong);background:var(--surface);font-weight:600;cursor:pointer;text-decoration:none;color:var(--ink)}
+.btn:hover{border-color:var(--accent)} .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--accent);padding-inline:8px}
+.btn.sm{min-height:36px;padding:6px 12px;font-size:.875rem} .btn[disabled]{opacity:.5;cursor:not-allowed}
+/* inputs */
+.slots{display:grid;gap:12px;grid-template-columns:1fr}
+@media (min-width:700px){.slots{grid-template-columns:1fr 1fr}}
+.slot{padding:16px;display:grid;gap:10px;align-content:start}
+.slot .head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.drop{border:2px dashed var(--line-strong);border-radius:var(--radius-sm);padding:16px;text-align:center;background:var(--surface-2);cursor:pointer}
+.drop.over{border-color:var(--accent);background:var(--accent-soft)}
+.drop input{display:none}
+.drop .t{font-weight:600} .drop .d{font-size:.8rem;color:var(--muted);margin-top:4px}
+textarea.paste{width:100%;min-height:84px;border:1px solid var(--line);border-radius:var(--radius-sm);padding:8px 10px;font:inherit;font-size:.82rem;font-family:var(--mono);background:var(--surface);color:var(--ink);resize:vertical}
+.loaded{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:.85rem;flex-wrap:wrap}
+.pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:3px 10px;font-size:.78rem;border:1px solid var(--line);background:var(--surface-2)}
+.pill.ok{border-color:var(--good);color:var(--good);background:var(--good-soft)}
+.pill.sample{border-color:var(--warn);color:var(--warn);background:var(--warn-soft)}
+.map{display:grid;gap:8px;grid-template-columns:1fr}
+@media (min-width:520px){.map{grid-template-columns:1fr 1fr}}
+.map label{display:grid;gap:3px;font-size:.78rem;color:var(--muted)}
+.map select{min-height:38px;border:1px solid var(--line);border-radius:var(--radius-sm);padding:4px 8px;font:inherit;font-size:.85rem;background:var(--surface);color:var(--ink);max-width:100%}
+.map label.req select{border-color:var(--line-strong)}
+.actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+/* results */
+.tiles{display:grid;gap:10px;grid-template-columns:repeat(2,1fr)}
+@media (min-width:700px){.tiles{grid-template-columns:repeat(4,1fr)}}
+.tile{padding:14px 16px}
+.tile b{display:block;font-family:var(--mono);font-size:1.6rem;font-variant-numeric:tabular-nums;line-height:1.1}
+.tile span{display:block;font-size:.8rem;color:var(--muted);margin-top:4px}
+.tile.score b{color:var(--accent)} .tile.risk b{color:var(--risk)}
+.gauge{height:8px;border-radius:4px;background:var(--surface-2);overflow:hidden;margin-top:8px}
+.gauge i{display:block;height:100%;border-radius:4px;background:var(--accent)}
+.verdict{margin-top:12px;padding:14px 16px;border-left:5px solid var(--risk)}
+.verdict.good{border-left-color:var(--good)}
+.findings{margin-top:16px;display:grid;gap:10px}
+.finding{padding:14px 16px}
+.finding summary{list-style:none;cursor:pointer;display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:start}
+.finding summary::-webkit-details-marker{display:none}
+.sev{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;border-radius:6px;padding:3px 7px;white-space:nowrap;margin-top:2px}
+.sev.critical{background:var(--bad-soft);color:var(--bad)} .sev.major{background:var(--warn-soft);color:var(--warn)} .sev.minor{background:var(--surface-2);color:var(--muted)} .sev.info{background:var(--accent-soft);color:var(--accent)} .sev.pass{background:var(--good-soft);color:var(--good)}
+.finding .t{font-weight:600} .finding .d{font-size:.85rem;color:var(--muted);margin-top:2px}
+.finding .cnt{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:1.05rem;text-align:right}
+.finding .body{margin-top:10px;padding-top:10px;border-top:1px solid var(--line);display:grid;gap:8px;font-size:.88rem}
+.finding .fix{display:grid;grid-template-columns:auto 1fr;gap:8px}
+.finding .fix b{color:var(--accent);font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;padding-top:3px}
+.ex{font-family:var(--mono);font-size:.78rem;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius-sm);padding:8px 10px;overflow-x:auto;white-space:nowrap}
+.plan{margin-top:16px;padding:16px}
+.plan ol{margin:10px 0 0;padding-left:1.2em;display:grid;gap:8px}
+.share{margin-top:16px;padding:16px;display:grid;gap:12px;border-left:5px solid var(--accent)}
+textarea.report{width:100%;min-height:140px;border:1px solid var(--line);border-radius:var(--radius-sm);padding:10px;font:inherit;font-size:.82rem;background:var(--surface-2);color:var(--ink);resize:vertical}
+.note{font-size:.8rem;color:var(--muted);margin-top:8px}
+.how{display:grid;gap:10px;margin-top:10px}
+.how .card{padding:14px 16px;font-size:.9rem}
+footer{padding-block:28px 40px;color:var(--muted);font-size:.8rem}
+footer .wrap{display:grid;gap:8px}
+.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;font-size:.9rem;z-index:40;box-shadow:var(--shadow);max-width:90vw;text-align:center}
+@media (prefers-reduced-motion: reduce){*{transition:none!important;scroll-behavior:auto!important}}
+</style>
+
+<header class="top">
+  <div class="wrap">
+    <div class="brand">E-Invoice Data Check <span>UAE · PINT AE readiness</span></div>
+    <span class="privacy"><i></i>Runs in your browser — nothing is uploaded</span>
+  </div>
+</header>
+<div class="pbanner" id="pbanner" hidden>
+  <div class="wrap">
+    <div class="small">Brought to you by <b id="pbanner-name"></b> <span class="muted">· independent check, no provider promoted</span></div>
+    <a class="btn sm primary" id="pbanner-wa" href="#" target="_blank" rel="noopener">Chat on WhatsApp</a>
+  </div>
+</div>
+
+<main>
+  <section class="hero">
+    <div class="wrap">
+      <p class="eyebrow">Before you appoint a provider</p>
+      <h1>Will your invoices be accepted first time?</h1>
+      <p class="lead">From 2027 your customer's e-invoicing provider validates every invoice before it is delivered. Drop in your customer list and your invoice register — straight from Tally, Zoho, QuickBooks, SAP or Excel — and see in seconds how many would be rejected today, how much money that puts at risk, and what to fix first.</p>
+    </div>
+  </section>
+
+  <section class="section" id="inputs">
+    <div class="wrap">
+      <div class="slots">
+        <div class="card slot" id="slot-cust">
+          <div class="head"><h3>1 · Customer list</h3><span class="small muted">optional, recommended</span></div>
+          <label class="drop" id="drop-cust"><input type="file" id="file-cust" accept=".csv,.xlsx,.xls,.txt"><div class="t">Drop a file or tap to choose</div><div class="d">CSV or Excel export of customers / ledgers: name, TRN, address, country</div></label>
+          <textarea class="paste" id="paste-cust" placeholder="…or paste CSV rows here (first row = headings)"></textarea>
+          <div class="loaded" id="loaded-cust"></div>
+          <div class="map" id="map-cust"></div>
+        </div>
+        <div class="card slot" id="slot-inv">
+          <div class="head"><h3>2 · Invoice register</h3><span class="small muted">optional, recommended</span></div>
+          <label class="drop" id="drop-inv"><input type="file" id="file-inv" accept=".csv,.xlsx,.xls,.txt"><div class="t">Drop a file or tap to choose</div><div class="d">Sales register / invoice list: number, date, customer, amounts, VAT, tax code</div></label>
+          <textarea class="paste" id="paste-inv" placeholder="…or paste CSV rows here (first row = headings)"></textarea>
+          <div class="loaded" id="loaded-inv"></div>
+          <div class="map" id="map-inv"></div>
+        </div>
+      </div>
+      <div class="actions" style="margin-top:12px">
+        <button class="btn primary" id="run">Run the check</button>
+        <button class="btn" id="sample">Load sample data</button>
+        <button class="btn ghost" id="clear">Clear</button>
+        <span class="small muted" id="xlsx-note"></span>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="results" hidden>
+    <div class="wrap">
+      <div class="eyebrow" id="res-eyebrow">Results</div>
+      <div class="tiles" id="tiles" style="margin-top:8px"></div>
+      <div class="card verdict" id="verdict"></div>
+      <h2 style="margin-top:22px">Findings</h2>
+      <p class="small muted">Critical means a provider's validation would reject the document; major means it would go through wrong or late; minor means clean-up. Tap a row for examples and the fix.</p>
+      <div class="findings" id="findings"></div>
+      <div class="card plan" id="plan"></div>
+      <div class="card share" id="share"></div>
+    </div>
+  </section>
+
+  <section class="section" id="about">
+    <div class="wrap">
+      <h2>What is checked, and why</h2>
+      <div class="how">
+        <div class="card"><b>Buyer identification.</b> Under the UAE e-invoicing system every B2B e-invoice carries the buyer's Tax Registration Number and address; the Peppol identifier is built from the TIN. A missing or malformed TRN is the single most common reason an invoice will fail validation at the buyer's provider. UAE TRNs are 15 digits and begin with 100.</div>
+        <div class="card"><b>Tax categories.</b> Each line needs a VAT category: standard 5%, zero-rated, exempt, out of scope, reverse charge or designated zone. A zero-VAT line with no category cannot be classified and is rejected; a 5% line whose VAT does not equal 5% of the taxable amount fails arithmetic validation.</div>
+        <div class="card"><b>Credit notes and numbering.</b> Reductions, cancellations and refunds must be issued as electronic credit notes referencing the original invoice; negative invoices are not a document type. Invoice numbers must be unique.</div>
+        <div class="card"><b>Currency and precision.</b> Foreign-currency invoices must carry the VAT amount in AED; amounts beyond two decimals fail schema checks.</div>
+        <div class="card"><b>What this is not.</b> A screening of your exported data against the published mandatory fields and arithmetic rules, in your browser, with nothing sent anywhere. It is not a provider's validator and not legal or tax advice; your provider's sandbox is the final test.</div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div>Rules from Ministerial Decision 243 of 2025, the MoF Electronic Invoicing Guidelines v1.1 and the Electronic Invoice Mandatory Field Requirements v1.0. Independent and free; no provider is promoted. Companion to the <a href="https://claude.ai/artifact/1oLxYw21hkuTDwepoKEbwh" target="_blank" rel="noopener">UAE ASP Selector</a>.</div>
+    <div>Mayank Wadhera · MKW Advisors Private Limited · <span class="num">connect@mkwadvisors.com</span> · WhatsApp <span class="num">+91 81306 45164</span></div>
+  </div>
+</footer>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+/* ===================== CONFIG ===================== */
+const CONFIG = { adviserName:"Mayank Wadhera", adviserWhatsApp:"918130645164", adviserEmail:"connect@mkwadvisors.com", shareUrl:"", selectorUrl:"https://claude.ai/artifact/1oLxYw21hkuTDwepoKEbwh", asOf:"2026-10-17" };
+
+/* ===================== HELPERS ===================== */
+const $ = (s, el=document) => el.querySelector(s);
+const esc = s => String(s==null?"":s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmtAED = n => "AED " + Math.round(n).toLocaleString("en-US");
+const pct = (a,b) => b ? Math.round(100*a/b) : 0;
+function toast(msg){ const t=$("#toast"); t.textContent=msg; t.hidden=false; clearTimeout(toast._t); toast._t=setTimeout(()=>{t.hidden=true;},2400); }
+async function copy(text, okMsg){
+  try { await navigator.clipboard.writeText(text); toast(okMsg||"Copied"); }
+  catch(e){ const ta=document.createElement("textarea"); ta.value=text; ta.setAttribute("readonly",""); ta.style.position="fixed"; ta.style.opacity="0"; document.body.appendChild(ta); ta.select(); let ok=false; try{ ok=document.execCommand("copy"); }catch(_){ } document.body.removeChild(ta); toast(ok?(okMsg||"Copied"):"Select the text and copy it manually"); }
+}
+function num(v){ if (v==null) return NaN; if (typeof v==="number") return v; let s=String(v).trim(); if(!s) return NaN; let neg=false; if (/^\(.*\)$/.test(s)) { neg=true; s=s.slice(1,-1); } if (/\bcr\b/i.test(s)) { neg=true; } s=s.replace(/[^\d.\-]/g,""); if (!s||s==="-"||s===".") return NaN; const n=parseFloat(s); return isNaN(n)?NaN:(neg?-Math.abs(n):n); }
+function decimals(v){ const s=String(v==null?"":v).trim().replace(/[^\d.\-]/g,""); const i=s.indexOf("."); return i<0?0:(s.length-i-1); }
+function parseDate(v){ if (v==null||v==="") return null; if (v instanceof Date) return isNaN(v)?null:v; if (typeof v==="number" && v>20000 && v<80000) { return new Date(Math.round((v-25569)*86400000)); } const s=String(v).trim(); let m; if ((m=/^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s))) return new Date(+m[1],+m[2]-1,+m[3]); if ((m=/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/.exec(s))) { let y=+m[3]; if(y<100) y+=2000; return new Date(y,+m[2]-1,+m[1]); } if ((m=/^(\d{1,2})[ \-]([A-Za-z]{3})[a-z]*[ \-](\d{2,4})/.exec(s))) { const mo=["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"].indexOf(m[2].toLowerCase().slice(0,3)); let y=+m[3]; if(y<100) y+=2000; if (mo>=0) return new Date(y,mo,+m[1]); } const d=new Date(s); return isNaN(d)?null:d; }
+const UAE = /^(uae|u\.a\.e\.?|united arab emirates|ae|are|dubai|abu dhabi|sharjah|ajman|ras al khaimah|rak|fujairah|umm al quwain|uaq|al ain)$/i;
+function isUAE(v){ const s=String(v==null?"":v).trim(); return !s || UAE.test(s); }
+const ISO2 = /^[A-Z]{2}$/;
+
+/* ===================== CSV / XLSX PARSING ===================== */
+function parseCSV(text){
+  const rows=[]; let row=[], field="", q=false; const s=text.replace(/^﻿/,"");
+  for (let i=0;i<s.length;i++){ const c=s[i];
+    if (q){ if (c==='"'){ if (s[i+1]==='"'){ field+='"'; i++; } else q=false; } else field+=c; }
+    else if (c==='"') q=true; else if (c===","||c==="\t"||c===";"){ row.push(field); field=""; } else if (c==="\n"||c==="\r"){ if (c==="\r"&&s[i+1]==="\n") i++; row.push(field); field=""; if (row.some(x=>x.trim()!=="")) rows.push(row); row=[]; } else field+=c; }
+  if (field!==""||row.length){ row.push(field); if (row.some(x=>x.trim()!=="")) rows.push(row); }
+  return rows;
+}
+function tableFromRows(rows){
+  if (!rows.length) return {headers:[], rows:[]};
+  // skip leading title rows: header = first row with >=2 non-empty cells where most cells are non-numeric
+  let hi=0; for (let i=0;i<Math.min(rows.length,8);i++){ const r=rows[i]; const filled=r.filter(x=>String(x).trim()!==""); if (filled.length>=2 && filled.filter(x=>isNaN(num(x))).length>=Math.ceil(filled.length*0.6)) { hi=i; break; } }
+  const headers=rows[hi].map((h,i)=>String(h||"").trim()||("Column "+(i+1)));
+  const out=[]; for (let i=hi+1;i<rows.length;i++){ const r=rows[i]; const o={}; let any=false; headers.forEach((h,k)=>{ const v=r[k]; o[h]=(v==null?"":(typeof v==="string"?v.trim():v)); if (o[h]!=="") any=true; }); if (any) out.push(o); }
+  return {headers, rows:out};
+}
+function parseWorkbook(buf){
+  if (typeof XLSX==="undefined") throw new Error("Excel parsing is not available here; export the sheet as CSV and try again.");
+  const wb=XLSX.read(buf,{type:"array",cellDates:true});
+  const ws=wb.Sheets[wb.SheetNames[0]];
+  const aoa=XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:""});
+  return tableFromRows(aoa);
+}
+
+/* ===================== FIELD DETECTION ===================== */
+const FIELDS = {
+  cust: [
+    {k:"name", label:"Customer name", req:true, syn:["customer name","party name","client name","ledger name","account name","buyer name","company name","name","customer","party","ledger"]},
+    {k:"trn", label:"TRN / tax number", req:true, syn:["trn","tax registration","vat number","vat no","vat reg","tax number","tax reg","gstin","tin"]},
+    {k:"address", label:"Address", syn:["address line","address","street","billing address"]},
+    {k:"city", label:"City / emirate", syn:["emirate","city","town"]},
+    {k:"country", label:"Country", syn:["country code","country","nation"]},
+    {k:"email", label:"Email", syn:["email","e-mail","mail"]}
+  ],
+  inv: [
+    {k:"invNo", label:"Invoice number", req:true, syn:["invoice no","invoice number","invoice #","inv no","inv number","voucher no","voucher number","document number","document no","doc no","bill no","reference","number"]},
+    {k:"date", label:"Invoice date", syn:["invoice date","voucher date","document date","posting date","date"]},
+    {k:"customer", label:"Customer name", req:true, syn:["customer name","party name","client name","buyer","party","ledger","customer","account name","name"]},
+    {k:"trn", label:"Customer TRN on invoice", syn:["customer trn","buyer trn","party trn","trn","vat number","vat no","tax registration"]},
+    {k:"docType", label:"Document type", syn:["document type","doc type","voucher type","transaction type","type"]},
+    {k:"currency", label:"Currency", syn:["currency","curr","ccy"]},
+    {k:"net", label:"Taxable amount (net)", req:true, syn:["taxable amount","taxable value","net amount","amount before tax","sub total","subtotal","net","base amount"]},
+    {k:"vat", label:"VAT amount", req:true, syn:["vat amount","tax amount","output vat","output tax","vat","tax"]},
+    {k:"total", label:"Total (gross)", syn:["grand total","invoice total","total amount","gross amount","gross","total","amount"]},
+    {k:"taxCategory", label:"Tax category / code", syn:["tax category","vat category","tax code","vat code","tax type","vat type","tax treatment","supply type","tax rate","vat rate","rate"]}
+  ]
+};
+function detect(headers, defs){
+  const used=new Set(); const map={};
+  defs.forEach(d=>{
+    let best=null;
+    for (const s of d.syn){ const h=headers.find(h=>!used.has(h) && h.toLowerCase().replace(/[_\.]/g," ").trim()===s); if (h){ best=h; break; } }
+    if (!best) for (const s of d.syn){ const h=headers.find(h=>!used.has(h) && h.toLowerCase().includes(s)); if (h){ best=h; break; } }
+    if (best){ map[d.k]=best; used.add(best); } else map[d.k]="";
+  });
+  return map;
+}
+
+/* ===================== STATE ===================== */
+const state = { cust:null, inv:null, mapCust:{}, mapInv:{}, sample:false, sampleSlots:{cust:false,inv:false}, partner:null, result:null };
+
+/* ===================== LOADING ===================== */
+function clearSlot(kind){ state[kind]=null; state.sampleSlots[kind]=false; $(kind==="cust"?"#loaded-cust":"#loaded-inv").innerHTML=""; $(kind==="cust"?"#map-cust":"#map-inv").innerHTML=""; $(kind==="cust"?"#paste-cust":"#paste-inv").value=""; }
+function setTable(kind, table, label, isSample){
+  const other = kind==="cust" ? "inv" : "cust";
+  if (!isSample && state.sampleSlots[other]) clearSlot(other); // real data replaces the sample entirely
+  state[kind]=table; state[kind==="cust"?"mapCust":"mapInv"]=detect(table.headers, FIELDS[kind]); state.sampleSlots[kind]=!!isSample; state.sample=state.sampleSlots.cust||state.sampleSlots.inv;
+  renderLoaded(kind, label, isSample); renderMap(kind);
+}
+function renderLoaded(kind, label, isSample){
+  const t=state[kind]; const el=$(kind==="cust"?"#loaded-cust":"#loaded-inv");
+  el.innerHTML = t ? `<span class="pill ${isSample?"sample":"ok"}">${isSample?"Sample data":"Loaded"} · ${esc(label)}</span><span class="muted">${t.rows.length.toLocaleString("en-US")} rows · ${t.headers.length} columns</span>` : "";
+}
+function renderMap(kind){
+  const t=state[kind]; const el=$(kind==="cust"?"#map-cust":"#map-inv"); if (!t){ el.innerHTML=""; return; }
+  const map=kind==="cust"?state.mapCust:state.mapInv;
+  el.innerHTML = FIELDS[kind].map(d=>`<label class="${d.req?"req":""}">${esc(d.label)}${d.req?" *":""}<select data-kind="${kind}" data-k="${d.k}"><option value="">— not in file —</option>${t.headers.map(h=>`<option value="${esc(h)}" ${map[d.k]===h?"selected":""}>${esc(h)}</option>`).join("")}</select></label>`).join("");
+  el.querySelectorAll("select").forEach(s=>s.onchange=()=>{ (s.dataset.kind==="cust"?state.mapCust:state.mapInv)[s.dataset.k]=s.value; });
+}
+function readFile(kind, file){
+  const name=file.name||"file"; const isX=/\.xlsx?$/i.test(name);
+  const r=new FileReader();
+  r.onload=()=>{ try { const table = isX ? parseWorkbook(new Uint8Array(r.result)) : tableFromRows(parseCSV(String(r.result))); if (!table.rows.length) throw new Error("No data rows found. Check the first row holds the headings."); setTable(kind, table, name, false); toast(`${table.rows.length.toLocaleString("en-US")} rows loaded — check the column mapping`); } catch(e){ toast(e.message||"Could not read that file"); } };
+  if (isX) r.readAsArrayBuffer(file); else r.readAsText(file);
+}
+function wireSlot(kind){
+  const drop=$(kind==="cust"?"#drop-cust":"#drop-inv"), file=$(kind==="cust"?"#file-cust":"#file-inv"), paste=$(kind==="cust"?"#paste-cust":"#paste-inv");
+  file.onchange=()=>{ if (file.files[0]) readFile(kind, file.files[0]); };
+  ["dragenter","dragover"].forEach(ev=>drop.addEventListener(ev,e=>{ e.preventDefault(); drop.classList.add("over"); }));
+  ["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{ e.preventDefault(); drop.classList.remove("over"); }));
+  drop.addEventListener("drop",e=>{ const f=e.dataTransfer&&e.dataTransfer.files[0]; if (f) readFile(kind,f); });
+  let t; paste.oninput=()=>{ clearTimeout(t); t=setTimeout(()=>{ const txt=paste.value; if (txt.trim().split(/\n/).length<2) return; const table=tableFromRows(parseCSV(txt)); if (table.rows.length){ setTable(kind, table, "pasted rows", false); } }, 400); };
+}
+
+/* ===================== CHECK ENGINE ===================== */
+function cleanTRN(v){ return String(v==null?"":v).replace(/[\s\-\.]/g,"").toUpperCase(); }
+function trnStatus(v){ const t=cleanTRN(v); if (!t) return "missing"; if (!/^\d{15}$/.test(t)) return "format"; if (!t.startsWith("100")) return "prefix"; return "ok"; }
+function get(row, map, k){ const h=map[k]; return h ? row[h] : undefined; }
+
+function runChecks(){
+  const findings=[]; const cust=state.cust, inv=state.inv, mc=state.mapCust, mi=state.mapInv;
+  const add=(id,sev,title,desc,rows,examples,fix,why)=>findings.push({id,sev,title,desc,count:rows,examples:examples.slice(0,5),fix,why});
+  let custIndex=new Map(); let custCrit=new Set(), custMajor=new Set(), custMinor=new Set();
+  const out={ findings, cust:null, inv:null };
+
+  if (cust && mc.name){
+    const rows=cust.rows; const n=rows.length;
+    const miss=[], bad=[], prefix=[], noAddr=[], noCountry=[], foreign=[];
+    const byTRN=new Map(), byName=new Map();
+    rows.forEach((r,i)=>{
+      const name=String(get(r,mc,"name")||"").trim(); const trnRaw=get(r,mc,"trn"); const country=get(r,mc,"country");
+      const uae=isUAE(country); if (!uae) foreign.push(name);
+      custIndex.set(name.toLowerCase(), {trn:cleanTRN(trnRaw), country, i});
+      const st=trnStatus(trnRaw);
+      if (uae && st==="missing"){ miss.push(name); custCrit.add(i); }
+      else if (st==="format"){ bad.push(`${name}: ${cleanTRN(trnRaw)}`); custCrit.add(i); }
+      else if (st==="prefix"){ prefix.push(`${name}: ${cleanTRN(trnRaw)}`); custMajor.add(i); }
+      if (st==="ok"){ const t=cleanTRN(trnRaw); if (!byTRN.has(t)) byTRN.set(t,new Set()); byTRN.get(t).add(name); }
+      if (name){ const key=name.toLowerCase().replace(/\b(llc|l\.l\.c|fzco|fze|fz-llc|fz llc|ltd|limited|trading|co|company)\b\.?/g,"").replace(/[^a-z0-9]/g,""); if (!byName.has(key)) byName.set(key,new Set()); if (st==="ok") byName.get(key).add(cleanTRN(trnRaw)); }
+      const addr=[get(r,mc,"address"),get(r,mc,"city")].map(x=>String(x==null?"":x).trim()).filter(Boolean).length; if (!addr){ noAddr.push(name); custMajor.add(i); }
+      if (mc.country && !String(country==null?"":country).trim()){ noCountry.push(name); custMinor.add(i); }
+    });
+    const dupTRN=[...byTRN.entries()].filter(([,names])=>names.size>1); const dupName=[...byName.entries()].filter(([,trns])=>trns.size>1);
+    const trnMapped=!!mc.trn;
+    if (!trnMapped) add("c0","critical","No TRN column found in the customer list",`Map the TRN column above, or every B2B invoice to these ${n.toLocaleString("en-US")} customers will fail buyer identification.`,n,[],"Export the customer list with the Tax Registration Number column, or add it.","Buyer TRN is a mandatory field on every B2B e-invoice.");
+    else {
+      add("c1", miss.length?"critical":"pass", "UAE customers with no TRN", miss.length?`${miss.length} of ${n} customers have an empty TRN. Every e-invoice to them will be rejected at the buyer's provider until it is filled.`:"Every UAE customer carries a TRN.", miss.length, miss, "Ask each customer for their TRN (it is on their VAT certificate and their own invoices) and record it on the master before go-live. Customers not registered for VAT must still obtain a TIN under the e-invoicing rules.", "Buyer TRN / TIN is mandatory; the Peppol identifier is 0235 plus the TIN.");
+      add("c2", bad.length?"critical":"pass", "TRNs that are not 15 digits", bad.length?`${bad.length} TRNs are the wrong length or contain letters; they will fail format validation.`:"All TRNs are 15 digits.", bad.length, bad, "Correct against the customer's VAT certificate. Watch for trailing digits lost in Excel, spaces, and GSTINs or other countries' numbers entered in the TRN field.", "A UAE TRN is a 15-digit number.");
+      add("c3", prefix.length?"major":"pass", "15-digit numbers that do not begin with 100", prefix.length?`${prefix.length} numbers are 15 digits but do not start with 100, the UAE TRN prefix; they may be foreign tax numbers or typing errors.`:"All TRNs carry the UAE prefix.", prefix.length, prefix, "Verify each one with the customer; move foreign tax numbers to a separate field and mark the customer as non-UAE.", "UAE TRNs begin with 100.");
+      add("c4", dupTRN.length?"major":"pass", "One TRN shared by several customer names", dupTRN.length?`${dupTRN.length} TRNs appear under more than one customer; one of them is the wrong legal entity or a duplicate record.`:"No TRN is shared across customers.", dupTRN.length, dupTRN.map(([t,names])=>`${t}: ${[...names].join(" / ")}`), "Merge duplicate records; where two genuinely different companies share a TRN, one of them is wrong.", "The TRN must identify the legal entity being invoiced.");
+      add("c5", dupName.length?"major":"pass", "Same customer with different TRNs", dupName.length?`${dupName.length} customers appear with more than one TRN; invoices will be reported against inconsistent identities.`:"Each customer has one TRN.", dupName.length, dupName.map(([k,trns])=>`${k}: ${[...trns].join(" / ")}`), "Decide the correct TRN per legal entity and retire the others; branches of one company share the parent's TRN.", "Consistent buyer identity across invoices.");
+    }
+    add("c6", noAddr.length?"major":"pass", "Customers with no address", noAddr.length?`${noAddr.length} customers have no address or city; the buyer address block is mandatory.`:"Every customer has an address.", noAddr.length, noAddr, "Capture street or PO box, city/emirate and country for each customer; the country code is mandatory.", "Buyer address and country code are mandatory fields.");
+    if (mc.country) add("c7", noCountry.length?"minor":"pass", "Customers with no country", noCountry.length?`${noCountry.length} customers have a blank country; the country code decides whether the invoice is domestic, export or designated-zone.`:"Every customer has a country.", noCountry.length, noCountry, "Fill the ISO country code (AE for the UAE).", "Country code drives the VAT category and the mandatory buyer fields.");
+    if (foreign.length) add("c8","info","Non-UAE customers",`${foreign.length} customers are outside the UAE. Invoices to them are typically zero-rated exports and still need a tax category and an AED tax amount if invoiced in foreign currency.`,foreign.length,foreign,"Confirm the zero-rating evidence (export documents) and the AED conversion for each.", "Exports are in scope with their own category.");
+    out.cust={ n, critical:custCrit.size, major:custMajor.size, minor:custMinor.size };
+  }
+
+  if (inv && mi.invNo){
+    const rows=inv.rows; const n=rows.length;
+    let invCrit=new Set(), invMajor=new Set(), invMinor=new Set(); let totalAED=0; let riskAED=0;
+    const seen=new Map(), dup=[], blankNo=[], blankCust=[], noTRN=[], notInMaster=[], vatMath=[], totalMath=[], zeroNoCat=[], negNoCN=[], fx=[], badDate=[], futureDate=[], precision=[];
+    const amount=r=>{ const t=num(get(r,mi,"total")); if (!isNaN(t)) return t; const a=num(get(r,mi,"net")), v=num(get(r,mi,"vat")); return (isNaN(a)?0:a)+(isNaN(v)?0:v); };
+    rows.forEach((r,i)=>{
+      const no=String(get(r,mi,"invNo")||"").trim(); const custName=String(get(r,mi,"customer")||"").trim();
+      const amt=amount(r); totalAED+=Math.abs(amt)||0;
+      if (!no){ blankNo.push(custName||`row ${i+2}`); invCrit.add(i); } else { if (seen.has(no)){ dup.push(no); invCrit.add(i); } seen.set(no,i); }
+      if (!custName){ blankCust.push(no||`row ${i+2}`); invCrit.add(i); }
+      const master=custIndex.get(custName.toLowerCase());
+      let trn=cleanTRN(get(r,mi,"trn")); if (!trn && master) trn=master.trn;
+      const country = master ? master.country : undefined; const uae = isUAE(country);
+      if (uae && trnStatus(trn)!=="ok"){ noTRN.push(`${no||"?"} · ${custName}`); invCrit.add(i); }
+      if (cust && mc.name && custName && !master){ notInMaster.push(`${no||"?"} · ${custName}`); invMajor.add(i); }
+      const net=num(get(r,mi,"net")), vat=num(get(r,mi,"vat")), tot=num(get(r,mi,"total")); const cat=String(get(r,mi,"taxCategory")||"").trim();
+      if (!isNaN(net)&&!isNaN(vat)&&vat!==0){ if (Math.abs(Math.abs(vat)-Math.abs(net)*0.05)>0.051 && !/zero|exempt|out|rc|reverse|export|0%/i.test(cat)){ vatMath.push(`${no} · net ${net} · VAT ${vat}`); invMajor.add(i); } }
+      if (!isNaN(net)&&!isNaN(vat)&&!isNaN(tot)){ if (Math.abs(tot-(net+vat))>0.051){ totalMath.push(`${no} · ${net} + ${vat} ≠ ${tot}`); invMajor.add(i); } }
+      if (!isNaN(vat)&&vat===0&&!isNaN(net)&&net!==0){ if (!cat || /^5\s*%?$|standard/i.test(cat)){ zeroNoCat.push(`${no} · ${custName}`); invCrit.add(i); } }
+      const dt=String(get(r,mi,"docType")||""); if ((amt<0||net<0) && !/credit|cn\b|return|cr note/i.test(dt+" "+no)){ negNoCN.push(`${no} · ${amt}`); invMajor.add(i); }
+      const cur=String(get(r,mi,"currency")||"").trim().toUpperCase(); if (cur && cur!=="AED"){ fx.push(`${no} · ${cur}`); invMinor.add(i); }
+      if (mi.date){ const d=parseDate(get(r,mi,"date")); if (!d){ badDate.push(no); invMinor.add(i); } else if (d.getTime()>Date.now()+86400000){ futureDate.push(no); invMinor.add(i); } }
+      [get(r,mi,"net"),get(r,mi,"vat"),get(r,mi,"total")].forEach(v=>{ if (v!==undefined && v!=="" && decimals(v)>2 && !precision.includes(no)){ precision.push(no); invMinor.add(i); } });
+    });
+    rows.forEach((r,i)=>{ if (invCrit.has(i)) riskAED+=Math.abs(amount(r))||0; });
+    add("i1", (dup.length||blankNo.length)?"critical":"pass", "Missing or duplicate invoice numbers", (dup.length||blankNo.length)?`${blankNo.length} invoices have no number and ${dup.length} numbers repeat. Each e-invoice needs a unique number.`:"Every invoice has a unique number.", dup.length+blankNo.length, [...blankNo.map(x=>"blank · "+x),...dup], "Fix the numbering series per entity; one sequence per issuing entity, no reuse across years without a prefix.", "Invoice number is a mandatory, unique field.");
+    add("i2", noTRN.length?"critical":"pass", "Invoices to UAE customers without a valid TRN", noTRN.length?`${noTRN.length} of ${n} invoices (${pct(noTRN.length,n)}%) carry no valid buyer TRN, on the invoice or in the customer list. These are the invoices that will be rejected.`:"Every invoice to a UAE customer has a valid buyer TRN.", noTRN.length, noTRN, "Fix the customer master first (see the customer findings); the invoice inherits the TRN from it. For one-off customers, capture the TRN at order stage.", "Buyer identification is validated by the buyer's provider before delivery.");
+    if (cust && mc.name) add("i3", notInMaster.length?"major":"pass", "Invoices to customers not in the customer list", notInMaster.length?`${notInMaster.length} invoices name a customer that does not match any record in the list, so no TRN or address can be inherited.`:"Every invoiced customer is in the customer list.", notInMaster.length, notInMaster, "Reconcile names between the sales module and the master (spelling, LLC/FZCO suffixes, trade names vs legal names).", "The e-invoice uses the legal name registered with the FTA.");
+    add("i4", vatMath.length?"major":"pass", "VAT not equal to 5% of the taxable amount", vatMath.length?`${vatMath.length} invoices carry VAT that is not 5% of the net and are not marked zero-rated, exempt or reverse charge.`:"VAT arithmetic is consistent.", vatMath.length, vatMath, "Check rounding rules (line-level vs document-level), mixed-rate invoices that need one category per line, and discounts applied after VAT.", "Tax breakdown totals are validated against line amounts.");
+    add("i5", totalMath.length?"major":"pass", "Totals that do not add up", totalMath.length?`${totalMath.length} invoices have total ≠ net + VAT.`:"Totals reconcile.", totalMath.length, totalMath, "Trace to rounding or charges outside the tax base; every charge and allowance must be a line or a document-level allowance/charge.", "Document totals are validated.");
+    add("i6", zeroNoCat.length?"critical":"pass", "Zero-VAT invoices with no tax category", zeroNoCat.length?`${zeroNoCat.length} invoices carry no VAT and no zero-rated / exempt / out-of-scope / reverse-charge category. They cannot be classified and will be rejected.`:"Every zero-VAT invoice carries a category.", zeroNoCat.length, zeroNoCat, "Map every tax code in the system to a PINT AE category: standard 5%, zero-rated, exempt, out of scope, reverse charge, designated zone.", "A VAT category is mandatory on every line.");
+    add("i7", negNoCN.length?"major":"pass", "Negative invoices not issued as credit notes", negNoCN.length?`${negNoCN.length} documents carry negative amounts but are not marked as credit notes.`:"Reductions are issued as credit notes.", negNoCN.length, negNoCN, "Issue reductions, cancellations and refunds as electronic credit notes referencing the original invoice; AED 100 per late credit note.", "Credit notes are a distinct document with their own obligation.");
+    add("i8", fx.length?"minor":"pass", "Foreign-currency invoices", fx.length?`${fx.length} invoices are not in AED. The VAT amount must also be stated in AED at the applicable rate.`:"All invoices are in AED.", fx.length, fx, "Add the AED tax amount and exchange rate to the invoice data; confirm the provider's connector carries both.", "Tax amounts are reported in AED.");
+    if (mi.date) add("i9", (badDate.length||futureDate.length)?"minor":"pass", "Dates that do not parse or sit in the future", (badDate.length||futureDate.length)?`${badDate.length} dates could not be read and ${futureDate.length} are in the future.`:"All dates are valid.", badDate.length+futureDate.length, [...badDate,...futureDate], "Use one date format in the export; issuance timing is enforced from the invoice date.", "Issue date is mandatory and drives the issuance deadline.");
+    add("i10", precision.length?"minor":"pass", "Amounts beyond two decimals", precision.length?`${precision.length} invoices carry amounts with more than two decimals.`:"Amounts are two-decimal.", precision.length, precision, "Round at line level before export; keep unit prices precise, amounts to two decimals.", "Amount fields are validated to two decimals.");
+    out.inv={ n, critical:invCrit.size, major:invMajor.size, minor:invMinor.size, totalAED, riskAED, riskCount:invCrit.size };
+  }
+
+  // score
+  let score=100, base=0;
+  if (out.inv){ base=out.inv.n; score -= 60*out.inv.critical/base + 25*out.inv.major/base + 10*out.inv.minor/base; }
+  else if (out.cust){ base=out.cust.n; score -= 60*out.cust.critical/base + 25*out.cust.major/base + 10*out.cust.minor/base; }
+  if (out.inv && out.cust){ score -= 10*out.cust.critical/out.cust.n; }
+  out.score = Math.max(0, Math.min(100, Math.round(score)));
+  const order={critical:0,major:1,minor:2,info:3,pass:4}; findings.sort((a,b)=>order[a.sev]-order[b.sev] || b.count-a.count);
+  return out;
+}
+
+/* ===================== RENDER RESULTS ===================== */
+function renderResults(res, scroll=true){
+  state.result=res; $("#results").hidden=false;
+  $("#res-eyebrow").textContent = (state.sample?"Results · sample data — load your own files to replace":"Results · your data, checked in this browser");
+  const tiles=[];
+  tiles.push(`<div class="card tile score"><b>${res.score}</b><span>readiness score out of 100</span><div class="gauge"><i style="width:${res.score}%"></i></div></div>`);
+  if (res.inv){ tiles.push(`<div class="card tile risk"><b>${res.inv.riskCount} <span style="display:inline;font-size:1rem;color:var(--muted)">/ ${res.inv.n}</span></b><span>invoices that would be rejected today (${pct(res.inv.riskCount,res.inv.n)}%)</span></div>`); tiles.push(`<div class="card tile risk"><b>${fmtAED(res.inv.riskAED)}</b><span>receivables on those invoices — the money that waits</span></div>`); }
+  else if (res.cust){ tiles.push(`<div class="card tile risk"><b>${res.cust.critical} <span style="display:inline;font-size:1rem;color:var(--muted)">/ ${res.cust.n}</span></b><span>customers every invoice to whom would be rejected</span></div>`); }
+  const crit=res.findings.filter(f=>f.sev==="critical").length, maj=res.findings.filter(f=>f.sev==="major").length, min=res.findings.filter(f=>f.sev==="minor").length;
+  tiles.push(`<div class="card tile"><b>${crit}<span style="display:inline;font-size:1rem;color:var(--muted)"> · ${maj} · ${min}</span></b><span>critical · major · minor findings</span></div>`);
+  $("#tiles").innerHTML=tiles.join("");
+  const v=$("#verdict"); const good=res.score>=85;
+  v.className="card verdict"+(good?" good":"");
+  v.innerHTML = good ? `<b>Close to ready.</b> Fix the remaining findings and run one real scenario in your provider's sandbox; your data is not the thing that will delay go-live.` : res.score>=60 ? `<b>Fixable in days, not weeks.</b> The critical findings below are master-data problems: they are cheap to fix now and expensive to discover in January, one rejected invoice at a time.` : `<b>Not ready to onboard yet.</b> Appointing a provider now would move these problems onto their platform; clean the customer master and tax codes first, then shortlist.`;
+  $("#findings").innerHTML = res.findings.map(f=>`<details class="card finding"><summary><span class="sev ${f.sev}">${f.sev}</span><div><div class="t">${esc(f.title)}</div><div class="d">${esc(f.desc)}</div></div><div class="cnt">${f.sev==="pass"?"✓":f.count.toLocaleString("en-US")}</div></summary><div class="body">${f.examples.length?`<div class="ex">${f.examples.map(esc).join("<br>")}${f.count>f.examples.length?`<br>… and ${(f.count-f.examples.length).toLocaleString("en-US")} more`:""}</div>`:""}<div class="fix"><b>Fix</b><div>${esc(f.fix)}</div></div><div class="fix"><b>Rule</b><div class="muted">${esc(f.why)}</div></div></div></details>`).join("");
+  const plan=[]; const has=id=>res.findings.find(f=>f.id===id && f.sev!=="pass" && f.sev!=="info");
+  if (has("c0")||has("c1")||has("i2")) plan.push("Collect and record a valid TRN for every UAE customer; start with the customers that carry the most receivables.");
+  if (has("c2")||has("c3")||has("c4")||has("c5")) plan.push("Clean the customer master: 15-digit TRNs beginning with 100, one TRN per legal entity, duplicates merged.");
+  if (has("i6")||has("i4")) plan.push("Map every tax code to a PINT AE category and fix the VAT arithmetic rules in the system.");
+  if (has("i7")) plan.push("Switch reductions and refunds to credit notes that reference the original invoice.");
+  if (has("c6")||has("c7")||has("i3")) plan.push("Complete addresses and country codes; reconcile customer names between sales and master.");
+  if (has("i1")) plan.push("Fix the invoice numbering series so every document is unique per entity.");
+  if (has("i8")||has("i9")||has("i10")) plan.push("Tidy currency, dates and rounding so the export is schema-clean.");
+  plan.push("Shortlist providers against your ERP and volume with the UAE ASP Selector, then test these same files in a sandbox before signing.");
+  $("#plan").innerHTML=`<p class="eyebrow">Fix plan, in order</p><ol>${plan.map(p=>`<li>${esc(p)}</li>`).join("")}</ol>`;
+  renderShare(res);
+  if (scroll) setTimeout(()=>$("#results").scrollIntoView({behavior:"smooth"}), 50);
+}
+function reportText(res){
+  const lines=[`UAE e-invoice data check (${CONFIG.asOf} rules)${state.sample?" — SAMPLE DATA":""}`];
+  if (res.inv) lines.push(`Invoices checked: ${res.inv.n} · would be rejected today: ${res.inv.riskCount} (${pct(res.inv.riskCount,res.inv.n)}%) · receivables on them: ${fmtAED(res.inv.riskAED)}`);
+  if (res.cust) lines.push(`Customers checked: ${res.cust.n} · with rejection-level issues: ${res.cust.critical}`);
+  lines.push(`Readiness score: ${res.score}/100`);
+  res.findings.filter(f=>f.sev!=="pass").forEach(f=>lines.push(`- [${f.sev.toUpperCase()}] ${f.title}: ${f.count}`));
+  if (state.partner) lines.push(`Shared via: ${state.partner.name}`);
+  lines.push(`Checked in-browser; no data was uploaded. Selector: ${CONFIG.selectorUrl}`);
+  return lines.join("\n");
+}
+function renderShare(res){
+  const txt=reportText(res); const pt=state.partner; const wa=CONFIG.adviserWhatsApp;
+  const msg=encodeURIComponent(txt+"\n\nI would like a readiness call to work through these findings.");
+  $("#share").innerHTML=`<div><p class="eyebrow">Next step</p><h2 style="margin-top:4px">${pt?`Talk it through with ${esc(pt.name)}`:"Fix it before you appoint — or have it fixed"}</h2><p class="small muted" style="margin-top:6px">The report below is plain text and contains counts only, no customer data. The fix is typically a few days of master-data and tax-code work; done before onboarding, it is the difference between a two-week go-live and a two-month one.</p></div>
+    <textarea class="report" id="report" readonly>${esc(txt)}</textarea>
+    <div class="actions">
+      ${pt?`<a class="btn primary" href="https://wa.me/${esc(pt.wa)}?text=${msg}" target="_blank" rel="noopener">Message ${esc(pt.name)} on WhatsApp</a>`:`<a class="btn primary" href="https://wa.me/${wa}?text=${msg}" target="_blank" rel="noopener">Book a readiness call</a>`}
+      <a class="btn" href="https://wa.me/?text=${encodeURIComponent(txt)}" target="_blank" rel="noopener">Send to my accountant</a>
+      <button class="btn" id="copy-report">Copy report</button>
+      <a class="btn" href="${esc(CONFIG.selectorUrl)}" target="_blank" rel="noopener">Choose a provider</a>
+    </div>
+    ${pt?`<p class="small muted">Independent second opinion: <a href="https://wa.me/${wa}?text=${msg}" target="_blank" rel="noopener">message the analyst</a>.</p>`:`<p class="small muted">Email <span class="num">${esc(CONFIG.adviserEmail)}</span> <button class="btn sm ghost" id="copy-email">copy</button></p>`}`;
+  $("#copy-report").onclick=()=>copy(reportText(res),"Report copied — counts only, no customer data");
+  const ce=$("#copy-email"); if (ce) ce.onclick=()=>copy(CONFIG.adviserEmail,"Email copied");
+}
+
+/* ===================== SAMPLE DATA ===================== */
+const SAMPLE_CUST = `Customer Name,TRN,Address,City,Country,Email
+Al Noor Trading LLC,100234567800003,Office 1204 Al Moosa Tower,Dubai,UAE,accounts@alnoor.ae
+Desert Rose Interiors FZCO,100456789000003,Warehouse 7 Jebel Ali,Dubai,UAE,finance@desertrose.ae
+Gulf Precision Engineering LLC,,Plot 12 Mussafah,Abu Dhabi,UAE,ap@gulfprecision.ae
+Marina Fresh Foods LLC,10098765400003,Shop 3 Marina Walk,Dubai,UAE,
+Oasis Medical Supplies LLC,100987654000003,Al Qusais Industrial 2,Dubai,UAE,finance@oasismed.ae
+Oasis Medical Supplies L.L.C,100111222333004,Al Qusais Industrial 2,Dubai,UAE,finance@oasismed.ae
+Sharjah Steel Works LLC,100333444555006,,,UAE,ap@sharjahsteel.ae
+Bluewater Logistics FZE,100555666777008,RAKEZ Business Zone,Ras Al Khaimah,UAE,
+Falcon Hospitality Group LLC,100777888999001,Deira,Dubai,UAE,finance@falconhg.ae
+Nile Delta Exports,,14 Corniche El Nil,Cairo,Egypt,export@niledelta.eg
+Riyadh Supply Co,300123456700003,King Fahd Road,Riyadh,Saudi Arabia,ap@riyadhsupply.sa
+Emirates Garden Centre LLC,100777888999001,Al Barsha,Dubai,UAE,
+Qasr Al Khaleej Properties LLC,ABC123456789012,Business Bay,Dubai,UAE,finance@qasr.ae
+Sunrise Pharmacy LLC,100222333444005,Al Nahda,Sharjah,UAE,accounts@sunrisepharm.ae
+Zayed Tech Solutions FZ-LLC,100444555666007,Dubai Internet City,Dubai,,it@zayedtech.ae`;
+const SAMPLE_INV = `Invoice No,Invoice Date,Customer Name,Document Type,Currency,Taxable Amount,VAT Amount,Total,Tax Code
+INV-2026-0901,02/09/2026,Al Noor Trading LLC,Invoice,AED,12000.00,600.00,12600.00,SR
+INV-2026-0902,03/09/2026,Gulf Precision Engineering LLC,Invoice,AED,48500.00,2425.00,50925.00,SR
+INV-2026-0903,03/09/2026,Marina Fresh Foods LLC,Invoice,AED,3200.00,160.00,3360.00,SR
+INV-2026-0904,05/09/2026,Desert Rose Interiors FZCO,Invoice,AED,27000.00,1350.00,28350.00,SR
+INV-2026-0905,08/09/2026,Nile Delta Exports,Invoice,USD,15000.00,0.00,15000.00,
+INV-2026-0906,09/09/2026,Oasis Medical Supplies LLC,Invoice,AED,8800.00,440.00,9240.00,SR
+INV-2026-0906,09/09/2026,Oasis Medical Supplies LLC,Invoice,AED,8800.00,440.00,9240.00,SR
+INV-2026-0907,10/09/2026,Sharjah Steel Works LLC,Invoice,AED,61000.00,3050.00,64050.00,SR
+INV-2026-0908,11/09/2026,Falcon Hospitality Group LLC,Invoice,AED,19500.00,975.00,20475.00,SR
+INV-2026-0909,12/09/2026,Bluewater Logistics FZE,Invoice,AED,7400.00,0.00,7400.00,
+INV-2026-0910,15/09/2026,Riyadh Supply Co,Invoice,SAR,22000.00,0.00,22000.00,ZR
+INV-2026-0911,16/09/2026,Emirates Garden Centre LLC,Invoice,AED,5600.00,290.00,5890.00,SR
+INV-2026-0912,17/09/2026,Qasr Al Khaleej Properties LLC,Invoice,AED,150000.00,7500.00,157500.00,SR
+INV-2026-0913,18/09/2026,Sunrise Pharmacy LLC,Invoice,AED,2450.00,122.50,2572.50,SR
+INV-2026-0914,19/09/2026,Al Noor Trading LLC,Invoice,AED,-1200.00,-60.00,-1260.00,SR
+INV-2026-0915,22/09/2026,Zayed Tech Solutions FZ-LLC,Invoice,AED,9900.333,495.02,10395.35,SR
+INV-2026-0916,23/09/2026,Al Ain Dairy Distributors LLC,Invoice,AED,4300.00,215.00,4515.00,SR
+INV-2026-0917,24/09/2026,Marina Fresh Foods LLC,Invoice,AED,3100.00,155.00,3255.00,SR
+CN-2026-0018,25/09/2026,Desert Rose Interiors FZCO,Credit Note,AED,-2000.00,-100.00,-2100.00,SR
+INV-2026-0919,,Falcon Hospitality Group LLC,Invoice,AED,11000.00,550.00,11550.00,SR
+INV-2026-0920,29/09/2026,Gulf Precision Engineering LLC,Invoice,AED,36000.00,1800.00,37800.00,SR
+,30/09/2026,Sunrise Pharmacy LLC,Invoice,AED,1800.00,90.00,1890.00,SR`;
+function loadSample(){ setTable("cust", tableFromRows(parseCSV(SAMPLE_CUST)), "sample customers", true); setTable("inv", tableFromRows(parseCSV(SAMPLE_INV)), "sample invoices", true); }
+
+/* ===================== PARTNER MODE ===================== */
+function decodePartner(t){ const m=/^p-(\d{7,15})-([A-Za-z0-9_\-]{1,40})$/.exec(t||""); return m?{wa:m[1],name:m[2].replace(/_/g," ")}:null; }
+function renderPartner(){ const b=$("#pbanner"), pt=state.partner; b.hidden=!pt; if(!pt) return; $("#pbanner-name").textContent=pt.name; $("#pbanner-wa").href="https://wa.me/"+pt.wa+"?text="+encodeURIComponent("Hello "+pt.name+", I ran the e-invoice data check you shared and have a question."); }
+
+/* ===================== BOOT ===================== */
+function run(){
+  if (!state.cust && !state.inv){ toast("Load a customer list or an invoice register first, or try the sample"); return; }
+  if (state.cust && !state.mapCust.name){ toast("Map the customer name column for the customer list"); return; }
+  if (state.inv && !state.mapInv.invNo){ toast("Map the invoice number column for the register"); return; }
+  if (state.inv && (!state.mapInv.net||!state.mapInv.vat)){ toast("Map the taxable amount and VAT amount columns"); return; }
+  renderResults(runChecks());
+}
+function start(){
+  (location.hash||"").slice(1).split(".").forEach(seg=>{ const p=decodePartner(seg); if (p) state.partner=p; });
+  renderPartner(); wireSlot("cust"); wireSlot("inv");
+  $("#run").onclick=run; $("#sample").onclick=()=>{ loadSample(); run(); };
+  $("#clear").onclick=()=>{ clearSlot("cust"); clearSlot("inv"); state.sample=false; state.result=null; $("#results").hidden=true; };
+  if (typeof XLSX==="undefined") $("#xlsx-note").textContent="Excel files need the sheet exported as CSV in this view.";
+  // complete at rest: show the sample result so the page explains itself
+  loadSample(); renderResults(runChecks(), false);
+  try { window.claude?.hot?.snapshot?.(()=>({sample:state.sample})); } catch(e){}
+}
+(function boot(){ const hot=window.claude&&window.claude.hot; const go=()=>start(); if (hot&&typeof hot.ready==="function") hot.ready(go); else go(); })();
+</script>

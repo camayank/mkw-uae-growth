@@ -1,0 +1,14 @@
+{
+  "name": "uae-asp-selector",
+  "version": "1.0.0",
+  "private": true,
+  "description": "UAE ASP Selector and E-Invoice Data Check — neutral, static, browser-side tools for the UAE e-invoicing mandate",
+  "scripts": {
+    "build": "python3 build/build.py",
+    "test": "npm run test:selector && npm run test:validator",
+    "test:selector": "node tests/test.js",
+    "test:validator": "node tools/validator/test.js"
+  },
+  "devDependencies": { "jsdom": "24.1.0" },
+  "license": "MIT"
+}

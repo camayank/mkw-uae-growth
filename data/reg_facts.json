@@ -1,0 +1,357 @@
+{
+  "as_of": "2026-10-17",
+  "method_note": "Every fact below carries URLs that were actually fetched on 2026-10-17. Primary sources are the MoF PDFs of the decisions themselves, the MoF eInvoicing portal, the FTA press release, and the UAE Legislation portal. Where the MoF's own October 2026 programme deck contradicts the MoF legislation page (penalties decision), both are recorded and the conflict is flagged as unconfirmed.",
+  "phases": [
+    {
+      "cohort": "Pilot Programme (Taxpayer Working Group)",
+      "scope": "Persons notified by the Ministry and agreeing in writing to join the Taxpayer Working Group (MD 244/2025 Art. 3). Pilot commenced 1 July 2026; MoF confirmed the 5-corner model is live for the pilot phase; FTA stated on 29 Sep 2026 that the pilot phase 'has been completed'.",
+      "asp_deadline": null,
+      "go_live": "2026-07-01",
+      "status": "confirmed",
+      "sources": [
+        "https://mof.gov.ae/wp-content/uploads/2025/09/Ministerial-Decision-No.-244-of-2025-on-the-Implementation-of-the-Electronic-Invoicing-System.pdf",
+        "https://mof.gov.ae/wp-content/uploads/2026/06/UAE-eInvoicing-Programme-30June2026.pdf",
+        "https://mof.gov.ae/en/news/ministry-of-finance-hosts-awareness-event-in-ras-al-khaimah-on-latest-einvoicing-updates/",
+        "https://tax.gov.ae/en/media.centre/news/federal.tax.authority.organises.joint.awareness.meeting.for.accredited.service.providers.and.persons.subject.to.the.einvoicing.system.aspx"
+      ]
+    },
+    {
+      "cohort": "Voluntary early adopters",
+      "scope": "Any Person may implement the Electronic Invoicing System voluntarily from 1 July 2026, subject to the technical requirements set by the Ministry and the Authority (MD 244/2025 Art. 4). Excluded Persons may also opt in; the violations/penalties provisions do not apply to voluntary participation (MD 243/2025 Art. 4; CD 106/2025 Art. 2(2)).",
+      "asp_deadline": null,
+      "go_live": "2026-07-01",
+      "status": "confirmed",
+      "sources": [
+        "https://mof.gov.ae/wp-content/uploads/2025/09/Ministerial-Decision-No.-244-of-2025-on-the-Implementation-of-the-Electronic-Invoicing-System.pdf",
+        "https://mof.gov.ae/wp-content/uploads/2025/09/Ministerial-Decision-no.-243-of-2025-on-the-Electronic-Invoicing-System.pdf",
+        "https://uaelegislation.gov.ae/en/legislations/3714/download"
+      ]
+    },
+    {
+      "cohort": "Phase 1 - Persons with Revenue >= AED 50,000,000",
+      "scope": "Persons subject to the Electronic Invoicing System whose Revenue is 'equal to or exceeds AED 50,000,000'. Revenue = gross income earned during the most recent Accounting Period per financial statements (or other documentation acceptable to the Authority) (MD 244/2025 Art. 1). ASP deadline was 31 July 2026 under the original MD 244/2025 Art. 5(1)(a); replaced by Ministerial Decision No. 66 of 2026 (Article One substitutes Art. 5(1)(a)) with 30 October 2026. Go-live unchanged at 1 January 2027. FTA (29 Sep 2026) and MoF (27 Sep 2026) both restated 30 Oct 2026 / 1 Jan 2027. MoF 30 June 2026 deck: 'All other eInvoicing implementation deadlines remain unchanged, and no further extensions will be granted.'",
+      "asp_deadline": "2026-10-30",
+      "go_live": "2027-01-01",
+      "status": "confirmed",
+      "sources": [
+        "https://mof.gov.ae/wp-content/uploads/2026/05/Ministerial-Resolution-No.-66-of-2026-Amending-Certain-Provisions-of-Ministerial-Resolution-No.-244-of-2025-Regarding-the-Implementation-of-the-Electronic-Invoicing-System-En-20260514.pdf",
+        "https://mof.gov.ae/wp-content/uploads/2025/09/Ministerial-Decision-No.-244-of-2025-on-the-Implementation-of-the-Electronic-Invoicing-System.pdf",
+        "https://tax.gov.ae/en/media.centre/news/federal.tax.authority.organises.joint.awareness.meeting.for.accredited.service.providers.and.persons.subject.to.the.einvoicing.system.aspx",
+        "https://mof.gov.ae/en/news/ministry-of-finance-hosts-awareness-event-in-ras-al-khaimah-on-latest-einvoicing-updates/",
+        "https://mof.gov.ae/wp-content/uploads/2026/06/UAE-eInvoicing-Programme-30June2026.pdf",
+        "https://bsalaw.com/insight/uae-electronic-invoicing-system-key-amendments/",
+        "https://gulfnews.com/amp/story/business%2Fuae-announces-extension-of-einvoicing-provider-deadline-to-october-2026-1.500535895"
+      ]
+    },
+    {
+      "cohort": "Phase 2 - Persons with Revenue < AED 50,000,000",
+      "scope": "Persons subject to the Electronic Invoicing System with Revenue below AED 50,000,000 (MD 244/2025 Art. 5(1)(b)). Unchanged by MD 66/2026. Includes VAT-unregistered businesses conducting Business in the UAE (see scope). Note: BSA Law's May 2026 note gives 1 Oct 2027 for this cohort, which conflicts with the decision text (1 July 2027); the decision text and FTA/MoF Sept 2026 statements govern.",
+      "asp_deadline": "2027-03-31",
+      "go_live": "2027-07-01",
+      "status": "confirmed",
+      "sources": [
+        "https://mof.gov.ae/wp-content/uploads/2025/09/Ministerial-Decision-No.-244-of-2025-on-the-Implementation-of-the-Electronic-Invoicing-System.pdf",
+        "https://tax.gov.ae/en/media.centre/news/federal.tax.authority.organises.joint.awareness.meeting.for.accredited.service.providers.and.persons.subject.to.the.einvoicing.system.aspx",
+        "https://mof.gov.ae/wp-content/uploads/2026/06/UAE-Electronic-Invoicing-Guidelines_V-1.1-01June2026.pdf",
+        "https://gulfnews.com/business/tax-news/e-invoicing-countdown-what-uae-companies-must-do-before-october-30-1.500692228"
+      ]
+    },
+    {
+      "cohort": "Phase 3 - Government Entities",
+      "scope": "Government Entities (federal and local) in respect of non-sovereign Business Transactions; sovereign-capacity activities not in competition with the private sector are Excluded Transactions (MD 243/2025 Art. 4(a)). MD 244/2025 Art. 5(1)(c). Unchanged by MD 66/2026.",
+      "asp_deadline": "2027-03-31",
+      "go_live": "2027-10-01",
+      "status": "confirmed",
+      "sources": [
+        "https://mof.gov.ae/wp-content/uploads/2025/09/Ministerial-Decision-No.-244-of-2025-on-the-Implementation-of-the-Electronic-Invoicing-System.pdf",
+        "https://mof.gov.ae/wp-content/uploads/2026/06/UAE-Electronic-Invoicing-Guidelines_V-1.1-01June2026.pdf",
+        "https://gulfnews.com/business/tax-news/e-invoicing-countdown-what-uae-companies-must-do-before-october-30-1.500692228",
+        "https://www.deloitte.com/middle-east/en/services/tax/perspectives/release-of-uae-einvoicing-legislation.html"
+      ]
+    },
+    {
+      "cohort": "B2C-only businesses",
+      "scope": "Business-to-Consumer Transactions, and Persons engaged exclusively in them, are excluded from the system 'until the Minister issues a decision setting a different date' (MD 244/2025 Art. 5(2)). No date set as of 2026-10-17.",
+      "asp_deadline": null,
+      "go_live": null,
+      "status": "confirmed",
+      "sources": [
+        "https://mof.gov.ae/wp-content/uploads/2025/09/Ministerial-Decision-No.-244-of-2025-on-the-Implementation-of-the-Electronic-Invoicing-System.pdf",
+        "https://bsalaw.com/insight/uae-electronic-invoicing-system-key-amendments/"
+      ]
+    }
+  ],
+  "instruments": [
+    {
+      "name": "Ministerial Decision No. 243 of 2025 on the Electronic Invoicing System",
+      "covers": "Core substantive decision: definitions (Electronic Invoice, Electronic Credit Note, ASP accredited under MD 64/2025, Business Transaction); scope = any Person conducting Business in the State for every Business Transaction unless excluded (Art. 3); Excluded Transactions (Art. 4); mandatory appointment of an ASP by both Issuer and Recipient and 5-business-day notification of registered-data changes (Art. 5); issue/transmit obligations incl. credit-note triggers and 14-day rule for non-Registrants (Art. 6); self-billing only between Registrants (Art. 9); FTA access to data (Art. 10); storage within the State for the Tax Procedures Law period (Art. 11); System Failure notification within 2 Business Days (Art. 12); effective on Official Gazette publication (Art. 15). Signed by Mohamed bin Hadi Al Hussaini, Minister of State for Financial Affairs. The MoF Oct 2026 deck refers to '243 of 2025 and its amendments' but no amending instrument to 243 is listed on the MoF legislation page.",
+      "status": "confirmed",
+      "sources": [
+        "https://mof.gov.ae/wp-content/uploads/2025/09/Ministerial-Decision-no.-243-of-2025-on-the-Electronic-Invoicing-System.pdf",
+        "https://www.mof.gov.ae/eInvoicing",
+        "https://www.deloitte.com/middle-east/en/services/tax/perspectives/release-of-uae-einvoicing-legislation.html"
+      ]
+    },
+    {
+      "name": "Ministerial Decision No. 244 of 2025 on the Implementation of the Electronic Invoicing System",
+      "covers": "Implementation framework: definitions of Taxpayer Working Group, Pilot Programme, Accounting Period, B2C Transaction, Revenue (Art. 1); Pilot Programme from 1 July 2026 (Art. 3); voluntary implementation from 1 July 2026 (Art. 4); mandatory phased implementation by Revenue band and for Government Entities, B2C exclusion until further ministerial decision, onboarding/technical requirements (Art. 5); effective on Gazette publication (Art. 6). Art. 5(1)(a) amended by MD 66/2026.",
+      "status": "confirmed",
+      "sources": [
+        "https://mof.gov.ae/wp-content/uploads/2025/09/Ministerial-Decision-No.-244-of-2025-on-the-Implementation-of-the-Electronic-Invoicing-System.pdf",
+        "https://www.mof.gov.ae/eInvoicing"
+      ]
+    },
+    {
+      "name": "Ministerial Decision No. 66 of 2026 Amending Certain Provisions of Ministerial Decision No. 244 of 2025 on the Implementation of the Electronic Invoicing System",
+      "covers": "The 2026 ASP-extension decision. Article One replaces Art. 5(1)(a) of MD 244/2025: Persons with Revenue equal to or exceeding AED 50,000,000 must appoint an ASP by 30 October 2026 and implement by 1 January 2027. Article Two repeals conflicting provisions. Article Three: effective the day after Gazette publication. MoF PDF filename dated 14 May 2026; MoF announced the amendment on 10 May 2026 (reported by Gulf News/BSA). Signed by Mohamed bin Hadi Al Hussaini.",
+      "status": "confirmed",
+      "sources": [
+        "https://mof.gov.ae/wp-content/uploads/2026/05/Ministerial-Resolution-No.-66-of-2026-Amending-Certain-Provisions-of-Ministerial-Resolution-No.-244-of-2025-Regarding-the-Implementation-of-the-Electronic-Invoicing-System-En-20260514.pdf",
+        "https://www.mof.gov.ae/eInvoicing",
+        "https://gulfnews.com/amp/story/business%2Fuae-announces-extension-of-einvoicing-provider-deadline-to-october-2026-1.500535895",
+        "https://www.e-invoice.app/blog/uae-einvoicing-asp-deadline-extended-october-2026"
+      ]
+    },
+    {
+      "name": "Ministerial Decision No. 64 of 2025 on the eligibility criteria and accreditation procedure for Service Providers under the Electronic Invoicing System",
+      "covers": "Original ASP accreditation framework: active Peppol certification + OpenPeppol conformance tests; 2 years' e-invoicing operating experience; UAE incorporation or licensed foreign entity; paid-up capital >= AED 50,000; audited financials; ISO 22301; Corporate Tax (and VAT where required) registration; PSP product ISO/IEC 27001, MFA, encryption; 100 free eInvoice exchange/reporting services per End User per year; insurance (professional indemnity AED 2.5M, crime AED 5M, cyber fraud AED 5M); accreditation valid 2 years, renewal 70 Business Days before expiry. REPEALED with effect from 1 October 2026 by MD 168/2026 Art. 18.",
+      "status": "confirmed (repealed)",
+      "sources": [
+        "https://mof.gov.ae/wp-content/uploads/2025/03/Ministerial_Decision_Eligibility_and_Accreditation_procedure_for_SPs_EN.pdf",
+        "https://mof.gov.ae/wp-content/uploads/2026/10/Ministerial-Decision-No-168-of-2026-on-Eligibility-criteria-and-Accreditation-Procedure-EN-FINAL.pdf",
+        "https://mof.gov.ae/en/news/ministry-of-finance-issues-decision-on-accreditation-of-einvoicing-service-providers-under-updated-regulatory-framework/"
+      ]
+    },
+    {
+      "name": "Ministerial Decision No. 56 of 2026 Amending Certain Provisions of Ministerial Decision No. 64 of 2025",
+      "covers": "Second 2026 amending decision (the 'white-label' change). Replaces Art. 5 of MD 64/2025 with eight accreditation conditions; new Art. 5(2) lets an ASP use a third-party-owned PSP Product and outsource development/operation/management while retaining full responsibility; Art. 5(3) ministerial waiver; new Art. 5(bis) deems the 2-year experience condition met where the PSP Product has operated >= 2 years. Effective the day after Gazette publication. Subsequently repealed together with MD 64/2025 by MD 168/2026.",
+      "status": "confirmed (repealed)",
+      "sources": [
+        "https://mof.gov.ae/wp-content/uploads/2026/05/Ministerial-Resolution-No.-56-of-2026-Amending-Certain-Provisions-of-Ministerial-Resolution-No.-64-of-2025-En-20260510.pdf",
+        "https://www.mof.gov.ae/eInvoicing",
+        "https://mof.gov.ae/en/news/ministry-of-finance-issues-decision-on-accreditation-of-einvoicing-service-providers-under-updated-regulatory-framework/"
+      ]
+    },
+    {
+      "name": "Ministerial Decision No. 168 of 2026 on the Eligibility Criteria and Accreditation Procedure for Service Providers under the Electronic Invoicing System",
+      "covers": "Current ASP accreditation framework, effective 1 October 2026 (Art. 20), announced by MoF 9 October 2026. Repeals MD 64/2025 and its amendments incl. MD 56/2026 (Art. 18). Removes the preliminary/pre-approval stage in favour of direct accreditation after assessment and testing; keeps third-party Peppol product/outsourcing flexibility; sets renewal, ongoing evaluation, termination and objection procedures. Transition (Art. 19): pre-approved providers have up to 30 days from 1 Oct 2026 to meet accreditation requirements or pre-approval is terminated. Criteria largely carried over: Peppol certification, paid-up capital AED 50,000, ISO 22301, ISO/IEC 27001, insurance AED 2.5M/5M/5M, 100 free services per End User p.a., 2-year validity, renewal 70 Business Days before expiry.",
+      "status": "confirmed",
+      "sources": [
+        "https://mof.gov.ae/wp-content/uploads/2026/10/Ministerial-Decision-No-168-of-2026-on-Eligibility-criteria-and-Accreditation-Procedure-EN-FINAL.pdf",
+        "https://mof.gov.ae/en/news/ministry-of-finance-issues-decision-on-accreditation-of-einvoicing-service-providers-under-updated-regulatory-framework/",
+        "https://www.fiscal-requirements.com/news/6078-uae-introduces-new-accreditation-rules-for-e-invoicing-service-providers-ahead-of-2027-rollout",
+        "https://gulfnews.com/amp/story/business%2Fcorporate-tax%2Fuae-scraps-e-invoicing-pre-approval-ahead-of-october-deadline-heres-why-1.500707895"
+      ]
+    },
+    {
+      "name": "Cabinet Decision (Resolution) No. 106 of 2025 Regarding Administrative Violations and Fines Arising from Violations of the Legislation Regulating the Electronic Invoicing System",
+      "covers": "E-invoicing penalty regime: Art. 1 definitions (per Federal Decree-Law 28/2022 on Tax Procedures; Electronic Invoice, Electronic Credit Note, Issuer, Recipient, System Failure); Art. 2 scope - applies to violations of e-invoicing legislation, does NOT apply to voluntary participants; Art. 3 fines per annexed Schedule; Art. 4 effective the day after Gazette publication. UAE Legislation portal: issued 9 Oct 2025, Official Gazette No. 809 of 14 Oct 2025, effective 15 Oct 2025, status 'Active'. MoF published it 24 Nov 2025 (press release 8 Dec 2025). CONFLICT: the MoF 'UAE eInvoicing Programme Introduction (Oct 2026)' deck (slide 10) lists 'Cabinet Resolution regarding eInvoicing Penalties - Cabinet Decision No. 173 of 2026' and marks 'Cabinet Decision No. 106 of 2025 (Repealed)'. As of 17 Oct 2026 the MoF legislation page (updated 16 Oct 2026) and the UAE Legislation portal still list only CD 106/2025 and no text of CD 173/2026 could be located.",
+      "status": "confirmed as enacted; current in-force status unconfirmed (possible repeal by CD 173/2026)",
+      "sources": [
+        "https://uaelegislation.gov.ae/en/legislations/3714",
+        "https://uaelegislation.gov.ae/en/legislations/3714/download",
+        "https://mof.gov.ae/wp-content/uploads/2025/12/Cabinet-Decision-Violations-and-Penalties-eInvoicing-final-version-en-8.12.25.pdf",
+        "https://mof.gov.ae/en/news/ministry-of-finance-announces-the-issuance-of-cabinet-resolution-on-administrative-fines-related-to-electronic-invoicing-system/",
+        "https://mof.gov.ae/wp-content/uploads/2026/10/UAE-eInvoicing-Programme-Oct2026.pdf",
+        "https://www.mof.gov.ae/eInvoicing"
+      ]
+    },
+    {
+      "name": "Cabinet Decision No. 173 of 2026 (Cabinet Resolution regarding eInvoicing Penalties)",
+      "covers": "Named only on slide 10 of the MoF 'UAE eInvoicing Programme Introduction (Oct 2026)' deck as the cabinet resolution on eInvoicing penalties, with CD 106/2025 marked '(Repealed)'. No text, title, date, Gazette reference, or penalty schedule found on mof.gov.ae, uaelegislation.gov.ae, tax.gov.ae, or in any Big 4 / law-firm / news source as of 17 Oct 2026. Whether it changes the AED amounts is unknown.",
+      "status": "unconfirmed",
+      "sources": [
+        "https://mof.gov.ae/wp-content/uploads/2026/10/UAE-eInvoicing-Programme-Oct2026.pdf",
+        "https://www.mof.gov.ae/eInvoicing",
+        "https://uaelegislation.gov.ae/en/legislations/3714/related-legislations"
+      ]
+    },
+    {
+      "name": "UAE Electronic Invoicing Guidelines V1.1 (01 June 2026) and UAE Electronic Invoice Mandatory Field Requirements V1.0 (23 Feb 2026)",
+      "covers": "Non-binding MoF guidance: 5-corner model, PINT AE basis, ASP onboarding via EmaraTax, scope matrix (B2B/B2G/G2B/G2G in; B2C/C2B etc. out), exclusions, VAT-unregistered persons, credit notes, retention, tax groups (24-month grace), free zone beneficiary field, penalties cross-reference to CD 106/2025. Note the V1.1 timeline table still shows 31 July 2026 for the >= AED 50M cohort (superseded by MD 66/2026).",
+      "status": "confirmed",
+      "sources": [
+        "https://mof.gov.ae/wp-content/uploads/2026/06/UAE-Electronic-Invoicing-Guidelines_V-1.1-01June2026.pdf",
+        "https://mof.gov.ae/wp-content/uploads/2026/02/UAE-Electronic-Invoice-mandatory-fields_V-1.0-23Feb2026.pdf",
+        "https://www.mof.gov.ae/eInvoicing"
+      ]
+    }
+  ],
+  "penalties": [
+    {
+      "violation": "Schedule item 1: Issuer fails to implement the Electronic Invoicing System, including failing to appoint an Accredited Service Provider, within the timeline specified by the Minister (i.e. the MD 244/2025 dates as amended by MD 66/2026).",
+      "amount": "AED 5,000 for each month or part thereof of delay",
+      "notes": "No cap stated. Accrues monthly from the cohort's ASP-appointment/implementation deadline. Does not apply to voluntary participants (CD 106/2025 Art. 2(2)).",
+      "status": "confirmed (under CD 106/2025; see repeal caveat)",
+      "sources": [
+        "https://uaelegislation.gov.ae/en/legislations/3714/regulations/1313/download",
+        "https://uaelegislation.gov.ae/en/legislations/3714/download",
+        "https://mof.gov.ae/wp-content/uploads/2025/12/Cabinet-Decision-Violations-and-Penalties-eInvoicing-final-version-en-8.12.25.pdf",
+        "https://mof.gov.ae/en/news/ministry-of-finance-announces-the-issuance-of-cabinet-resolution-on-administrative-fines-related-to-electronic-invoicing-system/"
+      ]
+    },
+    {
+      "violation": "Schedule item 2: Issuer fails to issue and transmit an Electronic Invoice to the Recipient through the Electronic Invoicing System within the timeline specified by the Minister.",
+      "amount": "AED 100 for each Electronic Invoice, up to a maximum of AED 5,000 per calendar (Gregorian) month",
+      "notes": "Per-document penalty with a monthly cap of AED 5,000. Issuance timeline = VAT Law timeline for Registrants; 14 days from the Date of Business Transaction for non-Registrants (MD 243/2025 Art. 6).",
+      "status": "confirmed (under CD 106/2025; see repeal caveat)",
+      "sources": [
+        "https://uaelegislation.gov.ae/en/legislations/3714/regulations/1313/download",
+        "https://mof.gov.ae/wp-content/uploads/2025/12/Cabinet-Decision-Violations-and-Penalties-eInvoicing-final-version-en-8.12.25.pdf",
+        "https://globaltaxnews.ey.com/news/2025-2433-uae-ministry-of-finance-publishes-cabinet-decision-on-penalties-for-noncompliance-with-e-invoicing"
+      ]
+    },
+    {
+      "violation": "Schedule item 3: Issuer fails to issue and transmit an Electronic Credit Note to the Recipient through the Electronic Invoicing System within the timeline specified by the Minister.",
+      "amount": "AED 100 for each Electronic Credit Note, up to a maximum of AED 5,000 per calendar (Gregorian) month",
+      "notes": "Separate cap from item 2 (each capped at AED 5,000/month).",
+      "status": "confirmed (under CD 106/2025; see repeal caveat)",
+      "sources": [
+        "https://uaelegislation.gov.ae/en/legislations/3714/regulations/1313/download",
+        "https://mof.gov.ae/wp-content/uploads/2025/12/Cabinet-Decision-Violations-and-Penalties-eInvoicing-final-version-en-8.12.25.pdf"
+      ]
+    },
+    {
+      "violation": "Schedule item 4: Issuer fails to notify the Authority (FTA) of a System Failure within the timeline specified by the Minister (MD 243/2025 Art. 12: within 2 Business Days).",
+      "amount": "AED 1,000 for each day of delay or part thereof",
+      "notes": "No cap stated.",
+      "status": "confirmed (under CD 106/2025; see repeal caveat)",
+      "sources": [
+        "https://uaelegislation.gov.ae/en/legislations/3714/regulations/1313/download",
+        "https://mof.gov.ae/wp-content/uploads/2025/12/Cabinet-Decision-Violations-and-Penalties-eInvoicing-final-version-en-8.12.25.pdf",
+        "https://mof.gov.ae/wp-content/uploads/2025/09/Ministerial-Decision-no.-243-of-2025-on-the-Electronic-Invoicing-System.pdf"
+      ]
+    },
+    {
+      "violation": "Schedule item 5: Recipient fails to notify the Authority (FTA) of a System Failure within the timeline specified by the Minister.",
+      "amount": "AED 1,000 for each day of delay or part thereof",
+      "notes": "No cap stated. Mirrors item 4 for the Recipient.",
+      "status": "confirmed (under CD 106/2025; see repeal caveat)",
+      "sources": [
+        "https://uaelegislation.gov.ae/en/legislations/3714/regulations/1313/download",
+        "https://mof.gov.ae/wp-content/uploads/2025/12/Cabinet-Decision-Violations-and-Penalties-eInvoicing-final-version-en-8.12.25.pdf"
+      ]
+    },
+    {
+      "violation": "Schedule item 6: Issuer or Recipient fails to notify the appointed Accredited Service Provider of changes to data registered with the Authority within the timeline specified by the Minister (MD 243/2025 Art. 5: within 5 Business Days of the Authority confirming the amendment).",
+      "amount": "AED 1,000 for each day of delay or part thereof",
+      "notes": "No cap stated.",
+      "status": "confirmed (under CD 106/2025; see repeal caveat)",
+      "sources": [
+        "https://uaelegislation.gov.ae/en/legislations/3714/regulations/1313/download",
+        "https://mof.gov.ae/wp-content/uploads/2025/12/Cabinet-Decision-Violations-and-Penalties-eInvoicing-final-version-en-8.12.25.pdf",
+        "https://mof.gov.ae/wp-content/uploads/2025/09/Ministerial-Decision-no.-243-of-2025-on-the-Electronic-Invoicing-System.pdf"
+      ]
+    },
+    {
+      "violation": "Failure to retain/archive e-invoice records",
+      "amount": "No e-invoicing-specific penalty in the CD 106/2025 Schedule",
+      "notes": "The CD 106/2025 Schedule has only the six items above. Record-keeping failures fall under the general Tax Procedures penalty regime (Cabinet Decision No. 40 of 2017 as amended; Guidelines V1.1 s.11.1), not under CD 106/2025.",
+      "status": "confirmed (absence)",
+      "sources": [
+        "https://uaelegislation.gov.ae/en/legislations/3714/regulations/1313/download",
+        "https://mof.gov.ae/wp-content/uploads/2026/06/UAE-Electronic-Invoicing-Guidelines_V-1.1-01June2026.pdf"
+      ]
+    },
+    {
+      "violation": "Repeat-offence escalation",
+      "amount": "None",
+      "notes": "CD 106/2025 contains no repeat-offence or escalation rules; the only limits are the AED 5,000 monthly caps on items 2 and 3. Vendor pages quoting per-invoice fines of AED 2,500-50,000 or 'repeat offence' bands (e.g. massive.ae) are NOT supported by the decision text.",
+      "status": "confirmed (absence)",
+      "sources": [
+        "https://uaelegislation.gov.ae/en/legislations/3714/download",
+        "https://mof.gov.ae/wp-content/uploads/2025/12/Cabinet-Decision-Violations-and-Penalties-eInvoicing-final-version-en-8.12.25.pdf"
+      ]
+    },
+    {
+      "violation": "Any changes made by Cabinet Decision No. 173 of 2026",
+      "amount": "Unknown",
+      "notes": "MoF Oct 2026 deck lists CD 173/2026 as the penalties resolution and CD 106/2025 as repealed. No text found. Treat the six items above as the last published schedule and flag that amounts may have changed.",
+      "status": "unconfirmed",
+      "sources": [
+        "https://mof.gov.ae/wp-content/uploads/2026/10/UAE-eInvoicing-Programme-Oct2026.pdf"
+      ]
+    }
+  ],
+  "scope": {
+    "in_scope": [
+      "Any Person conducting Business in the UAE, for every Business Transaction, unless the Person or transaction is excluded (MD 243/2025 Art. 3)",
+      "B2B transactions",
+      "B2G transactions (incl. government procurement contracts), G2B and G2G transactions (Guidelines V1.1)",
+      "Government Entities for non-sovereign Business Transactions (own phase: 1 Oct 2027)",
+      "VAT-unregistered businesses - 'regardless of their VAT registration status' (Guidelines V1.1); Commercial Invoices must be replaced by Electronic Invoices",
+      "Free zone entities, including designated zones, DIFC and ADGM - no free-zone exemption (Guidelines V1.1; FTA DG Al Mulla, 29 Sep 2026)",
+      "Transactions within a Tax Group - in scope but with a 24-month grace period commencing 1 January 2027 (Guidelines V1.1)",
+      "Agents issuing for principals and recipients issuing under self-billing (self-billing only where both parties are Registrants, MD 243/2025 Art. 9)",
+      "Tax Invoices required to be issued by non-UAE persons must be issued as Electronic Invoices (Guidelines V1.1)",
+      "Electronic Credit Notes (MD 243/2025 Art. 6(2))"
+    ],
+    "excluded": [
+      "Art. 4(a): Business Transactions by Government Entities in a sovereign capacity that are not in competition with the private sector",
+      "Art. 4(b): International passenger transport by an Airline using an Aircraft where an Electronic Ticket is issued",
+      "Art. 4(c): Services provided directly to passengers by an Airline ancillary to (b), where an Electronic Miscellaneous Document is issued",
+      "Art. 4(d): International transport of goods by an Airline where an Airway Bill is issued - temporary, 24 months from the date the system takes effect (Guidelines: 24 months from the MD 244/2025 Art. 5 date)",
+      "Art. 4(e): Financial services that are VAT-exempt or zero-rated under Article 42 of the VAT Executive Regulation (exempt services to residents; zero-rated supplies to non-residents). Standard-rated financial services to residents are NOT excluded",
+      "Art. 4(f): Any other Business Transaction the Minister determines; the Minister also sets categories of Excluded Persons",
+      "B2C transactions and Persons engaged exclusively in B2C - excluded until the Minister sets a date (MD 244/2025 Art. 5(2))",
+      "Investment holding companies earning only passive income (Guidelines V1.1) - but recharges to third/related parties are in scope",
+      "FTA administrative exceptions granted for Tax Invoices do not carry over to Electronic Invoices (Guidelines V1.1)"
+    ],
+    "b2c": "Excluded 'until further notice': B2C Transactions (Business Transaction with a natural person not carrying on Business) and Persons engaged exclusively in them are excluded from the system until the Minister issues a decision setting a different date (MD 244/2025 Art. 5(2)). C2B, C2G, G2C, C2C also out of scope per Guidelines V1.1.",
+    "vat_unregistered": "IN SCOPE. MD 243/2025 Art. 3 applies to any Person conducting Business; Guidelines V1.1 state e-invoicing is mandatory 'regardless of their VAT registration status'. Non-Registrants must issue and transmit within 14 days of the Date of Business Transaction (MD 243/2025 Art. 6); must register with the FTA to obtain a TIN if not otherwise required to register for any tax; cannot use self-billing. Phase is determined by Revenue (>= or < AED 50M), not VAT status.",
+    "credit_notes": "Issuer must issue an Electronic Credit Note through the system when (a) the Business Transaction is cancelled, (b) the agreed consideration is reduced for any reason, (c) consideration is returned in full or part, or (d) an administrative or numerical error occurs (MD 243/2025 Art. 6(2)). Guidelines V1.1: Electronic Tax Credit Note (Taxable Person reducing Output Tax) vs Electronic Credit Note (commercial); may be partial, may reference multiple preceding invoices, negative payable amounts must be documented as a credit note. Failure to issue/transmit = AED 100 per credit note, capped AED 5,000/month (CD 106/2025 item 3).",
+    "model": "Decentralized Continuous Transaction Control and Exchange (DCTCE) / 5-corner model on Peppol: C1 supplier -> C2 supplier's ASP (validates, converts to UAE XML, transmits to C3 and in parallel reports the Tax Data Document (TDD) to C5 = FTA) -> C3 recipient's ASP (validates, returns Message Level Status, delivers to C4 recipient, reports TDD to C5 only after successful validation) -> C5 returns MLS. Both Issuer and Recipient must appoint an ASP; Guidelines say a Person should onboard with only one ASP for all requirements; onboarding via EmaraTax; Peppol Participant Identifier = 0235 + 10-digit TIN. Reporting is described by MoF as giving the government data 'in near real-time'; no explicit reporting deadline is set in MD 243/2025 (Art. 6 says 'within a timeline set by the Minister'). System Failure must be notified to the FTA within 2 Business Days (MD 243/2025 Art. 12).",
+    "status": "confirmed",
+    "sources": [
+      "https://mof.gov.ae/wp-content/uploads/2025/09/Ministerial-Decision-no.-243-of-2025-on-the-Electronic-Invoicing-System.pdf",
+      "https://mof.gov.ae/wp-content/uploads/2025/09/Ministerial-Decision-No.-244-of-2025-on-the-Implementation-of-the-Electronic-Invoicing-System.pdf",
+      "https://mof.gov.ae/wp-content/uploads/2026/06/UAE-Electronic-Invoicing-Guidelines_V-1.1-01June2026.pdf",
+      "https://www.mof.gov.ae/eInvoicing",
+      "https://mof.gov.ae/en/about-us/initiatives/einvoicing/",
+      "https://gulfnews.com/business/tax-news/e-invoicing-countdown-what-uae-companies-must-do-before-october-30-1.500692228",
+      "https://kpmg.com/ae/en/insights/tax-insights/implementation-of-the-electronic-invoicing-system-in-the-uae.html",
+      "https://www.deloitte.com/middle-east/en/services/tax/perspectives/release-of-uae-einvoicing-legislation.html"
+    ]
+  },
+  "standard": {
+    "name": "PINT AE (Peppol International Invoice, UAE specialisation) - XML; Specification Identifier urn:peppol:pint:billing-1@ae-1; UAE requirements defined in the MoF Data Dictionary; no QR code/barcode on the e-invoice",
+    "mandatory_fields_note": "The MoF 'UAE Electronic Invoice Mandatory Field Requirements' V1.0 (23 Feb 2026) lists 41 mandatory fields for a Tax Invoice (Invoice Details 1-9, Seller 10-20, Buyer 21-29, Document Totals 30-34, Tax Breakdown 35-38, Invoice Line 39-41). The Commercial Invoice section has inconsistent numbering (42-51, then a second table 1-49) so no single reliable count; roughly 49-51 fields. The Guidelines V1.1 do not state a total count and defer to the Mandatory Fields document and the Data Dictionary. Industry summaries sometimes quote '~100+ business terms' for the full PINT AE dictionary; that figure was not found in any MoF document and is unconfirmed.",
+    "asp_mandatory": true,
+    "retention": "MD 243/2025 Art. 11: all Electronic Invoices, Electronic Credit Notes and associated data must be stored within the State for the period required under the Tax Procedures Law (Federal Decree-Law 28/2022). Guidelines V1.1: Taxable Persons 5 years after the relevant Tax Period, +4 years if dispute/audit/audit notice, +1 year for a voluntary disclosure in year 5; non-Taxable Persons 5 years from end of the calendar year the document was created; real-estate records 7 years. 'Within the State' is to be read as retrievable for the FTA regardless of server location; storage may be delegated to an ASP but responsibility stays with the Person; ASPs keep transactional logs separately.",
+    "pilot_start": "2026-07-01",
+    "pilot_note": "Pilot Programme (Taxpayer Working Group, by written agreement on MoF invitation) commenced 1 July 2026 per MD 244/2025 Art. 3; MoF 30 June 2026 deck confirmed 'Pilot Phase begins 01 July 2026' and that the 5-corner model incl. Corner 5 was live for the pilot; FTA press release 29 Sep 2026 says the pilot phase 'has been completed'. Voluntary adoption open to all from 1 July 2026 (MD 244/2025 Art. 4).",
+    "asp_accreditation_status": "MoF Oct 2026 deck: 65 Accredited Service Providers, 105 Pre-Approved, ~10 in pipeline, ~20 in application review. FTA DG (29 Sep 2026): 'more than 50' accredited. Pre-approval abolished by MD 168/2026 from 1 Oct 2026; pre-approved providers have 30 days to complete accreditation.",
+    "status": "confirmed (field count partially confirmed - tax invoice 41; commercial invoice count unconfirmed)",
+    "sources": [
+      "https://mof.gov.ae/wp-content/uploads/2026/02/UAE-Electronic-Invoice-mandatory-fields_V-1.0-23Feb2026.pdf",
+      "https://mof.gov.ae/wp-content/uploads/2026/06/UAE-Electronic-Invoicing-Guidelines_V-1.1-01June2026.pdf",
+      "https://mof.gov.ae/wp-content/uploads/2025/09/Ministerial-Decision-no.-243-of-2025-on-the-Electronic-Invoicing-System.pdf",
+      "https://mof.gov.ae/wp-content/uploads/2025/09/Ministerial-Decision-No.-244-of-2025-on-the-Implementation-of-the-Electronic-Invoicing-System.pdf",
+      "https://mof.gov.ae/wp-content/uploads/2026/06/UAE-eInvoicing-Programme-30June2026.pdf",
+      "https://mof.gov.ae/wp-content/uploads/2026/10/UAE-eInvoicing-Programme-Oct2026.pdf",
+      "https://tax.gov.ae/en/media.centre/news/federal.tax.authority.organises.joint.awareness.meeting.for.accredited.service.providers.and.persons.subject.to.the.einvoicing.system.aspx",
+      "https://mof.gov.ae/wp-content/uploads/2026/10/Ministerial-Decision-No-168-of-2026-on-Eligibility-criteria-and-Accreditation-Procedure-EN-FINAL.pdf"
+    ]
+  },
+  "free_zone_note": {
+    "text": "CONFIRMED: Free zone status confers no e-invoicing exemption. MD 243/2025 Art. 3 applies to any Person conducting Business in the State; Guidelines V1.1 define a Free Zone as a Cabinet-designated area and require that, where the customer is a Free Zone entity, the Electronic Invoice record the 'beneficiary' (the party that ultimately uses or owns the supply) in addition to the customer. FTA Director General Abdulaziz Al Mulla said at the 29 Sep 2026 awareness session (Gulf News) that all free zone businesses must register and none are exempt from penalties, and that the FTA is working with free zone authorities. Exclusions apply per transaction (e.g. exempt/zero-rated financial services in DIFC/ADGM), not per entity. UNCONFIRMED: no official source (MoF, FTA, Guidelines) and no Big 4 or law-firm alert located states that e-invoicing data visibility interacts with Qualifying Free Zone Person (QFZP) status, qualifying-income testing or Corporate Tax reporting. The term 'Qualifying Free Zone Person' does not appear in the Guidelines V1.1. Vendor commentary (ClearTax, StackCue) explicitly says QFZP and e-invoicing are separate regimes and does not claim a data-visibility link. Any statement in the readiness tool about QFZP exposure should be framed as inference, not regulatory fact.",
+    "status": "partially confirmed (in-scope + beneficiary field confirmed; QFZP data-visibility interaction unconfirmed)",
+    "sources": [
+      "https://mof.gov.ae/wp-content/uploads/2026/06/UAE-Electronic-Invoicing-Guidelines_V-1.1-01June2026.pdf",
+      "https://mof.gov.ae/wp-content/uploads/2025/09/Ministerial-Decision-no.-243-of-2025-on-the-Electronic-Invoicing-System.pdf",
+      "https://gulfnews.com/business/tax-news/e-invoicing-countdown-what-uae-companies-must-do-before-october-30-1.500692228",
+      "https://www.cleartax.com/ae/uae-einvoicing-free-zone-companies",
+      "https://www.stackcue.com/en/ae/blog/uae-e-invoicing-free-zones",
+      "https://sharedserviceslink.com/news/uae-confirms-free-zones-must-e-invoice"
+    ]
+  },
+  "unconfirmed_items": [
+    "Cabinet Decision No. 173 of 2026 - existence asserted only by MoF Oct 2026 programme deck (slide 10) which also marks CD 106/2025 as repealed; no text, date, Gazette number or penalty schedule found anywhere (MoF legislation page updated 16 Oct 2026 still lists only CD 106/2025).",
+    "Whether MD 243/2025 has itself been amended - the MoF Oct 2026 deck says '243 of 2025 and its amendments' but no amending instrument is listed on the MoF legislation page.",
+    "Official Gazette publication dates of MD 243/2025, MD 244/2025, MD 66/2026, MD 56/2026 - the English PDFs leave issue dates blank; only CD 106/2025 has a confirmed Gazette reference (No. 809, 14 Oct 2025, effective 15 Oct 2025).",
+    "Exact FTA reporting deadline for the Tax Data Document - MD 243/2025 Art. 6 defers to a ministerial timeline not located; MoF describes reporting as 'near real-time'.",
+    "Total count of PINT AE business terms / commercial-invoice mandatory fields - only the 41 tax-invoice fields are cleanly countable in the MoF document.",
+    "Any QFZP / Corporate Tax interaction with e-invoicing data - no credible source states one.",
+    "Whether voluntary participants who onboard before their mandatory date become penalty-exposed at that date - implied by CD 106/2025 Art. 2 and MoF press release but not expressly stated in the decision."
+  ]
+}

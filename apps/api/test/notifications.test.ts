@@ -153,7 +153,7 @@ describe("notifications through a flow", () => {
     expect(item.body).not.toContain("Extra attestation"); // the partner's free text stays out
     expect((await env.call("setup", "POST", `/api/engagements/${engagementId}/change-orders`, { description: "Second change", partnerCostAed: 500 })).status).toBe(200);
     const again = await asPlatform(env.db, null, (tx) => tx.query<any>("select status from notifications where template = 'change_order_to_approve' order by created_at"));
-    expect(again.rows.map((r) => r.status)).toEqual(["failed", "sent"]);
+    expect(again.rows.map((r) => r.status).sort()).toEqual(["failed", "sent"]); // same frozen clock, so order is not fixed
   });
 
   it("a QA note never leaves the platform in a message", async () => {

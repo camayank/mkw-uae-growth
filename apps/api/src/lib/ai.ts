@@ -42,7 +42,7 @@ export function memoryModel(): AiModel {
       const offshore = /\b(offshore|holding only|hold shares)\b/i.test(text);
       const structure: ScopeDraft["structure"] = offshore ? "offshore" : mainland ? "mainland" : /\b(fund|regulated|difc|adgm)\b/i.test(text) ? "difc_adgm" : "free_zone";
       const setup = structure === "offshore" ? "SET-OFF" : structure === "mainland" ? "SET-ML-LIC" : "SET-FZ-LIC";
-      if (/\b(set ?up|incorporat|new company|start a company|register a company|licen[cs]e)\b/i.test(text) && known.has(setup)) lines.push({ code: setup, qty: 1, why: "describes setting up a company" });
+      if (/\b(set ?up|setting up|incorporat\w*|new company|start\w*|launch\w*|build\w*|found\w*|register\w*|licen[cs]e\w*|company|business|startup)\b/i.test(text) && known.has(setup)) lines.push({ code: setup, qty: 1, why: "describes setting up a company" });
       if (visas && structure !== "offshore" && known.has("VISA-RES")) lines.push({ code: "VISA-RES", qty: Math.min(50, Number(visas[1])), why: `asks for ${visas[1]} visa(s)` });
       for (const [re, code, why] of KEYWORDS) if (re.test(text) && known.has(code) && !lines.some((l) => l.code === code)) lines.push({ code, qty: 1, why });
       const activity = /\b(consult|advis)/i.test(text) ? "consulting" : /\b(e-?commerce|online store|shopify|amazon)\b/i.test(text) ? "ecommerce" : /\b(software|app|saas|tech)\b/i.test(text) ? "tech" : /\b(trad|import|export|goods)\b/i.test(text) ? "trading" : /\b(clinic|medical|health)\b/i.test(text) ? "health" : /\b(school|training|academy)\b/i.test(text) ? "education" : null;

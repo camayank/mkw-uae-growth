@@ -701,7 +701,7 @@ async function renderPartnerPayouts() {
           ? esc(p.invoiceNumber)
           : admin && ["eligible", "pending"].includes(p.status)
             ? `<form class="row" data-form="partner-invoice" data-id="${p.id}" data-amount="${p.amount}" style="flex-wrap:wrap;gap:4px">
-                <input name="number" placeholder="Invoice no." required style="width:110px" /><input name="vatAed" type="number" min="0" step="0.01" placeholder="VAT AED" style="width:90px" />
+                <input name="number" placeholder="Invoice no." required style="width:110px" /><input name="vatAed" type="number" min="0" step="0.01" placeholder="VAT (0 or 5%)" title="0 if your firm is not VAT-registered, otherwise exactly 5% of the payout" style="width:110px" />
                 <input type="file" name="file" required style="width:auto;max-width:160px" /><button class="sm" type="submit">Upload</button></form>`
             : "–"
       }</td><td>${date(p.releasedAt)}</td></tr>`,
@@ -888,7 +888,7 @@ async function renderPayoutRuns() {
     runs.map((r) => `<tr><td class="mono small">${esc(r.reference)}</td><td>${dateTime(r.createdAt)}<br><span class="small muted">${esc(r.createdBy ?? "")}</span></td><td class="num">${r.payouts}</td><td class="num">${aed(r.total)}</td>
       <td>${badge(r.status === "paid" ? "paid" : r.status === "cancelled" ? "cancelled" : "pending", r.status)}${r.bankReference ? `<br><span class="small muted">${esc(r.bankReference)}</span>` : ""}</td>
       <td><div class="actions">${["open", "exported"].includes(r.status) ? `<a class="btn sm" href="/api/ops/payout-runs/${r.id}/file" target="_blank" rel="noopener" data-act-link="run-file">Download bank file</a>` : ""}
-      ${r.status === "exported" ? `<button class="sm primary" data-act="run-paid" data-id="${r.id}">Mark paid</button>` : ""}${["open", "exported"].includes(r.status) ? `<button class="sm" data-act="run-cancel" data-id="${r.id}">Cancel</button>` : ""}</div></td></tr>`),
+      ${r.status === "exported" ? `<button class="sm primary" data-act="run-paid" data-id="${r.id}">Mark paid</button>` : ""}${["open", "exported"].includes(r.status) ? `<button class="sm" data-act="run-cancel" data-id="${r.id}" data-exported="${r.status === "exported" ? 1 : 0}">Cancel</button>` : ""}</div></td></tr>`),
     "No payout runs yet.",
   )}</div>`;
 }
@@ -1282,7 +1282,9 @@ document.addEventListener("click", (ev) => {
     "run-cancel": () => {
       const reason = prompt("Why cancel this run? Payouts return to the ready list.");
       if (!reason) return;
-      act(() => api("POST", `/api/ops/payout-runs/${id}/cancel`, { reason }), "Run cancelled");
+      const exported = el.dataset.exported === "1";
+      if (exported && !confirm("This run's bank file was already downloaded. Cancel ONLY if the file was never submitted to the bank; otherwise partners would be paid twice. Confirm the file was not submitted?")) return;
+      act(() => api("POST", `/api/ops/payout-runs/${id}/cancel`, { reason, confirmNotSubmitted: exported }), "Run cancelled");
     },
     "issue-held": () => act(async () => {
       const r = await api("POST", "/api/admin/invoices/issue-held");

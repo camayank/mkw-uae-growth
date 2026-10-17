@@ -65,8 +65,9 @@ describe("payment links and the signed webhook", () => {
     void still;
     const row = await asPlatform(env.db, null, (tx) => tx.query<any>("select status from payments where id = $1", [deposit.id]));
     expect(row.rows[0].status).toBe("pending");
-    const rejected = await asPlatform(env.db, null, (tx) => tx.query<any>("select count(*)::int as n from audit_events where action = 'webhook.rejected'"));
-    expect(rejected.rows[0].n).toBeGreaterThanOrEqual(4);
+    // Refusals are not audited: an unauthenticated caller must not be able to grow the audit chain.
+    const rejected = await asPlatform(env.db, null, (tx) => tx.query<any>("select count(*)::int as n from audit_events where action like 'webhook%'"));
+    expect(rejected.rows[0].n).toBe(0);
     expect((await webhook(env, good)).statusCode).toBe(200);
     expect((await webhook(env, good)).statusCode).toBe(200); // replay within the window is idempotent
     const paid = await asPlatform(env.db, null, (tx) => tx.query<any>("select status, provider_ref from payments where id = $1", [deposit.id]));
@@ -174,6 +175,45 @@ describe("tax invoices, credit notes and statements", () => {
     expect(ops.body.invoices.length).toBe(after.body.invoices.length);
   });
 
+  it("adds up to the fils when prices are not round, and a held credit note is numbered as a credit note after its invoice", async () => {
+    // Odd prices: ops overrides two lines before publishing, so fee halves are not whole AED 50 steps.
+    const req = await env.call("client", "POST", "/api/requests", { answers: { mode: "new_company", jurisdiction: "free_zone", emirate: "Dubai", visas: 3 } });
+    const built = await env.call("ops", "POST", `/api/ops/requests/${req.body.id}/build-offers`, { tiers: ["standard"] });
+    const offerId = built.body.offerIds[0];
+    expect((await env.call("ops", "POST", `/api/ops/offers/${offerId}/lines/SET-FZ-LIC/price`, { clientUnitAed: 4333.33 })).status).toBe(200);
+    expect((await env.call("ops", "POST", `/api/ops/offers/${offerId}/lines/VISA-RES/price`, { clientUnitAed: 2111.11 })).status).toBe(200);
+    await env.call("ops", "POST", `/api/ops/offers/${offerId}/publish`);
+    const engagementId = (await env.call("client", "POST", `/api/client/offers/${offerId}/accept`)).body.engagementId;
+    const eng = await env.call("finance", "GET", `/api/engagements/${engagementId}`);
+    const deposit = eng.body.payments.find((p: any) => p.kind === "deposit");
+    await env.call("finance", "POST", `/api/ops/payments/${deposit.id}/mark-paid`, { reference: "TT-odd" });
+    const inv = (await asPlatform(env.db, null, (tx) => tx.query<any>("select * from invoices where payment_id = $1", [deposit.id]))).rows[0];
+    const lines = inv.lines as any[];
+    expect(lines.reduce((s, l) => s + l.grossFils, 0)).toBe(deposit.amount);
+    expect(inv.net_fils + inv.vat_fils + inv.disbursements_fils).toBe(deposit.amount);
+    expect(Math.abs(inv.vat_fils - Math.round(inv.net_fils * 0.05))).toBeLessThanOrEqual(1);
+    for (const l of lines.filter((l) => l.kind === "fee")) expect(Math.abs(l.vatFils - Math.round(l.netFils * 0.05))).toBeLessThanOrEqual(1);
+    // Now a held scenario: remove the TRN, pay and refund another engagement, enter the TRN, issue held documents.
+    await env.call("founder", "PUT", "/api/admin/company", { trn: null, note: "test: simulate a missing TRN" });
+    const e2 = await engagementWithDeposit(env, { mode: "new_company", jurisdiction: "free_zone", emirate: "Dubai", visas: 1 });
+    await env.call("finance", "POST", `/api/ops/payments/${e2.deposit.id}/mark-paid`, { reference: "TT-held" });
+    expect((await env.call("finance", "POST", `/api/ops/payments/${e2.deposit.id}/refund`, { reference: "RF-held", reason: "Client withdrew" })).status).toBe(200);
+    const heldRows = await asPlatform(env.db, null, (tx) => tx.query<any>("select kind, status, number from invoices where payment_id = $1 order by kind desc", [e2.deposit.id]));
+    expect(heldRows.rows.map((r) => [r.kind, r.status, r.number])).toEqual([["tax_invoice", "pending_trn", null], ["credit_note", "pending_trn", null]]);
+    await env.call("founder", "PUT", "/api/admin/company", { trn: "100123456700003", note: "TRN back" });
+    const issued = await env.call("founder", "POST", "/api/admin/invoices/issue-held");
+    expect(issued.body.issued.filter((n: string) => n.startsWith("TI-")).length).toBe(1);
+    expect(issued.body.issued.filter((n: string) => n.startsWith("CN-"))).toEqual(["CN-2026-000002"]);
+    const after = await asPlatform(env.db, null, (tx) => tx.query<any>("select i.kind, i.number, r.number as reverses from invoices i left join invoices r on r.id = i.reverses_invoice_id where i.payment_id = $1 order by i.kind desc", [e2.deposit.id]));
+    expect(after.rows[0].kind).toBe("tax_invoice");
+    expect(after.rows[1]).toMatchObject({ kind: "credit_note", number: "CN-2026-000002", reverses: after.rows[0].number });
+    const cnEmail = env.emails.filter((e) => e.subject.startsWith("Credit note CN-2026-000002"));
+    expect(cnEmail.length).toBe(1);
+    const pdf = await env.app.inject({ method: "GET", url: `/api/invoices/${(await asPlatform(env.db, null, (tx) => tx.query<any>("select id from invoices where number = 'CN-2026-000002'"))).rows[0].id}/pdf`, headers: { authorization: `Bearer ${env.tokens.finance}` } });
+    expect(pdf.rawPayload.toString("latin1")).toContain(`Reverses tax invoice ${after.rows[0].number}`);
+    expect(pdf.rawPayload.toString("latin1")).not.toContain("-0.00");
+  });
+
   it("renders a multi-page PDF that stays well-formed", () => {
     const pdf = textPdf(Array.from({ length: 120 }, (_, i) => `Line ${i + 1} (with) parens and a backslash \\`), "Long");
     const text = pdf.toString("latin1");
@@ -224,10 +264,20 @@ describe("partner invoices and payout runs", () => {
     }
     const staffTry = await env.call("setupStaff", "POST", `/api/payouts/${payouts[0].id}/invoice`, { number: "X", amountAed: 1, fileName: "a.pdf", contentBase64: "QQ==" });
     expect(staffTry.status).toBe(403);
+    // VAT is checked, not trusted: 0 or exactly 5%, never a figure that would inflate the bank transfer.
+    const second = payouts.find((p: any) => !payouts.indexOf(p) === false) ?? payouts[0];
+    void second;
+    const anyPayout = (await asPlatform(env.db, null, (tx) => tx.query<any>("insert into payouts (engagement_id, partner_org_id, stage, amount_fils, status) values ($1, (select id from orgs where name = 'Example Setup Partners FZ-LLC'), 'change_order', 212000, 'eligible') returning id", [engagementId]))).rows[0];
+    expect((await env.call("setup", "POST", `/api/payouts/${anyPayout.id}/invoice`, { number: "V-1", amountAed: 2120, vatAed: 999999, fileName: "v.pdf", contentBase64: Buffer.from("%PDF-1.4").toString("base64") })).status).toBe(400);
+    expect((await env.call("setup", "POST", `/api/payouts/${anyPayout.id}/invoice`, { number: "V-1", amountAed: 2120, vatAed: 100, fileName: "v.pdf", contentBase64: Buffer.from("%PDF-1.4").toString("base64") })).status).toBe(400);
+    expect((await env.call("setup", "POST", `/api/payouts/${anyPayout.id}/invoice`, { number: "=HYPERLINK(\"x\")", amountAed: 2120, vatAed: 106, fileName: "v.pdf", contentBase64: Buffer.from("%PDF-1.4").toString("base64") })).status).toBe(400);
+    expect((await env.call("setup", "POST", `/api/payouts/${anyPayout.id}/invoice`, { number: "V-1", amountAed: 2120, vatAed: 106, fileName: "v.pdf", contentBase64: Buffer.from("not a pdf").toString("base64") })).status).toBe(400);
+    expect((await env.call("setup", "POST", `/api/payouts/${anyPayout.id}/invoice`, { number: "V-1", amountAed: 2120, vatAed: 106, fileName: "v.pdf", contentBase64: Buffer.from("%PDF-1.4").toString("base64") })).status).toBe(200);
     const payable1 = await env.call("finance", "GET", "/api/ops/payouts/payable");
     expect(payable1.body.every((p: any) => p.blocked === "no bank details")).toBe(true);
     expect((await env.call("finance", "POST", "/api/ops/payout-runs")).status).toBe(409);
 
+    expect((await env.call("setup", "PUT", "/api/partner/bank", { beneficiary: "=HYPERLINK(\"http://x\")", iban: "AE070331234567890123456", bank: "Bank" })).status).toBe(400);
     for (const who of ["setup", "corp", "tax"]) {
       expect((await env.call(who, "PUT", "/api/partner/bank", { beneficiary: `${who} LLC`, iban: "GB12 3456", bank: "Bank" })).status).toBe(400);
       expect((await env.call(who, "PUT", "/api/partner/bank", { beneficiary: `${who} LLC`, iban: `AE07 0331 2345 6789 0123 456`, bank: "Emirates NBD" })).status).toBe(200);
@@ -239,6 +289,38 @@ describe("partner invoices and payout runs", () => {
     const audit = await asPlatform(env.db, null, (tx) => tx.query<any>("select data from audit_events where action = 'partner.bank_changed'"));
     expect(JSON.stringify(audit.rows)).not.toContain("AE070331234567890123456"); // the IBAN itself is not an audit fact
     expect(audit.rows[0].data.ibanEnding).toBe("3456");
+    // The IBAN is finance's business: ops and partner staff never see it.
+    expect(JSON.stringify((await env.call("ops", "GET", "/api/admin/orgs")).body)).not.toContain("AE070331234567890123456");
+    expect(JSON.stringify((await env.call("ops", "GET", "/api/ops/overview")).body)).not.toContain("AE070331234567890123456");
+    expect(JSON.stringify((await env.call("finance", "GET", "/api/admin/orgs")).body)).toContain("AE070331234567890123456");
+    expect((await env.call("setupStaff", "GET", "/api/partner/home")).body.bank).toBeNull();
+  });
+
+  it("a refund cannot pull a payout out from under an open run, and a run cannot be paid once a payout in it went bad", async () => {
+    const run = await env.call("finance", "POST", "/api/ops/payout-runs");
+    expect(run.status).toBe(200);
+    const paid = (await view("finance")).payments.find((p: any) => p.status === "paid");
+    const refused = await env.call("finance", "POST", `/api/ops/payments/${paid.id}/refund`, { reference: "RF-x", reason: "while run open" });
+    expect(refused.status).toBe(409);
+    expect(refused.body.message).toMatch(/open payout run/);
+    // Force the condition the guard protects against: a payout in the run stops being eligible.
+    const inRun = (await asPlatform(env.db, null, (tx) => tx.query<any>("select id from payouts where run_id = $1 limit 1", [run.body.id]))).rows[0];
+    await asPlatform(env.db, null, (tx) => tx.query("update payouts set status = 'withheld' where id = $1", [inRun.id]));
+    const file = await env.app.inject({ method: "GET", url: `/api/ops/payout-runs/${run.body.id}/file`, headers: { authorization: `Bearer ${env.tokens.finance}` } });
+    expect(file.statusCode).toBe(409);
+    await asPlatform(env.db, null, (tx) => tx.query("update payouts set status = 'eligible' where id = $1", [inRun.id]));
+    expect((await env.app.inject({ method: "GET", url: `/api/ops/payout-runs/${run.body.id}/file`, headers: { authorization: `Bearer ${env.tokens.finance}` } })).statusCode).toBe(200);
+    await asPlatform(env.db, null, (tx) => tx.query("update payouts set status = 'withheld' where id = $1", [inRun.id]));
+    const paidTry = await env.call("finance", "POST", `/api/ops/payout-runs/${run.body.id}/paid`, { bankReference: "FT-bad" });
+    expect(paidTry.status).toBe(409);
+    expect(paidTry.body.message).toMatch(/no longer eligible/);
+    // An exported run needs an explicit statement that the file never reached the bank before it can be cancelled.
+    expect((await env.call("finance", "POST", `/api/ops/payout-runs/${run.body.id}/cancel`, { reason: "bad payout" })).status).toBe(409);
+    expect((await env.call("finance", "POST", `/api/ops/payout-runs/${run.body.id}/cancel`, { reason: "bad payout", confirmNotSubmitted: true })).status).toBe(200);
+    await asPlatform(env.db, null, (tx) => tx.query("update payouts set status = 'eligible' where id = $1", [inRun.id]));
+    const runs = await env.call("finance", "GET", "/api/ops/payout-runs");
+    expect(runs.body[0].status).toBe("cancelled");
+    expect((await asPlatform(env.db, null, (tx) => tx.query("select 1 from payouts where run_id = $1", [run.body.id]))).rows).toEqual([]);
   });
 
   it("finance batches payable payouts into one run, exports a bank file whose total matches, marks it paid, and partners get remittances", async () => {
@@ -246,7 +328,7 @@ describe("partner invoices and payout runs", () => {
     const expectedTotal = payable.reduce((s: number, p: any) => s + p.amount + (p.invoiceVat ?? 0), 0);
     const run = await env.call("finance", "POST", "/api/ops/payout-runs");
     expect(run.status).toBe(200);
-    expect(run.body).toMatchObject({ reference: "PR-2026-0001", payouts: payable.length, total: expectedTotal });
+    expect(run.body).toMatchObject({ reference: "PR-2026-0002", payouts: payable.length, total: expectedTotal });
     expect((await env.call("finance", "POST", "/api/ops/payout-runs")).status).toBe(409); // one open run at a time
     expect((await env.call("finance", "POST", `/api/ops/payout-runs/${run.body.id}/paid`, { bankReference: "FT1" })).status).toBe(409); // export first
     // A payout in a run can no longer be released one by one.
@@ -262,7 +344,8 @@ describe("partner invoices and payout runs", () => {
     const fileTotal = rows.slice(1).reduce((s, r) => s + Math.round(Number(r.split(",")[3]) * 100), 0);
     expect(fileTotal).toBe(expectedTotal);
     expect(file.body).toContain("AE070331234567890123456");
-    expect(file.body).toContain("PR-2026-0001");
+    expect(file.body).toContain("PR-2026-0002");
+    expect(file.body).not.toMatch(/,"=|,"\+|,"@/);
     expect((await env.app.inject({ method: "GET", url: `/api/ops/payout-runs/${run.body.id}/file`, headers: { authorization: `Bearer ${env.tokens.ops}` } })).statusCode).toBe(403);
 
     const paid = await env.call("finance", "POST", `/api/ops/payout-runs/${run.body.id}/paid`, { bankReference: "FT26290ABC" });
@@ -270,10 +353,16 @@ describe("partner invoices and payout runs", () => {
     expect(paid.body.released).toBe(payable.length);
     const after = await view("finance");
     expect(after.payouts.filter((p: any) => p.status === "released").length).toBe(payable.length);
-    const runs = await env.call("ops", "GET", "/api/ops/payout-runs");
-    expect(runs.body[0]).toMatchObject({ reference: "PR-2026-0001", status: "paid", bankReference: "FT26290ABC" });
+    const runs = await env.call("finance", "GET", "/api/ops/payout-runs");
+    expect(runs.body.find((r: any) => r.status === "paid")).toMatchObject({ reference: "PR-2026-0002", status: "paid", bankReference: "FT26290ABC" });
+    expect((await env.call("ops", "GET", "/api/ops/payout-runs")).status).toBe(403);
+    const remitVat = env.emails.filter((e) => e.subject.startsWith("Remittance advice")).map((e) => e.subject);
+    void remitVat;
     const remits = env.emails.filter((e) => e.subject.startsWith("Remittance advice"));
     expect(remits.length).toBe(partners.size);
+    // The remittance states what the bank paid: payout plus the partner's VAT.
+    const setupTotal = payable.filter((p: any) => p.partner === "Example Setup Partners FZ-LLC").reduce((s: number, p: any) => s + p.amount + (p.invoiceVat ?? 0), 0);
+    expect(remits.some((e) => e.subject.includes((setupTotal / 100).toLocaleString("en-AE", { minimumFractionDigits: setupTotal % 100 ? 2 : 0, maximumFractionDigits: 2 })))).toBe(true);
     expect(remits.every((e) => e.fromName === "MKW Advisors" && !/tasees/i.test(e.text))).toBe(true);
     expect(remits[0]!.text).toContain("FT26290ABC");
     const partnerView = await view("setup");

@@ -18,6 +18,8 @@ in a browser; everything listed here is not.
    the Settings page. Government fees are shown as disbursements with no VAT; that treatment is UNCERTAIN until
    the tax adviser confirms it (checkbox on the Settings page). Partial refunds, invoice re-issue and
    e-invoicing are not built; the invoice PDF is plain text (Courier) and Latin script only until O9.
+3b. **Invoice PDF is Latin-script only.** Client legal names in Arabic render as "?" until O9 replaces the
+   text writer with one that embeds a font; the FTA requires the recipient's name on a tax invoice.
 3a. **Bank bulk-transfer format.** The payout run exports a generic CSV (beneficiary, IBAN, bank, amount,
    reference). Replace the columns with the bank's own template when the sample file arrives.
 4. **Verified fee and rule data.** The 83-service catalogue, the government fee table (source, verifier, date,
@@ -70,7 +72,7 @@ in a browser; everything listed here is not.
 
 ## Verified so far
 
-- 40 domain tests (`packages/core`) and 96 API tests (`apps/api`), all passing on PGlite and on PostgreSQL 16;
+- 40 domain tests (`packages/core`) and 98 API tests (`apps/api`), all passing on PGlite and on PostgreSQL 16;
   typecheck clean; `pnpm build` compiles and the compiled server runs in production mode from a fresh database.
 - O1: partner creation, invitations, role changes and deactivation (sessions revoked, codes refused) are tested as
   every role; PDPL export contains one person's data and no audit payloads (a test reproduces the leak that the

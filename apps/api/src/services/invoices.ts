@@ -1,4 +1,4 @@
-import { applyBp, DEFAULT_SETTINGS } from "@tasees/core";
+import { applyBp, DEFAULT_SETTINGS, splitByShares } from "@tasees/core";
 import { audit, type SessionUser } from "../lib/context.ts";
 import { num, type Queryable } from "../lib/db.ts";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.ts";
@@ -46,7 +46,7 @@ export async function updateCompany(tx: Queryable, actor: SessionUser, patch: Pa
   return after;
 }
 
-const fmt = (fils: number) => (fils / 100).toLocaleString("en-AE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmt = (fils: number) => ((fils === 0 ? 0 : fils) / 100).toLocaleString("en-AE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 async function nextNumber(tx: Queryable, kind: "tax_invoice" | "credit_note", year: number): Promise<string> {
   // The counter row is locked for the rest of the transaction, so two payments recorded at once cannot share a number.
@@ -65,16 +65,25 @@ interface InvoiceLine {
   kind: "fee" | "disbursement";
 }
 
-/** The lines a client payment pays for: fees carry VAT, government fees are disbursements at cost. */
+/**
+ * The lines a client payment pays for. The payment amount is authoritative (it came from the payment plan):
+ * government fees are taken off at cost as disbursements, the rest is fees including VAT, split into net and VAT
+ * for the whole payment and then shared across the lines in proportion to their fees, so every total adds up to
+ * the fils and VAT is 5% of net on the invoice as a whole.
+ */
 async function paymentLines(tx: Queryable, payment: Record<string, unknown>): Promise<InvoiceLine[]> {
   const engagementId = String(payment.engagement_id);
   const kind = String(payment.kind);
   const amount = num(payment.amount_fils);
+  const vatBp = DEFAULT_SETTINGS.vatBp;
+  const splitNetVat = (gross: number) => {
+    const net = Math.round((gross * 10_000) / (10_000 + vatBp));
+    return { net, vat: gross - net };
+  };
   if (kind === "change_order") {
-    const net = Math.round((amount * 10_000) / (10_000 + DEFAULT_SETTINGS.vatBp));
-    return [{ description: "Approved change to scope", netFils: net, vatBp: DEFAULT_SETTINGS.vatBp, vatFils: amount - net, grossFils: amount, kind: "fee" }];
+    const { net, vat } = splitNetVat(amount);
+    return [{ description: "Approved change to scope", netFils: net, vatBp, vatFils: vat, grossFils: amount, kind: "fee" }];
   }
-  // Deposit: half of the fees (incl. VAT) plus all government fees. Balance: the other half of the fees.
   const lines = (
     await tx.query<Record<string, unknown>>(
       `select l.code, d.name, l.qty, l.client_unit_fils, l.gov_unit_fils, o.mkw_fee_unit_fils
@@ -85,27 +94,40 @@ async function paymentLines(tx: Queryable, payment: Record<string, unknown>): Pr
     )
   ).rows;
   const out: InvoiceLine[] = [];
-  let feesGross = 0;
-  for (const l of lines) {
-    const fee = (num(l.client_unit_fils) + num(l.mkw_fee_unit_fils)) * num(l.qty);
-    const half = kind === "deposit" ? Math.ceil(fee / 2) : Math.floor(fee / 2);
-    const vat = applyBp(half, DEFAULT_SETTINGS.vatBp);
-    out.push({ description: `${String(l.name)}${num(l.qty) > 1 ? ` x${num(l.qty)}` : ""} (${kind === "deposit" ? "50% on acceptance" : "50% on completion"})`, netFils: half, vatBp: DEFAULT_SETTINGS.vatBp, vatFils: vat, grossFils: half + vat, kind: "fee" });
-    feesGross += half + vat;
-    if (kind === "deposit" && num(l.gov_unit_fils) > 0) {
-      const gov = num(l.gov_unit_fils) * num(l.qty);
-      out.push({ description: `Government fees, ${String(l.name)} (at cost, disbursement)`, netFils: gov, vatBp: 0, vatFils: 0, grossFils: gov, kind: "disbursement" });
+  let gov = 0;
+  if (kind === "deposit") {
+    for (const l of lines) {
+      const g = num(l.gov_unit_fils) * num(l.qty);
+      if (g > 0) {
+        out.push({ description: `Government fees, ${String(l.name)} (at cost, disbursement)`, netFils: g, vatBp: 0, vatFils: 0, grossFils: g, kind: "disbursement" });
+        gov += g;
+      }
     }
   }
-  // Rounding: the payment amount is authoritative; any fils of difference lands on the first fee line.
-  const total = out.reduce((s, l) => s + l.grossFils, 0);
-  const diff = amount - total;
-  if (diff !== 0 && out[0]) {
-    out[0].netFils += diff;
-    out[0].grossFils += diff;
+  const feesGross = amount - gov;
+  if (feesGross < 0) throw conflict("Payment is smaller than the government fees it should carry");
+  const { net, vat } = splitNetVat(feesGross);
+  const weights = lines.map((l) => (num(l.client_unit_fils) + num(l.mkw_fee_unit_fils)) * num(l.qty));
+  const totalWeight = weights.reduce((s, w) => s + w, 0);
+  const shares = totalWeight > 0 ? weights.map((w) => Math.round((w * 10_000) / totalWeight)) : lines.map(() => 0);
+  if (totalWeight > 0) {
+    // Rounded shares may miss 10000 by a point or two: the largest line absorbs the difference.
+    const drift = 10_000 - shares.reduce((s, w) => s + w, 0);
+    const biggest = shares.indexOf(Math.max(...shares));
+    shares[biggest] = (shares[biggest] ?? 0) + drift;
   }
-  void feesGross;
-  return out;
+  // Largest-remainder split keeps every part a whole number of fils and the parts summing to the whole.
+  const nets = totalWeight > 0 ? splitByShares(net, shares) : [];
+  const vats = totalWeight > 0 ? splitByShares(vat, shares) : [];
+  const fees: InvoiceLine[] = lines.map((l, i) => ({
+    description: `${String(l.name)}${num(l.qty) > 1 ? ` x${num(l.qty)}` : ""} (${kind === "deposit" ? "50% on acceptance" : "50% on completion"})`,
+    netFils: nets[i] ?? 0,
+    vatBp,
+    vatFils: vats[i] ?? 0,
+    grossFils: (nets[i] ?? 0) + (vats[i] ?? 0),
+    kind: "fee",
+  }));
+  return [...fees, ...out];
 }
 
 /** Issue the tax invoice for a payment that has just been recorded as paid. Held when MKW's TRN is missing. */
@@ -148,16 +170,21 @@ export async function issueHeldInvoices(tx: Queryable, actor: SessionUser, stora
   if (actor.role !== "founder") throw forbidden("Only the founder issues held invoices");
   const company = await loadCompany(tx);
   if (!company.trn) throw conflict("Enter MKW's TRN first");
-  const held = (await tx.query<{ id: string; client_org_id: string; engagement_id: string; gross_fils: number; buyer: unknown }>("select id, client_org_id, engagement_id, gross_fils, buyer from invoices where status = 'pending_trn' order by created_at, id")).rows;
+  // Tax invoices first (oldest first), then credit notes, so a credit note always follows the invoice it reverses.
+  const held = (
+    await tx.query<{ id: string; kind: "tax_invoice" | "credit_note"; client_org_id: string; engagement_id: string; gross_fils: number }>(
+      "select id, kind, client_org_id, engagement_id, gross_fils from invoices where status = 'pending_trn' order by case kind when 'tax_invoice' then 0 else 1 end, created_at, id",
+    )
+  ).rows;
   const year = Number((await tx.query<{ y: number }>("select extract(year from app_now())::int as y")).rows[0]!.y);
   const issued: string[] = [];
   for (const inv of held) {
-    const number = await nextNumber(tx, "tax_invoice", year);
+    const number = await nextNumber(tx, inv.kind, year);
     await tx.query("update invoices set number = $2, status = 'issued', issued_at = app_now(), seller = seller || $3::jsonb where id = $1", [inv.id, number, JSON.stringify({ trn: company.trn, legalName: company.legalName, address: company.address })]);
     await renderAndStore(tx, inv.id, storage);
-    await audit(tx, actor, "invoice.issued", "invoice", inv.id, { number, heldUntilTrn: true });
+    await audit(tx, actor, inv.kind === "credit_note" ? "credit_note.issued" : "invoice.issued", "invoice", inv.id, { number, heldUntilTrn: true });
     const owners = (await tx.query<{ email: string }>("select email from users where org_id = $1 and role = 'client_owner' and status = 'active'", [inv.client_org_id])).rows;
-    for (const u of owners) await notify.send({ to: u.email, channel: "email", template: "invoice_issued", vars: { number, amountFils: num(inv.gross_fils), invoiceId: inv.id, engagementId: inv.engagement_id } });
+    for (const u of owners) await notify.send({ to: u.email, channel: "email", template: "invoice_issued", vars: { number, amountFils: Math.abs(num(inv.gross_fils)), invoiceId: inv.id, engagementId: inv.engagement_id, ...(inv.kind === "credit_note" ? { creditNote: 1 } : {}) } });
     issued.push(number);
   }
   return { issued };
@@ -171,6 +198,8 @@ export async function refundPayment(tx: Queryable, actor: SessionUser, paymentId
   if (payment.status !== "paid") throw conflict("Only a paid payment can be refunded");
   const released = await tx.query("select 1 from payouts where engagement_id = $1 and status = 'released'", [String(payment.engagement_id)]);
   if (released.rows.length) throw conflict("Partner payouts on this engagement have been released; settle those before refunding the client");
+  const inRun = await tx.query("select 1 from payouts p join payout_runs r on r.id = p.run_id where p.engagement_id = $1 and r.status in ('open', 'exported')", [String(payment.engagement_id)]);
+  if (inRun.rows.length) throw conflict("A payout on this engagement is in an open payout run; cancel the run before refunding the client");
   const inv = (await tx.query<Record<string, unknown>>("select * from invoices where payment_id = $1 and kind = 'tax_invoice' order by created_at desc limit 1", [paymentId])).rows[0];
   await tx.query("update payments set status = 'refunded', refunded_at = app_now(), refund_reference = $2 where id = $1", [paymentId, reference]);
   // Money the client has paid back is no longer "received": payouts not yet released lose their eligibility.
@@ -198,7 +227,12 @@ export async function refundPayment(tx: Queryable, actor: SessionUser, paymentId
 }
 
 async function renderAndStore(tx: Queryable, invoiceId: string, storage: Storage) {
-  const inv = (await tx.query<Record<string, unknown>>("select * from invoices where id = $1", [invoiceId])).rows[0]!;
+  const inv = (
+    await tx.query<Record<string, unknown>>(
+      "select i.*, r.number as reverses_number from invoices i left join invoices r on r.id = i.reverses_invoice_id where i.id = $1",
+      [invoiceId],
+    )
+  ).rows[0]!;
   const pdf = textPdf(invoiceText(inv), `${inv.kind === "credit_note" ? "Credit note" : "Tax invoice"} ${String(inv.number)}`);
   const key = await storage.put(String(inv.engagement_id), `${String(inv.number)}.pdf`, pdf);
   await tx.query("update invoices set file_key = $2 where id = $1", [invoiceId, key]);
@@ -229,8 +263,8 @@ export function invoiceText(inv: Record<string, unknown>): string[] {
     "-".repeat(78),
   ];
   for (const l of lines) {
-    const desc = l.description.length > 34 ? l.description.slice(0, 33) + "…" : l.description;
-    out.push(col(desc, `${fmt(sign * l.netFils).padStart(10)} ${l.kind === "disbursement" ? "   n/a" : `${(l.vatBp / 100).toFixed(0).padStart(5)}%`} ${fmt(sign * l.vatFils).padStart(9)} ${fmt(sign * l.grossFils).padStart(13)}`));
+    const desc = l.description.length > 34 ? l.description.slice(0, 31) + "..." : l.description;
+    out.push(col(desc, `${fmt(sign * l.netFils).padStart(10)} ${l.kind === "disbursement" ? "   n/a" : `${(l.vatBp / 100).toFixed(0).padStart(5)}%`} ${fmt(l.vatFils === 0 ? 0 : sign * l.vatFils).padStart(9)} ${fmt(sign * l.grossFils).padStart(13)}`));
   }
   out.push("-".repeat(78));
   out.push(col("Total fees (net of VAT)", `AED ${fmt(num(inv.net_fils))}`));

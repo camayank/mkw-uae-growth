@@ -1,3 +1,4 @@
+import { applyBp, DEFAULT_SETTINGS } from "@tasees/core";
 import { audit, type SessionUser } from "../lib/context.ts";
 import { num, type Queryable } from "../lib/db.ts";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.ts";
@@ -17,13 +18,19 @@ export interface BankDetails {
 }
 
 const ibanOk = (iban: string) => /^AE\d{21}$/.test(iban.replace(/\s+/g, "").toUpperCase());
+/** Text that goes into the bank file must not start like a spreadsheet formula. */
+const safeText = (v: string, what: string) => {
+  const t = v.trim();
+  if (/^[=+\-@\t\r]/.test(t)) throw badRequest(`${what} cannot start with =, +, - or @`);
+  return t;
+};
 
 export async function setPartnerBank(tx: Queryable, actor: SessionUser, bank: BankDetails) {
   if (actor.role !== "partner_admin") throw forbidden("Only a partner admin changes bank details");
   const iban = bank.iban.replace(/\s+/g, "").toUpperCase();
   if (!ibanOk(iban)) throw badRequest("Give a UAE IBAN: AE followed by 21 digits");
   if (bank.beneficiary.trim().length < 2) throw badRequest("Give the account name as the bank has it");
-  const stored = { beneficiary: bank.beneficiary.trim(), iban, bank: bank.bank.trim() };
+  const stored = { beneficiary: safeText(bank.beneficiary, "Account name"), iban, bank: safeText(bank.bank, "Bank name") };
   await tx.query("update orgs set profile = profile || jsonb_build_object('bank', $2::jsonb) where id = $1 and type = 'partner'", [actor.orgId, JSON.stringify(stored)]);
   // The IBAN itself is a bank detail, not an audit fact: record the change and the last four digits only.
   await audit(tx, actor, "partner.bank_changed", "org", actor.orgId, { beneficiary: stored.beneficiary, bank: stored.bank, ibanEnding: iban.slice(-4) });
@@ -46,8 +53,12 @@ export async function uploadPartnerInvoice(tx: Queryable, actor: SessionUser, in
   if (!p) throw notFound("Payout not found");
   if (!["eligible", "pending"].includes(String(p.status))) throw conflict(`This payout is ${String(p.status)}`);
   if (!input.number.trim()) throw badRequest("Give your invoice number");
+  const number = safeText(input.number, "Invoice number");
   if (input.amountFils !== num(p.amount_fils)) throw badRequest(`Your invoice must be for the payout amount, AED ${(num(p.amount_fils) / 100).toFixed(2)} before VAT`);
-  if (!Number.isInteger(input.vatFils) || input.vatFils < 0) throw badRequest("VAT must be zero or more");
+  // VAT is either none (partner not registered) or exactly 5% of the payout: it is paid on top, so it is checked, not trusted.
+  const vatDue = applyBp(input.amountFils, DEFAULT_SETTINGS.vatBp);
+  if (input.vatFils !== 0 && input.vatFils !== vatDue) throw badRequest(`VAT must be 0 or exactly 5% of the payout (AED ${(vatDue / 100).toFixed(2)})`);
+  if (/\.pdf$/i.test(input.fileName) && !input.content.subarray(0, 5).toString("latin1").startsWith("%PDF-")) throw badRequest("That file is not a PDF");
   const existing = await tx.query("select 1 from partner_invoices where payout_id = $1", [input.payoutId]);
   if (existing.rows.length) throw conflict("An invoice has already been uploaded for this payout");
   const key = await storage.put(String(p.engagement_id), input.fileName, input.content);
@@ -55,10 +66,10 @@ export async function uploadPartnerInvoice(tx: Queryable, actor: SessionUser, in
     await tx.query<{ id: string }>(
       `insert into partner_invoices (payout_id, partner_org_id, number, amount_fils, vat_fils, file_key, file_name, uploaded_by)
        values ($1,$2,$3,$4,$5,$6,$7,$8) returning id`,
-      [input.payoutId, actor.orgId, input.number.trim(), input.amountFils, input.vatFils, key, input.fileName, actor.id],
+      [input.payoutId, actor.orgId, number, input.amountFils, input.vatFils, key, input.fileName, actor.id],
     )
   ).rows[0]!;
-  await audit(tx, actor, "partner_invoice.uploaded", "payout", input.payoutId, { invoiceId: row.id, number: input.number.trim(), amount: input.amountFils, vat: input.vatFils });
+  await audit(tx, actor, "partner_invoice.uploaded", "payout", input.payoutId, { invoiceId: row.id, number, amount: input.amountFils, vat: input.vatFils });
   return { id: row.id };
 }
 
@@ -88,18 +99,20 @@ export async function payablePayouts(tx: Queryable) {
 /** Finance opens a run with every payable payout. The total paid to a partner never exceeds its payouts' amounts plus its own VAT. */
 export async function createPayoutRun(tx: Queryable, actor: SessionUser) {
   if (!["finance", "founder"].includes(actor.role)) throw forbidden("Only finance runs payouts");
+  await tx.query("select pg_advisory_xact_lock(777002)"); // one finance user at a time creates or closes runs
   const open = await tx.query("select 1 from payout_runs where status in ('open', 'exported')");
   if (open.rows.length) throw conflict("Finish or cancel the open payout run first");
   const payable = (await payablePayouts(tx)).filter((p) => p.payable);
   if (!payable.length) throw conflict("No payouts are ready: each needs the partner's invoice and bank details");
-  const seq = (await tx.query<{ n: number }>("select count(*)::int + 1 as n from payout_runs")).rows[0]!.n;
+  const seq = num((await tx.query<{ n: number }>("select coalesce(max(substring(reference from 9)::int), 0) + 1 as n from payout_runs")).rows[0]!.n);
   const year = (await tx.query<{ y: number }>("select extract(year from app_now())::int as y")).rows[0]!.y;
   const reference = `PR-${year}-${String(seq).padStart(4, "0")}`;
   const total = payable.reduce((s, p) => s + p.amount + (p.invoiceVat ?? 0), 0);
   const run = (
     await tx.query<{ id: string }>("insert into payout_runs (reference, total_fils, payouts, created_by) values ($1,$2,$3,$4) returning id", [reference, total, payable.length, actor.id])
   ).rows[0]!;
-  await tx.query("update payouts set run_id = $1 where id = any($2::uuid[])", [run.id, payable.map((p) => p.id)]);
+  const claimed = await tx.query("update payouts set run_id = $1 where id = any($2::uuid[]) and run_id is null and status = 'eligible' returning id", [run.id, payable.map((p) => p.id)]);
+  if (claimed.rows.length !== payable.length) throw conflict("Payouts changed while the run was being created; try again");
   await audit(tx, actor, "payout_run.created", "payout_run", run.id, { reference, total, payouts: payable.map((p) => p.id) });
   return { id: run.id, reference, total, payouts: payable.length };
 }
@@ -110,15 +123,16 @@ export async function exportPayoutRun(tx: Queryable, actor: SessionUser, runId: 
   const run = (await tx.query<Record<string, unknown>>("select * from payout_runs where id = $1", [runId])).rows[0];
   if (!run) throw notFound("Payout run not found");
   if (!["open", "exported"].includes(String(run.status))) throw conflict(`This run is ${String(run.status)}`);
+  await assertRunIntact(tx, runId, num(run.total_fils));
   const rows = (
     await tx.query<Record<string, unknown>>(
       `select o.id, o.name, o.profile->'bank' as bank, sum(p.amount_fils + coalesce(pi.vat_fils, 0))::bigint as total, count(*)::int as n, string_agg(pi.number, ' ') as invoices
        from payouts p join orgs o on o.id = p.partner_org_id left join partner_invoices pi on pi.payout_id = p.id
-       where p.run_id = $1 group by o.id, o.name, o.profile->'bank' order by o.name`,
+       where p.run_id = $1 and p.status = 'eligible' group by o.id, o.name, o.profile->'bank' order by o.name`,
       [runId],
     )
   ).rows;
-  const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const esc = (v: unknown) => `"${String(v ?? "").replace(/^[=+\-@\t\r]+/, "").replace(/"/g, '""')}"`;
   const lines = ["Beneficiary name,IBAN,Bank,Amount AED,Currency,Payment reference,Payment details"];
   for (const r of rows) {
     const bank = r.bank as BankDetails;
@@ -139,15 +153,19 @@ export async function markPayoutRunPaid(tx: Queryable, actor: SessionUser, runId
   const run = (await tx.query<Record<string, unknown>>("select * from payout_runs where id = $1", [runId])).rows[0];
   if (!run) throw notFound("Payout run not found");
   if (run.status !== "exported") throw conflict(run.status === "paid" ? "This run is already paid" : "Export the bank file before marking the run paid");
+  await tx.query("select pg_advisory_xact_lock(777002)");
+  await assertRunIntact(tx, runId, num(run.total_fils));
   const payouts = (await tx.query<Record<string, unknown>>("select id, partner_org_id, amount_fils from payouts where run_id = $1 and status = 'eligible'", [runId])).rows;
   await tx.query("update payouts set status = 'released', released_at = app_now(), released_by = $2 where run_id = $1 and status = 'eligible'", [runId, actor.id]);
   await tx.query("update payout_runs set status = 'paid', paid_at = app_now(), bank_reference = $2 where id = $1", [runId, bankReference.trim()]);
   await audit(tx, actor, "payout_run.paid", "payout_run", runId, { bankReference: bankReference.trim(), payouts: payouts.map((p) => p.id), total: num(run.total_fils) });
   for (const p of payouts) await audit(tx, actor, "payout.released", "payout", String(p.id), { amount: num(p.amount_fils), runId });
+  // The remittance states what the bank paid: payout plus the partner's own VAT.
+  const paidRows = (await tx.query<Record<string, unknown>>("select p.partner_org_id, p.amount_fils, coalesce(pi.vat_fils, 0) as vat_fils from payouts p left join partner_invoices pi on pi.payout_id = p.id where p.run_id = $1", [runId])).rows;
   const byPartner = new Map<string, { total: number; count: number }>();
-  for (const p of payouts) {
+  for (const p of paidRows) {
     const cur = byPartner.get(String(p.partner_org_id)) ?? { total: 0, count: 0 };
-    byPartner.set(String(p.partner_org_id), { total: cur.total + num(p.amount_fils), count: cur.count + 1 });
+    byPartner.set(String(p.partner_org_id), { total: cur.total + num(p.amount_fils) + num(p.vat_fils), count: cur.count + 1 });
   }
   for (const [orgId, agg] of byPartner) {
     const admins = (await tx.query<{ email: string }>("select email from users where org_id = $1 and role = 'partner_admin' and status = 'active' order by email limit 3", [orgId])).rows;
@@ -156,14 +174,32 @@ export async function markPayoutRunPaid(tx: Queryable, actor: SessionUser, runId
   return { ok: true, released: payouts.length };
 }
 
-export async function cancelPayoutRun(tx: Queryable, actor: SessionUser, runId: string, reason: string) {
+/** Every payout in the run must still be eligible and the amounts must still add up to the run total. */
+async function assertRunIntact(tx: Queryable, runId: string, total: number) {
+  const r = (
+    await tx.query<{ n: number; bad: number; sum: number }>(
+      `select count(*)::int as n, count(*) filter (where p.status <> 'eligible')::int as bad,
+         coalesce(sum(p.amount_fils + coalesce(pi.vat_fils, 0)), 0)::bigint as sum
+       from payouts p left join partner_invoices pi on pi.payout_id = p.id where p.run_id = $1`,
+      [runId],
+    )
+  ).rows[0]!;
+  if (num(r.n) === 0) throw conflict("This run has no payouts left; cancel it");
+  if (num(r.bad) > 0) throw conflict(`${num(r.bad)} payout(s) in this run are no longer eligible (refunded or withheld); cancel the run and create a new one`);
+  if (num(r.sum) !== total) throw conflict("The payouts in this run no longer add up to its total; cancel the run and create a new one");
+}
+
+/** Cancelling an exported run is only safe if the file was never submitted to the bank: finance must say so. */
+export async function cancelPayoutRun(tx: Queryable, actor: SessionUser, runId: string, reason: string, confirmNotSubmitted = false) {
   if (!["finance", "founder"].includes(actor.role)) throw forbidden("Only finance cancels payout runs");
+  await tx.query("select pg_advisory_xact_lock(777002)");
   const run = (await tx.query<Record<string, unknown>>("select status from payout_runs where id = $1", [runId])).rows[0];
   if (!run) throw notFound("Payout run not found");
   if (run.status === "paid") throw conflict("A paid run cannot be cancelled");
+  if (run.status === "exported" && !confirmNotSubmitted) throw conflict("This run's bank file was exported: confirm that it was not submitted to the bank before cancelling");
   await tx.query("update payouts set run_id = null where run_id = $1", [runId]);
   await tx.query("update payout_runs set status = 'cancelled' where id = $1", [runId]);
-  await audit(tx, actor, "payout_run.cancelled", "payout_run", runId, { reason });
+  await audit(tx, actor, "payout_run.cancelled", "payout_run", runId, { reason, wasExported: run.status === "exported", confirmNotSubmitted });
   return { ok: true };
 }
 

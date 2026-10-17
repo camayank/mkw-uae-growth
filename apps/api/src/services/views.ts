@@ -146,7 +146,8 @@ export function partnerHome(db: Database, user: SessionUser) {
        from payouts p left join partner_invoices pi on pi.payout_id = p.id
        order by p.engagement_id, case p.stage when 'kickoff' then 0 when 'key_milestone' then 1 when 'completion' then 2 else 3 end`,
     );
-    const bank = (await tx.query<{ bank: unknown }>("select app_partner_bank() as bank")).rows[0]?.bank ?? null;
+    // Only the partner admin, who maintains them, sees the firm's bank details.
+    const bank = user.role === "partner_admin" ? ((await tx.query<{ bank: unknown }>("select app_partner_bank() as bank")).rows[0]?.bank ?? null) : null;
     const cards = await tx.query(
       `select c.id, c.code, d.name, c.professional_fils, c.gov_stated_fils, c.third_party_fils, c.working_days, c.exclusions, c.valid_to
        from rate_cards c join deliverables d on d.code = c.code order by c.code`,
@@ -205,7 +206,11 @@ export function opsOverview(db: Database, user: SessionUser) {
       })),
       engagements: engagements.rows.map(camel),
       exceptions,
-      partners: partners.rows.map(camel),
+      partners: partners.rows.map((p) => {
+        const row = camel(p) as Record<string, unknown>;
+        const profile = (row.profile as Record<string, unknown>) ?? {};
+        return { ...row, profile: seesMargin(user.role) ? profile : Object.fromEntries(Object.entries(profile).filter(([k]) => k !== "bank")) };
+      }),
       payouts: payouts.rows.map(camel),
       seesMargin: seesMargin(user.role),
     };

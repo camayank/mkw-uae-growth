@@ -72,11 +72,12 @@ shared-secret webhook of the starter.
 
 | Claim | Evidence |
 | --- | --- |
-| Tests | `pnpm test`: 40 core + 96 API = 136 (O4: 126); `apps/api/test/payments.test.ts` (10 tests); flow test updated to the signed webhook and the partner-invoice rule |
+| Tests | `pnpm test`: 40 core + 98 API = 138 (O4: 126); `apps/api/test/payments.test.ts` (12 tests); flow test updated to the signed webhook and the partner-invoice rule |
+| Review | independent reviewer: 3 blockers (refund under an open run left a paid-at-bank payout unreleased; partner VAT unbounded; held credit note re-issued as a tax invoice) + 11 findings; all fixed with tests: run integrity checks on export and pay, VAT 0 or exactly 5%, numbering by kind, credit note names its invoice, CSV formula guard, webhook refusals not audited, IBAN hidden from ops and staff, proportional VAT split that adds up on odd prices, advisory lock on runs |
 | Webhook | unsigned 401, wrong secret 401, 6 minutes old 401, tampered body 401, short amount 409; payment stays pending; refusals audited; good message 200 and idempotent |
 | Invoices | held without TRN (client sees none), TRN validated (15 digits), founder-only; live payment takes 000001, held one 000002; fee lines VAT 5%, disbursement lines no VAT, lines sum to the payment; PDF header/xref/EOF and text checked; client downloads own, partner 403, anonymous 401; RLS: other client sees nothing, `file_key` denied |
 | Refund | credit note CN-2026-000001 with negative totals, payment refunded, payouts withheld, second refund 409, statement totals move |
-| Partner invoices and runs | wrong amount 400, staff 403, only the owning partner 200; IBAN validated; bank change audited with last four digits only; run total = sum(payout + VAT) = bank file total, one line per partner; mark paid releases all, one audit event per payout, remittances from "MKW Advisors" without "Tasees"; ops 403 everywhere |
+| Partner invoices and runs | wrong amount 400, staff 403, only the owning partner 200; IBAN validated; bank change audited with last four digits only; run total = sum(payout + VAT) = bank file total, one line per partner; mark paid releases all, one audit event per payout, remittances from "MKW Advisors" without "Tasees"; ops 403 on runs, files, refunds and the run list |
 | Smoke | `docs/evidence/O3/log.txt` (43 checks OK); screenshots `29-settings-company.png`, `30-client-statement.png`, `31-partner-payouts.png`, `32-finance-payout-runs.png` (1280 px), `33-mobile-partners-runs.png`, `34-mobile-statement.png` (390 px) |
 
 ## Could not verify

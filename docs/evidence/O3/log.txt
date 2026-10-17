@@ -46,7 +46,7 @@ invite: Invited
 role change: Role changed
 deactivate: Account deactivated
 deactivated user shows the badge and a reactivate button: OK
-export downloaded: person-2974c0e9-da86-4555-a3ae-0e017c2f2adc.json
+export downloaded: person-6249dc11-655a-4edd-96aa-3cbc83b7f1dd.json
 erase: Personal data erased and recorded
 erased person shown as a tombstone: OK
 17-people-after-changes

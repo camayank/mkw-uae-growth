@@ -143,6 +143,14 @@ payable. Finance batches payable payouts into one run, exports one bank file (on
 summed), and marks the run paid with the bank's reference; that single person's action releases the payouts,
 audits each, and sends remittance advices. A single release outside a run still needs the invoice.
 
+**D27a. A run is paid only if it is still whole.** Export and "mark paid" both re-check that every payout in
+the run is still eligible and that the amounts still add up to the run's total; a refund is refused while any
+payout of that engagement sits in an open or exported run. Cancelling an exported run requires finance to state
+that the bank file was never submitted. A partner's VAT on its invoice is 0 or exactly 5% of the payout, so the
+bank transfer can never exceed the priced cost plus statutory VAT. Bank files strip leading formula characters
+and partner-typed names may not start with them. Finance and the founder alone see partner IBANs; ops sees
+profiles without them, partner staff see no bank details.
+
 **D28. A refund withholds what has not been paid out.** A full refund (the only kind built) marks the payment
 refunded, issues a credit note and sets the engagement's unreleased payouts to withheld; it is refused once a
 payout has been released, so the money leak "client refunded, partner paid" cannot happen without finance

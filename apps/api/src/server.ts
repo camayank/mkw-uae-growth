@@ -491,7 +491,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
 
   app.get("/api/admin/orgs", async (req) => {
     const user = requireRole(req, ...PLATFORM_ROLES);
-    return asPlatform(db, user, (tx) => listOrganisations(tx));
+    return asPlatform(db, user, (tx) => listOrganisations(tx, user.role !== "ops"));
   });
 
   app.post("/api/admin/partners", async (req) => {
@@ -625,10 +625,12 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   // Payment provider webhook: a signed message from the provider is the one automated path that records money.
   app.post("/api/webhooks/payments", async (req, reply) => {
     let event;
+    // Unauthenticated callers must not be able to grow the audit chain: refusals are logged and rate-limited, not audited.
+    throttle(req, "webhook", 60);
     try {
       event = opts.provider.verifyWebhook(req.rawBody ?? "", req.headers);
     } catch (e) {
-      await asPlatform(db, null, (tx) => audit(tx, null, "webhook.rejected", "payment", null, { reason: (e as Error).message }));
+      app.log.warn({ ip: req.ip, reason: (e as Error).message }, "payment webhook refused");
       return reply.status(401).send({ error: "unauthorised", message: `Webhook refused: ${(e as Error).message}` });
     }
     await asPlatform(db, null, (tx) => markPaymentPaid(tx, null, event.paymentId, event.reference, deps, event.amountFils));
@@ -721,7 +723,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   });
 
   app.get("/api/ops/payout-runs", async (req) => {
-    const user = requireRole(req, ...PLATFORM_ROLES);
+    const user = requireRole(req, "finance", "founder");
     return asPlatform(db, user, (tx) => listPayoutRuns(tx));
   });
 
@@ -745,8 +747,8 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
 
   app.post<{ Params: { id: string } }>("/api/ops/payout-runs/:id/cancel", async (req) => {
     const user = requireRole(req, "finance", "founder");
-    const { reason } = z.object({ reason: z.string().min(3).max(300) }).parse(req.body);
-    return asPlatform(db, user, (tx) => cancelPayoutRun(tx, user, req.params.id, reason));
+    const body = z.object({ reason: z.string().min(3).max(300), confirmNotSubmitted: z.boolean().default(false) }).parse(req.body);
+    return asPlatform(db, user, (tx) => cancelPayoutRun(tx, user, req.params.id, body.reason, body.confirmNotSubmitted));
   });
 
   app.get("/api/health", async () => ({ ok: true, db: db.kind, devLogin: !!opts.devLogin }));

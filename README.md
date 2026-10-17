@@ -6,7 +6,7 @@ Two neutral, free, browser-side tools for the UAE e-invoicing mandate, built fro
 * **E-Invoice Data Check** — drop a customer list and invoice register (CSV/Excel from Tally, Zoho, QuickBooks, SAP or Excel) and see which invoices would be rejected under the mandatory-field and arithmetic rules, the receivables at risk and the fix plan. Nothing is uploaded.
 
 Live on Claude Artifacts: [Selector](https://claude.ai/artifact/1oLxYw21hkuTDwepoKEbwh) · [Data Check](https://claude.ai/artifact/BD4iaFiBPu8DwX2WBhHQoX) · [Market Map 2026](https://claude.ai/artifact/R4zoHjumfqj4mrLZzDbnaq) (links open once shared from their Share menus).
-Static site (GitHub Pages, after first deploy): the `site_url` in `site.config.json` — selector at `/`, data check at `/check/`.
+Static site (GitHub Pages): https://camayank.github.io/mkw-uae-growth/ — selector at `/`, data check at `/check/`. Repository: https://github.com/camayank/mkw-uae-growth
 
 Architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · Data dictionary: [`docs/DATA_DICTIONARY.md`](docs/DATA_DICTIONARY.md) · Corrections: [`CORRECTIONS.md`](CORRECTIONS.md) · Changes: [`CHANGELOG.md`](CHANGELOG.md)
 
@@ -28,14 +28,9 @@ Architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · Data dictionary:
 
 ## Go live on GitHub Pages
 
-1. Create an empty repository on GitHub (public, so Pages is free), e.g. `mkwadvisors/asp-selector`, and push:
-   ```bash
-   git remote add origin git@github.com:<owner>/asp-selector.git
-   git push -u origin main --tags
-   ```
-2. In the repository: **Settings → Pages → Build and deployment → Source: GitHub Actions.** The workflow runs on the push and publishes `dist/`.
-3. Set `site_url` in `site.config.json` to the Pages URL (`https://<owner>.github.io/asp-selector/`) if it differs, commit, push. Share links, the data check cross-link and the preview image all derive from it.
-4. Custom domain (optional): add a `CNAME` file to `dist/` via the build (or Settings → Pages → Custom domain), point DNS, set `site_url` to the domain. Nothing else changes.
+1. Every push to `main` runs `.github/workflows/deploy.yml`: build → tests → GitHub Pages. The workflow enables Pages itself on first run (`actions/configure-pages` with `enablement: true`).
+2. GitHub Pages serves a private repository only on paid plans; on a free account the repository must be public. The code is MIT and the data CC BY, so public is the intended state.
+3. Moving to another repository or a custom domain: change `site_url` in `site.config.json` (and add a `CNAME` to `dist/` for a domain), commit, push. Share links, the data check cross-link, the 404 redirect and the preview image all derive from it.
 
 Local build and test:
 ```bash

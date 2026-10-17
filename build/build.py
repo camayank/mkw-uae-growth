@@ -158,7 +158,8 @@ def main():
     (DIST / "check" / "index.html").write_text(standalone(site_val, cfg, title="E-Invoice Data Check", description="Drop your customer list and invoice register from Tally, Zoho, QuickBooks, SAP or Excel and see which invoices would be rejected under UAE e-invoicing, the receivables at risk and the fix plan. Runs in your browser; nothing is uploaded.", path="check/"), encoding="utf-8")
 
     (DIST / ".nojekyll").write_text("", encoding="utf-8")
-    (DIST / "404.html").write_text('<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=/asp-selector/"><title>UAE ASP Selector</title><p>Redirecting to the <a href="/asp-selector/">UAE ASP Selector</a>.</p>', encoding="utf-8")
+    home = "/" + "/".join(cfg["site_url"].split("/")[3:]) if cfg["site_url"] else "/"
+    (DIST / "404.html").write_text(f'<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url={home}"><title>UAE ASP Selector</title><p>Redirecting to the <a href="{home}">UAE ASP Selector</a>.</p>', encoding="utf-8")
     made = og_image(DIST / "og-image.png", cfg)
     print(f"built {len(providers)} providers -> data/providers.json; dist/index.html, dist/check/index.html, two artifact fragments{', og-image.png' if made else ''}; site_url={cfg['site_url'] or '(none)'}")
 

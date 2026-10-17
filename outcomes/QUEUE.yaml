@@ -44,7 +44,8 @@ outcomes:
     needs_from_owner: [rule sign-off, AI API key and monthly spend cap]
   - id: O6
     title: Partners and delivery (onboarding, licence watch, scorecard, document requests, delay watch, ratings)
-    status: queued
+    status: verified-pending-merge
+    contract: outcomes/O6-partners-and-delivery.md
     depends_on: [O1, O2]
     needs_from_owner: [service guarantee figure]
   - id: O7

@@ -266,8 +266,10 @@ export async function recomputeScorecards(tx: Queryable, actor: SessionUser | nu
   return partners.length;
 }
 
+const camel = (row: Record<string, unknown>) => Object.fromEntries(Object.entries(row).map(([k, v]) => [k.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase()), v]));
+
 export async function scorecardHistory(tx: Queryable, partnerId: string, limit = 26) {
-  return (await tx.query("select id, computed_at, window_from, window_to, inputs, score, parts, provisional from scorecards where partner_org_id = $1 order by computed_at desc limit $2", [partnerId, limit])).rows;
+  return (await tx.query("select id, computed_at, window_from::text as window_from, window_to::text as window_to, inputs, score, parts, provisional from scorecards where partner_org_id = $1 order by computed_at desc limit $2", [partnerId, limit])).rows.map(camel);
 }
 
 // Partner's view of its own firm -------------------------------------------------------------------------------
@@ -276,10 +278,11 @@ export async function partnerOnboarding(tx: Queryable, actor: SessionUser, orgId
   if (!ownFirm(actor, orgId) && !isStaff(actor)) throw forbidden("Not your firm");
   const p = await loadPartner(tx, orgId);
   const docs = (await tx.query("select id, kind, file_name, uploaded_at, reference, expires_on::text as expires_on, status, verified_at, note from partner_documents where partner_org_id = $1 order by uploaded_at desc", [orgId])).rows;
-  const staff = (await tx.query("select id, name, email, role, status from users where org_id = $1 order by role, name", [orgId])).rows;
+  // Erased people are MKW's record, not the firm's list.
+  const staff = (await tx.query(`select id, name, email, role, status from users where org_id = $1 ${isStaff(actor) ? "" : "and status <> 'erased'"} order by role, name`, [orgId])).rows;
   const scorecards = await scorecardHistory(tx, orgId, 12);
-  const { conflicts: _c, ...profile } = p.profile as Record<string, unknown>;
-  return { org: { id: p.id, name: p.name }, profile, documents: docs, staff, scorecards, moves: MOVES[p.profile.status ?? "prospect"] };
+  const { conflicts: _c, bank: _b, ...profile } = p.profile as Record<string, unknown>;
+  return { org: { id: p.id, name: p.name }, profile, documents: docs.map(camel), staff, scorecards, moves: MOVES[p.profile.status ?? "prospect"] };
 }
 
 // Partner staff ----------------------------------------------------------------------------------------------------

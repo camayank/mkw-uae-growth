@@ -138,8 +138,8 @@ document.addEventListener("visibilitychange", () => {
 
 function navFor() {
   if (isClient()) return [["home", "Overview"], ["new", "New request"], ["statement", "Statement"]];
-  if (isPartner()) return [["home", "Work"], ["rates", "Rate card"], ["payouts", "Payouts"]];
-  return [["home", "Queue"], ["pipeline", "Pipeline"], ["partners", "Partners"], ["people", "People"], ["catalogue", "Catalogue"], ["rules", "Rules"], ["scoping", "Scoping"], ["agent", "AI queue"], ["new", "New request"], ["settings", "Settings"], ["audit", "Audit trail"]];
+  if (isPartner()) return [["home", "Work"], ["firm", "Your firm"], ["rates", "Rate card"], ["payouts", "Payouts"]];
+  return [["home", "Queue"], ["pipeline", "Pipeline"], ["partners", "Partners"], ["delays", "Delays"], ["people", "People"], ["catalogue", "Catalogue"], ["rules", "Rules"], ["scoping", "Scoping"], ["agent", "AI queue"], ["new", "New request"], ["settings", "Settings"], ["audit", "Audit trail"]];
 }
 
 function chrome() {
@@ -210,6 +210,7 @@ async function renderOnce() {
       return await renderClientHome();
     }
     if (isPartner()) {
+      if (page === "firm") return await renderFirm(state.me.orgId);
       if (page === "rates") return await renderRateCards();
       if (page === "payouts") return await renderPartnerPayouts();
       return await renderPartnerHome();
@@ -217,6 +218,8 @@ async function renderOnce() {
     if (page === "offer" && id) return await renderOpsOffer(id);
     if (page === "pipeline") return await renderPipeline();
     if (page === "partners") return await renderPartners();
+    if (page === "partner" && id) return await renderFirm(id);
+    if (page === "delays") return await renderDelays();
     if (page === "new") return await renderIntake();
     if (page === "audit") return await renderAudit();
     if (page === "people") return await renderPeople();
@@ -379,6 +382,7 @@ async function renderClientOffer(id) {
         <tfoot><tr><td>Total</td><td class="num">${aed(o.clientTotal)}</td></tr></tfoot>
       </table>
       <p class="small muted">On acceptance you pay ${aed(deposit)}: half the fees plus all government fees, which we pass on at cost. The rest is due on completion. Valid until ${date(o.validTo)}.</p>
+      <p><a class="btn sm" href="/api/client/offers/${o.id}/pdf" target="_blank" rel="noopener" data-offer-pdf>Download the offer (PDF)</a></p>
       ${
         o.status === "published"
           ? role() === "client_owner"
@@ -482,6 +486,59 @@ async function renderEngagement(id) {
   };
 
   const dotTone = (s) => ({ client_approved: "ok", qa_passed: "info", evidence_submitted: "info", in_progress: "info", qa_rejected: "bad", disputed: "bad" })[s] ?? "";
+  const delayFor = (mid) => (e.delays ?? []).find((d) => d.milestoneId === mid);
+  const delayLine = (m) => {
+    const d = delayFor(m.id);
+    if (!d || m.status === "client_approved") return "";
+    return `<div class="small"><span class="badge bad">late</span> due ${date(d.dueDate)}, now expected by ${date(d.expectedDate)}${isPlatform() ? d.cause ? ` · ${esc(d.cause)}: ${esc(d.causeNote ?? "")}` : ` · <a href="#/delays">attribute on Delays</a>` : ""}</div>`;
+  };
+  const docsFor = (mid) => (e.documentRequests ?? []).filter((r) => r.milestoneId === mid);
+  const docsCard = () => {
+    const list = e.documentRequests ?? [];
+    if (!list.length) return "";
+    const open = list.filter((r) => ["requested", "rejected"].includes(r.status)).length;
+    const row = (r) => {
+      const step = ms.find((m) => m.id === r.milestoneId);
+      const file = r.fileName ? `<a href="/api/document-requests/${r.id}/file" target="_blank" rel="noopener">${esc(r.fileName)}</a>` : "–";
+      let action = "";
+      if (isClient() && ["requested", "rejected"].includes(r.status)) action = `<form class="row" data-form="doc-upload" data-id="${r.id}"><input type="file" name="file" required style="width:auto;max-width:100%" /><button class="sm primary" type="submit">Upload</button></form>`;
+      if ((isPartner() || ["ops", "founder"].includes(role())) && r.status === "uploaded") action = `<button class="sm primary" data-act="doc-decide" data-id="${r.id}" data-decision="received">Received</button> <button class="sm" data-act="doc-decide" data-id="${r.id}" data-decision="rejected">Ask again</button>`;
+      return `<tr><td>${esc(words(r.kind))}${r.note ? `<br><span class="small muted">${esc(r.note)}</span>` : ""}<br><span class="small muted">${esc(step?.name ?? "")}</span></td><td>${badge(r.status === "received" ? "ok" : r.status === "rejected" ? "bad" : r.status, r.status === "rejected" ? `ask again: ${r.decisionNote ?? ""}` : words(r.status))}</td><td class="small">${file}</td><td>${action}</td></tr>`;
+    };
+    const addForm = isPartner() && nextOpenId ? `<form class="pad row" data-form="doc-request" data-id="${nextOpenId}" style="padding-top:8px"><input name="kind" placeholder="Document to ask for" required minlength="3" style="max-width:240px" /><input name="note" placeholder="Note to the client (optional)" style="max-width:300px" /><button class="sm" type="submit">Ask the client</button></form>` : "";
+    return `<div class="card flush"><h2>Documents from the client ${open ? badge("pending", `${open} to upload`) : badge("ok", "complete")}</h2>
+      ${isClient() ? `<p class="small muted pad" style="padding-top:0">Upload what each step needs. Files are stored in the UAE and shared only with the firm doing the work.</p>` : ""}
+      ${table(["Document", "Status", "File", ""], list.map(row))}${addForm}</div>`;
+  };
+  const creditsCard = () => {
+    const list = e.credits ?? [];
+    if (!list.length) return "";
+    return `<div class="card flush"><h2>Service guarantee</h2>${table(
+      ["Step", "#Credit", "Status", ...(isPlatform() ? ["Borne by", ""] : [])],
+      list.map((c) => `<tr><td>${esc(c.step ?? ms.find((m) => m.id === c.milestoneId)?.name ?? "")}</td><td class="num">${aed(c.amount)}</td><td>${badge(c.status === "applied" || c.status === "settled" ? "ok" : c.status === "waived" ? "expired" : "pending", c.status === "applied" ? "deducted from your balance" : words(c.status))}${c.settledReference ? ` <span class="small muted">${esc(c.settledReference)}</span>` : ""}</td>
+        ${isPlatform() ? `<td class="small">${c.borneByPartner ? "partner" : "MKW"}${c.payoutReduction ? ` · payout −${aed(c.payoutReduction)}` : ""}</td><td>${c.status === "pending" && seesMargin() ? `<button class="sm primary" data-act="credit" data-id="${c.id}" data-decision="approve">Approve</button> <button class="sm" data-act="credit" data-id="${c.id}" data-decision="waive">Waive</button>` : c.status === "approved" && seesMargin() ? `<button class="sm" data-act="credit-settle" data-id="${c.id}">Record refund</button>` : ""}</td>` : ""}</tr>`),
+    )}${isClient() ? `<p class="small muted pad" style="padding-top:0">A step more than five working days late earns you a credit of part of its fee, by rule.</p>` : ""}</div>`;
+  };
+  const ratingCard = () => {
+    if (e.engagement.status !== "completed") return "";
+    const r = e.rating;
+    if (r) return `<div class="card"><h2>${isPartner() ? "Client rating" : "Your rating"}</h2><p>${"★".repeat(r.stars)}${"☆".repeat(5 - r.stars)} <span class="small muted">${date(r.createdAt)}</span></p>${(isPlatform() ? r.commentOriginal : r.comment) ? `<p class="small">${esc(isPlatform() ? r.commentOriginal : r.comment)}</p>` : ""}</div>`;
+    if (isClient() && role() === "client_owner")
+      return `<form class="card" data-form="rating" data-id="${e.engagement.id}"><h2>How did it go?</h2><p class="small muted">Your rating feeds the partner's scorecard, which decides who gets work.</p>
+        <div class="row"><select name="stars" style="width:auto"><option value="5">5 ★ excellent</option><option value="4">4 ★ good</option><option value="3">3 ★ fair</option><option value="2">2 ★ poor</option><option value="1">1 ★ bad</option></select></div>
+        <textarea name="comment" placeholder="What went well, what did not (optional)"></textarea><div class="row" style="margin-top:8px"><button class="sm primary" type="submit">Send rating</button></div></form>`;
+    return "";
+  };
+  const manualAllocation = () => {
+    if (!isPlatform() || !["ops", "founder"].includes(role()) || e.engagement.status !== "allocating") return "";
+    const openLines = e.lines.filter((l) => !l.partner);
+    if (!openLines.length || !(e.candidates ?? []).length) return "";
+    return `<form class="pad grid cols-3" data-form="manual-alloc" data-id="${e.engagement.id}" style="padding-top:8px">
+      <div><label>Allocate by hand to</label><select name="partnerId">${e.candidates.map((c) => `<option value="${c.id}">${esc(c.name)} (${esc(words(c.status ?? ""))}, quality ${c.quality ?? "–"})</option>`).join("")}</select></div>
+      <div><label>Lines</label>${openLines.map((l) => `<label class="small"><input type="checkbox" name="codes" value="${esc(l.code)}" checked /> ${esc(l.name)}</label>`).join("<br>")}</div>
+      <div><label>Why (recorded)</label><input name="reason" required minlength="5" placeholder="Client asked for this firm after the call" /><button class="sm" type="submit" style="margin-top:6px">Offer to this partner</button></div></form>
+      <p class="small muted pad" style="padding-top:0">Eligibility and the priced-cost check still apply; the audit trail records who chose and why.</p>`;
+  };
 
   const moneyCard = () => {
     if (isClient())
@@ -539,7 +596,7 @@ async function renderEngagement(id) {
         ),
         "Allocation starts when the deposit is received.",
       )}
-      ${["ops", "founder"].includes(role()) ? `<div class="pad" style="padding-top:8px"><button class="sm" data-act="reallocate" data-id="${e.engagement.id}">Allocate open lines now</button></div>` : ""}</div>`;
+      ${["ops", "founder"].includes(role()) ? `<div class="pad" style="padding-top:8px"><button class="sm" data-act="reallocate" data-id="${e.engagement.id}">Allocate open lines now</button></div>` : ""}${manualAllocation()}</div>`;
     const priceCol = isClient() ? "clientUnitPrice" : "partnerUnitCost";
     const showMoney = e.lines.some((l) => l[priceCol] != null);
     return `<div class="card flush"><h2>Scope</h2>${table(
@@ -586,6 +643,8 @@ async function renderEngagement(id) {
                 (m) => `<li><span class="dot ${dotTone(m.status)}"></span><div>
                 <div class="row between"><b>${esc(m.name)}</b>${badge(m.status, MILESTONE_LABEL[m.status])}</div>
                 <div class="small muted">Due ${date(m.dueDate)}${m.isKey ? " · key step" : ""} · Evidence: ${esc((m.evidenceRequired ?? []).map(words).join(", ") || "none")}</div>
+                ${delayLine(m)}
+                ${docsFor(m.id).length ? `<div class="small muted">Client documents: ${docsFor(m.id).filter((r) => r.status === "received").length}/${docsFor(m.id).length} received</div>` : ""}
                 ${m.qaNote ? `<div class="small">MKW note: ${esc(m.qaNote)}</div>` : ""}
                 ${m.disputeReason ? `<div class="small">Client issue: ${esc(m.disputeReason)}</div>` : ""}
                 ${evidenceFor(m.id).length ? `<div class="small">${evidenceFor(m.id).map((x) => `<a href="/api/evidence/${x.id}/file" target="_blank" rel="noopener">${esc(x.fileName)}</a> <span class="muted">(${esc(words(x.type))})</span>`).join(" · ")}</div>` : ""}
@@ -596,7 +655,10 @@ async function renderEngagement(id) {
       }
     </div>
     <div class="stack">
+      ${docsCard()}
+      ${ratingCard()}
       ${moneyCard()}
+      ${creditsCard()}
       ${changeOrders()}
       <div class="card"><h2>Messages</h2>
         <div class="messages">${
@@ -658,11 +720,13 @@ async function renderPartnerHome() {
   const admin = role() === "partner_admin";
   $app.innerHTML = `
   <h1>Work from MKW Advisors</h1>
+  ${h.firm && h.firm.status !== "signed" ? `<p class="notice small">Your firm is <b>${esc(words(h.firm.status ?? "prospect"))}</b>${h.firm.status === "paused" ? "; no new work is offered until MKW Advisors lifts the pause" : h.firm.status === "pilot" ? ": up to three jobs at a time until five are delivered on time" : ": complete your application and documents on <a href=\"#/firm\">Your firm</a>"}.</p>` : ""}
   <div class="kpis">
     <div class="kpi"><b>${offered.length}</b><span>Offers waiting for your answer</span></div>
     <div class="kpi"><b>${active.filter((a) => a.engagementStatus !== "completed").length}</b><span>Engagements in delivery</span></div>
     <div class="kpi"><b>${rfqs.length}</b><span>Requests for a price</span></div>
     <div class="kpi"><b>${aed(h.payouts.filter((p) => p.status === "eligible").reduce((s, p) => s + p.amount, 0))}</b><span>Payouts due to you</span></div>
+    <div class="kpi"><b>${h.firm?.latestScore ?? h.firm?.quality ?? "–"}</b><span>Quality score · <a href="#/firm">scorecard</a></span></div>
   </div>
   <div class="stack">
     <div class="card flush"><h2>Offered to you</h2>
@@ -710,6 +774,95 @@ async function renderPartnerHome() {
       )}
     </div>
   </div>`;
+}
+
+const DOC_KINDS = ["trade_licence", "insurance", "bank_letter", "agreement", "other"];
+const PARTNER_STATUSES = ["prospect", "contacted", "applied", "under_review", "pilot", "signed", "paused"];
+
+async function renderFirm(orgId) {
+  const f = await api("GET", `/api/partners/${orgId}/onboarding`);
+  const pr = f.profile ?? {};
+  const mine = isPartner();
+  const admin = role() === "partner_admin";
+  const canAct = isPlatform() && ["ops", "founder"].includes(role());
+  const all = await deliverables();
+  const emirates = ["Dubai", "Abu Dhabi", "Sharjah", "Ajman", "Ras Al Khaimah", "Umm Al Quwain", "Fujairah", "All"];
+  const latest = f.scorecards?.[0];
+  const docRow = (d) => `<tr><td>${esc(words(d.kind))}${d.reference ? `<br><span class="small muted">${esc(d.reference)}</span>` : ""}</td><td class="small"><a href="/api/partner-documents/${d.id}/file" target="_blank" rel="noopener">${esc(d.fileName)}</a><br><span class="muted">${dateTime(d.uploadedAt)}</span></td><td class="small">${d.expiresOn ? date(d.expiresOn) : "–"}</td>
+    <td>${badge(d.status === "verified" ? "ok" : d.status === "rejected" ? "bad" : d.status === "superseded" ? "expired" : "UNCERTAIN", d.status === "uploaded" ? "awaiting MKW check" : words(d.status))}${d.note ? `<br><span class="small muted">${esc(d.note)}</span>` : ""}</td>
+    <td>${canAct && d.status === "uploaded" ? `<button class="sm primary" data-act="doc-review" data-id="${d.id}" data-decision="verified">Verify</button> <button class="sm" data-act="doc-review" data-id="${d.id}" data-decision="rejected">Reject</button>` : ""}</td></tr>`;
+  $app.innerHTML = `
+  ${isPlatform() ? `<p><a href="#/partners">← Partners</a></p>` : ""}
+  <div class="row between"><h1>${esc(f.org.name)}</h1>${badge(pr.status ?? "prospect")}</div>
+  <p class="muted">${mine ? "Your application, documents, staff and scorecard with MKW Advisors." : "Onboarding pipeline: prospect → contacted → applied → under review → pilot → signed. Pilot needs a verified, unexpired trade licence; signed needs the agreement and insurance too."}</p>
+  <div class="kpis">
+    <div class="kpi"><b>${latest ? latest.score : pr.quality ?? "–"}</b><span>Quality score${latest?.provisional ? " (provisional)" : ""}</span></div>
+    <div class="kpi"><b>${pr.licenceActive ? "active" : "not active"}</b><span>Trade licence${pr.licenceExpiry ? ` · expires ${date(pr.licenceExpiry)}` : ""}</span></div>
+    <div class="kpi"><b>${pr.agreementSigned ? "signed" : "not yet"}</b><span>Partner Network Agreement</span></div>
+    <div class="kpi"><b>${pr.capacity ?? "–"}</b><span>Capacity (jobs at a time)</span></div>
+  </div>
+  ${canAct ? `<div class="card"><form class="row" data-form="partner-move" data-id="${orgId}"><label>Move to</label><select name="status" style="width:auto">${(f.moves ?? []).map((m) => `<option value="${m}">${esc(words(m))}</option>`).join("")}</select><input name="note" placeholder="Why (recorded and sent to the firm)" required minlength="3" style="max-width:360px" /><button class="sm primary" type="submit">Record</button></form></div>` : ""}
+  <div class="grid cols-2">
+    <div class="card"><h2>Application</h2>
+      ${mine && admin ? `<form data-form="application" class="stack">
+        <div class="grid cols-2">
+          <div class="field"><label>Trade licence number</label><input name="licenceNumber" value="${esc(pr.licenceNumber ?? "")}" required /></div>
+          <div class="field"><label>Licence expiry</label><input name="licenceExpiry" type="date" value="${esc(pr.licenceExpiry ?? "")}" required /></div>
+          <div class="field"><label>Capacity (jobs at a time)</label><input name="capacity" type="number" min="0" max="500" value="${pr.capacity ?? 5}" required /></div>
+          <div class="field"><label>Regulated capabilities</label>
+            <label class="small"><input type="checkbox" name="ftaTaxAgent" ${pr.ftaTaxAgent ? "checked" : ""} /> FTA registered tax agent</label><br>
+            <label class="small"><input type="checkbox" name="registeredLiquidator" ${pr.registeredLiquidator ? "checked" : ""} /> Registered liquidator</label><br>
+            <label class="small"><input type="checkbox" name="licensedLawFirm" ${pr.licensedLawFirm ? "checked" : ""} /> Licensed law firm</label><br>
+            <label class="small"><input type="checkbox" name="regulatoryAdviser" ${pr.regulatoryAdviser ? "checked" : ""} /> DFSA/FSRA/VARA adviser</label></div>
+        </div>
+        <div class="field"><label>Emirates covered</label><div class="row">${emirates.map((em) => `<label class="small"><input type="checkbox" name="emirates" value="${em}" ${(pr.emirates ?? []).includes(em) ? "checked" : ""} /> ${em}</label>`).join(" ")}</div></div>
+        <div class="field"><label>Services offered</label><details><summary class="small">${(pr.codes ?? []).length} selected</summary><div class="grid cols-3">${all.map((d) => `<label class="small"><input type="checkbox" name="codes" value="${esc(d.code)}" ${(pr.codes ?? []).includes(d.code) ? "checked" : ""} /> ${esc(d.name)}</label>`).join("")}</div></details></div>
+        <div class="field"><label>About the firm</label><textarea name="about" maxlength="2000">${esc(pr.about ?? "")}</textarea></div>
+        <div class="row"><button class="sm primary" type="submit">${pr.status === "prospect" || pr.status === "contacted" ? "Submit application" : "Update application"}</button></div></form>`
+      : `<dl class="small"><dt>Licence</dt><dd>${esc(pr.licenceNumber ?? "–")}${pr.licenceExpiry ? `, expires ${date(pr.licenceExpiry)}` : ""}</dd><dt>Emirates</dt><dd>${esc((pr.emirates ?? []).join(", ") || "–")}</dd><dt>Services</dt><dd>${esc((pr.codes ?? []).join(", ") || "–")}</dd><dt>Capabilities</dt><dd>${esc([pr.ftaTaxAgent && "FTA tax agent", pr.registeredLiquidator && "liquidator", pr.licensedLawFirm && "law firm", pr.regulatoryAdviser && "regulatory adviser"].filter(Boolean).join(", ") || "–")}</dd><dt>About</dt><dd>${esc(pr.about ?? "–")}</dd></dl>`}
+    </div>
+    <div class="stack">
+      <div class="card flush"><h2>Documents</h2>
+        ${table(["Document", "File", "Expires", "Status", ""], (f.documents ?? []).map(docRow), "No documents yet.")}
+        ${(mine && admin) || canAct ? `<form class="pad grid cols-3" data-form="partner-doc" data-id="${orgId}" style="padding-top:8px">
+          <div><label>Kind</label><select name="kind">${DOC_KINDS.map((k) => `<option value="${k}">${esc(words(k))}</option>`).join("")}</select></div>
+          <div><label>Reference (optional)</label><input name="reference" placeholder="Licence or policy number" /></div>
+          <div><label>Expiry (licence, insurance)</label><input name="expiresOn" type="date" /></div>
+          <div style="grid-column:1/-1" class="row"><input type="file" name="file" required style="width:auto;max-width:100%" /><button class="sm primary" type="submit">Upload</button></div></form>
+          <p class="small muted pad" style="padding-top:0">Trade licence, professional indemnity insurance, bank letter and the signed Partner Network Agreement. MKW Advisors verifies each one.</p>` : ""}
+      </div>
+      <div class="card flush"><h2>People</h2>
+        ${table(["Name", "Email", "Role", "Status", ""], (f.staff ?? []).map((u) => `<tr><td>${esc(u.name)}</td><td class="mono small">${esc(u.email)}</td><td>${esc(words(u.role))}</td><td>${badge(u.status === "active" ? "ok" : "expired", u.status)}</td>
+          <td>${mine && admin && u.role === "partner_staff" && u.status !== "erased" ? `<button class="sm" data-act="staff-active" data-id="${u.id}" data-active="${u.status === "active" ? "0" : "1"}">${u.status === "active" ? "Remove" : "Reactivate"}</button>` : ""}</td></tr>`))}
+        ${mine && admin ? `<form class="pad row" data-form="staff-invite" style="padding-top:8px"><input name="name" placeholder="Name" required minlength="2" style="max-width:200px" /><input name="email" type="email" placeholder="Work email" required style="max-width:260px" /><button class="sm" type="submit">Add staff</button></form><p class="small muted pad" style="padding-top:0">Staff can work steps and upload evidence; only you accept work, set prices and bank details.</p>` : ""}
+      </div>
+      <div class="card flush"><h2>Scorecard</h2>
+        ${table(["Computed", "#Score", "On time", "First-pass QA", "Disputes", "Strikes", "Rating"], (f.scorecards ?? []).map((c) => `<tr><td class="small">${date(c.computedAt ?? c.computed_at)}${c.provisional ? ` ${badge("UNCERTAIN", "provisional")}` : ""}</td><td class="num"><b>${c.score}</b></td><td class="num">${c.inputs.milestonesOnTime}/${c.inputs.milestonesDone}</td><td class="num">${c.inputs.qaFirstPass}/${c.inputs.qaSubmissions}</td><td class="num">${c.inputs.disputes}</td><td class="num">${c.inputs.slaStrikes}</td><td class="num">${c.inputs.rating ?? "–"}</td></tr>`), "Recomputed weekly from the last 90 days: on-time 40, first-pass QA 20, disputes 15, acceptance strikes 15, client rating 10.")}
+      </div>
+    </div>
+  </div>`;
+}
+
+async function renderDelays() {
+  const q = await api("GET", "/api/ops/delays");
+  const canAttribute = ["ops", "founder"].includes(role());
+  $app.innerHTML = `<h1>Delays and service guarantee</h1>
+  <p class="muted">Overdue steps are noticed daily; the client is told the new expected date and the partner is chased. Ops records who bears each delay. After five working days a credit is due by rule; finance approves or waives it, and a partner-borne delay reduces the completion payout.</p>
+  <div class="card flush"><h2>Late steps</h2>${table(
+    ["Noticed", "Client · step", "Partner", "Due → expected", "Step now", "Borne by", ""],
+    q.delays.map((d) => `<tr><td class="small">${dateTime(d.noticedAt)}</td><td>${esc(d.client)}<br><span class="small muted">${esc(d.step)}</span> <a class="small" href="#/engagement/${d.engagementId}">open</a></td><td>${esc(d.partner)}</td><td class="small">${date(d.dueDate)} → ${date(d.expectedDate)}</td><td>${badge(d.stepStatus, MILESTONE_LABEL[d.stepStatus])}</td>
+      <td>${d.cause ? `${esc(d.cause)}<br><span class="small muted">${esc(d.causeNote ?? "")}</span>` : badge("pending", "not attributed")}</td>
+      <td>${canAttribute && !d.cause ? `<form class="row" data-form="attribute" data-id="${d.id}"><select name="cause" style="width:auto"><option value="partner">partner</option><option value="client">client</option><option value="government">government</option><option value="mkw">MKW</option></select><input name="note" placeholder="Why" required style="max-width:200px" /><button class="sm" type="submit">Record</button></form>` : ""}</td></tr>`),
+    "No late steps.",
+  )}</div>
+  <h2 style="margin-top:20px">Guarantee credits</h2>
+  <div class="card flush">${table(
+    ["Created", "Client · step", "Partner", "#Base", "#Credit", "Borne by", "Status", ""],
+    q.credits.map((c) => `<tr><td class="small">${date(c.createdAt)}</td><td>${esc(c.client)}<br><span class="small muted">${esc(c.step)}</span> <a class="small" href="#/engagement/${c.engagementId}">open</a></td><td>${esc(c.partner)}</td><td class="num">${aed(c.base)}</td><td class="num"><b>${aed(c.amount)}</b> <span class="small muted">${(c.guaranteeBp / 100).toFixed(0)}%</span></td>
+      <td class="small">${c.borneByPartner ? "partner" : c.cause ? `MKW (${esc(c.cause)})` : "MKW (not attributed)"}${c.payoutReduction ? `<br>payout −${aed(c.payoutReduction)}` : ""}</td><td>${badge(c.status === "applied" || c.status === "settled" ? "ok" : c.status === "waived" ? "expired" : "pending", words(c.status))}${c.settledReference ? `<br><span class="small muted">${esc(c.settledReference)}</span>` : ""}</td>
+      <td>${seesMargin() && c.status === "pending" ? `<button class="sm primary" data-act="credit" data-id="${c.id}" data-decision="approve">Approve</button> <button class="sm" data-act="credit" data-id="${c.id}" data-decision="waive">Waive</button>` : seesMargin() && c.status === "approved" ? `<button class="sm" data-act="credit-settle" data-id="${c.id}">Record refund</button>` : ""}</td></tr>`),
+    "No credits.",
+  )}</div>`;
 }
 
 async function renderPartnerPayouts() {
@@ -783,12 +936,16 @@ const EXCEPTION_LABEL = {
   scoping: "Scoping advice to review",
   ai_draft: "AI draft to decide",
   lead: "Public lead for an existing account",
+  delay: "Late step to attribute",
+  credit: "Guarantee credit for finance",
+  partner_document: "Partner document to verify",
+  partner_review: "Partner application to review",
 };
 
 async function renderQueue() {
   const o = await api("GET", "/api/ops/overview");
   const linkFor = (x) =>
-    ["offer_review", "offer_ready"].includes(x.kind) ? `#/offer/${x.ref}` : x.kind === "needs_quote" ? `#/pipeline` : x.kind === "scoping" ? `#/request/${x.ref}` : x.kind === "ai_draft" || x.kind === "lead" ? `#/agent` : `#/engagement/${x.ref}`;
+    ["offer_review", "offer_ready"].includes(x.kind) ? `#/offer/${x.ref}` : x.kind === "needs_quote" ? `#/pipeline` : x.kind === "scoping" ? `#/request/${x.ref}` : x.kind === "ai_draft" || x.kind === "lead" ? `#/agent` : x.kind === "delay" || x.kind === "credit" ? `#/delays` : x.kind === "partner_document" ? `#/partners` : x.kind === "partner_review" ? `#/partner/${x.ref}` : `#/engagement/${x.ref}`;
   const counts = Object.fromEntries(Object.keys(EXCEPTION_LABEL).map((k) => [k, o.exceptions.filter((x) => x.kind === k).length]));
   $app.innerHTML = `
   <h1>What needs a person today</h1>
@@ -875,7 +1032,8 @@ async function renderPartners() {
   const o = await api("GET", "/api/ops/overview");
   const canAct = ["ops", "founder"].includes(role());
   $app.innerHTML = `<h1>Partner network</h1>
-  <p class="muted">Allocation picks from partners with an active licence, a signed agreement, the right emirate and capacity, then by quote, relationship and a 35% monthly fairness cap.</p>
+  <p class="muted">Allocation picks from partners with an active licence, a signed agreement, the right emirate and capacity, then by quote, relationship and a 35% monthly fairness cap measured per service category.</p>
+  ${["ops", "founder"].includes(role()) ? `<p><button class="sm" data-act="scorecards">Recompute scorecards now</button> <span class="small muted">Otherwise weekly, from on-time delivery, first-pass QA, disputes, acceptance strikes and client ratings.</span></p>` : ""}
   <div class="card flush">${table(
     ["Partner", "Status", "#Quality", "#Capacity", "Emirates", "Checks", "Services", ""],
     o.partners.map((p) => {
@@ -883,9 +1041,9 @@ async function renderPartners() {
       const checks = [pr.licenceActive ? "licence" : null, pr.agreementSigned ? "agreement" : null, pr.ftaTaxAgent ? "FTA agent" : null, (pr.approvedAuditorZones ?? []).length ? "auditor" : null]
         .filter(Boolean)
         .join(", ");
-      return `<tr><td>${esc(p.name)}</td><td>${badge(pr.status ?? p.status)}</td><td class="num">${pr.quality ?? "–"}</td><td class="num">${pr.capacity ?? "–"}</td>
+      return `<tr><td><a href="#/partner/${p.id}">${esc(p.name)}</a>${pr.licenceExpiry ? `<br><span class="small muted">licence to ${date(pr.licenceExpiry)}</span>` : ""}</td><td>${badge(pr.status ?? p.status)}</td><td class="num">${pr.quality ?? "–"}</td><td class="num">${pr.capacity ?? "–"}</td>
       <td class="small">${esc((pr.emirates ?? []).join(", "))}</td><td class="small">${esc(checks || "–")}</td><td class="small">${esc((pr.codes ?? []).join(", "))}</td>
-      <td>${canAct ? `<button class="sm" data-act="partner-status" data-id="${p.id}" data-status="${pr.status === "paused" ? "signed" : "paused"}">${pr.status === "paused" ? "Resume" : "Pause"}</button>` : ""}</td></tr>`;
+      <td>${canAct ? `<a class="btn sm" href="#/partner/${p.id}">Onboarding</a>` : ""}</td></tr>`;
     }),
   )}</div>
   <h2 style="margin-top:20px">Payouts due</h2>
@@ -1401,6 +1559,31 @@ document.addEventListener("click", (ev) => {
         toast(`Timers run: ${r.allocationTimeouts} re-routed, ${r.autoApprovals} auto-approved, ${r.offersExpired} offers expired`);
       }, null),
     "partner-status": () => act(() => api("PUT", `/api/ops/partners/${id}`, { status: el.dataset.status }), "Partner updated"),
+    scorecards: () => act(() => api("POST", "/api/ops/scorecards/recompute"), "Scorecards recomputed"),
+    "doc-review": () => {
+      const decision = el.dataset.decision;
+      const note = decision === "rejected" ? prompt("Why is the document rejected? (sent to the firm)") : prompt("Note (optional)", "") ?? "";
+      if (decision === "rejected" && !note) return;
+      return act(() => api("POST", `/api/ops/partner-documents/${id}/review`, { decision, note: note || "" }), decision === "verified" ? "Document verified" : "Document rejected");
+    },
+    "staff-active": () => act(() => api("POST", `/api/partner/staff/${id}/active`, { active: el.dataset.active === "1" }), "Updated"),
+    "doc-decide": () => {
+      const decision = el.dataset.decision;
+      const note = decision === "rejected" ? prompt("What is wrong with it? (sent to the client)") : "";
+      if (decision === "rejected" && !note) return;
+      return act(() => api("POST", `/api/document-requests/${id}/decide`, { decision, note: note || "" }), decision === "received" ? "Marked received" : "Client asked again");
+    },
+    credit: () => {
+      const decision = el.dataset.decision;
+      const note = decision === "waive" ? prompt("Why is the credit waived? (recorded)") : prompt("Note (optional)", "") ?? "";
+      if (decision === "waive" && !note) return;
+      return act(() => api("POST", `/api/ops/credits/${id}/decide`, { decision, note: note || "" }), decision === "approve" ? "Credit approved" : "Credit waived");
+    },
+    "credit-settle": () => {
+      const reference = prompt("Refund or transfer reference");
+      if (!reference) return;
+      return act(() => api("POST", `/api/ops/credits/${id}/settle`, { reference }), "Settled");
+    },
     refund: () => {
       const reference = prompt("Bank or card reference of the refund");
       if (!reference) return;
@@ -1527,6 +1710,33 @@ document.addEventListener("submit", (ev) => {
     }, "Evidence uploaded");
   }
   if (kind === "message") return act(() => api("POST", `/api/engagements/${id}/messages`, { body: String(fd.get("body")) }), "Sent");
+  if (kind === "doc-upload" || kind === "partner-doc") {
+    const file = fd.get("file");
+    if (!(file instanceof File) || !file.size) return toast("Choose a file", true);
+    if (file.size > 15 * 1024 * 1024) return toast("Files must be under 15 MB", true);
+    return act(async () => {
+      const contentBase64 = await fileToBase64(file);
+      if (kind === "doc-upload") await api("POST", `/api/document-requests/${id}/upload`, { fileName: file.name, contentBase64 });
+      else await api("POST", `/api/partners/${id}/documents`, { kind: String(fd.get("kind")), fileName: file.name, contentBase64, reference: String(fd.get("reference") || "") || undefined, expiresOn: String(fd.get("expiresOn") || "") || undefined });
+    }, "Uploaded");
+  }
+  if (kind === "doc-request") return act(() => api("POST", `/api/milestones/${id}/document-requests`, { kind: String(fd.get("kind")), note: String(fd.get("note") || "") }), "Client asked");
+  if (kind === "rating") return act(() => api("POST", `/api/engagements/${id}/rating`, { stars: Number(fd.get("stars")), comment: String(fd.get("comment") || "") }), "Thank you for rating");
+  if (kind === "manual-alloc") {
+    const codes = fd.getAll("codes").map(String);
+    if (!codes.length) return toast("Tick at least one line", true);
+    return act(() => api("POST", `/api/ops/engagements/${id}/allocate`, { partnerId: String(fd.get("partnerId")), codes, reason: String(fd.get("reason")) }), "Offered to the partner");
+  }
+  if (kind === "attribute") return act(() => api("POST", `/api/ops/delays/${id}/attribute`, { cause: String(fd.get("cause")), note: String(fd.get("note")) }), "Recorded");
+  if (kind === "partner-move") return act(() => api("POST", `/api/ops/partners/${id}/status`, { status: String(fd.get("status")), note: String(fd.get("note")) }), "Recorded and sent to the firm");
+  if (kind === "application") {
+    const body = {
+      emirates: fd.getAll("emirates").map(String), codes: fd.getAll("codes").map(String), capacity: Number(fd.get("capacity")), licenceNumber: String(fd.get("licenceNumber")), licenceExpiry: String(fd.get("licenceExpiry")),
+      ftaTaxAgent: fd.get("ftaTaxAgent") === "on", registeredLiquidator: fd.get("registeredLiquidator") === "on", licensedLawFirm: fd.get("licensedLawFirm") === "on", regulatoryAdviser: fd.get("regulatoryAdviser") === "on", about: String(fd.get("about") || ""),
+    };
+    return act(() => api("PUT", "/api/partner/application", body), "Application saved");
+  }
+  if (kind === "staff-invite") return act(() => api("POST", "/api/partner/staff", { name: String(fd.get("name")), email: String(fd.get("email")) }), "Invited");
   if (kind === "change-order")
     return act(
       () => api("POST", `/api/engagements/${id}/change-orders`, { description: String(fd.get("description")), partnerCostAed: Number(fd.get("partnerCostAed")) }),

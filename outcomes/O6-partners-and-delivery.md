@@ -1,6 +1,6 @@
 # O6 Partners and delivery
 
-Status: in-progress (branch `outcome/O6-partners-and-delivery`, stacked on O5)
+Status: verified-pending-merge (branch `outcome/O6-partners-and-delivery`, stacked on O5, 17 Oct 2026)
 
 ## Business result
 
@@ -86,3 +86,26 @@ E-signature (upload only); partner dashboard trends beyond the scorecard history
 ## Rollback
 
 Additive migration; jobs are no-ops without rows; the guarantee needs finance's action to move money.
+
+## Evidence
+
+| Claim | Evidence |
+| --- | --- |
+| Tests | `pnpm test`: 45 core + 140 API = 185 (O5: 168); `packages/core/test/scorecard.test.ts`, `apps/api/test/partners.test.ts` (5), `apps/api/test/delivery.test.ts` (7) |
+| Onboarding | prospect → applied on the firm's application (expired licence refused); pilot 409 without a verified unexpired licence; signed 409 without verified agreement and insurance; moves audited and emailed from "MKW Advisors" without the word Tasees; another firm and clients get 403/404 on onboarding, documents and files; `app_partner` denied `partner_documents` at the database |
+| Licence watch | one warning at 28 days to the admin and ops, none on the next run; pause on expiry with `pausedFrom`, email; verified renewal lifts the pause and supersedes the old licence |
+| Staff | admin invites (email from MKW Advisors), cannot take an existing email, staff cannot invite, cannot touch another firm's people (404) or itself |
+| Scorecard | recompute writes a row per partner; a partner reads only its own (403 for others and clients); partner home shows status and latest score without bank or conflicts; after a rated delivery `inputs.rating` = 4 and the card is no longer provisional; arithmetic in core tests |
+| Documents | checklist created on acceptance with the client told (Tasees brand); partner adds one on its own step only (404 on another's) with contacts masked in the note; client-only upload with file-type rules; partner told when complete; received / ask-again with reason and the client told; files openable by the client, its partner and MKW, 404 for another partner; partner view carries no file key; `file_key` denied at the database |
+| Delays | noticed once; client told (Tasees) with the new date, partner told (MKW Advisors); client and partner see the delay without `cause`; finance cannot attribute; ops attribution visible to ops only |
+| Guarantee | nothing at four working days; credit at five with amount = floor(step share of the line's professional fee × 10%); client sees amount and status only; partner sees no credit; ops cannot decide; finance approve applies to the unpaid balance and reduces the partner-borne completion payout by the same amount; second decision 409; audit order credit_due → payment.reduced → payout.reduced → approved |
+| Ratings | 409 before completion; member 403; stars 1–5; once; partner sees stars and the masked comment and no author; ops sees the original; rating email to the partner from MKW Advisors |
+| Fairness | setup and tax categories measured separately: a setup allocation leaves the accounting share empty |
+| Manual allocation | finance 403; ineligible partner 409 naming the failure; short reason 400; success records `manual_override` with the reason and the engine's own choice; lines already offered 409; the partner can accept |
+| Offer PDF | 404 while unpublished; PDF with brand, validity, VAT, government fees at cost, assumptions, every code; no partner name; partner 403; ops 200 |
+| Smoke | `docs/evidence/O6/log.txt` (68 checks OK); screenshots `43-ops-partner-onboarding.png`, `44-partner-firm.png`, `45-client-documents.png`, `46-ops-delays.png` (1280 px), `47-mobile-delays.png`, `48-mobile-firm.png` (390 px) |
+
+## Could not verify
+
+A delay and a credit in the browser (the smoke test cannot move the application clock; the API tests do).
+The guarantee percentage and holiday list against the owner. E-signature (upload only).

@@ -75,6 +75,7 @@ describe("partner onboarding", () => {
     expect((await env.call("setup", "GET", `/api/partner-documents/${lic.body.id}/file`)).status).toBe(404);
     expect((await env.call("client", "GET", `/api/partners/${orgId}/onboarding`)).status).toBe(403);
     await expect(asUser(env.db, (await env.call("setup", "GET", "/api/me")).body, (tx) => tx.query("select * from partner_documents"))).rejects.toThrow(/permission denied/);
+    expect(view.body.documents[0].fileName).toBeTruthy();
     const file = await env.app.inject({ method: "GET", url: `/api/partner-documents/${lic.body.id}/file`, headers: { authorization: `Bearer ${env.tokens.newp}` } });
     expect(file.statusCode).toBe(200);
     expect(file.body.startsWith("%PDF")).toBe(true);

@@ -488,6 +488,76 @@ await ops.goto(BASE + "/#/catalogue"); await ops.reload();
 await ops.waitForSelector('main h1:text-is("Service catalogue")');
 check("ops catalogue hides the rule column values:", !/20\.0% \//.test(await ops.locator("main").innerText()));
 
+// Partners and delivery (O6): onboarding with documents, client document requests, delays page, offer PDF
+const pdfBytes = Buffer.from("%PDF-1.4 smoke");
+await founder.goto(BASE + "/#/partners"); await founder.reload();
+await founder.waitForSelector('main h1:text-is("Partner network")');
+const firmLink = founder.locator("main a", { hasText: `Smoke Partners ${stamp} LLC` }).first();
+check("partners page links to onboarding:", (await firmLink.count()) === 1);
+await firmLink.click();
+await founder.waitForSelector('form[data-form="partner-move"]');
+await shot(founder, "43-ops-partner-onboarding");
+await founder.selectOption('form[data-form="partner-move"] select[name="status"]', "contacted");
+await founder.fill('form[data-form="partner-move"] input[name="note"]', "Intro call done");
+await founder.locator('form[data-form="partner-move"] button[type="submit"]').click();
+await founder.waitForTimeout(700);
+check("partner moved to contacted:", /contacted/i.test(await founder.locator("main .badge").first().innerText()));
+// The new partner's admin completes the application and uploads the trade licence
+await newPartnerAdmin.goto(BASE + "/#/firm"); await newPartnerAdmin.reload();
+await newPartnerAdmin.waitForSelector('form[data-form="application"]');
+await newPartnerAdmin.fill('form[data-form="application"] input[name="licenceNumber"]', "DED-SMOKE-1");
+await newPartnerAdmin.fill('form[data-form="application"] input[name="licenceExpiry"]', "2027-12-31");
+await newPartnerAdmin.check('form[data-form="application"] input[name="emirates"][value="Dubai"]');
+await newPartnerAdmin.locator('form[data-form="application"] button[type="submit"]').click();
+await newPartnerAdmin.waitForTimeout(800);
+check("application submitted:", /Application saved/.test(await toastText(newPartnerAdmin)) && /applied/i.test(await newPartnerAdmin.locator("main .badge").first().innerText()));
+await newPartnerAdmin.selectOption('form[data-form="partner-doc"] select[name="kind"]', "trade_licence");
+await newPartnerAdmin.fill('form[data-form="partner-doc"] input[name="expiresOn"]', "2027-12-31");
+await newPartnerAdmin.setInputFiles('form[data-form="partner-doc"] input[name="file"]', { name: "trade-licence.pdf", mimeType: "application/pdf", buffer: pdfBytes });
+await newPartnerAdmin.locator('form[data-form="partner-doc"] button[type="submit"]').click();
+await newPartnerAdmin.waitForTimeout(800);
+check("trade licence uploaded, awaiting MKW check:", /awaiting MKW check/.test(await newPartnerAdmin.locator("main").innerText()));
+await shot(newPartnerAdmin, "44-partner-firm");
+// Ops verifies the licence and moves the firm to pilot
+await founder.reload();
+await founder.waitForSelector('button[data-act="doc-review"][data-decision="verified"]');
+await founder.locator('button[data-act="doc-review"][data-decision="verified"]').click();
+await founder.waitForTimeout(800);
+check("licence verified:", /Document verified/.test(await toastText(founder)));
+await founder.selectOption('form[data-form="partner-move"] select[name="status"]', "under_review");
+await founder.fill('form[data-form="partner-move"] input[name="note"]', "Checking references");
+await founder.locator('form[data-form="partner-move"] button[type="submit"]').click();
+await founder.waitForTimeout(700);
+await founder.selectOption('form[data-form="partner-move"] select[name="status"]', "pilot");
+await founder.fill('form[data-form="partner-move"] input[name="note"]', "Two pilot jobs first");
+await founder.locator('form[data-form="partner-move"] button[type="submit"]').click();
+await founder.waitForTimeout(700);
+check("partner moved to pilot with a verified licence:", /pilot/i.test(await founder.locator("main .badge").first().innerText()) && /active/.test(await founder.locator("main .kpis").innerText()));
+// Client uploads a requested document on the engagement
+await client.goto(engagementUrl); await client.reload();
+await client.waitForSelector('form[data-form="doc-upload"]');
+check("client is asked for documents per step:", (await client.locator('form[data-form="doc-upload"]').count()) >= 1);
+await client.setInputFiles('form[data-form="doc-upload"] input[name="file"] >> nth=0', { name: "passport.pdf", mimeType: "application/pdf", buffer: pdfBytes });
+await client.locator('form[data-form="doc-upload"] button[type="submit"]').first().click();
+await client.waitForTimeout(800);
+check("client document uploaded:", /Uploaded/.test(await toastText(client)));
+await shot(client, "45-client-documents");
+const pdfRes = await client.request.get(BASE + "/api/client/offers/" + standard[1].split("/").pop() + "/pdf");
+check("offer PDF downloads for the client:", pdfRes.status() === 200 && (await pdfRes.text()).startsWith("%PDF") && !/Example Setup/.test(await pdfRes.text()));
+// Partner marks the document received
+const docPartner = partnerPages[0];
+await docPartner.goto(engagementUrl); await docPartner.reload();
+await docPartner.waitForSelector("main h1");
+if (await docPartner.locator('button[data-act="doc-decide"][data-decision="received"]').count()) {
+  await docPartner.locator('button[data-act="doc-decide"][data-decision="received"]').first().click();
+  await docPartner.waitForTimeout(700);
+  check("partner marked the client document received:", /Marked received/.test(await toastText(docPartner)));
+}
+// Delays page for ops
+await ops.goto(BASE + "/#/delays"); await ops.reload();
+await ops.waitForSelector('main h1:text-is("Delays and service guarantee")');
+await shot(ops, "46-ops-delays");
+
 // Mobile views of the new screens
 const mf = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
 const mfp = await mf.newPage();
@@ -496,7 +566,7 @@ await mfp.goto(BASE + "/");
 await mfp.locator('button[data-email="founder@mkwadvisors.test"]').click();
 await mfp.locator('form[data-form="verify"] button[type="submit"]').click();
 await mfp.waitForSelector("#nav a");
-for (const [route, name] of [["people", "20-mobile-people"], ["settings", "21-mobile-settings"], ["catalogue", "27-mobile-catalogue"], ["rules", "28-mobile-rules"], ["partners", "33-mobile-partners-runs"], ["scoping", "40-mobile-scoping"], ["agent", "41-mobile-ai-queue"]]) {
+for (const [route, name] of [["people", "20-mobile-people"], ["settings", "21-mobile-settings"], ["catalogue", "27-mobile-catalogue"], ["rules", "28-mobile-rules"], ["partners", "33-mobile-partners-runs"], ["scoping", "40-mobile-scoping"], ["agent", "41-mobile-ai-queue"], ["delays", "47-mobile-delays"]]) {
   await mfp.goto(BASE + "/#/" + route); await mfp.reload();
   await mfp.waitForSelector("main h1");
   await mfp.waitForTimeout(600);
@@ -504,6 +574,21 @@ for (const [route, name] of [["people", "20-mobile-people"], ["settings", "21-mo
   check(`${route} at 390 px has no horizontal overflow:`, !over);
   await mfp.screenshot({ path: `${OUT}/${name}.png`, fullPage: false });
 }
+
+// The new partner's firm page at phone width
+const mpp = await (await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 })).newPage();
+mpp.on("pageerror", (e) => errors.push(`mobile partner: ${e.message}`));
+await mpp.goto(BASE + "/");
+await mpp.fill('form[data-form="request-code"] input[name="email"]', partnerEmail);
+await mpp.locator('form[data-form="request-code"] button[type="submit"]').click();
+await mpp.waitForSelector('form[data-form="verify"]');
+await mpp.locator('form[data-form="verify"] button[type="submit"]').click();
+await mpp.waitForSelector("#nav a");
+await mpp.goto(BASE + "/#/firm"); await mpp.reload();
+await mpp.waitForSelector("main h1");
+await mpp.waitForTimeout(600);
+check("firm page at 390 px has no horizontal overflow:", !(await mpp.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
+await mpp.screenshot({ path: `${OUT}/48-mobile-firm.png`, fullPage: false });
 
 writeFileSync(`${OUT}/log.txt`, [...log, "ERRORS:", ...errors].join("\n"));
 console.log([...log, "ERRORS:", ...errors].join("\n"));

@@ -180,6 +180,30 @@ in `intake_leads` for ops, nothing is written or audited as the account holder, 
 alone, and the only email is a neutral "sign in to continue" with none of the submitted text. The client role
 cannot read `requests.advice` at the database; approved advice comes through `app_approved_advice()`.
 
+**D33. Onboarding moves are MKW's, gated by verified documents.** The partner describes itself and uploads
+documents; only ops or the founder move a firm between states, with a note sent to the firm, and the gates
+are checked from verified documents, not from the application form: pilot needs a verified unexpired trade
+licence, signed needs the verified agreement and insurance too. The licence watch runs daily: one warning at
+30 days, automatic pause on expiry (work in hand continues, nothing new is offered), reactivation only
+through a verified renewal.
+
+**D34. The scorecard is computed from what happened, weekly, and kept.** Quality = on-time 40 + first-pass QA
+20 + disputes 15 + acceptance strikes 15 + client rating 10 over the last 90 days (`scorecard.ts`). A partner
+with no history keeps the neutral 60 so probation, not the score, limits it. Every computation is a row the
+partner can read for its own firm, so a score is always explainable.
+
+**D35. The guarantee is computed by rule and moved by finance.** A step past due is a delay the day after;
+the client is told the new expected date (five working days on) and the partner is chased. Past that date a
+credit row exists by rule: `guarantee_bp` (owner decision, 10% by default) of the step's equal share of its
+line's professional fee, government fees excluded. Finance approves (deducted from an unpaid balance, else
+refunded and the reference recorded) or waives with a reason; ops's attribution decides whether the partner's
+completion payout is reduced by the same amount, never below zero. Nothing moves without finance's action.
+
+**D36. Manual allocation is an override, not an exception to the rules.** Ops may offer lines to a named
+partner with a reason; eligibility and the priced-cost check still apply, and the audit event records which
+partner the engine would have chosen and the partner's month share in that category. Fairness is measured
+per service category (`deliverables.category`), as the partner agreement states.
+
 ## Open for the owner
 
 1. **Margin rates and floors per category.** Seeded from the Sheet (setup 20% / AED 500 and so on). Confirm.
@@ -204,6 +228,8 @@ cannot read `requests.advice` at the database; approved advice comes through `ap
 16. **Who verifies scoping rules and zone data** (monthly), and the AI API key with a monthly cap (USD 100
     suggested). **Consent wording** on the public intake page (`intake.html`, version 2026-10-privacy-v1) for
     the lawyer.
+17. **Service guarantee figure** (`guarantee_bp`, 1000 = 10% now, per the specification) and the **public
+    holiday list** for the working-time clock.
 15. **Card payment provider**: the webhook contract is generic until chosen; Network International, Telr,
     Checkout.com or Stripe UAE. **MKW's TRN, legal name and address** for invoices. **Bank bulk-transfer
     sample** for the payout file. **Tax adviser's confirmation** that government fees are disbursements.

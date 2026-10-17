@@ -105,8 +105,9 @@ plain HTTP sign-in will not work in production, by design.
 
 ## Timers
 
-Partner reply deadlines (4 working hours), client auto-approval (5 working days after MKW's check) and offer
-expiry (14 days) run every 15 minutes in-process. With more than one instance, set `IN_PROCESS_JOBS=0` and run
+Partner reply deadlines (4 working hours), client auto-approval (5 working days after MKW's check), offer
+expiry (14 days), the licence watch, the delay watch and the weekly (Monday) scorecard run every 15 minutes
+in-process; the daily and weekly sweeps do nothing when already done for the day or week. With more than one instance, set `IN_PROCESS_JOBS=0` and run
 `pnpm jobs` from one scheduler every 15 minutes. Each sweep is its own transaction and safe to repeat.
 
 ## First production setup

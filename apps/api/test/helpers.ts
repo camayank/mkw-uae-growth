@@ -4,6 +4,7 @@ import { randomBytes } from "node:crypto";
 import pg from "pg";
 import { migrate, openPglite, openPostgres, type Database } from "../src/lib/db.ts";
 import { memoryTransport, recordingNotifier, type Notifier, type OutboundEmail } from "../src/lib/notify.ts";
+import { memoryProvider } from "../src/lib/payments.ts";
 import { memoryStorage } from "../src/lib/storage.ts";
 import { seedCatalogue, seedDemo, type DemoIds } from "../src/db/seed.ts";
 import { DEMO } from "../src/db/seed-data.ts";
@@ -17,6 +18,8 @@ export interface TestEnv {
   /** Emails the memory transport delivered, oldest first. */
   emails: OutboundEmail[];
   transport: ReturnType<typeof memoryTransport>;
+  storage: ReturnType<typeof memoryStorage>;
+  provider: ReturnType<typeof memoryProvider>;
   clock: { now: Date };
   tokens: Record<string, string>;
   call: <T = any>(who: string, method: string, url: string, body?: unknown) => Promise<{ status: number; body: T }>;
@@ -69,7 +72,9 @@ export async function makeEnv(start = new Date("2026-10-19T06:00:00Z")): Promise
   const clock = { now: start };
   const transport = memoryTransport();
   const notify = recordingNotifier({ db, transport, appUrl: "https://app.test", fromClient: "tasees@mkwadvisors.test", fromPartner: "partners@mkwadvisors.test", now: () => clock.now, log: (m) => (process.env.NOTIFY_DEBUG ? console.log(m) : undefined) });
-  const app = await buildApp({ db, notify, storage: memoryStorage(), now: () => clock.now, devLogin: true, webhookSecret: "test-secret" });
+  const storage = memoryStorage();
+  const provider = memoryProvider("test-secret", "https://app.test", () => clock.now);
+  const app = await buildApp({ db, notify, storage, provider, now: () => clock.now, devLogin: true, webhookSecret: "test-secret" });
   const tokens: Record<string, string> = {};
   for (const [k, email] of Object.entries(EMAILS)) tokens[k] = await createSession(db, email);
   const call = async (who: string, method: string, url: string, body?: unknown) => {
@@ -82,5 +87,5 @@ export async function makeEnv(start = new Date("2026-10-19T06:00:00Z")): Promise
     await notify.flush(); // deliveries happen after the request, as in production
     return { status: res.statusCode, body: res.body ? JSON.parse(res.body) : null };
   };
-  return { app, db, ids, notify, emails: transport.delivered, transport, clock, tokens, call };
+  return { app, db, ids, notify, emails: transport.delivered, transport, storage, provider, clock, tokens, call };
 }

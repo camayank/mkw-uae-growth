@@ -21,6 +21,9 @@ import { audit, type SessionUser } from "../lib/context.ts";
 import { num, type Queryable } from "../lib/db.ts";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.ts";
 import type { Notifier } from "../lib/notify.ts";
+import type { PaymentProvider } from "../lib/payments.ts";
+import type { Storage } from "../lib/storage.ts";
+import { issueInvoiceForPayment } from "./invoices.ts";
 import { loadDeliverables, loadPartners, loadRateCards, loadRules, loadSettings, today } from "./repo.ts";
 
 export const ALLOCATION_SLA_HOURS = 4;
@@ -30,6 +33,23 @@ const PAYOUT_SHARES: [number, number, number] = [4_000, 4_000, 2_000];
 export interface Deps {
   notify: Notifier;
   now?: () => Date;
+  /** Card payment links and webhook verification (O3). Optional for jobs that never create links. */
+  provider?: PaymentProvider;
+  /** Where invoice PDFs and partner invoices are kept (O3). */
+  storage?: Storage;
+}
+
+/** Create a card payment link for a pending payment, when a provider is configured. Returns the URL or null. */
+export async function attachPaymentLink(tx: Queryable, deps: Deps, paymentId: string, engagementId: string, kind: string, amountFils: number): Promise<string | null> {
+  if (!deps.provider) return null;
+  const link = await deps.provider.createLink({
+    paymentId,
+    amountFils,
+    description: kind === "deposit" ? "Deposit to start your engagement" : kind === "balance" ? "Balance on completion" : "Approved change to scope",
+    reference: engagementId.slice(0, 8).toUpperCase(),
+  });
+  await tx.query("update payments set pay_url = $2, provider = $3, link_ref = $4 where id = $1", [paymentId, link.url, deps.provider.kind, link.providerRef]);
+  return link.url;
 }
 const nowOf = (deps: Deps) => (deps.now ? deps.now() : new Date());
 
@@ -82,23 +102,31 @@ export async function acceptOffer(tx: Queryable, user: SessionUser, offerId: str
     linesNeedingReview: 0,
   };
   const plan = paymentPlan(totals);
-  await tx.query(
-    `insert into payments (engagement_id, client_org_id, kind, amount_fils, status) values ($1,$2,'deposit',$3,'pending'), ($1,$2,'balance',$4,'scheduled')`,
-    [eng.id, o.client_org_id, plan.clientOnAcceptance, plan.clientOnCompletion],
-  );
-  await audit(tx, user, "offer.accepted", "engagement", eng.id, { offerId, deposit: plan.clientOnAcceptance });
-  await deps.notify.send({ to: user.email, channel: "email", template: "payment_due", vars: { engagementId: eng.id, amountFils: plan.clientOnAcceptance } });
+  const deposit = (
+    await tx.query<{ id: string }>(
+      `insert into payments (engagement_id, client_org_id, kind, amount_fils, status) values ($1,$2,'deposit',$3,'pending') returning id`,
+      [eng.id, o.client_org_id, plan.clientOnAcceptance],
+    )
+  ).rows[0]!;
+  await tx.query(`insert into payments (engagement_id, client_org_id, kind, amount_fils, status) values ($1,$2,'balance',$3,'scheduled')`, [eng.id, o.client_org_id, plan.clientOnCompletion]);
+  // The client's acceptance is the action that creates the payment link.
+  const payUrl = await attachPaymentLink(tx, deps, deposit.id, eng.id, "deposit", plan.clientOnAcceptance);
+  await audit(tx, user, "offer.accepted", "engagement", eng.id, { offerId, deposit: plan.clientOnAcceptance, paymentLink: !!payUrl });
+  await deps.notify.send({ to: user.email, channel: "email", template: "payment_due", vars: { engagementId: eng.id, amountFils: plan.clientOnAcceptance, kind: "deposit", payUrl: payUrl ?? undefined } });
   return eng.id;
 }
 
 /** Called by the payment provider webhook (or finance in development). */
-export async function markPaymentPaid(tx: Queryable, actor: SessionUser | null, paymentId: string, providerRef: string, deps: Deps) {
+export async function markPaymentPaid(tx: Queryable, actor: SessionUser | null, paymentId: string, providerRef: string, deps: Deps, amountFils?: number) {
   const p = (await tx.query<Record<string, unknown>>("select * from payments where id = $1", [paymentId])).rows[0];
   if (!p) throw notFound("Payment not found");
   if (p.status === "paid") return; // idempotent: webhooks may repeat
   if (p.status !== "pending") throw conflict(`Payment is ${String(p.status)}, not pending`);
+  // A provider message must be for the full amount; a short payment is not a payment.
+  if (amountFils !== undefined && amountFils !== num(p.amount_fils)) throw conflict(`Amount ${amountFils} does not match the payment of ${num(p.amount_fils)} fils`);
   await tx.query("update payments set status = 'paid', paid_at = app_now(), provider_ref = $2 where id = $1", [paymentId, providerRef]);
-  await audit(tx, actor, "payment.paid", "payment", paymentId, { amount: num(p.amount_fils), kind: p.kind });
+  await audit(tx, actor, "payment.paid", "payment", paymentId, { amount: num(p.amount_fils), kind: p.kind, via: actor ? "finance" : "provider webhook" });
+  if (deps.storage) await issueInvoiceForPayment(tx, actor, paymentId, deps.storage, deps.notify);
   const engagementId = String(p.engagement_id);
   if (p.kind === "deposit") {
     await setEngagementStatus(tx, engagementId, "allocating", "system");
@@ -494,9 +522,18 @@ async function refreshPayouts(tx: Queryable, engagementId: string, deps: Deps) {
   const allApproved = ms.length > 0 && ms.every((m) => m.status === "client_approved") && num(lines?.n) === 0;
   if (allApproved) {
     await setEngagementStatus(tx, engagementId, "completed", "system");
-    await tx.query("update payments set status = 'pending' where engagement_id = $1 and kind = 'balance' and status = 'scheduled'", [engagementId]);
+    const balance = (
+      await tx.query<{ id: string; amount_fils: number; client_org_id: string }>(
+        "update payments set status = 'pending' where engagement_id = $1 and kind = 'balance' and status = 'scheduled' returning id, amount_fils, client_org_id",
+        [engagementId],
+      )
+    ).rows[0];
     await audit(tx, null, "engagement.completed", "engagement", engagementId);
-    void deps;
+    if (balance) {
+      // Completion is the tested rule that makes the balance due: link it and tell the client.
+      const payUrl = await attachPaymentLink(tx, deps, balance.id, engagementId, "balance", num(balance.amount_fils));
+      await notifyOrg(tx, deps, balance.client_org_id, "payment_due", { engagementId, amountFils: num(balance.amount_fils), kind: "balance", payUrl: payUrl ?? undefined });
+    }
   }
 }
 
@@ -505,6 +542,9 @@ export async function releasePayout(tx: Queryable, user: SessionUser, payoutId: 
   const p = (await tx.query<Record<string, unknown>>("select * from payouts where id = $1", [payoutId])).rows[0];
   if (!p) throw notFound("Payout not found");
   if (p.status !== "eligible") throw conflict(`This payout is ${String(p.status)}; only eligible payouts can be released`);
+  const invoice = await tx.query("select 1 from partner_invoices where payout_id = $1", [payoutId]);
+  if (!invoice.rows.length) throw conflict("The partner has not uploaded its invoice for this payout yet");
+  if (p.run_id) throw conflict("This payout is in a payout run; mark the run paid instead");
   await tx.query("update payouts set status = 'released', released_at = app_now(), released_by = $2 where id = $1", [payoutId, user.id]);
   await audit(tx, user, "payout.released", "payout", payoutId, { amount: num(p.amount_fils) });
   await notifyOrg(tx, deps, String(p.partner_org_id), "payout_released", { payoutId, amountFils: num(p.amount_fils) });
@@ -551,17 +591,21 @@ export async function decideChangeOrder(tx: Queryable, user: SessionUser, change
   if (approve) {
     const settings = await loadSettings(tx);
     const client = num(co.client_fils);
-    await tx.query(
-      "insert into payments (engagement_id, client_org_id, kind, amount_fils, status) values ($1,$2,'change_order',$3,'pending')",
-      [co.engagement_id, co.client_org_id, client + applyBp(client, settings.vatBp)],
-    );
+    const gross = client + applyBp(client, settings.vatBp);
+    const coPayment = (
+      await tx.query<{ id: string }>(
+        "insert into payments (engagement_id, client_org_id, kind, amount_fils, status) values ($1,$2,'change_order',$3,'pending') returning id",
+        [co.engagement_id, co.client_org_id, gross],
+      )
+    ).rows[0]!;
     await tx.query(
       "insert into payouts (engagement_id, partner_org_id, stage, amount_fils, status) values ($1,$2,'change_order',$3,'pending')",
       [co.engagement_id, co.raised_by_org, num(co.partner_fils)],
     );
+    // The client's approval is the action that creates the payment link for the change.
+    await attachPaymentLink(tx, deps, coPayment.id, String(co.engagement_id), "change_order", gross);
   }
   await audit(tx, user, approve ? "change_order.approved" : "change_order.rejected", "change_order", changeOrderId);
-  void deps;
 }
 
 // Messages -----------------------------------------------------------------------
@@ -664,7 +708,7 @@ async function notifyOrg(
   deps: Deps,
   orgId: string,
   template: Parameters<Notifier["send"]>[0]["template"],
-  vars: Record<string, string | number>,
+  vars: Record<string, string | number | undefined>,
 ) {
   const users = (
     await tx.query<{ email: string }>(

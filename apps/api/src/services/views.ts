@@ -102,8 +102,16 @@ export function partyEngagement(db: Database, user: SessionUser, engagementId: s
     const changes = await tx.query(`select ${changeCols} from change_orders where engagement_id = $1 order by created_at`, [engagementId]);
     const money =
       user.orgType === "client"
-        ? await tx.query("select id, kind, amount_fils, status, paid_at from payments where engagement_id = $1 order by created_at", [engagementId])
-        : await tx.query("select id, stage, amount_fils, status, released_at from payouts where engagement_id = $1 order by stage", [engagementId]);
+        ? await tx.query("select id, kind, amount_fils, status, paid_at, pay_url, refunded_at from payments where engagement_id = $1 order by created_at, case kind when 'deposit' then 0 when 'balance' then 1 else 2 end", [engagementId])
+        : await tx.query(
+            `select p.id, p.stage, p.amount_fils, p.status, p.released_at, p.run_id, pi.number as invoice_number, pi.uploaded_at as invoice_uploaded_at
+             from payouts p left join partner_invoices pi on pi.payout_id = p.id where p.engagement_id = $1 order by p.stage`,
+            [engagementId],
+          );
+    const invoices =
+      user.orgType === "client"
+        ? (await tx.query("select id, kind, number, payment_id, issued_at, gross_fils, net_fils, vat_fils, disbursements_fils from invoices where engagement_id = $1 and status = 'issued' order by issued_at", [engagementId])).rows.map(camel)
+        : [];
     return {
       engagement: camel(e),
       lines: lines.rows.map((l) => serialize("engagementLine", user.role, camel(l))),
@@ -113,6 +121,7 @@ export function partyEngagement(db: Database, user: SessionUser, engagementId: s
       parties: parties.rows.map(camel),
       changeOrders: changes.rows.map(camel),
       [user.orgType === "client" ? "payments" : "payouts"]: money.rows.map(camel),
+      ...(user.orgType === "client" ? { invoices } : {}),
     };
   });
 }
@@ -132,7 +141,11 @@ export function partnerHome(db: Database, user: SessionUser) {
          exists (select 1 from partner_quotes pq where pq.quote_request_id = q.id) as submitted
        from quote_requests q join requests r on r.id = q.request_id order by q.deadline desc`,
     );
-    const payouts = await tx.query("select id, engagement_id, stage, amount_fils, status, released_at from payouts order by engagement_id, stage");
+    const payouts = await tx.query(
+      `select p.id, p.engagement_id, p.stage, p.amount_fils, p.status, p.released_at, p.run_id, pi.number as invoice_number
+       from payouts p left join partner_invoices pi on pi.payout_id = p.id order by p.engagement_id, p.stage`,
+    );
+    const bank = (await tx.query<{ bank: unknown }>("select app_partner_bank() as bank")).rows[0]?.bank ?? null;
     const cards = await tx.query(
       `select c.id, c.code, d.name, c.professional_fils, c.gov_stated_fils, c.third_party_fils, c.working_days, c.exclusions, c.valid_to
        from rate_cards c join deliverables d on d.code = c.code order by c.code`,
@@ -148,6 +161,7 @@ export function partnerHome(db: Database, user: SessionUser) {
       payouts: payouts.rows.map(camel),
       rateCards: cards.rows.map(camel),
       deliverables: deliverables.rows.map(camel),
+      bank,
     };
   });
 }
@@ -237,10 +251,12 @@ export function opsEngagement(db: Database, user: SessionUser, engagementId: str
       messages: await q(
         "select id, author_name, body_original, body_shown, masked, created_at from messages where engagement_id = $1 order by created_at",
       ),
-      payments: await q("select id, kind, amount_fils, status, paid_at from payments where engagement_id = $1 order by created_at"),
+      payments: await q("select id, kind, amount_fils, status, paid_at, pay_url, refunded_at, refund_reference from payments where engagement_id = $1 order by created_at, case kind when 'deposit' then 0 when 'balance' then 1 else 2 end"),
       payouts: await q(
-        "select p.id, p.stage, p.amount_fils, p.status, o.name as partner from payouts p join orgs o on o.id = p.partner_org_id where engagement_id = $1",
+        `select p.id, p.stage, p.amount_fils, p.status, p.run_id, o.name as partner, pi.number as invoice_number
+         from payouts p join orgs o on o.id = p.partner_org_id left join partner_invoices pi on pi.payout_id = p.id where p.engagement_id = $1`,
       ),
+      invoices: await q("select id, kind, number, status, payment_id, issued_at, gross_fils from invoices where engagement_id = $1 order by created_at"),
       changeOrders: await q("select * from change_orders where engagement_id = $1 order by created_at"),
     };
   });

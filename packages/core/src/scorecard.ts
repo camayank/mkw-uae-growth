@@ -6,7 +6,7 @@
 export interface ScorecardInputs {
   /** Milestones approved by the client in the window. */
   milestonesDone: number;
-  /** Of those, approved on or before their due date. */
+  /** Of those, whose evidence the partner first submitted on or before the due date. */
   milestonesOnTime: number;
   /** Milestones submitted for MKW's check in the window. */
   qaSubmissions: number;

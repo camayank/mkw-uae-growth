@@ -78,7 +78,7 @@ in a browser; everything listed here is not.
 
 ## Verified so far
 
-- 45 domain tests (`packages/core`) and 140 API tests (`apps/api`), all passing on PGlite and on PostgreSQL 16;
+- 45 domain tests (`packages/core`) and 141 API tests (`apps/api`), all passing on PGlite and on PostgreSQL 16;
   typecheck clean; `pnpm build` compiles and the compiled server runs in production mode from a fresh database.
 - O1: partner creation, invitations, role changes and deactivation (sessions revoked, codes refused) are tested as
   every role; PDPL export contains one person's data and no audit payloads (a test reproduces the leak that the

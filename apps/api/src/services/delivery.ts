@@ -13,7 +13,7 @@ import { audit, type SessionUser } from "../lib/context.ts";
 import { num, type Queryable } from "../lib/db.ts";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.ts";
 import { col, textPdf } from "../lib/pdf.ts";
-import { categoryOf, monthShares, notifyOrg, type Deps } from "./engagements.ts";
+import { attachPaymentLink, categoryOf, monthShares, notifyOrg, type Deps } from "./engagements.ts";
 import { loadCompany } from "./invoices.ts";
 import { loadDeliverables, loadPartners, loadRateCards, dbToday, today } from "./repo.ts";
 
@@ -78,7 +78,7 @@ export async function decideDocument(tx: Queryable, actor: SessionUser, requestI
   await audit(tx, actor, decision === "received" ? "documents.received" : "documents.rejected", "document_request", requestId, { kind: r.kind, note });
   if (decision === "rejected") {
     const m = (await tx.query<{ name: string }>("select name from milestones where id = $1", [String(r.milestone_id)])).rows[0]!;
-    await notifyOrg(tx, deps, String(r.client_org_id), "documents_requested", { engagementId: String(r.engagement_id), step: m.name, count: 1, kinds: `${String(r.kind).replace(/_/g, " ")} (again: ${note.trim()})` });
+    await notifyOrg(tx, deps, String(r.client_org_id), "documents_requested", { engagementId: String(r.engagement_id), step: m.name, count: 1, kinds: `${String(r.kind).replace(/_/g, " ")} (again: ${maskContacts(note.trim()).text})` });
   }
   return { ok: true };
 }
@@ -130,16 +130,17 @@ export async function sweepDelays(tx: Queryable, deps: Deps): Promise<{ delays: 
     await tx.query<{ delay_id: string; milestone_id: string; engagement_id: string; partner_org_id: string; client_org_id: string; code: string; name: string; expected_date: string; cause: DelayCause | null }>(
       `select d.id as delay_id, d.milestone_id, d.engagement_id, d.partner_org_id, d.client_org_id, m.code, m.name, d.expected_date::text as expected_date, d.cause
        from delays d join milestones m on m.id = d.milestone_id
-       where d.credit_id is null and d.expected_date < $1::date and m.status not in ('client_approved', 'qa_passed', 'evidence_submitted')`,
+       where d.credit_id is null and d.expected_date < $1::date and m.status in ('pending', 'in_progress', 'qa_rejected')`,
       [today],
     )
   ).rows;
   let credits = 0;
   for (const o of overdue) {
-    // The line's professional fee to the client: client_unit_fils excludes government fees (passed at cost) and VAT.
-    const line = (await tx.query<{ qty: number; client_unit_fils: number }>("select qty, client_unit_fils from engagement_lines where engagement_id = $1 and code = $2", [o.engagement_id, o.code])).rows[0];
+    // The line's professional fee to the client: client_unit_fils less MKW's own service fee (agent lines),
+    // excluding government fees (passed at cost) and VAT.
+    const line = (await tx.query<{ qty: number; client_unit_fils: number; mkw_fee_unit_fils: number }>("select qty, client_unit_fils, mkw_fee_unit_fils from engagement_lines where engagement_id = $1 and code = $2", [o.engagement_id, o.code])).rows[0];
     const steps = (await tx.query<{ n: number }>("select count(*)::int as n from milestones where engagement_id = $1 and code = $2", [o.engagement_id, o.code])).rows[0]!;
-    const base = line ? num(line.qty) * num(line.client_unit_fils) : 0;
+    const base = line ? num(line.qty) * Math.max(0, num(line.client_unit_fils) - num(line.mkw_fee_unit_fils)) : 0;
     const amount = guaranteeCredit(base, num(steps.n), bp);
     const borne = o.cause === "partner";
     const c = (
@@ -161,6 +162,10 @@ export async function attributeDelay(tx: Queryable, actor: SessionUser, delayId:
   if (!note.trim()) throw badRequest("Say why");
   const d = (await tx.query<{ id: string; credit_id: string | null; cause: string | null }>("select id, credit_id, cause from delays where id = $1", [delayId])).rows[0];
   if (!d) throw notFound("Delay not found");
+  if (d.credit_id) {
+    const c = (await tx.query<{ status: string }>("select status from guarantee_credits where id = $1", [d.credit_id])).rows[0]!;
+    if (c.status !== "pending") throw conflict("Finance has already decided this step's guarantee credit; the attribution is fixed");
+  }
   await tx.query("update delays set cause = $2, cause_note = $3, attributed_by = $4, attributed_at = app_now() where id = $1", [delayId, cause, note.trim(), actor.id]);
   if (d.credit_id) {
     const c = (await tx.query<{ status: string }>("select status from guarantee_credits where id = $1", [d.credit_id])).rows[0]!;
@@ -188,12 +193,18 @@ export async function decideCredit(tx: Queryable, actor: SessionUser, creditId: 
     await audit(tx, actor, "guarantee.waived", "guarantee_credit", creditId, { reason: note, amountFils: amount });
     return { ok: true, status: "waived" };
   }
-  const balance = (await tx.query<{ id: string; amount_fils: number; status: string }>("select id, amount_fils, status from payments where engagement_id = $1 and kind = 'balance' and status in ('scheduled', 'pending')", [String(c.engagement_id)])).rows[0];
+  const balance = (await tx.query<{ id: string; amount_fils: number; status: string; pay_url: string | null; client_org_id: string }>("select id, amount_fils, status, pay_url, client_org_id from payments where engagement_id = $1 and kind = 'balance' and status in ('scheduled', 'pending')", [String(c.engagement_id)])).rows[0];
   let how: "applied" | "approved" = "approved";
   if (balance && amount > 0) {
     const newAmount = Math.max(0, num(balance.amount_fils) - amount);
     await tx.query("update payments set amount_fils = $2 where id = $1", [balance.id, newAmount]);
     await audit(tx, actor, "payment.reduced_by_credit", "payment", balance.id, { creditId, from: num(balance.amount_fils), to: newAmount });
+    // A balance already linked for card payment gets a fresh link for the new amount (the webhook checks the
+    // amount), and the client is told what is now due.
+    if (balance.status === "pending" && balance.pay_url) {
+      const payUrl = await attachPaymentLink(tx, deps, balance.id, String(c.engagement_id), "balance", newAmount);
+      await notifyOrg(tx, deps, balance.client_org_id, "payment_due", { engagementId: String(c.engagement_id), amountFils: newAmount, kind: "balance", payUrl: payUrl ?? undefined });
+    }
     how = "applied";
   }
   let payoutReduction = 0;
@@ -254,17 +265,22 @@ export async function rateEngagement(tx: Queryable, actor: SessionUser, engageme
   if (!e || e.client_org_id !== actor.orgId) throw notFound("Engagement not found");
   if (e.status !== "completed") throw conflict("You can rate the work once it is complete");
   if (!Number.isInteger(stars) || stars < 1 || stars > 5) throw badRequest("Give one to five stars");
-  const partner = (await tx.query<{ org_id: string }>("select org_id from engagement_parties where engagement_id = $1 and party = 'partner' limit 1", [engagementId])).rows[0];
-  if (!partner) throw conflict("No partner delivered this engagement");
+  // One rating per engagement from the client; every partner that delivered part of it receives it.
+  const partners = (await tx.query<{ org_id: string }>("select distinct org_id from engagement_parties where engagement_id = $1 and party = 'partner' order by org_id", [engagementId])).rows;
+  if (!partners.length) throw conflict("No partner delivered this engagement");
   const exists = (await tx.query("select 1 from ratings where engagement_id = $1", [engagementId])).rows.length > 0;
   if (exists) throw conflict("This engagement has already been rated");
   const masked = maskContacts(comment.trim().slice(0, 1000));
-  const r = (
-    await tx.query<{ id: string }>("insert into ratings (engagement_id, client_org_id, partner_org_id, author_user_id, stars, comment_original, comment_shown) values ($1,$2,$3,$4,$5,$6,$7) returning id", [engagementId, actor.orgId, partner.org_id, actor.id, stars, comment.trim().slice(0, 1000), masked.text])
-  ).rows[0]!;
-  await audit(tx, actor, "engagement.rated", "engagement", engagementId, { stars, masked: masked.masked });
-  await notifyOrg(tx, deps, partner.org_id, "rating_received", { engagementId, stars });
-  return { id: r.id };
+  const ids: string[] = [];
+  for (const p of partners) {
+    const r = (
+      await tx.query<{ id: string }>("insert into ratings (engagement_id, client_org_id, partner_org_id, author_user_id, stars, comment_original, comment_shown) values ($1,$2,$3,$4,$5,$6,$7) returning id", [engagementId, actor.orgId, p.org_id, actor.id, stars, comment.trim().slice(0, 1000), masked.text])
+    ).rows[0]!;
+    ids.push(r.id);
+    await notifyOrg(tx, deps, p.org_id, "rating_received", { engagementId, stars });
+  }
+  await audit(tx, actor, "engagement.rated", "engagement", engagementId, { stars, masked: masked.masked, partners: partners.map((p) => p.org_id) });
+  return { id: ids[0]!, ids };
 }
 
 // Manual allocation ---------------------------------------------------------------------------------------------

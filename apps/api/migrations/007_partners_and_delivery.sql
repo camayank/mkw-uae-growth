@@ -95,18 +95,22 @@ create table guarantee_credits (
 );
 alter table delays add constraint delays_credit_fk foreign key (credit_id) references guarantee_credits(id);
 
--- Client ratings at completion: one per engagement.
+-- Client ratings at completion: one per engagement, recorded for each partner that delivered part of it.
 create table ratings (
   id uuid primary key default gen_random_uuid(),
-  engagement_id uuid not null unique references engagements(id),
+  engagement_id uuid not null references engagements(id),
   client_org_id uuid not null references orgs(id),
   partner_org_id uuid not null references orgs(id),
   author_user_id uuid not null references users(id),
   stars int not null check (stars between 1 and 5),
   comment_original text not null default '',
   comment_shown text not null default '',
-  created_at timestamptz not null default app_now()
+  created_at timestamptz not null default app_now(),
+  unique (engagement_id, partner_org_id)
 );
+
+-- MKW's own service fee per unit on agent lines, so the guarantee base (the professional fee) can exclude it.
+alter table engagement_lines add column mkw_fee_unit_fils bigint not null default 0;
 
 -- The partner's own firm, without MKW's internal fields (conflicts, bank, notes).
 create function app_partner_profile() returns jsonb

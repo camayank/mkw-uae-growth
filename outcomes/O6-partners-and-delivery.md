@@ -41,7 +41,8 @@ a branded offer document.
    gets a `delays` row once (ops alerted, client told with the new expected date = due + 5 working days,
    partner told). Ops attributes the delay (`partner`, `client`, `government`, `mkw`) with a note. Past
    `GUARANTEE_DAYS` (5 working days) a `guarantee_credits` row is created by rule: `guarantee_bp` (1000 =
-   10%, owner decision, in settings) of the late step's share of that line's professional fee, state
+   10%, owner decision, in settings) of the late step's share of that line's professional fee (the client
+   price less MKW's own service fee on agent lines; government fees and VAT excluded), state
    `pending`; finance approves (credit note against the balance invoice or a refund, O3 machinery) or waives
    with a reason. When the delay is the partner's, the completion payout is reduced by the same amount
    (never below zero), audited. No money moves without finance's action.
@@ -91,7 +92,7 @@ Additive migration; jobs are no-ops without rows; the guarantee needs finance's 
 
 | Claim | Evidence |
 | --- | --- |
-| Tests | `pnpm test`: 45 core + 140 API = 185 (O5: 168); `packages/core/test/scorecard.test.ts`, `apps/api/test/partners.test.ts` (5), `apps/api/test/delivery.test.ts` (7) |
+| Tests | `pnpm test`: 45 core + 141 API = 186 (O5: 168); `packages/core/test/scorecard.test.ts`, `apps/api/test/partners.test.ts` (5), `apps/api/test/delivery.test.ts` (8) |
 | Onboarding | prospect → applied on the firm's application (expired licence refused); pilot 409 without a verified unexpired licence; signed 409 without verified agreement and insurance; moves audited and emailed from "MKW Advisors" without the word Tasees; another firm and clients get 403/404 on onboarding, documents and files; `app_partner` denied `partner_documents` at the database |
 | Licence watch | one warning at 28 days to the admin and ops, none on the next run; pause on expiry with `pausedFrom`, email; verified renewal lifts the pause and supersedes the old licence |
 | Staff | admin invites (email from MKW Advisors), cannot take an existing email, staff cannot invite, cannot touch another firm's people (404) or itself |
@@ -109,3 +110,16 @@ Additive migration; jobs are no-ops without rows; the guarantee needs finance's 
 
 A delay and a credit in the browser (the smoke test cannot move the application clock; the API tests do).
 The guarantee percentage and holiday list against the owner. E-signature (upload only).
+
+## Review
+
+Sceptical review found 2 blockers (a signed firm could rewrite its own coverage, services, capacity and
+licence expiry through the application; approving a credit against a balance already linked for card payment
+left the old link, so the webhook's amount check would refuse the client's payment), 6 should-fix (partner's
+ask-again note unmasked in the client email; PDPL export and erasure missing ratings and uploaded identity
+documents; rating attributed to an arbitrary partner on multi-partner engagements; disputed steps earning a
+credit; guarantee base including MKW's service fee; attribution changeable after finance decided) and 4 nits
+(weekly scorecard in UTC; on-time definition and window; "automatically" in the client's delay email; staff
+seeing onboarding). All fixed with tests: applications lock after review and the watch runs only on verified
+expiry; a linked balance gets a fresh link and the client a new notice; one rating per partner party; base
+excludes the service fee (`engagement_lines.mkw_fee_unit_fils`); one scorecard per partner per day.

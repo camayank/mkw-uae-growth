@@ -804,10 +804,10 @@ async function renderFirm(orgId) {
   ${canAct ? `<div class="card"><form class="row" data-form="partner-move" data-id="${orgId}"><label>Move to</label><select name="status" style="width:auto">${(f.moves ?? []).map((m) => `<option value="${m}">${esc(words(m))}</option>`).join("")}</select><input name="note" placeholder="Why (recorded and sent to the firm)" required minlength="3" style="max-width:360px" /><button class="sm primary" type="submit">Record</button></form></div>` : ""}
   <div class="grid cols-2">
     <div class="card"><h2>Application</h2>
-      ${mine && admin ? `<form data-form="application" class="stack">
+      ${mine && admin && ["prospect", "contacted", "applied", "under_review"].includes(pr.status ?? "prospect") ? `<form data-form="application" class="stack">
         <div class="grid cols-2">
           <div class="field"><label>Trade licence number</label><input name="licenceNumber" value="${esc(pr.licenceNumber ?? "")}" required /></div>
-          <div class="field"><label>Licence expiry</label><input name="licenceExpiry" type="date" value="${esc(pr.licenceExpiry ?? "")}" required /></div>
+          <div class="field"><label>Licence expiry (as on the licence; MKW verifies the document)</label><input name="licenceExpiry" type="date" value="${esc(pr.declaredLicenceExpiry ?? pr.licenceExpiry ?? "")}" required /></div>
           <div class="field"><label>Capacity (jobs at a time)</label><input name="capacity" type="number" min="0" max="500" value="${pr.capacity ?? 5}" required /></div>
           <div class="field"><label>Regulated capabilities</label>
             <label class="small"><input type="checkbox" name="ftaTaxAgent" ${pr.ftaTaxAgent ? "checked" : ""} /> FTA registered tax agent</label><br>
@@ -819,7 +819,7 @@ async function renderFirm(orgId) {
         <div class="field"><label>Services offered</label><details><summary class="small">${(pr.codes ?? []).length} selected</summary><div class="grid cols-3">${all.map((d) => `<label class="small"><input type="checkbox" name="codes" value="${esc(d.code)}" ${(pr.codes ?? []).includes(d.code) ? "checked" : ""} /> ${esc(d.name)}</label>`).join("")}</div></details></div>
         <div class="field"><label>About the firm</label><textarea name="about" maxlength="2000">${esc(pr.about ?? "")}</textarea></div>
         <div class="row"><button class="sm primary" type="submit">${pr.status === "prospect" || pr.status === "contacted" ? "Submit application" : "Update application"}</button></div></form>`
-      : `<dl class="small"><dt>Licence</dt><dd>${esc(pr.licenceNumber ?? "–")}${pr.licenceExpiry ? `, expires ${date(pr.licenceExpiry)}` : ""}</dd><dt>Emirates</dt><dd>${esc((pr.emirates ?? []).join(", ") || "–")}</dd><dt>Services</dt><dd>${esc((pr.codes ?? []).join(", ") || "–")}</dd><dt>Capabilities</dt><dd>${esc([pr.ftaTaxAgent && "FTA tax agent", pr.registeredLiquidator && "liquidator", pr.licensedLawFirm && "law firm", pr.regulatoryAdviser && "regulatory adviser"].filter(Boolean).join(", ") || "–")}</dd><dt>About</dt><dd>${esc(pr.about ?? "–")}</dd></dl>`}
+      : `${mine ? `<p class="small muted">Your application is on record. Ask MKW Advisors to change coverage, services or capacity.</p>` : ""}<dl class="small"><dt>Licence</dt><dd>${esc(pr.licenceNumber ?? "–")}${pr.licenceExpiry ? `, verified to ${date(pr.licenceExpiry)}` : pr.declaredLicenceExpiry ? `, declared to ${date(pr.declaredLicenceExpiry)} (not yet verified)` : ""}</dd><dt>Emirates</dt><dd>${esc((pr.emirates ?? []).join(", ") || "–")}</dd><dt>Services</dt><dd>${esc((pr.codes ?? []).join(", ") || "–")}</dd><dt>Capabilities</dt><dd>${esc([pr.ftaTaxAgent && "FTA tax agent", pr.registeredLiquidator && "liquidator", pr.licensedLawFirm && "law firm", pr.regulatoryAdviser && "regulatory adviser"].filter(Boolean).join(", ") || "–")}</dd><dt>About</dt><dd>${esc(pr.about ?? "–")}</dd></dl>`}
     </div>
     <div class="stack">
       <div class="card flush"><h2>Documents</h2>

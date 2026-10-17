@@ -36,7 +36,8 @@ export async function runJobs(db: Database, deps: Deps, actor: SessionUser | nul
   );
   await step("scorecards", () =>
     asPlatform(db, actor, async (tx) => {
-      const due = (await tx.query<{ due: boolean }>("select (extract(dow from app_now()) = 1 and not exists (select 1 from scorecards where computed_at::date = app_now()::date)) or not exists (select 1 from scorecards) as due")).rows[0]!.due;
+      // Monday in Gulf time, or seven days since the last card (a missed Monday does not skip the week).
+      const due = (await tx.query<{ due: boolean }>("select (extract(dow from (app_now() at time zone 'Asia/Dubai')) = 1 or not exists (select 1 from scorecards where computed_at > app_now() - interval '7 days')) and not exists (select 1 from scorecards where computed_at > app_now() - interval '6 days') as due")).rows[0]!.due;
       return due ? recomputeScorecards(tx, actor) : 0;
     }),
   );

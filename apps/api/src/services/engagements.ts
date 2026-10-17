@@ -86,8 +86,8 @@ export async function acceptOffer(tx: Queryable, user: SessionUser, offerId: str
   await tx.query("insert into engagement_parties (engagement_id, org_id, party) values ($1,$2,'client')", [eng.id, o.client_org_id]);
   await tx.query(
     `insert into engagement_lines (engagement_id, code, qty, quoting_partner_org_id, fallback_partner_org_id,
-       partner_unit_fils, gov_unit_fils, client_unit_fils)
-     select $1, code, qty, partner_org_id, fallback_partner_org_id, partner_unit_fils, gov_unit_fils, client_unit_fils + mkw_fee_unit_fils
+       partner_unit_fils, gov_unit_fils, client_unit_fils, mkw_fee_unit_fils)
+     select $1, code, qty, partner_org_id, fallback_partner_org_id, partner_unit_fils, gov_unit_fils, client_unit_fils + mkw_fee_unit_fils, mkw_fee_unit_fils
      from offer_lines where offer_id = $2`,
     [eng.id, offerId],
   );

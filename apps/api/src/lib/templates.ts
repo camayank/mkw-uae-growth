@@ -229,7 +229,7 @@ export function renderTemplate(template: TemplateName, audience: Audience, vars:
       return {
         inApp: true,
         subject: `Update on your engagement ${ref(vars.engagementId)}: "${vars.step}" is running late`,
-        body: `"${vars.step}" was due on ${vars.dueDate} and is not yet complete. The new expected date is ${vars.expectedDate}. We are on it; if a step runs more than five working days late, our service guarantee applies and we credit part of the fee automatically.\n\n${link(`/engagement/${vars.engagementId}`)}${sign}`,
+        body: `"${vars.step}" was due on ${vars.dueDate} and is not yet complete. The new expected date is ${vars.expectedDate}. We are on it; if a step runs more than five working days late, our service guarantee applies: a credit of part of the fee is calculated by rule and confirmed by our team.\n\n${link(`/engagement/${vars.engagementId}`)}${sign}`,
       };
     case "step_delayed_partner":
       return {

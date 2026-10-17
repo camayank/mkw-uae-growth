@@ -51,6 +51,8 @@ describe("partner onboarding", () => {
     const verified = await env.call("ops", "POST", `/api/ops/partner-documents/${lic.body.id}/review`, { decision: "verified", note: "Matches the DED portal" });
     expect(verified.status).toBe(200);
     expect(verified.body.effects).toMatchObject({ licenceActive: true, licenceExpiry: expiry });
+    // The application's declared expiry never drives the licence watch; only the verified document does.
+    expect((await env.call("newp", "GET", `/api/partners/${orgId}/onboarding`)).body.profile.declaredLicenceExpiry).toBe(expiry);
     const pilot = await env.call("ops", "POST", `/api/ops/partners/${orgId}/status`, { status: "pilot", note: "Two pilot jobs first" });
     expect(pilot.status).toBe(200);
     const mail = env.emails.filter((e) => e.to === adminEmail).at(-1)!;
@@ -68,10 +70,15 @@ describe("partner onboarding", () => {
     expect(signed.status).toBe(200);
     const view = await env.call("newp", "GET", `/api/partners/${orgId}/onboarding`);
     expect(view.body.profile).toMatchObject({ status: "signed", agreementSigned: true, licenceActive: true });
+    // Once reviewed, the firm cannot rewrite its own coverage, services or licence dates.
+    const rewrite = await env.call("newp", "PUT", "/api/partner/application", { emirates: ["Dubai", "All"], codes: ["SET-FZ-LIC", "VISA-RES", "AUD-EXT"], capacity: 500, licenceNumber: "DED-123", licenceExpiry: "2035-01-01" });
+    expect(rewrite.status).toBe(409);
+    expect((await env.call("newp", "GET", `/api/partners/${orgId}/onboarding`)).body.profile).toMatchObject({ capacity: 5, licenceExpiry: expiry });
     expect(view.body.profile.conflicts).toBeUndefined();
     expect(view.body.documents.filter((d: any) => d.status === "verified")).toHaveLength(3);
     // Another firm's documents and onboarding are invisible; clients too.
     expect((await env.call("setup", "GET", `/api/partners/${orgId}/onboarding`)).status).toBe(403);
+    expect((await env.call("setupStaff", "GET", `/api/partners/${(await env.call("setup", "GET", "/api/me")).body.orgId}/onboarding`)).status).toBe(403);
     expect((await env.call("setup", "GET", `/api/partner-documents/${lic.body.id}/file`)).status).toBe(404);
     expect((await env.call("client", "GET", `/api/partners/${orgId}/onboarding`)).status).toBe(403);
     await expect(asUser(env.db, (await env.call("setup", "GET", "/api/me")).body, (tx) => tx.query("select * from partner_documents"))).rejects.toThrow(/permission denied/);

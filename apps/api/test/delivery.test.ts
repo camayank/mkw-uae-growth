@@ -77,11 +77,15 @@ describe("client document requests", () => {
     const [a, b] = stepReqs;
     expect((await env.call(who, "POST", `/api/document-requests/${a.id}/decide`, { decision: "received" })).status).toBe(200);
     expect((await env.call(who, "POST", `/api/document-requests/${b.id}/decide`, { decision: "rejected", note: "" })).status).toBe(400);
-    expect((await env.call(who, "POST", `/api/document-requests/${b.id}/decide`, { decision: "rejected", note: "Blurry scan" })).status).toBe(200);
+    expect((await env.call(who, "POST", `/api/document-requests/${b.id}/decide`, { decision: "rejected", note: "Blurry scan, call 050 111 2222" })).status).toBe(200);
+    const askAgain = env.emails.filter((m) => m.subject.startsWith("Documents needed")).at(-1)!;
+    expect(askAgain.text).toContain("Blurry scan");
+    expect(askAgain.text).not.toContain("050 111 2222");
     expect((await env.call(other, "POST", `/api/document-requests/${a.id}/decide`, { decision: "received" })).status).toBe(403);
     const again = (await env.call("client", "GET", `/api/engagements/${engagementId}`)).body.documentRequests.find((r: any) => r.id === b.id);
     expect(again.status).toBe("rejected");
-    expect(again.decisionNote).toBe("Blurry scan");
+    expect(again.decisionNote).toContain("Blurry scan");
+    expect(again.decisionNote).not.toContain("050 111 2222");
     expect((await env.call("client", "POST", `/api/document-requests/${b.id}/upload`, { fileName: "better.pdf", contentBase64: pdf })).status).toBe(200);
     // Files: the client, its partner and MKW can open; another partner cannot; the partner view never shows the client's file key.
     for (const [k, code] of [["client", 200], [who, 200], ["ops", 200], [other, 404]] as const) {
@@ -139,7 +143,8 @@ describe("delay watch, service guarantee and ratings", () => {
     const before = (await env.call("ops", "GET", `/api/engagements/${engagementId}`)).body;
     const line = before.lines.find((l: any) => l.code === lateStep.code);
     const stepsInLine = before.milestones.filter((m: any) => m.code === lateStep.code).length;
-    const expectedCredit = Math.floor((Math.floor((line.qty * line.clientUnitPrice) / stepsInLine) * 1000) / 10_000);
+    const mkwFee = (await asPlatform(env.db, null, (tx) => tx.query<any>("select mkw_fee_unit_fils from engagement_lines where engagement_id = $1 and code = $2", [engagementId, lateStep.code]))).rows[0].mkw_fee_unit_fils;
+    const expectedCredit = Math.floor((Math.floor((line.qty * (line.clientUnitPrice - Number(mkwFee))) / stepsInLine) * 1000) / 10_000);
     // Four working days: nothing yet.
     env.clock.now = new Date(env.clock.now.getTime() + 4 * day);
     let jobs = await env.call("ops", "POST", "/api/ops/jobs/run");
@@ -166,6 +171,9 @@ describe("delay watch, service guarantee and ratings", () => {
     expect(after.payments.find((p: any) => p.kind === "balance").amount).toBe(balanceBefore - expectedCredit);
     expect(after.payouts.find((p: any) => p.stage === "completion" && p.partner === line.partner).amount).toBe(payoutBefore - expectedCredit);
     expect((await env.call("finance", "POST", `/api/ops/credits/${credit.id}/decide`, { decision: "approve" })).status).toBe(409);
+    // Once finance has decided, the attribution is fixed.
+    const delayId = (await env.call("ops", "GET", `/api/engagements/${engagementId}`)).body.delays.find((x: any) => x.milestoneId === lateStep.id).id;
+    expect((await env.call("ops", "POST", `/api/ops/delays/${delayId}/attribute`, { cause: "client", note: "changed my mind" })).status).toBe(409);
     const mail = env.emails.find((m) => /Service guarantee credit/.test(m.subject))!;
     expect(mail.text).toContain("deducted from your balance");
     const actions = await asPlatform(env.db, null, (tx) => tx.query<any>("select action from audit_events where action in ('guarantee.credit_due','guarantee.approved','payout.reduced_by_guarantee','payment.reduced_by_credit') order by id"));
@@ -255,6 +263,43 @@ describe("fairness by category and manual allocation", () => {
     expect(ev.rows[0].data).toMatchObject({ partnerId: setup.id, reason: "Client asked for this firm after the call" });
     expect(ev.rows[0].data.engineWouldHaveChosen).toBeDefined();
     expect((await env.call("setup", "POST", `/api/allocations/${a.id}/respond`, { decision: "accept" })).status).toBe(200);
+  });
+});
+
+describe("guarantee credit against a balance already linked for card payment", () => {
+  let env: TestEnv;
+  afterAll(async () => {
+    await env.db.close();
+  });
+  beforeAll(async () => {
+    env = await makeEnv();
+  });
+
+  it("re-issues the card link for the reduced amount and tells the client", async () => {
+    const { engagementId } = await paidEngagement(env, { mode: "new_company", jurisdiction: "free_zone", emirate: "Dubai", visas: 0 });
+    const e = await acceptAll(env, engagementId);
+    const late = e.milestones[0];
+    env.clock.now = new Date(new Date(late.dueDate).getTime() + 1.5 * day);
+    await env.call("ops", "POST", "/api/ops/jobs/run");
+    env.clock.now = new Date(env.clock.now.getTime() + 9 * day);
+    await env.call("ops", "POST", "/api/ops/jobs/run");
+    // Complete everything so the balance becomes pending with a card link.
+    const now = (await env.call("ops", "GET", `/api/engagements/${engagementId}`)).body;
+    for (const m of now.milestones) await completeMilestone(env, partnerKey(now.lines.find((l: any) => l.code === m.code).partner), m);
+    const done = (await env.call("ops", "GET", `/api/engagements/${engagementId}`)).body;
+    const balance = done.payments.find((p: any) => p.kind === "balance");
+    expect(balance.status).toBe("pending");
+    expect(balance.payUrl).toBeTruthy();
+    const linksBefore = env.provider.links.length;
+    const credit = done.credits[0];
+    expect(credit.status).toBe("pending");
+    expect((await env.call("finance", "POST", `/api/ops/credits/${credit.id}/decide`, { decision: "approve" })).body.status).toBe("applied");
+    const after = (await env.call("ops", "GET", `/api/engagements/${engagementId}`)).body.payments.find((p: any) => p.kind === "balance");
+    expect(after.amount).toBe(balance.amount - credit.amount);
+    expect(env.provider.links.length).toBe(linksBefore + 1);
+    expect(env.provider.links.at(-1)!.amountFils).toBe(after.amount);
+    const dueMail = env.emails.filter((m) => /^Balance of/.test(m.subject)).at(-1)!;
+    expect(dueMail.text).toContain(after.payUrl);
   });
 });
 

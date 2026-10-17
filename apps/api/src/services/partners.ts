@@ -62,6 +62,9 @@ export async function submitApplication(tx: Queryable, actor: SessionUser, app: 
   if (actor.role !== "partner_admin") throw forbidden("Only the firm's admin submits the application");
   const p = await loadPartner(tx, actor.orgId);
   const status = p.profile.status ?? "prospect";
+  // Once MKW has reviewed the firm, what it may do is MKW's record: coverage, services, capacity and
+  // capabilities change only through ops (PUT /api/ops/partners/:id), never by the firm's own say-so.
+  if (!["prospect", "contacted", "applied", "under_review"].includes(status)) throw conflict("Your application is on record; ask MKW Advisors to change coverage, services or capacity");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(app.licenceExpiry)) throw badRequest("Licence expiry must be a date (YYYY-MM-DD)");
   if (app.licenceExpiry <= (await dbToday(tx))) throw badRequest("The trade licence has already expired; renew it first");
   if (!app.emirates.length || !app.codes.length) throw badRequest("Say which emirates you cover and which services you offer");
@@ -71,7 +74,8 @@ export async function submitApplication(tx: Queryable, actor: SessionUser, app: 
     codes: app.codes,
     capacity: app.capacity,
     licenceNumber: app.licenceNumber.trim(),
-    licenceExpiry: app.licenceExpiry,
+    // What the firm declares; the licence watch runs on `licenceExpiry`, which only a verified document sets.
+    declaredLicenceExpiry: app.licenceExpiry,
     ftaTaxAgent: !!app.ftaTaxAgent,
     licensedLawFirm: !!app.licensedLawFirm,
     regulatoryAdviser: !!app.regulatoryAdviser,
@@ -201,11 +205,15 @@ export async function sweepLicences(tx: Queryable, notify: Notifier): Promise<nu
 const WINDOW_DAYS = 90;
 
 export async function scorecardInputs(tx: Queryable, partnerId: string, from: string, to: string): Promise<ScorecardInputs> {
+  // "Done" = approved by the client in the window (by the approval event's time, which later writes never move);
+  // "on time" = the partner first submitted its evidence on or before the due date, since approval waits on
+  // MKW and the client, which the partner does not control.
   const done = (
     await tx.query<{ n: number; on_time: number }>(
       `select count(*)::int as n,
          count(*) filter (where (select min(a.at) from audit_events a where a.entity = 'milestone' and a.entity_id = m.id::text and a.action = 'milestone.submitted')::date <= m.due_date)::int as on_time
-       from milestones m where m.partner_org_id = $1 and m.status = 'client_approved' and m.updated_at::date between $2 and $3`,
+       from milestones m where m.partner_org_id = $1 and m.status = 'client_approved'
+         and (select max(a.at) from audit_events a where a.entity = 'milestone' and a.entity_id = m.id::text and a.action in ('milestone.approved', 'milestone.dispute_approve'))::date between $2 and $3`,
       [partnerId, from, to],
     )
   ).rows[0]!;
@@ -254,6 +262,8 @@ export async function recomputeScorecards(tx: Queryable, actor: SessionUser | nu
   for (const p of partners) {
     const inputs = await scorecardInputs(tx, p.id, from, to);
     const card = scorePartner(inputs);
+    // One card per partner per day: recomputing replaces today's.
+    await tx.query("delete from scorecards where partner_org_id = $1 and computed_at::date = app_now()::date", [p.id]);
     await tx.query("insert into scorecards (partner_org_id, window_from, window_to, inputs, score, parts, provisional) values ($1,$2,$3,$4,$5,$6,$7)", [p.id, from, to, JSON.stringify(inputs), card.score, JSON.stringify(card.parts), card.provisional]);
     const deliveredOnTime = (await tx.query<{ n: number }>(
       `select count(*)::int as n from milestones m where m.partner_org_id = $1 and m.status = 'client_approved'
@@ -276,6 +286,7 @@ export async function scorecardHistory(tx: Queryable, partnerId: string, limit =
 
 export async function partnerOnboarding(tx: Queryable, actor: SessionUser, orgId: string) {
   if (!ownFirm(actor, orgId) && !isStaff(actor)) throw forbidden("Not your firm");
+  if (actor.orgType === "partner" && actor.role !== "partner_admin") throw forbidden("Only the firm's admin sees onboarding, documents and staff");
   const p = await loadPartner(tx, orgId);
   const docs = (await tx.query("select id, kind, file_name, uploaded_at, reference, expires_on::text as expires_on, status, verified_at, note from partner_documents where partner_org_id = $1 order by uploaded_at desc", [orgId])).rows;
   // Erased people are MKW's record, not the firm's list.

@@ -210,6 +210,8 @@ export async function exportPerson(tx: Queryable, actor: SessionUser, userId: st
     evidenceUploaded: await q("select id, engagement_id, milestone_id, type, file_name, created_at from evidence where uploaded_by = $1 order by created_at"),
     requestsCreated: await q("select id, client_org_id, answers, source, created_at from requests where created_by = $1 order by created_at"),
     leadsHeld: await q("select id, company, name, answers, consent, source, created_at from intake_leads where email = $1 order by created_at", [user.email]),
+    ratingsGiven: await q("select id, engagement_id, stars, comment_original as comment, created_at from ratings where author_user_id = $1 order by created_at"),
+    documentsUploaded: await q("select id, engagement_id, kind, file_name, status, uploaded_at from document_requests where uploaded_by = $1 order by uploaded_at"),
     payoutsReleased: await q("select id, engagement_id, stage, released_at from payouts where released_by = $1 order by released_at"),
     usersInvited: await q("select id, role, created_at from users where invited_by = $1 order by created_at"),
     dataRequests: await q("select id, kind, status, created_at from data_requests where user_id = $1 order by created_at"),
@@ -260,6 +262,13 @@ export async function erasePerson(tx: Queryable, actor: SessionUser, userId: str
     [userId, tombstoneEmail(userId), TOMBSTONE_TEXT, user.email],
   );
   const leads = await tx.query("update intake_leads set email = $2, name = $3, company = $3, answers = '{}'::jsonb, ip = null where email = $1 returning id", [user.email, tombstoneEmail(userId), TOMBSTONE_NAME]);
+  // Their words in ratings go; the stars stay (the partner's scorecard already counted them).
+  const ratings = await tx.query("update ratings set comment_original = '', comment_shown = '' where author_user_id = $1 returning id", [userId]);
+  // Identity documents they uploaded: the rows are detached from the files (name tombstoned, key cleared) and
+  // the keys are listed in the summary so the storage objects can be purged; the request itself stays as the
+  // engagement's record that a document was supplied.
+  const docKeys = (await tx.query<{ file_key: string }>("select file_key from document_requests where uploaded_by = $1 and file_key is not null", [userId])).rows.map((r) => r.file_key);
+  await tx.query("update document_requests set file_name = $2, file_key = null, note = null where uploaded_by = $1 and file_key is not null", [userId, TOMBSTONE_TEXT]);
   await tx.query(
     "update users set name = $2, email = $3, status = 'erased', deactivated_at = coalesce(deactivated_at, app_now()), erased_at = app_now() where id = $1",
     [userId, TOMBSTONE_NAME, tombstoneEmail(userId)],
@@ -270,6 +279,9 @@ export async function erasePerson(tx: Queryable, actor: SessionUser, userId: str
     messagesTombstoned: messages.rows.length,
     notificationsTombstoned: notices.rows.length,
     leadsTombstoned: leads.rows.length,
+    ratingCommentsCleared: ratings.rows.length,
+    documentFilesDetached: docKeys.length,
+    documentFilesToPurge: docKeys,
     kept: ["payments", "payouts", "offers", "engagements", "evidence files", "audit events"],
   };
   await tx.query("insert into data_requests (user_id, kind, requested_by, summary) values ($1, 'erase', $2, $3)", [userId, actor.id, JSON.stringify(summary)]);

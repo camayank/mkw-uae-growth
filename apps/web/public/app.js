@@ -2,13 +2,70 @@
 // Plain ES modules, no build step. Every money figure arrives from the API in fils (1/100 AED),
 // already filtered by role on the server and in the database; this file only displays it.
 
+import { translateTree } from "./i18n-ar.js";
+
 const $app = document.getElementById("app");
 const $nav = document.getElementById("nav");
 const $who = document.getElementById("who");
 const $brand = document.getElementById("brand");
 const $toast = document.getElementById("toast");
 
-const state = { me: null, health: null, deliverables: null, unread: 0 };
+const state = { me: null, health: null, deliverables: null, unread: 0, lang: "en", untranslated: new Set() };
+
+// Language (O9): Arabic for clients only once the reviewer's sign-off is recorded; staff may preview it.
+const lang = () => state.lang;
+function applyLang() {
+  const ar = lang() === "ar";
+  document.documentElement.lang = ar ? "ar" : "en";
+  document.documentElement.dir = ar ? "rtl" : "ltr";
+}
+// Accessibility (O9): every control gets an accessible name. Labels written as a bare <label> before a control
+// are linked to it; a control with only a placeholder gets that text as its name; file inputs say so.
+let labelSeq = 0;
+function ensureLabels(root) {
+  for (const label of root.querySelectorAll("label:not([for])")) {
+    if (label.querySelector("input, select, textarea")) continue;
+    let el = label.nextElementSibling;
+    if (el && !el.matches("input, select, textarea")) el = el.querySelector?.("input, select, textarea") ?? null;
+    if (!el || el.id) {
+      if (el && el.id) label.htmlFor = el.id;
+      continue;
+    }
+    el.id = `f-${++labelSeq}`;
+    label.htmlFor = el.id;
+  }
+  for (const el of root.querySelectorAll("input:not([type=hidden]):not([type=submit]):not([type=button]), select, textarea")) {
+    if (el.id && root.querySelector(`label[for="${el.id}"]`)) continue;
+    if (el.closest("label") || el.hasAttribute("aria-label") || el.hasAttribute("aria-labelledby") || el.hasAttribute("title")) continue;
+    if (el.placeholder) el.setAttribute("aria-label", el.placeholder);
+    else if (el.type === "file") el.setAttribute("aria-label", "Choose a file");
+    else if (el.type === "date") el.setAttribute("aria-label", "Date");
+    else if (el.type === "checkbox") el.setAttribute("aria-label", el.value || "Select");
+    else if (el.tagName === "SELECT") el.setAttribute("aria-label", el.name ? words(el.name) : "Choose");
+    else el.setAttribute("aria-label", el.name ? words(el.name) : "Field");
+  }
+}
+
+function translatePage() {
+  if (lang() !== "ar") return;
+  for (const root of [$brand, $nav, $who, $app]) for (const m of translateTree(root)) state.untranslated.add(m);
+}
+function translateText(text) {
+  if (lang() !== "ar" || !text) return text;
+  const span = document.createElement("span");
+  span.textContent = text;
+  translateTree(span);
+  return span.textContent;
+}
+function pickLang() {
+  // The person's saved choice wins; before sign-in, the browser's own preference when Arabic is available.
+  if (state.me) return state.me.locale === "ar" && state.me.arabic?.available ? "ar" : "en";
+  try {
+    const saved = localStorage.getItem("tasees.lang");
+    if (saved === "ar" && state.health?.arabic) return "ar";
+  } catch {}
+  return "en";
+}
 
 // Helpers ---------------------------------------------------------------------
 
@@ -62,7 +119,7 @@ const role = () => state.me?.role;
 const seesMargin = () => ["finance", "founder"].includes(role());
 
 function toast(msg, err = false) {
-  $toast.textContent = msg;
+  $toast.textContent = translateText(msg);
   $toast.className = "show" + (err ? " err" : "");
   clearTimeout(toast.t);
   toast.t = setTimeout(() => ($toast.className = ""), err ? 6000 : 3000);
@@ -142,11 +199,20 @@ function navFor() {
   return [["home", "Queue"], ["dashboard", "Dashboard"], ["pipeline", "Pipeline"], ["partners", "Partners"], ["delays", "Delays"], ["compliance", "Compliance"], ["people", "People"], ["catalogue", "Catalogue"], ["rules", "Rules"], ["scoping", "Scoping"], ["agent", "AI queue"], ["new", "New request"], ["settings", "Settings"], ["audit", "Audit trail"]];
 }
 
+function langSwitch() {
+  const available = state.me ? state.me.arabic?.available : !!state.health?.arabic;
+  if (!available) return "";
+  const other = lang() === "ar" ? "en" : "ar";
+  return `<button class="sm" type="button" data-act="lang" data-lang="${other}" lang="${other}" aria-label="${other === "ar" ? "العربية" : "English"}">${other === "ar" ? "العربية" : "English"}</button>`;
+}
+
 function chrome() {
   const { page } = route();
+  state.lang = pickLang();
+  applyLang();
   if (!state.me) {
     $nav.innerHTML = "";
-    $who.innerHTML = "";
+    $who.innerHTML = langSwitch();
     $brand.innerHTML = "Tasees <small>by MKW Advisors</small>";
     return;
   }
@@ -156,9 +222,9 @@ function chrome() {
       ? "MKW Advisors <small>Operations</small>"
       : "Tasees <small>by MKW Advisors</small>";
   $nav.innerHTML = navFor()
-    .map(([p, label]) => `<a href="#/${p}" class="${page === p ? "on" : ""}">${esc(label)}</a>`)
+    .map(([p, label]) => `<a href="#/${p}" class="${page === p ? "on" : ""}" ${page === p ? 'aria-current="page"' : ""}>${esc(label)}</a>`)
     .join("");
-  $who.innerHTML = `${isPlatform() ? `<form data-form="search" class="search"><input name="q" type="search" placeholder="Search clients, partners, refs" aria-label="Search" /></form>` : ""}<span>${esc(state.me.name)} · ${esc(state.me.orgName)} · ${esc(words(state.me.role))}</span>
+  $who.innerHTML = `${isPlatform() ? `<form data-form="search" class="search"><input name="q" type="search" placeholder="Search clients, partners, refs" aria-label="Search" /></form>` : ""}<span>${esc(state.me.name)} · ${esc(state.me.orgName)} · ${esc(words(state.me.role))}</span>${langSwitch()}
     <a class="bell ${page === "notifications" ? "on" : ""}" href="#/notifications" aria-label="Notifications${state.unread ? `, ${state.unread} unread` : ""}" title="Notifications">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
       ${state.unread ? `<b class="count" data-unread>${state.unread > 99 ? "99+" : state.unread}</b>` : ""}</a>
@@ -195,10 +261,34 @@ async function refreshUnread() {
 async function renderOnce() {
   if (state.me && route().page !== "notifications") await refreshUnread();
   chrome();
-  if (!state.me) return renderSignIn();
+  if (!state.me) {
+    renderSignIn();
+    ensureLabels($app);
+    translatePage();
+    return;
+  }
   const { page, id } = route();
   try {
     await deliverables();
+    try {
+      await renderPage(page, id);
+    } finally {
+      ensureLabels($app);
+      ensureLabels($who);
+      if (lang() === "ar" && state.me.arabic?.preview) $app.insertAdjacentHTML("afterbegin", `<p class="notice small" data-no-i18n>النسخة العربية مسودة إلى أن يعتمدها المراجع؛ أنت تعاينها بصفتك من فريق MKW. <span lang="en" dir="ltr">Arabic is a draft until the reviewer signs it off; you are previewing it as MKW staff.</span></p>`);
+      translatePage();
+    }
+  } catch (e) {
+    if (e.status === 401) {
+      state.me = null;
+      return render();
+    }
+    $app.innerHTML = `<div class="card"><h1>Could not load this page</h1><p class="muted">${esc(e.message)}</p><a class="btn" href="#/">Back to start</a></div>`;
+  }
+}
+
+async function renderPage(page, id) {
+  {
     if (page === "notifications") return await renderNotifications();
     if (page === "engagement" && id) return await renderEngagement(id);
     if (page === "pay" && id) return renderPayPage(id);
@@ -234,12 +324,6 @@ async function renderOnce() {
     if (page === "search") return await renderSearch(decodeURIComponent(id ?? ""));
     if (page === "settings") return await renderSettings();
     return await renderQueue();
-  } catch (e) {
-    if (e.status === 401) {
-      state.me = null;
-      return render();
-    }
-    $app.innerHTML = `<div class="card"><h1>Could not load this page</h1><p class="muted">${esc(e.message)}</p><a class="btn" href="#/">Back to start</a></div>`;
   }
 }
 
@@ -289,6 +373,8 @@ function renderSignIn(email = "", sent = false, devCode = "") {
 async function requestCode(email) {
   const r = await api("POST", "/api/auth/request-code", { email });
   renderSignIn(email, true, r.devCode ?? "");
+  ensureLabels($app);
+  translatePage();
   document.getElementById("code")?.focus();
 }
 
@@ -992,6 +1078,21 @@ async function renderPartnerPerformance() {
   <div class="card flush"><h2>Scorecard trend</h2>${table(["Computed", "#Score", "On time", "First-pass QA", "Disputes", "Strikes", "Rating"], d.scorecards.map((c) => `<tr><td class="small">${date(c.computedAt)}${c.provisional ? ` ${badge("UNCERTAIN", "provisional")}` : ""}</td><td class="num"><b>${c.score}</b></td><td class="num">${c.inputs.milestonesOnTime}/${c.inputs.milestonesDone}</td><td class="num">${c.inputs.qaFirstPass}/${c.inputs.qaSubmissions}</td><td class="num">${c.inputs.disputes}</td><td class="num">${c.inputs.slaStrikes}</td><td class="num">${c.inputs.rating ?? "–"}</td></tr>`), "No scorecard yet; MKW Advisors computes it weekly.")}</div>`;
 }
 
+async function renderArabicSection() {
+  const a = await api("GET", "/api/admin/arabic");
+  const founder = role() === "founder";
+  const missing = [...state.untranslated].sort();
+  return `<h2 style="margin-top:20px">Arabic ${badge(a.reviewed ? "verified" : "UNCERTAIN", a.reviewed ? "reviewed" : "draft, not yet reviewed")}</h2>
+  <div class="card" data-no-i18n>
+    <p class="muted small">${a.reviewed ? `Signed off by ${esc(a.reviewedBy)} on ${date(a.reviewedAt)}${a.note ? `: ${esc(a.note)}` : ""}. Clients may choose Arabic; their emails go out in Arabic.` : "Until an Arabic speaker signs off the screens and the emails, clients see English only. MKW staff can preview Arabic with the language button in the header; strings the dictionary does not cover stay in English and are listed here while you preview."}</p>
+    ${missing.length ? `<details><summary class="small">${missing.length} English string(s) seen without an Arabic entry in this session</summary><ul class="plain small">${missing.map((m) => `<li lang="en" dir="ltr">${esc(m)}</li>`).join("")}</ul></details>` : lang() === "ar" ? `<p class="small muted">No gaps seen on the screens visited in this session.</p>` : ""}
+    ${founder ? `<form class="row" data-form="arabic-review" style="margin-top:10px">
+      <input name="reviewedBy" placeholder="Reviewer's name and role" style="max-width:260px" ${a.reviewed ? `value="${esc(a.reviewedBy ?? "")}"` : ""} />
+      <input name="note" placeholder="What was reviewed (dictionary version, templates)" style="max-width:320px" />
+      <button class="sm primary" type="submit" name="reviewed" value="1">Record sign-off</button>${a.reviewed ? `<button class="sm danger" type="submit" name="reviewed" value="0">Withdraw</button>` : ""}</form>` : ""}
+  </div>`;
+}
+
 async function renderExportLog() {
   const log = await api("GET", "/api/admin/accounting/exports");
   return `<h2 style="margin-top:20px">Accounting exports</h2><div class="card flush">${table(["When", "Set", "Range", "#Rows", "By"], log.map((l) => `<tr><td class="small">${dateTime(l.exportedAt)}</td><td>${esc(l.setName)}</td><td class="small">${date(l.fromDate)} – ${date(l.toDate)}</td><td class="num">${l.rows}</td><td class="small">${esc(l.exportedBy)}</td></tr>`), "No exports yet (from the Dashboard).")}</div>`;
@@ -1592,6 +1693,7 @@ async function renderSettings() {
       : `<p class="small muted pad">Only the founder can confirm these periods.</p>`
   }</form>
   ${await renderCompany()}
+  ${await renderArabicSection()}
   ${["ops", "finance", "founder"].includes(role()) ? await renderExportLog() : ""}
   ${await renderDeliveryLog()}`;
 }
@@ -1632,7 +1734,26 @@ document.addEventListener("click", (ev) => {
         state.me = null;
         location.hash = "#/";
       }, "Signed out"),
-    restart: () => renderSignIn(),
+    restart: () => {
+      renderSignIn();
+      translatePage();
+    },
+    lang: async () => {
+      const next = el.dataset.lang;
+      try {
+        localStorage.setItem("tasees.lang", next);
+      } catch {}
+      if (state.me) {
+        try {
+          await api("PUT", "/api/me/locale", { locale: next });
+          state.me.locale = next;
+        } catch (e) {
+          return toast(e.message, true);
+        }
+      }
+      state.untranslated = new Set();
+      render();
+    },
     demo: () => requestCode(el.dataset.email).catch((e) => toast(e.message, true)),
     "accept-offer": () => {
       if (!confirm("Accept this offer? We will send the deposit invoice and start allocating the work once it is paid.")) return;
@@ -1871,6 +1992,11 @@ document.addEventListener("submit", (ev) => {
     return act(async () => {
       await api("POST", `/api/obligations/${id}/evidence`, { fileName: file.name, contentBase64: await fileToBase64(file) });
     }, "Uploaded; MKW Advisors will check it and mark the obligation met");
+  }
+  if (kind === "arabic-review") {
+    const reviewed = ev.submitter?.value !== "0";
+    if (!reviewed && !confirm("Withdraw the Arabic sign-off? Clients on Arabic go back to English at once.")) return;
+    return act(() => api("POST", "/api/admin/arabic/review", { reviewed, reviewedBy: String(fd.get("reviewedBy") || "") || undefined, note: String(fd.get("note") || "") }), reviewed ? "Arabic sign-off recorded; clients may now choose Arabic" : "Sign-off withdrawn");
   }
   if (kind === "obligation-add") return act(() => api("POST", `/api/ops/clients/${String(fd.get("client"))}/obligations`, { kind: String(fd.get("kind")), title: String(fd.get("title")), dueDate: String(fd.get("dueDate")), recurrence: String(fd.get("recurrence")), basis: String(fd.get("basis") || "") || undefined }), "Added");
   if (kind === "obligation-confirm") {

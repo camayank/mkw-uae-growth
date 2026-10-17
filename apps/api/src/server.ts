@@ -27,6 +27,7 @@ import { publicIntake, PublicIntakeSchema, listLeads, handleLead } from "./servi
 import type { AiModel } from "./lib/ai.ts";
 import { DOCUMENT_KINDS, invitePartnerStaff, movePartner, partnerOnboarding, recomputeScorecards, reviewDocument, setPartnerStaffActive, submitApplication, uploadDocument as uploadPartnerDocument, scorecardHistory } from "./services/partners.ts";
 import { accountingExport, dashboard, exportLog, partnerDashboard } from "./services/reporting.ts";
+import { arabicAvailable, arabicStatus, recordArabicReview, setLocale } from "./services/locale.ts";
 import { addObligation, clientCalendar, confirmObligation, markObligationMet, obligationFile, opsCalendar, uploadObligationEvidence, waiveObligation } from "./services/compliance.ts";
 import { addDocumentRequest, allocateManually, attributeDelay, decideCredit, decideDocument, delayQueue, documentFileKey, offerDocument, rateEngagement, settleCredit, uploadDocument as uploadClientDocument } from "./services/delivery.ts";
 import { cancelPayoutRun, createPayoutRun, exportPayoutRun, listPayoutRuns, markPayoutRunPaid, payablePayouts, setPartnerBank, uploadPartnerInvoice } from "./services/payouts.ts";
@@ -165,7 +166,8 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     const body = z.object({ email: z.string().email(), code: z.string().min(4).max(10) }).parse(req.body);
     const { token, user } = await verifyLoginCode(db, body.email, body.code);
     reply.header("set-cookie", `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${14 * 86400}${opts.devLogin ? "" : "; Secure"}`);
-    return { token, user: publicUser(user) };
+    const arabic = await asPlatform(db, user, (tx) => arabicAvailable(tx, user));
+    return { token, user: { ...publicUser(user), locale: user.locale ?? "en", arabic } };
   });
 
   app.post("/api/auth/logout", async (req, reply) => {
@@ -175,7 +177,25 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     return { ok: true };
   });
 
-  app.get("/api/me", async (req) => publicUser(requireUser(req)));
+  app.get("/api/me", async (req) => {
+    const user = requireUser(req);
+    const arabic = await asPlatform(db, user, (tx) => arabicAvailable(tx, user));
+    return { ...publicUser(user), locale: user.locale ?? "en", arabic };
+  });
+  app.put("/api/me/locale", async (req) => {
+    const user = requireUser(req);
+    const { locale } = z.object({ locale: z.enum(["en", "ar"]) }).parse(req.body);
+    return asPlatform(db, user, (tx) => setLocale(tx, user, locale));
+  });
+  app.get("/api/admin/arabic", async (req) => {
+    const user = requireRole(req, ...PLATFORM_ROLES);
+    return asPlatform(db, user, (tx) => arabicStatus(tx));
+  });
+  app.post("/api/admin/arabic/review", async (req) => {
+    const user = requireRole(req, "founder");
+    const body = z.object({ reviewed: z.boolean(), reviewedBy: z.string().max(120).optional(), note: z.string().max(500).optional() }).parse(req.body);
+    return asPlatform(db, user, (tx) => recordArabicReview(tx, user, body));
+  });
 
   // Catalogue (any signed-in user) ------------------------------------------------
   app.get("/api/deliverables", async (req) => {
@@ -1087,7 +1107,10 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     return asPlatform(db, user, (tx) => cancelPayoutRun(tx, user, req.params.id, body.reason, body.confirmNotSubmitted));
   });
 
-  app.get("/api/health", async () => ({ ok: true, db: db.kind, devLogin: !!opts.devLogin }));
+  app.get("/api/health", async () => {
+    const arabic = await asPlatform(db, null, (tx) => arabicStatus(tx));
+    return { ok: true, db: db.kind, devLogin: !!opts.devLogin, arabic: arabic.reviewed };
+  });
 
   // Web app ------------------------------------------------------------------
   if (opts.webDir) registerStatic(app, opts.webDir);

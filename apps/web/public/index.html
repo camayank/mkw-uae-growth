@@ -9,13 +9,14 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <a class="skip" href="#app">Skip to content</a>
   <header class="top">
     <a class="brand" href="#/"><span class="mark">T</span><span class="brand-text" id="brand">Tasees <small>by MKW Advisors</small></span></a>
     <nav id="nav"></nav>
     <div class="who" id="who"></div>
   </header>
-  <main id="app" aria-live="polite"><p class="muted pad">Loading…</p></main>
-  <div id="toast" role="status"></div>
+  <main id="app" tabindex="-1"><p class="muted pad">Loading…</p></main>
+  <div id="toast" role="status" aria-live="polite"></div>
   <script type="module" src="app.js"></script>
 </body>
 </html>

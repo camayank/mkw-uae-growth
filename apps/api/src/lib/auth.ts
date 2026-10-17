@@ -96,9 +96,10 @@ interface UserRow {
   role: Role;
   email: string;
   name: string;
+  locale: "en" | "ar";
 }
 
-const USER_SQL = `select u.id, u.org_id, o.type as org_type, o.name as org_name, u.role, u.email, u.name
+const USER_SQL = `select u.id, u.org_id, o.type as org_type, o.name as org_name, u.role, u.email, u.name, u.locale
   from users u join orgs o on o.id = u.org_id`;
 
 const toSessionUser = (r: UserRow): SessionUser => ({
@@ -109,6 +110,7 @@ const toSessionUser = (r: UserRow): SessionUser => ({
   role: r.role,
   email: r.email,
   name: r.name,
+  locale: r.locale,
 });
 
 export async function userFromToken(db: Database, token: string): Promise<SessionUser | null> {

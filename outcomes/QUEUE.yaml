@@ -61,6 +61,7 @@ outcomes:
     needs_from_owner: [accounting system name]
   - id: O9
     title: Arabic and accessibility (Arabic client screens, right-to-left, WCAG 2.1 AA)
-    status: queued
+    status: verified-pending-merge
+    contract: outcomes/O9-arabic-and-accessibility.md
     depends_on: [O7]
     needs_from_owner: [Arabic reviewer]

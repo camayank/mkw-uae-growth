@@ -1,3 +1,4 @@
+import { BRAND_AR, renderTemplateAr } from "./templates-ar.ts";
 import { asPlatform, txScope } from "./context.ts";
 import { withClock, type Database } from "./db.ts";
 import { signedFetch, type AwsCredentials } from "./sigv4.ts";
@@ -142,7 +143,7 @@ export function recordingNotifier(opts: NotifierOptions): Notifier {
     const to = n.to.trim().toLowerCase();
     // Who is this? Decides the audience (branding) and whether the row is somebody's in-app notification.
     const user = await asPlatform(db, null, async (tx) =>
-      (await tx.query<{ id: string; type: "client" | "partner" | "platform"; status: string }>("select u.id, o.type, u.status from users u join orgs o on o.id = u.org_id where u.email = $1", [to])).rows[0],
+      (await tx.query<{ id: string; type: "client" | "partner" | "platform"; status: string; locale: string; arabic: boolean }>("select u.id, o.type, u.status, u.locale, coalesce((select (value->>'reviewed')::boolean from settings where key = 'arabic'), false) as arabic from users u join orgs o on o.id = u.org_id where u.email = $1", [to])).rows[0],
     );
     if (user && user.status !== "active") {
       // Deactivated or erased people receive nothing; the fact is recorded without the wording.
@@ -158,7 +159,12 @@ export function recordingNotifier(opts: NotifierOptions): Notifier {
     const fromOrg: Audience | undefined = user ? (user.type === "client" ? "client" : user.type === "partner" ? "partner" : "staff") : undefined;
     const templateAudience = TEMPLATE_AUDIENCE[n.template];
     const audience: Audience = n.audience ?? (templateAudience === "any" ? (fromOrg ?? "client") : templateAudience);
-    const rendered = renderTemplate(n.template, audience, n.vars, opts.appUrl);
+    // Arabic only for a client who chose it, and only once the reviewer's sign-off is recorded (staff may
+    // preview). Templates without an Arabic version fall back to English.
+    const wantsArabic = !!user && user.locale === "ar" && audience === "client" && (user.arabic || user.type === "platform");
+    const arabic = wantsArabic ? renderTemplateAr(n.template, n.vars, opts.appUrl) : null;
+    const locale: "en" | "ar" = arabic ? "ar" : "en";
+    const rendered = arabic ?? renderTemplate(n.template, audience, n.vars, opts.appUrl);
     const from = audience === "client" ? opts.fromClient : opts.fromPartner;
     // A secret (sign-in code) is never written down: the record keeps who, what kind and whether it was sent.
     const recordedSubject = rendered.secret ? "(sign-in code: not recorded)" : rendered.subject;
@@ -167,9 +173,9 @@ export function recordingNotifier(opts: NotifierOptions): Notifier {
     const id = await asPlatform(db, null, async (tx) =>
       (
         await tx.query<{ id: string }>(
-          `insert into notifications (user_id, to_email, channel, template, audience, subject, body, vars, in_app, status)
-           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,'queued') returning id`,
-          [user?.id ?? null, to, n.channel, n.template, audience, recordedSubject, recordedBody, JSON.stringify(recordedVars), rendered.inApp && !!user],
+          `insert into notifications (user_id, to_email, channel, template, audience, subject, body, vars, in_app, status, locale)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,'queued',$10) returning id`,
+          [user?.id ?? null, to, n.channel, n.template, audience, recordedSubject, recordedBody, JSON.stringify(recordedVars), rendered.inApp && !!user, locale],
         )
       ).rows[0]!.id,
     );
@@ -178,7 +184,7 @@ export function recordingNotifier(opts: NotifierOptions): Notifier {
       return;
     }
     try {
-      const { providerRef } = await opts.transport.deliver({ to, from, fromName: BRAND[audience].name, subject: rendered.subject, text: rendered.body });
+      const { providerRef } = await opts.transport.deliver({ to, from, fromName: locale === "ar" ? BRAND_AR.name : BRAND[audience].name, subject: rendered.subject, text: rendered.body });
       await asPlatform(db, null, (tx) => tx.query("update notifications set status = 'sent', provider_ref = $2, sent_at = app_now() where id = $1", [id, providerRef]));
     } catch (e) {
       const msg = (e as Error).message.slice(0, 500);

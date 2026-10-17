@@ -217,6 +217,20 @@ client role. An obligation is met only when filing evidence is on file and MKW h
 recurring date rolls forward as open, an unconfirmed one comes back for review. The platform reminds and
 records; it never files.
 
+**D39. Arabic is a draft until a named reviewer signs it off.** The Arabic dictionary and the Arabic email
+templates were drafted by the build (AI output under rule 5), so clients cannot choose Arabic until the
+founder records the reviewer's name and date (`settings.arabic`, audited); MKW staff can preview it with a
+visible draft banner and see which strings have no Arabic entry. Numbers, amounts, references, emails and
+codes are never translated. Withdrawing the sign-off puts clients back on English at once. Partner and
+staff screens stay English, as the specification says.
+
+**D40. Accessibility is checked by a machine on every smoke run.** axe-core (MIT, Deque; `axe-core` 4.10.2,
+dev dependency only, loaded into the page by the smoke test and never shipped) runs the WCAG 2.1 A/AA rule
+set on the sign-in, client, partner and public screens in both languages and fails the run on any violation;
+the keyboard-only path to an engagement is driven by key presses. Controls get accessible names at render
+time (`ensureLabels`), the skip link and visible focus ring are global, and reduced motion is respected.
+Removal: delete the dev dependency and the `axeCheck` block in `scripts/smoke.mjs`.
+
 ## Open for the owner
 
 1. **Margin rates and floors per category.** Seeded from the Sheet (setup 20% / AED 500 and so on). Confirm.
@@ -245,6 +259,7 @@ records; it never files.
     holiday list** for the working-time clock.
 18. **Accounting system** (Zoho Books, Xero or QuickBooks) for the export mapping; **financial year end**
     for corporate tax (31 December assumed in the obligation rule).
+19. **Arabic reviewer** (name and sign-off), after which clients may choose Arabic.
 15. **Card payment provider**: the webhook contract is generic until chosen; Network International, Telr,
     Checkout.com or Stripe UAE. **MKW's TRN, legal name and address** for invoices. **Bank bulk-transfer
     sample** for the payout file. **Tax adviser's confirmation** that government fees are disbursements.

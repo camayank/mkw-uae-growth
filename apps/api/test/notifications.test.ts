@@ -25,7 +25,6 @@ const SAMPLE_VARS = {
   kind: "trade_licence",
   expiresOn: "2026-11-30",
   step: "Initial approval issued",
-  count: 2,
   kinds: "passport copy, photo",
   dueDate: "2026-10-20",
   expectedDate: "2026-10-27",

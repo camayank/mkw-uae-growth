@@ -185,6 +185,61 @@ async function act(fn, ok = "Done") {
   }
 }
 
+/**
+ * Legal texts arrive as markdown. Render a safe subset: everything is escaped first, then headings, lists, bold and
+ * paragraphs are recognised. No HTML from the text ever reaches the page.
+ */
+function mdToHtml(text) {
+  const inline = (t) => esc(t.replace(/\\([\[\]()*_#-])/g, "$1")).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+  const out = [];
+  let list = null;
+  let para = [];
+  const flush = () => {
+    if (para.length) out.push(`<p>${inline(para.join(" "))}</p>`);
+    para = [];
+    if (list) out.push(`</${list}>`);
+    list = null;
+  };
+  for (const raw of String(text ?? "").split(/\r?\n/)) {
+    const line = raw.trim();
+    const h = /^(#{1,4})\s+(.*)$/.exec(line);
+    const ul = /^[-*]\s+(.*)$/.exec(line);
+    const ol = /^\d+\.\s+(.*)$/.exec(line);
+    if (!line) {
+      flush();
+      continue;
+    }
+    if (h) {
+      flush();
+      const level = Math.min(4, h[1].length + 2);
+      out.push(`<h${level}>${inline(h[2])}</h${level}>`);
+    } else if (ul || ol) {
+      if (para.length) out.push(`<p>${inline(para.join(" "))}</p>`), (para = []);
+      const kind = ul ? "ul" : "ol";
+      if (list !== kind) {
+        if (list) out.push(`</${list}>`);
+        out.push(`<${kind}>`);
+        list = kind;
+      }
+      out.push(`<li>${inline((ul ?? ol)[1])}</li>`);
+    } else {
+      if (list) out.push(`</${list}>`), (list = null);
+      para.push(line);
+    }
+  }
+  flush();
+  return out.join("");
+}
+
+/** A legal text with its version and review state, the full text behind a disclosure. */
+function legalBlock(doc, heading) {
+  const state = doc.draft
+    ? `${badge("UNCERTAIN", "Draft, pending legal review")}`
+    : `${badge("verified", `Reviewed by ${esc(doc.approvedByLawyer)} on ${date(doc.approvedOn)}`)}`;
+  return `<div class="legal stack"><div class="row between"><b>${esc(heading)} · version ${doc.version}</b>${state}</div>
+    <details><summary class="small">Read the full text</summary><div class="legal-text">${mdToHtml(doc.body)}</div></details></div>`;
+}
+
 const table = (head, rows, empty = "Nothing here yet.") =>
   rows.length
     ? `<div class="table-wrap"><table><thead><tr>${head.map((h) => `<th class="${h.startsWith("#") ? "num" : ""}">${esc(h.replace(/^#/, ""))}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table></div>`
@@ -228,8 +283,43 @@ document.addEventListener("visibilitychange", () => {
 function navFor() {
   if (isClient()) return [["home", "Overview"], ["new", "New request"], ["compliance", "Compliance"], ["statement", "Statement"]];
   if (isPartner()) return [["home", "Work"], ["performance", "Performance"], ["firm", "Your firm"], ["rates", "Rate card"], ["payouts", "Payouts"]];
-  return [["home", "Queue"], ["dashboard", "Dashboard"], ["pipeline", "Pipeline"], ["partners", "Partners"], ["delays", "Delays"], ["compliance", "Compliance"], ["people", "People"], ["catalogue", "Catalogue"], ["rules", "Rules"], ["scoping", "Scoping"], ["agent", "AI queue"], ["new", "New request"], ["settings", "Settings"], ["audit", "Audit trail"]];
+  // MKW staff: fourteen pages in four entries, so the bar stays on one row at desktop and phone width.
+  return [
+    { group: "Work", items: [["home", "Queue"], ["pipeline", "Pipeline"], ["new", "New request"], ["delays", "Delays"], ["compliance", "Compliance"], ["agent", "AI queue"]] },
+    ["partners", "Partners"],
+    ["dashboard", "Dashboard"],
+    { group: "Setup", items: [["people", "People"], ["catalogue", "Catalogue"], ["rules", "Rules"], ["scoping", "Scoping"], ["settings", "Settings"], ["audit", "Audit trail"]] },
+  ];
 }
+
+/** A link in the menu bar, marked when it is the page on screen. */
+const navLink = (p, label, page) => `<a href="#/${p}" class="${page === p ? "on" : ""}" ${page === p ? 'aria-current="page"' : ""}>${esc(label)}</a>`;
+
+/** A disclosure menu (button + list of links): opens on click, Enter or Space; Escape closes and returns focus. */
+function navGroup(g, page) {
+  const id = `nav-${g.group.toLowerCase()}`;
+  const current = g.items.find(([p]) => p === page);
+  return `<div class="navgroup"><button type="button" class="navbtn ${current ? "on" : ""}" aria-expanded="false" aria-controls="${id}" data-act="nav-group">${esc(g.group)}${current ? `<span class="navcur">: ${esc(current[1])}</span>` : ""}<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+    <div class="navmenu" id="${id}" hidden>${g.items.map(([p, label]) => navLink(p, label, page)).join("")}</div></div>`;
+}
+
+function closeNavMenus(except) {
+  for (const b of document.querySelectorAll("#nav .navbtn[aria-expanded='true']")) {
+    if (b === except) continue;
+    b.setAttribute("aria-expanded", "false");
+    document.getElementById(b.getAttribute("aria-controls"))?.setAttribute("hidden", "");
+  }
+}
+document.addEventListener("keydown", (ev) => {
+  if (ev.key !== "Escape") return;
+  const open = document.querySelector("#nav .navbtn[aria-expanded='true']");
+  if (!open) return;
+  closeNavMenus();
+  open.focus();
+});
+document.addEventListener("click", (ev) => {
+  if (!ev.target.closest(".navgroup")) closeNavMenus();
+});
 
 function langSwitch() {
   const available = state.me ? state.me.arabic?.available : !!state.health?.arabic;
@@ -254,9 +344,9 @@ function chrome() {
       ? "MKW Advisors <small>Operations</small>"
       : "Tasees <small>by MKW Advisors</small>";
   $nav.innerHTML = navFor()
-    .map(([p, label]) => `<a href="#/${p}" class="${page === p ? "on" : ""}" ${page === p ? 'aria-current="page"' : ""}>${esc(label)}</a>`)
+    .map((item) => (Array.isArray(item) ? navLink(item[0], item[1], page) : navGroup(item, page)))
     .join("");
-  $who.innerHTML = `${isPlatform() ? `<form data-form="search" class="search"><input name="q" type="search" placeholder="Search clients, partners, refs" aria-label="Search" /></form>` : ""}<span>${esc(state.me.name)} · ${esc(state.me.orgName)} · ${esc(words(state.me.role))}</span>${langSwitch()}
+  $who.innerHTML = `${isPlatform() ? `<form data-form="search" class="search"><input name="q" type="search" placeholder="Search clients, partners, refs" aria-label="Search" /></form>` : ""}<span>${esc(state.me.name)}${isPlatform() ? "" : ` · ${esc(state.me.orgName)}`} · ${esc(words(state.me.role))}</span>${langSwitch()}
     <a class="bell ${page === "notifications" ? "on" : ""}" href="#/notifications" aria-label="Notifications${state.unread ? `, ${state.unread} unread` : ""}" title="Notifications">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
       ${state.unread ? `<b class="count" data-unread>${state.unread > 99 ? "99+" : state.unread}</b>` : ""}</a>
@@ -469,6 +559,7 @@ async function renderClientHome() {
 async function renderClientOffer(id) {
   const o = await api("GET", `/api/client/offers/${id}`);
   const h = await api("GET", "/api/client/home");
+  const terms = o.status === "published" && role() === "client_owner" ? await api("GET", "/api/legal/client_terms") : null;
   const siblings = h.offers.filter((x) => x.requestId === o.requestId && ["published", "accepted"].includes(x.status));
   const deposit = Math.round(((o.professional ?? 0) + (o.mkwFees ?? 0) + (o.vat ?? 0)) / 2) + (o.government ?? 0);
   $app.innerHTML = `
@@ -510,7 +601,12 @@ async function renderClientOffer(id) {
       ${
         o.status === "published"
           ? role() === "client_owner"
-            ? `<button class="primary" data-act="accept-offer" data-id="${o.id}">Accept this offer</button>`
+            ? `${
+                terms?.version
+                  ? `${legalBlock(terms, "Tasees client terms")}
+                     <label class="small accept-terms"><input type="checkbox" data-terms-version="${terms.version}" /> I have read and accept the Tasees client terms, version ${terms.version}${terms.draft ? " (draft, pending legal review)" : ""}</label>`
+                  : ""
+              }<button class="primary" data-act="accept-offer" data-id="${o.id}">Accept this offer</button>`
             : `<p class="notice small">Only the account owner can accept an offer.</p>`
           : ""
       }
@@ -908,6 +1004,29 @@ async function renderFirm(orgId) {
   const pr = f.profile ?? {};
   const mine = isPartner();
   const admin = role() === "partner_admin";
+  const agreement = await api("GET", "/api/legal/partner_agreement");
+  const accepted = pr.agreementAccepted;
+  const agreementCard = agreement?.version
+    ? `<div class="card stack"><h2>Partner Network Agreement</h2>
+        ${legalBlock(agreement, "MKW Partner Network Agreement")}
+        <p class="small">${
+          accepted
+            ? `Accepted online: version ${accepted.version}${accepted.version !== agreement.version ? ` (the current version is ${agreement.version}; please read and accept it)` : ""}, ${dateTime(accepted.at)}.`
+            : "Not yet accepted online."
+        } The signed copy is still uploaded under Documents and verified by MKW Advisors before the firm is signed.</p>
+        ${mine && admin && (!accepted || accepted.version !== agreement.version) ? `<button class="sm primary" data-act="agreement-accept" data-version="${agreement.version}">I accept version ${agreement.version}</button>` : ""}
+      </div>`
+    : "";
+  const roster = isPlatform()
+    ? `<div class="card"><h2>From the partner roster</h2><dl class="small">
+        <dt>Partner ID</dt><dd>${esc(pr.sourceId ?? "–")}</dd>
+        <dt>Segment</dt><dd>${esc(pr.segment ?? "–")}</dd>
+        <dt>Business contact</dt><dd>${esc([pr.contact?.email, pr.contact?.phone, pr.contact?.website].filter(Boolean).join(" · ") || "–")}</dd>
+        <dt>Free zones served</dt><dd>${esc((pr.freeZones ?? []).join(", ") || "–")}</dd>
+        <dt>Licensing authority</dt><dd>${esc(pr.licensingAuthority ?? "–")}</dd>
+        <dt>FTA tax agent</dt><dd>${pr.ftaTaxAgent ? "confirmed" : `not confirmed${pr.ftaTaxAgentClaim && !/^no$/i.test(pr.ftaTaxAgentClaim) ? ` ${badge("UNCERTAIN", "check the FTA register")}` : ""}`}</dd>
+        <dt>Notes</dt><dd>${esc(pr.importNotes ?? "–")}</dd></dl></div>`
+    : "";
   const canAct = isPlatform() && ["ops", "founder"].includes(role());
   const all = await deliverables();
   const emirates = ["Dubai", "Abu Dhabi", "Sharjah", "Ajman", "Ras Al Khaimah", "Umm Al Quwain", "Fujairah", "All"];
@@ -946,6 +1065,8 @@ async function renderFirm(orgId) {
       : `${mine ? `<p class="small muted">Your application is on record. Ask MKW Advisors to change coverage, services or capacity.</p>` : ""}<dl class="small"><dt>Licence</dt><dd>${esc(pr.licenceNumber ?? "–")}${pr.licenceExpiry ? `, verified to ${date(pr.licenceExpiry)}` : pr.declaredLicenceExpiry ? `, declared to ${date(pr.declaredLicenceExpiry)} (not yet verified)` : ""}</dd><dt>Emirates</dt><dd>${esc((pr.emirates ?? []).join(", ") || "–")}</dd><dt>Services</dt><dd>${esc((pr.codes ?? []).join(", ") || "–")}</dd><dt>Capabilities</dt><dd>${esc([pr.ftaTaxAgent && "FTA tax agent", pr.registeredLiquidator && "liquidator", pr.licensedLawFirm && "law firm", pr.regulatoryAdviser && "regulatory adviser"].filter(Boolean).join(", ") || "–")}</dd><dt>About</dt><dd>${esc(pr.about ?? "–")}</dd></dl>`}
     </div>
     <div class="stack">
+      ${agreementCard}
+      ${roster}
       <div class="card flush"><h2>Documents</h2>
         ${table(["Document", "File", "Expires", "Status", ""], (f.documents ?? []).map(docRow), "No documents yet.")}
         ${(mine && admin) || canAct ? `<form class="pad grid cols-3" data-form="partner-doc" data-id="${orgId}" style="padding-top:8px">
@@ -1728,10 +1849,52 @@ async function renderSettings() {
         <button class="primary" type="submit">Confirm retention periods</button></div>`
       : `<p class="small muted pad">Only the founder can confirm these periods.</p>`
   }</form>
+  ${await renderLegalSection()}
+  ${await renderHolidaySection()}
   ${await renderCompany()}
   ${await renderArabicSection()}
   ${["ops", "finance", "founder"].includes(role()) ? await renderExportLog() : ""}
   ${await renderDeliveryLog()}`;
+}
+
+const LEGAL_TITLE = { client_terms: "Tasees client terms", partner_agreement: "MKW Partner Network Agreement" };
+
+async function renderLegalSection() {
+  const docs = await api("GET", "/api/admin/legal");
+  const founder = role() === "founder";
+  return `<h2 style="margin-top:24px">Legal texts</h2>
+  <p class="muted">Clients accept the client terms with an offer; partners accept the agreement during onboarding. Each shows "Draft, pending legal review" until you record the lawyer's review of that exact version. A new text arrives as a new version through the import and starts as a draft again.</p>
+  <div class="card flush">${table(
+    ["Text", "#Version", "Review", founder ? "Record the lawyer's review" : ""],
+    docs.map(
+      (d) => `<tr><td>${esc(LEGAL_TITLE[d.kind] ?? d.kind)}</td><td class="num">${d.version}</td>
+      <td>${d.draft ? badge("UNCERTAIN", "Draft, pending legal review") : badge("verified", `${esc(d.approvedByLawyer)}, ${date(d.approvedOn)}`)}</td>
+      <td>${founder && d.draft ? `<form class="row" data-form="legal-signoff" data-kind="${d.kind}" data-version="${d.version}"><input name="lawyer" required minlength="2" placeholder="Lawyer or firm" aria-label="Lawyer who reviewed version ${d.version}" style="max-width:200px" /><input name="approvedOn" type="date" required aria-label="Date of the review" style="width:auto" /><button class="sm primary" type="submit">Record review</button></form>` : ""}</td></tr>`,
+    ),
+    "No legal texts loaded yet. Import them with: pnpm import legal <file>.",
+  )}</div>`;
+}
+
+async function renderHolidaySection() {
+  const list = await api("GET", "/api/admin/holidays");
+  const founder = role() === "founder";
+  return `<h2 style="margin-top:24px">Public holidays</h2>
+  <p class="muted">The working-time clock (Monday to Friday, 09:00 to 18:00 GST) skips these dates for every deadline: partner replies, auto-approval, delays and the ops digest. Lunar dates stay "expected" until the government announces them; expected dates count as holidays meanwhile.</p>
+  <div class="card flush">${table(
+    ["Date", "Holiday", "Status", "Note", ""],
+    list.map(
+      (h) => `<tr><td>${date(h.date)}</td><td>${esc(h.name)}</td><td>${h.status === "confirmed" ? badge("verified", "confirmed") : badge("UNCERTAIN", "expected")}</td><td class="small">${esc(h.note || "")}</td>
+      <td>${founder ? `${h.status === "expected" ? `<button class="sm" data-act="holiday-confirm" data-date="${h.date}" data-name="${esc(h.name)}">Confirm</button> ` : ""}<button class="sm" data-act="holiday-remove" data-date="${h.date}">Remove</button>` : ""}</td></tr>`,
+    ),
+    "No holidays loaded: every weekday counts as a working day.",
+  )}
+  ${
+    founder
+      ? `<form class="pad row" data-form="holiday-set" style="padding-top:8px"><input name="date" type="date" required aria-label="Date" style="width:auto" /><input name="name" required minlength="2" placeholder="Holiday" aria-label="Holiday name" style="max-width:220px" />
+         <select name="status" aria-label="Status" style="width:auto"><option value="expected">expected</option><option value="confirmed">confirmed</option></select>
+         <input name="reason" required minlength="3" placeholder="Source (recorded)" aria-label="Why, for the audit trail" style="max-width:240px" /><button class="sm primary" type="submit">Add or update</button></form>`
+      : ""
+  }</div>`;
 }
 
 async function renderCompany() {
@@ -1792,11 +1955,41 @@ document.addEventListener("click", (ev) => {
     },
     demo: () => requestCode(el.dataset.email).catch((e) => toast(e.message, true)),
     "accept-offer": () => {
+      const box = document.querySelector("input[data-terms-version]");
+      if (box && !box.checked) {
+        toast(translateText("Tick the box to accept the client terms first."), true);
+        box.focus();
+        return;
+      }
       if (!confirm(translateText("Accept this offer? We will send the deposit invoice and start allocating the work once it is paid."))) return;
       act(async () => {
-        const r = await api("POST", `/api/client/offers/${id}/accept`);
+        const r = await api("POST", `/api/client/offers/${id}/accept`, box ? { termsVersion: Number(box.dataset.termsVersion) } : {});
         location.hash = `#/engagement/${r.engagementId}`;
       }, "Offer accepted. Your deposit invoice is on its way.");
+    },
+    "nav-group": () => {
+      const open = el.getAttribute("aria-expanded") !== "true";
+      closeNavMenus(el);
+      el.setAttribute("aria-expanded", String(open));
+      const menu = document.getElementById(el.getAttribute("aria-controls"));
+      if (open) {
+        menu?.removeAttribute("hidden");
+        menu?.querySelector("a")?.focus();
+      } else menu?.setAttribute("hidden", "");
+    },
+    "agreement-accept": () => {
+      if (!confirm(`Accept version ${el.dataset.version} of the MKW Partner Network Agreement for your firm? MKW Advisors records who accepted and when.`)) return;
+      act(() => api("POST", "/api/partner/agreement/accept", { version: Number(el.dataset.version) }), "Accepted. Upload the signed copy under Documents as well.");
+    },
+    "holiday-remove": () => {
+      const reason = prompt("Why is this date being removed? (recorded in the audit trail)");
+      if (!reason) return;
+      act(() => api("DELETE", `/api/admin/holidays/${el.dataset.date}`, { reason }), "Holiday removed");
+    },
+    "holiday-confirm": () => {
+      const reason = prompt("Where was it announced? (recorded in the audit trail)");
+      if (!reason) return;
+      act(() => api("PUT", "/api/admin/holidays", { date: el.dataset.date, name: el.dataset.name, status: "confirmed", reason }), "Holiday confirmed");
     },
     "ms-start": () => act(() => api("POST", `/api/milestones/${id}/start`), "Started"),
     "ms-submit": () => act(() => api("POST", `/api/milestones/${id}/submit`), "Sent to MKW Advisors for checking"),
@@ -2157,6 +2350,13 @@ document.addEventListener("submit", (ev) => {
   }
   if (kind === "invite") return act(() => api("POST", `/api/admin/orgs/${id}/users`, { name: String(fd.get("name")), email: String(fd.get("email")), role: String(fd.get("role")) }), "Invited");
   if (kind === "role") return act(() => api("POST", `/api/admin/users/${id}/role`, { role: String(fd.get("role")) }), "Role changed");
+  if (kind === "legal-signoff") {
+    if (!confirm(`Record that ${fd.get("lawyer")} reviewed version ${form.dataset.version} on ${fd.get("approvedOn")}? The draft note disappears for everyone who reads it.`)) return;
+    return act(() => api("POST", `/api/admin/legal/${form.dataset.kind}/${form.dataset.version}/sign-off`, { lawyer: String(fd.get("lawyer")), approvedOn: String(fd.get("approvedOn")) }), "Review recorded");
+  }
+  if (kind === "holiday-set") {
+    return act(() => api("PUT", "/api/admin/holidays", { date: String(fd.get("date")), name: String(fd.get("name")), status: String(fd.get("status")), reason: String(fd.get("reason")) }), "Holiday saved");
+  }
   if (kind === "retention") {
     const periods = {};
     for (const [k, v] of fd.entries()) {

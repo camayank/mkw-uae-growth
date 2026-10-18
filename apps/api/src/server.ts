@@ -51,6 +51,8 @@ import {
   type Deps,
 } from "./services/engagements.ts";
 import { runJobs } from "./jobs/run.ts";
+import { acceptPartnerAgreement, assertMayRead, currentLegal, legalOverview, recordLegalSignOff } from "./services/legal.ts";
+import { listHolidays, removeHoliday, setHoliday } from "./services/calendar.ts";
 import { buildOffers, overrideLinePrice, publishOffer } from "./services/pricing.ts";
 import { createRequest, IntakeSchema } from "./services/requests.ts";
 import { addFee, catalogue, feesOverview, retireFee, rulesOverview, scheduleRule, updatePricingSettings, verifyFee } from "./services/rules.ts";
@@ -235,7 +237,8 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
 
   app.post<{ Params: { id: string } }>("/api/client/offers/:id/accept", async (req) => {
     const user = requireRole(req, "client_owner");
-    const engagementId = await asPlatform(db, user, (tx) => acceptOffer(tx, user, req.params.id, deps));
+    const body = z.object({ termsVersion: z.number().int().positive().optional() }).parse(req.body ?? {});
+    const engagementId = await asPlatform(db, user, (tx) => acceptOffer(tx, user, req.params.id, deps, body.termsVersion));
     return { engagementId };
   });
 
@@ -476,8 +479,10 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
 
   app.put<{ Params: { id: string } }>("/api/ops/partners/:id", async (req) => {
     const user = requireRole(req, "ops", "founder");
+    // Status moves go through POST /api/ops/partners/:id/status only: that route checks the licence and agreement
+    // gates, records why, tells the firm and (O10) sends the held invitation when the firm reaches pilot.
+    if (req.body && typeof req.body === "object" && "status" in (req.body as object)) throw badRequest("Move a partner through onboarding with the status move, not the profile edit");
     const Profile = z.object({
-      status: z.enum(["prospect", "contacted", "pilot", "signed", "paused"]).optional(),
       quality: z.number().min(0).max(100).optional(),
       capacity: z.number().int().min(0).max(500).optional(),
       licenceActive: z.boolean().optional(),
@@ -605,6 +610,45 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     const Period = z.object({ years: z.number().int().min(0).max(100).nullable().optional(), days: z.number().int().min(0).max(36500).nullable().optional() });
     const body = z.object({ periods: z.record(Period).default({}), note: z.string().min(3).max(500) }).parse(req.body);
     return asPlatform(db, user, (tx) => confirmRetention(tx, user, body.periods, body.note));
+  });
+
+  // Legal texts and the holiday calendar (O10) ----------------------------------------------------
+  app.get<{ Params: { kind: string } }>("/api/legal/:kind", async (req) => {
+    const user = requireUser(req);
+    const kind = z.enum(["client_terms", "partner_agreement"]).parse(req.params.kind);
+    assertMayRead(user, kind);
+    return asPlatform(db, user, async (tx) => (await currentLegal(tx, kind)) ?? { kind, version: null });
+  });
+  app.post("/api/partner/agreement/accept", async (req) => {
+    const user = requireRole(req, "partner_admin");
+    const body = z.object({ version: z.number().int().positive() }).parse(req.body);
+    return asPlatform(db, user, (tx) => acceptPartnerAgreement(tx, user, body.version));
+  });
+  app.get("/api/admin/legal", async (req) => {
+    const user = requireRole(req, ...PLATFORM_ROLES);
+    return asPlatform(db, user, (tx) => legalOverview(tx));
+  });
+  app.post<{ Params: { kind: string; version: string } }>("/api/admin/legal/:kind/:version/sign-off", async (req) => {
+    const user = requireRole(req, "founder");
+    const kind = z.enum(["client_terms", "partner_agreement"]).parse(req.params.kind);
+    const body = z.object({ lawyer: z.string().min(2).max(120), approvedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).parse(req.body);
+    return asPlatform(db, user, (tx) => recordLegalSignOff(tx, user, kind, Number(req.params.version), body.lawyer, body.approvedOn));
+  });
+  app.get("/api/admin/holidays", async (req) => {
+    const user = requireRole(req, ...PLATFORM_ROLES);
+    return asPlatform(db, user, (tx) => listHolidays(tx));
+  });
+  app.put("/api/admin/holidays", async (req) => {
+    const user = requireRole(req, "founder");
+    const body = z
+      .object({ date: z.string(), name: z.string().max(120), status: z.enum(["expected", "confirmed"]), note: z.string().max(300).optional(), reason: z.string().min(3).max(300) })
+      .parse(req.body);
+    return asPlatform(db, user, (tx) => setHoliday(tx, user, body, body.reason));
+  });
+  app.delete<{ Params: { date: string } }>("/api/admin/holidays/:date", async (req) => {
+    const user = requireRole(req, "founder");
+    const body = z.object({ reason: z.string().min(3).max(300) }).parse(req.body);
+    return asPlatform(db, user, (tx) => removeHoliday(tx, user, req.params.date, body.reason));
   });
 
   // Catalogue, margin rules and government fees (O4) ----------------------------------------------

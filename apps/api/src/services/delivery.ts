@@ -15,6 +15,7 @@ import { badRequest, conflict, forbidden, notFound } from "../lib/errors.ts";
 import { col, textPdf } from "../lib/pdf.ts";
 import { attachPaymentLink, categoryOf, monthShares, notifyOrg, type Deps } from "./engagements.ts";
 import { loadCompany } from "./invoices.ts";
+import { loadCalendar } from "./calendar.ts";
 import { loadDeliverables, loadPartners, loadRateCards, dbToday, today } from "./repo.ts";
 
 /**
@@ -102,6 +103,7 @@ async function guaranteeBp(tx: Queryable): Promise<number> {
 /** Daily: every in-flight step past its due date gets one delay record; past the guarantee window, a credit. */
 export async function sweepDelays(tx: Queryable, deps: Deps): Promise<{ delays: number; credits: number }> {
   const today = await dbToday(tx);
+  const cal = await loadCalendar(tx);
   const late = (
     await tx.query<{ id: string; engagement_id: string; partner_org_id: string; code: string; name: string; due_date: string; client_org_id: string }>(
       `select m.id, m.engagement_id, m.partner_org_id, m.code, m.name, m.due_date::text as due_date, e.client_org_id
@@ -115,7 +117,7 @@ export async function sweepDelays(tx: Queryable, deps: Deps): Promise<{ delays: 
   ).rows;
   let delays = 0;
   for (const m of late) {
-    const expected = addWorkingDays(new Date(`${m.due_date}T14:00:00+04:00`), GUARANTEE_DAYS).toISOString().slice(0, 10);
+    const expected = addWorkingDays(new Date(`${m.due_date}T14:00:00+04:00`), GUARANTEE_DAYS, cal).toISOString().slice(0, 10);
     const d = (
       await tx.query<{ id: string }>("insert into delays (milestone_id, engagement_id, partner_org_id, client_org_id, due_date, expected_date) values ($1,$2,$3,$4,$5,$6) returning id", [m.id, m.engagement_id, m.partner_org_id, m.client_org_id, m.due_date, expected])
     ).rows[0]!;
@@ -321,7 +323,7 @@ export async function allocateManually(tx: Queryable, actor: SessionUser, engage
   // Reuse the engine only to record the fairness picture ops is overriding.
   const shares = await monthShares(tx, categoryOf(codes, deliverables));
   const auto = allocate({ codes, emirate: ctx.emirate, freeZone: ctx.freeZone, clientOrgId: ctx.clientOrgId, quotingPartnerId: (lines[0]?.quoting_partner_org_id as string | null) ?? null, rankedPartnerIds: [], monthShare: shares }, partners, deliverables);
-  const deadline = addWorkingDays(nowOf(deps), 0.5);
+  const deadline = addWorkingDays(nowOf(deps), 0.5, await loadCalendar(tx));
   const a = (
     await tx.query<{ id: string }>(
       `insert into allocations (engagement_id, partner_org_id, codes, reason, deadline, fallback_org_id, payout_lines, brief) values ($1,$2,$3,'manual_override',$4,$5,$6,$7) returning id`,

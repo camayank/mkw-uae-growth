@@ -1850,7 +1850,6 @@ document.addEventListener("click", (ev) => {
         const r = await api("POST", "/api/ops/jobs/run");
         toast(`Timers run: ${r.allocationTimeouts} re-routed, ${r.autoApprovals} auto-approved, ${r.offersExpired} offers expired`);
       }, null),
-    "partner-status": () => act(() => api("PUT", `/api/ops/partners/${id}`, { status: el.dataset.status }), "Partner updated"),
     scorecards: () => act(() => api("POST", "/api/ops/scorecards/recompute"), "Scorecards recomputed"),
     "doc-review": () => {
       const decision = el.dataset.decision;

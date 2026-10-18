@@ -232,6 +232,16 @@ the keyboard-only path to an engagement is driven by key presses. Controls get a
 time (`ensureLabels`), the skip link and visible focus ring are global, and reduced motion is respected.
 Removal: delete the dev dependency and the `axeCheck` block in `scripts/smoke.mjs`.
 
+**D41. Tasees lives on `main` of `camayank/mkw-uae-growth`; the UAE ASP Selector moved out.** (18 Oct 2026.)
+The owner chose to keep this repository for Tasees rather than create `camayank/tasees-platform`. The UAE ASP
+Selector and E-Invoice Data Check, which `main` carried until then, were pushed with their full history to
+`camayank/uae-asp-selector` (site URL repointed there). `main` was switched by one merge commit whose tree is the
+`tasees-base` tree, so the Selector's history stays reachable below it and nothing was force-pushed; the eight
+outcome pull requests (#1 to #8) were then retargeted at `main` and merged in queue order O1, O2, O4, O3, O5, O6,
+O8, O9. The Pages workflow left `main` with that switch. To undo: create the separate repository, push `main`
+there, and restore the Selector here from commit `28cbbe2` (the last Selector commit on `main`).
+The full standing contract for the build is `BUILD_PROMPT.md`; `CLAUDE.md` is its short operational version.
+
 ## Open for the owner
 
 1. **Margin rates and floors per category.** Seeded from the Sheet (setup 20% / AED 500 and so on). Confirm.

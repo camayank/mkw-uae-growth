@@ -4,6 +4,8 @@ Tasees, by MKW Advisors, is a managed marketplace for UAE business services. MKW
 price; vetted partner firms in the MKW Advisors Partner Network deliver; MKW controls scope, price,
 allocation, quality and payment. The product specification is `docs/PRODUCT_SPEC.md` (diagrams in `docs/img/`); read it first.
 `README.md`, `docs/DECISIONS.md`, `docs/KNOWN-GAPS.md` and `docs/DEPLOY.md` are authoritative.
+`BUILD_PROMPT.md` is the full standing contract (business, rules, method, queue, quality bar, launch gate, Ask-me
+list); this file is its short operational version. When a rule changes, change both in the same commit.
 Working code and passing tests are assets: extend them, never rewrite them opportunistically.
 
 ## How work is done

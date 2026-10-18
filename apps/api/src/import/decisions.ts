@@ -41,11 +41,16 @@ export function parseDecisions(md: string): DecisionRow[] {
 export function feeVerifierFrom(rows: DecisionRow[]): string | null {
   return nameAnswer(rows.find((r) => r.n === 12)?.answer);
 }
-function nameAnswer(a: string | undefined): string | null {
+/**
+ * A person's name, or null. Only letters, spaces, dots, apostrophes and hyphens, at least two characters per word and
+ * nothing that reads as "not decided" ("not sure yet", "TBC", "to be found"): a verifier must be someone, by name.
+ */
+export function nameAnswer(a: string | undefined): string | null {
   const s = String(a ?? "")
     .replace(/^name\s*:\s*/i, "")
     .trim();
-  if (!s || /^(agree|tbc|tbd|to be (found|named)|n\/a|-)$/i.test(s) || s.length < 3) return null;
+  if (!/^[\p{L}][\p{L} .'-]{1,79}$/u.test(s)) return null;
+  if (/\b(agree|tbc|tbd|not|sure|yet|unknown|none|pending|later|maybe|someone|anyone|to be)\b/i.test(s)) return null;
   return s;
 }
 

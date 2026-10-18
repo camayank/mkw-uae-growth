@@ -37,25 +37,46 @@ export interface Report {
 
 export const newReport = (kind: string, source: string): Report => ({ kind, source, applied: false, rows: [], notes: [] });
 
-class DryRun extends Error {
-  constructor(readonly report: Report) {
+class DryRun<T> extends Error {
+  constructor(readonly result: T) {
     super("dry run");
   }
 }
 
-/** Run an importer as a dry run (rolled back) or for real. */
-export async function runImport(db: Database, actor: SessionUser | null, apply: boolean, fn: (tx: Queryable) => Promise<Report>): Promise<Report> {
+/** Run `fn` in one platform transaction: committed with `apply`, rolled back without it. */
+export async function inImportTransaction<T>(db: Database, actor: SessionUser | null, apply: boolean, fn: (tx: Queryable) => Promise<T>): Promise<T> {
   try {
     return await asPlatform(db, actor, async (tx) => {
-      const report = await fn(tx);
-      report.applied = apply;
-      if (!apply) throw new DryRun(report);
-      return report;
+      const result = await fn(tx);
+      if (!apply) throw new DryRun(result);
+      return result;
     });
   } catch (e) {
-    if (e instanceof DryRun) return e.report;
+    if (e instanceof DryRun) return e.result as T;
     throw e;
   }
+}
+
+/** Run one importer as a dry run (rolled back) or for real. */
+export async function runImport(db: Database, actor: SessionUser | null, apply: boolean, fn: (tx: Queryable) => Promise<Report>): Promise<Report> {
+  const report = await inImportTransaction(db, actor, apply, fn);
+  report.applied = apply;
+  return report;
+}
+
+/**
+ * Run several importers in order in ONE transaction, so a later step sees what an earlier one did (rate cards see
+ * the partners just created) and the dry run of all of them is exactly what applying all of them does. Applying is
+ * all or nothing: if any importer fails, nothing is written.
+ */
+export async function runImports(db: Database, actor: SessionUser | null, apply: boolean, steps: Array<(tx: Queryable) => Promise<Report>>): Promise<Report[]> {
+  const reports = await inImportTransaction(db, actor, apply, async (tx) => {
+    const out: Report[] = [];
+    for (const step of steps) out.push(await step(tx));
+    return out;
+  });
+  for (const r of reports) r.applied = apply;
+  return reports;
 }
 
 export function counts(r: Report): Record<Action, number> {
@@ -84,7 +105,7 @@ export function redactedMarkdown(r: Report, when: string): string {
   const mask = (s: string) =>
     s
       .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "[email]")
-      .replace(/\+?\d[\d\s()-]{7,}\d/g, "[phone]")
+      .replace(/\+\d[\d\s()-]{6,}\d|\b0\d{1,2}[\s-]\d{3}[\s-]\d{4}\b/g, "[phone]")
       .replace(/\b(?:https?:\/\/)?(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:ae|com|net|org|io|co)\b\S*/gi, "[web]");
   const c = counts(r);
   const out = [

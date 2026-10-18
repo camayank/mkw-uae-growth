@@ -1,15 +1,17 @@
 import { audit, type SessionUser } from "../lib/context.ts";
 import { num, type Queryable } from "../lib/db.ts";
 import { excelDate } from "./xlsx.ts";
-import { aedToFils, isBlank, newReport, readTable, type Report, type ReportRow } from "./common.ts";
+import { aedToFils, isBlank, newReport, readTable, sameValue, type Report, type ReportRow } from "./common.ts";
 
 /**
  * Partner rate cards from the operating Sheet (O10), from a CSV export of the "Rate Cards" tab or the go-live
  * workbook's "Rate card template" tab. Accepts the Sheet's real headers ("Professional fee (AED, excl. VAT)",
  * "Government fee stated (AED)", "Third-party costs (AED)", "Timeline (working days)") and the short ones.
- * Partners match on Partner ID, then on the exact name. Rows marked Example or Draft, rows without a professional
- * fee, and rows for unknown partners or codes are skipped and listed. A card that already holds the same figures is
- * unchanged; otherwise it is created or updated, one audit event per card.
+ * Partners match on Partner ID when the row has one (an unknown ID is skipped, never matched by name), otherwise on
+ * the exact name (a name two firms share is skipped). Rows marked Example or Draft, rows without a professional fee,
+ * and rows for unknown partners or codes are skipped and listed. A card that already holds the same figures is
+ * unchanged; otherwise it is created or updated, one audit event per card. A card changed on the platform since the
+ * last import (by the partner in the portal, or by MKW) is not overwritten: the Sheet is the source only until then.
  */
 
 const REQUIRED = ["Code", "Partner"];
@@ -36,7 +38,8 @@ export async function importRateCards(tx: Queryable, grid: string[][], source: s
 
   const partners = (await tx.query<{ id: string; name: string; source_id: string | null }>("select id, name, profile->>'sourceId' as source_id from orgs where type = 'partner'")).rows;
   const byId = new Map(partners.filter((p) => p.source_id).map((p) => [p.source_id!, p]));
-  const byName = new Map(partners.map((p) => [p.name.trim().toLowerCase(), p]));
+  const byName = new Map<string, typeof partners>();
+  for (const p of partners) byName.set(p.name.trim().toLowerCase(), [...(byName.get(p.name.trim().toLowerCase()) ?? []), p]);
   const codes = new Set((await tx.query<{ code: string }>("select code from deliverables")).rows.map((r) => r.code));
   const today = (await tx.query<{ d: string }>("select (app_now() at time zone 'Asia/Dubai')::date::text as d")).rows[0]!.d;
   const cell = (cells: string[], i: number) => (i >= 0 ? (cells[i] ?? "").trim() : "");
@@ -62,9 +65,10 @@ export async function importRateCards(tx: Queryable, grid: string[][], source: s
       row.reason = isBlank(cell(cells, C.fee)) ? "no professional fee" : `professional fee "${cell(cells, C.fee)}" is not an amount`;
       continue;
     }
-    const partner = (partnerId && byId.get(partnerId)) || byName.get(partnerName.toLowerCase());
+    const named = byName.get(partnerName.toLowerCase()) ?? [];
+    const partner = partnerId ? byId.get(partnerId) : named.length === 1 ? named[0] : undefined;
     if (!partner) {
-      row.reason = `partner ${partnerId || `"${partnerName}"`} is not on the platform yet`;
+      row.reason = !partnerId && named.length > 1 ? `two partners are called "${partnerName}"; add the Partner ID` : `partner ${partnerId || `"${partnerName}"`} is not on the platform yet`;
       continue;
     }
     if (!codes.has(code)) {
@@ -102,6 +106,18 @@ export async function importRateCards(tx: Queryable, grid: string[][], source: s
       await tx.query<Record<string, unknown>>("select professional_fils, gov_stated_fils, third_party_fils, working_days, exclusions, valid_to::text as valid_to from rate_cards where partner_org_id = $1 and code = $2", [partner.id, code])
     ).rows[0];
     const after = { professional: fee, gov, third, days, exclusions, validTo };
+    if (before) {
+      // The card as the last import left it; if it differs now, someone changed it on the platform since.
+      const lastImport = (
+        await tx.query<{ after: typeof after }>("select data->'after' as after from audit_events where action = 'rate_card.imported' and entity_id = $1 and data->>'code' = $2 order by id desc limit 1", [partner.id, code])
+      ).rows[0]?.after;
+      const now = { professional: num(before.professional_fils), gov: num(before.gov_stated_fils), third: num(before.third_party_fils), days: num(before.working_days), exclusions: (before.exclusions as string[]) ?? [], validTo: String(before.valid_to).slice(0, 10) };
+      if (lastImport && !sameValue(now, lastImport) && !sameValue(now, after)) {
+        row.action = "unchanged";
+        row.reason = "changed on the platform since the last import; the file does not overwrite it";
+        continue;
+      }
+    }
     if (
       before &&
       num(before.professional_fils) === fee &&

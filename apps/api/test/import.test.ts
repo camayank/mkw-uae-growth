@@ -11,10 +11,14 @@ import { importLegal } from "../src/import/legal.ts";
 import { excelDate, readXlsx } from "../src/import/xlsx.ts";
 import { loadCalendar } from "../src/services/calendar.ts";
 import { asPlatform } from "../src/lib/context.ts";
+import { withClock } from "../src/lib/db.ts";
 import { addWorkingDays } from "@tasees/core";
 import { DEMO } from "../src/db/seed-data.ts";
 import { EMAILS, makeEnv, type TestEnv } from "./helpers.ts";
-import { makeXlsx } from "./xlsx-fixture.ts";
+import { makeXlsx, makeXlsxRaw } from "./xlsx-fixture.ts";
+import { consoleTransport } from "../src/lib/notify.ts";
+import { nameAnswer } from "../src/import/decisions.ts";
+import { runImports } from "../src/import/common.ts";
 
 /** O10: go-live importers. Dry run writes nothing, apply writes, a second apply changes nothing, nobody is notified. */
 
@@ -69,6 +73,23 @@ describe("go-live importers", () => {
     expect(excelDate("31/01/2027")).toBe("2027-01-31");
     expect(excelDate("soon")).toBeNull();
     expect(() => readXlsx(Buffer.from("not a zip at all, just text"))).toThrow(/not an .xlsx/i);
+    expect(excelDate("13/13/2027")).toBeNull();
+    expect(excelDate("2027-02-30")).toBeNull();
+    expect(excelDate("5")).toBeNull(); // not a plausible date serial
+    expect([...readXlsx(partnersBook(), ["Nope"]).keys()]).toEqual([]);
+  });
+
+  it("refuses hostile workbooks quickly instead of hanging", () => {
+    const raw = (sheetXml: string) => {
+      const book = makeXlsx({ S: [["x"]] });
+      // Rebuild with a hand-written sheet part.
+      return makeXlsxRaw(book, sheetXml);
+    };
+    const t0 = Date.now();
+    expect(() => readXlsx(raw('<worksheet><sheetData><row r="300000000"><c r="A300000000" t="inlineStr"><is><t>x</t></is></c></row></sheetData></worksheet>'))).toThrow(/row beyond/);
+    expect(() => readXlsx(raw('<worksheet><sheetData><row r="1"><c r="AAAAAA1" t="inlineStr"><is><t>x</t></is></c></row></sheetData></worksheet>'))).toThrow(/column beyond/);
+    expect(() => readXlsx(raw(`<worksheet><sheetData>${"<row>".repeat(20_000)}</sheetData></worksheet>`))).toThrow(/never closed/);
+    expect(Date.now() - t0).toBeLessThan(3000);
   });
 
   describe("partners", () => {
@@ -127,6 +148,17 @@ describe("go-live importers", () => {
       expect(changed.rows.find((x) => x.ref === "GB9001")!.reason).toBe("changed: capacity");
       expect(await audits(env)).toBe(a + 1);
       expect(await notifications(env)).toBe(notificationsAtStart);
+    });
+
+    it("keeps what MKW changed in the console when the file is imported again", async () => {
+      const alpha = (await q<{ id: string }>(env, "select id from orgs where profile->>'sourceId' = 'GB9001'")).rows[0]!;
+      expect((await env.call("ops", "PUT", `/api/ops/partners/${alpha.id}`, { capacity: 40, codes: ["SET-FZ-LIC"] })).status).toBe(200);
+      const r = await run(true, 30); // the file changes capacity again
+      const row = r.rows.find((x) => x.ref === "GB9001")!;
+      expect(row.action).toBe("unchanged");
+      expect(row.warnings!.join(" ")).toMatch(/kept MKW's changes to codes, capacity/);
+      const p = (await q<{ profile: any }>(env, "select profile from orgs where id = $1", [alpha.id])).rows[0]!.profile;
+      expect([p.capacity, p.codes]).toEqual([40, ["SET-FZ-LIC"]]);
     });
 
     it("leaves a firm alone once MKW has moved it past contacted", async () => {
@@ -201,6 +233,18 @@ describe("go-live importers", () => {
       expect(await notifications(env)).toBe(notificationsAtStart);
     });
 
+    it("does not overwrite a card the partner changed in the portal since the last import", async () => {
+      expect((await env.call("setup", "PUT", "/api/partner/rate-cards", { cards: [{ code: "SET-ML-LIC", professionalAed: 7000, workingDays: 10 }] })).status).toBe(200);
+      const r = await run(grid("4,750"), true);
+      expect(r.rows.find((x) => x.ref.startsWith("RC-0003"))!.action).toBe("unchanged");
+      expect(r.rows.find((x) => x.ref.startsWith("RC-0007"))).toMatchObject({ action: "unchanged", reason: "changed on the platform since the last import; the file does not overwrite it" });
+      const fils = (await q<{ professional_fils: number }>(env, "select r.professional_fils from rate_cards r join orgs o on o.id = r.partner_org_id where o.name = $1 and r.code = 'SET-ML-LIC'", [DEMO.partners[0].name])).rows[0]!;
+      expect(Number(fils.professional_fils)).toBe(700000);
+      // An unknown Partner ID is never matched by the firm's name instead.
+      const wrongId = [["Card ID", "Partner ID", "Partner", "Code", "Professional fee", "Timeline", "Valid to"], ["RC-9", "GB7777", "Alpha Setup FZ LLC", "SET-OFF", "1000", "3", "2027-01-31"]];
+      expect((await run(wrongId, false)).rows[0]!.reason).toBe("partner GB7777 is not on the platform yet");
+    });
+
     it("accepts the short headers of older exports too", async () => {
       const short = [["Card ID", "Partner ID", "Partner", "Code", "Professional fee", "Govt fee stated", "Third-party", "Timeline", "Exclusions", "Valid to"], ["RC-1", "GB9001", "", "SET-FZ-LIC", "4750", "2500", "", "7", "Office lease; Visa medicals", "2027-01-31"]];
       expect(counts(await run(short, false))).toEqual({ created: 0, updated: 0, unchanged: 1, skipped: 0 });
@@ -208,7 +252,7 @@ describe("go-live importers", () => {
   });
 
   describe("government fees", () => {
-    const book = (by = "Aisha Verifier") =>
+    const book = (by = "Aisha Verifier", extra: Cell[][] = []) =>
       readXlsx(
         makeXlsx({
           "Government fees": [
@@ -218,34 +262,62 @@ describe("go-live importers", () => {
             ["SET-FZ-LIC", "Free zone licence", "Dubai", "DMCC", "12,000", "https://dmcc.example/fees", "Fee schedule 2026", "2026-10-01", "UNCERTAIN", by, "2026-10-15"],
             ["SET-ML-LIC", "Mainland licence", "Sharjah", null, "9000", "https://sedd.example/fees", "", "2026-10-01", "UNCERTAIN", null, null],
             ["NOPE-1", "?", "Dubai", null, "100", "", "", "", "", "", ""],
+            ...extra,
           ],
         }),
       );
-    const run = (verifier: string | null, by?: string) => runImport(env.db, null, true, (tx) => importFees(tx, book(by), "go-live.xlsx", verifier));
+    const run = (verifier: string | null, by?: string, who: SessionUser | null = founder, db = env.db, extra: Cell[][] = []) => runImport(db, who, true, (tx) => importFees(tx, book(by, extra), "go-live.xlsx", verifier, who));
+    const live = (zone: string | null) =>
+      q<{ id: string; fee_fils: number; confidence: string; verified_by: string | null }>(env, "select id, fee_fils, confidence, verified_by from government_fees where retired_at is null and free_zone is not distinct from $1 and source_url like '%.example/%'", [zone]);
 
-    it("skips rows without a fee, and verifies only with the named verifier, a date and a source", async () => {
-      const uncertain = await runImport(env.db, null, false, (tx) => importFees(tx, book(), "go-live.xlsx", null));
-      expect(counts(uncertain)).toEqual({ created: 2, updated: 0, unchanged: 0, skipped: 2 });
-      expect(uncertain.rows[0]!.reason).toBe("no fee yet");
-      expect(uncertain.rows[3]!.reason).toMatch(/unknown service code/);
-      expect(uncertain.rows[1]!.reason).toMatch(/UNCERTAIN/);
+    it("skips rows without a fee, and records a verification only for the named verifier, a date, a source and the founder", async () => {
+      const dry = await runImport(env.db, null, false, (tx) => importFees(tx, book(), "go-live.xlsx", "Aisha Verifier", null));
+      expect(counts(dry)).toEqual({ created: 2, updated: 0, unchanged: 0, skipped: 2 });
+      expect(dry.rows[0]!.reason).toBe("no fee yet");
+      expect(dry.rows[3]!.reason).toMatch(/unknown service code/);
+      expect(dry.rows[1]!.reason).toMatch(/UNCERTAIN/);
+      expect(dry.rows[1]!.warnings![0]).toMatch(/only when the founder runs the import/);
       const r = await run("Aisha Verifier");
       expect(r.rows[1]!.reason).toMatch(/verified/);
-      const rows = (await q<{ free_zone: string | null; fee_fils: number; confidence: string; verified_by: string | null }>(env, "select free_zone, fee_fils, confidence, verified_by from government_fees where retired_at is null and code in ('SET-FZ-LIC','SET-ML-LIC') and source_url like '%.example/%' order by code")).rows;
-      expect(rows.map((x) => [x.free_zone, Number(x.fee_fils), x.confidence, x.verified_by])).toEqual([
-        ["DMCC", 1_200_000, "verified", "Aisha Verifier"],
-        [null, 900_000, "UNCERTAIN", null],
-      ]);
+      expect((await live("DMCC")).rows.map((x) => [Number(x.fee_fils), x.confidence, x.verified_by])).toEqual([[1_200_000, "verified", "Aisha Verifier"]]);
+      expect((await live(null)).rows.map((x) => [Number(x.fee_fils), x.confidence])).toEqual([[900_000, "UNCERTAIN"]]);
+      const ev = (await q<{ actor_user_id: string }>(env, "select actor_user_id from audit_events where action = 'fees.imported' and data->>'confidence' = 'verified'")).rows;
+      expect(ev.length).toBe(1);
+      expect(ev[0]!.actor_user_id).toBe(founder.id);
     });
 
-    it("is idempotent, and a different signer leaves the row UNCERTAIN", async () => {
+    it("is idempotent; a verified row is kept when the file no longer says who verified it", async () => {
       const a = await audits(env);
       expect(counts(await run("Aisha Verifier"))).toEqual({ created: 0, updated: 0, unchanged: 2, skipped: 2 });
       expect(await audits(env)).toBe(a);
       const other = await run("Aisha Verifier", "Somebody Else");
-      expect(other.rows[1]!.action).toBe("updated");
+      expect(other.rows[1]).toMatchObject({ action: "unchanged", reason: "verified on the platform; kept as it is" });
       expect(other.rows[1]!.warnings![0]).toMatch(/someone other than the named fee verifier/);
-      expect((await q<{ confidence: string }>(env, "select confidence from government_fees where free_zone = 'DMCC' and retired_at is null and source_url like '%.example/%'")).rows[0]!.confidence).toBe("UNCERTAIN");
+      expect((await live("DMCC")).rows[0]!.confidence).toBe("verified");
+      expect(await audits(env)).toBe(a);
+    });
+
+    it("never undoes the console: a fee verified there stays verified, a retired fee stays retired", async () => {
+      const sharjah = (await live(null)).rows[0]!;
+      expect((await env.call("founder", "POST", `/api/admin/fees/${sharjah.id}/verify`, { verifiedBy: "Aisha Verifier" })).status).toBe(200);
+      const r = await run(null);
+      expect(r.rows[2]).toMatchObject({ action: "unchanged", reason: "verified on the platform; kept as it is" });
+      expect((await live(null)).rows[0]!.confidence).toBe("verified");
+      expect((await env.call("ops", "POST", `/api/admin/fees/${sharjah.id}/retire`, { reason: "Wrong authority" })).status).toBe(200);
+      const again = await run(null);
+      expect(again.rows[2]).toMatchObject({ action: "skipped", reason: "retired on the platform; the file does not bring it back" });
+      expect((await live(null)).rows).toHaveLength(0);
+    });
+
+    it("a fee with no effective date is the same row tomorrow", async () => {
+      const offshore: Cell[][] = [["SET-OFF", "Offshore", "Ras Al Khaimah", "RAK ICC", "1500", "https://rakicc.example/fees", "", null, "UNCERTAIN", null, null]];
+      expect((await run(null, undefined, founder, env.db, offshore)).rows[4]!.action).toBe("created");
+      const a = await audits(env);
+      const tomorrow = withClock(env.db, () => new Date(Date.now() + 86_400_000));
+      const next = await run(null, undefined, founder, tomorrow, offshore);
+      expect(next.rows[4]!.action).toBe("unchanged");
+      expect(await audits(env)).toBe(a);
+      expect((await live("RAK ICC")).rows).toHaveLength(1);
     });
   });
 
@@ -285,6 +357,16 @@ describe("go-live importers", () => {
       const c = await runImport(env.db, null, true, (tx) => importHolidays(tx, book("Confirmed"), "go-live.xlsx"));
       expect(c.rows[0]!.action).toBe("updated");
       expect(await audits(env)).toBe(a + 1);
+    });
+
+    it("keeps the founder's calendar: no downgrade, no comeback for a removed date", async () => {
+      const back = await runImport(env.db, null, true, (tx) => importHolidays(tx, book("Expected"), "go-live.xlsx"));
+      expect(back.rows[0]).toMatchObject({ action: "unchanged", reason: "changed on Settings; the founder's version stands" });
+      expect((await env.call("founder", "DELETE", "/api/admin/holidays/2026-12-03", { reason: "Not a holiday this year" })).status).toBe(200);
+      const again = await runImport(env.db, null, true, (tx) => importHolidays(tx, book("Expected"), "go-live.xlsx"));
+      expect(again.rows[1]).toMatchObject({ action: "skipped", reason: "removed on Settings; the file does not bring it back" });
+      expect((await asPlatform(env.db, null, (tx) => loadCalendar(tx))).holidays).toEqual(["2026-12-02"]);
+      expect((await env.call("founder", "PUT", "/api/admin/holidays", { date: "2027-02-30", name: "Impossible", status: "expected", reason: "test" })).status).toBe(400);
     });
   });
 
@@ -353,6 +435,19 @@ describe("go-live importers", () => {
     });
   });
 
+  describe("several importers at once", () => {
+    it("run in one transaction: the dry run's rate cards see the partners created just before, and nothing stays", async () => {
+      const book = readXlsx(makeXlsx({ Partners: [PARTNER_HEADER, partnerRow({ "Partner ID": "GB9100", Firm: "Gamma Visas LLC", "Service codes (platform)": "VISA-RES", "Capacity (jobs per month)": 5 })] }));
+      const cards = [["Card ID", "Partner ID", "Partner", "Code", "Professional fee", "Timeline", "Valid to", "Status"], ["RC-1", "GB9100", "Gamma Visas LLC", "VISA-RES", "800", "5", "2027-01-31", "Active"]];
+      const a = await audits(env);
+      const reports = await runImports(env.db, null, false, [(tx) => importPartners(tx, book, "x.xlsx"), (tx) => importRateCards(tx, cards, "x.csv")]);
+      expect(reports.map((r) => counts(r).created)).toEqual([1, 1]);
+      expect(reports.every((r) => r.applied === false)).toBe(true);
+      expect(await count(env, "select count(*) as n from orgs where profile->>'sourceId' = 'GB9100'")).toBe(0);
+      expect(await audits(env)).toBe(a);
+    });
+  });
+
   describe("legal texts", () => {
     const terms = (extra = "") => `# Tasees Client Terms\n\nDraft for review by a UAE lawyer before use.\n\n## 1. Who we are\n\nTasees is a service of MKW Advisors.${extra}\n`;
     it("adds a version, leaves identical text alone, and refuses an agreement that names Tasees", async () => {
@@ -386,5 +481,43 @@ describe("go-live importers", () => {
       expect(mail.length).toBe(2);
       expect(mail.every((m) => m.fromName.startsWith("MKW Advisors") && !/\bTasees\b/.test(`${m.fromName} ${m.subject} ${m.text}`))).toBe(true);
     });
+
+    it("a held invitation can be cancelled, and cannot be released any other way", async () => {
+      const book = readXlsx(makeXlsx({ Partners: [PARTNER_HEADER, partnerRow({ "Partner ID": "GB9200", Firm: "Delta Tax LLC", "Service codes (platform)": "VAT-RET", "Head office emirates": "Dubai", "Admin email (when signing)": "wrong@delta.test" })] }));
+      await runImport(env.db, null, true, (tx) => importPartners(tx, book, "x.xlsx"));
+      const u = (await q<{ id: string; org_id: string }>(env, "select id, org_id from users where email = 'wrong@delta.test'")).rows[0]!;
+      expect((await env.call("founder", "POST", `/api/admin/users/${u.id}/reactivate`)).status).toBe(409);
+      expect((await env.call("founder", "POST", `/api/admin/users/${u.id}/deactivate`)).status).toBe(200);
+      expect((await q<{ status: string }>(env, "select status from users where id = $1", [u.id])).rows[0]!.status).toBe("deactivated");
+      const pdf = Buffer.from("%PDF-1.4 test").toString("base64");
+      const lic = await env.call("ops", "POST", `/api/partners/${u.org_id}/documents`, { kind: "trade_licence", fileName: "licence.pdf", contentBase64: pdf, expiresOn: "2027-12-31" });
+      await env.call("ops", "POST", `/api/ops/partner-documents/${lic.body.id}/review`, { decision: "verified", note: "Checked" });
+      for (const status of ["applied", "under_review"]) await env.call("ops", "POST", `/api/ops/partners/${u.org_id}/status`, { status, note: "Next step" });
+      const moved = await env.call("ops", "POST", `/api/ops/partners/${u.org_id}/status`, { status: "pilot", note: "Pilot" });
+      expect(moved.body.invited).toBe(0);
+      expect(await count(env, "select count(*) as n from notifications where to_email = 'wrong@delta.test'")).toBe(0);
+    });
   });
 });
+
+describe("logs and names", () => {
+  it("the console email transport never writes a sign-in code to the logs", async () => {
+    const lines: string[] = [];
+    await consoleTransport((m) => lines.push(m)).deliver({ to: "a@b.test", from: "x@y.test", fromName: "Tasees", subject: "482913 is your Tasees sign-in code", text: "Your code is 482913" });
+    expect(lines.join("\n")).not.toMatch(/482913/);
+    expect(lines.join("\n")).toMatch(/•••••• is your Tasees sign-in code/);
+  });
+
+  it("only a person's name counts as a verifier", () => {
+    expect(nameAnswer("Name: Aisha Verifier")).toBe("Aisha Verifier");
+    expect(nameAnswer("J. O'Neil-Smith")).toBe("J. O'Neil-Smith");
+    for (const a of ["not sure yet", "Agree", "TBC", "to be found", "x", "", "Name:", "123 Main"]) expect(nameAnswer(a)).toBeNull();
+  });
+
+  it("the evidence copy masks contact details but keeps dates", () => {
+    const md = redactedMarkdown({ kind: "holidays", source: "x.xlsx", applied: false, notes: [], rows: [{ line: 3, ref: "2027-01-31", action: "created", reason: "call +971 4 000 0001 or info@x.test, see example.ae" }] }, "now");
+    expect(md).toMatch(/2027-01-31/);
+    expect(md).not.toMatch(/\+971|info@x\.test|example\.ae/);
+  });
+});
+

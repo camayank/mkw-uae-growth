@@ -316,6 +316,8 @@ await founder.goto(BASE + "/#/settings");
 await founder.waitForSelector('form[data-form="retention"]');
 log.push("retention UNCERTAIN badges before: " + (await founder.locator('form[data-form="retention"] .badge:text-is("UNCERTAIN")').count()));
 await shot(founder, "18-settings-retention");
+// Let every pending render finish first: a late redraw would replace the form and drop the note.
+await founder.waitForLoadState("networkidle");
 await founder.fill('form[data-form="retention"] input[name="note"]', "Smoke test: confirmed by the founder");
 await founder.locator('form[data-form="retention"] button[type="submit"]').click();
 // Wait for the re-rendered table rather than a fixed pause: Settings loads several sections before it redraws.

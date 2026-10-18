@@ -249,7 +249,12 @@ notifier, so importing cannot email or notify anyone; a test counts notification
 `data/import/` (ignored by git) or the private bucket; evidence copies drop firm names and contact details. Answers
 are applied only when they are exact ("Agree" to a written suggestion, a name, a 15-digit TRN); anything else is
 reported for the owner, never guessed. Draft rate-card rows are skipped even when they carry a fee: a price becomes
-a commitment only when the firm has confirmed it.
+a commitment only when the firm has confirmed it. `import all` runs every step in one transaction (later steps see
+earlier ones; applying is all or nothing). The importer never migrates: it names its target database and refuses one
+with pending migrations. The console is the record for anything a person has touched since the last import: partner
+fields MKW edited (three-way merge against what the file said last), fees added, verified or retired in the console,
+holidays the founder confirmed or removed, rate cards the partner edited in the portal; the file never undoes them.
+A fee is recorded as verified only when the import runs as the founder (`--as`), who is the audited actor.
 
 **D43. An in-house .xlsx reader, no spreadsheet library.** (O10.) `apps/api/src/import/xlsx.ts` (about 130 lines)
 reads a workbook's zip directory with `node:zlib`, the shared and inline strings and each sheet's cells, size-capped
@@ -281,7 +286,14 @@ each change audited with a reason.
 roster is added as `invite_pending`, which cannot request a sign-in code; MKW moving the firm to pilot (which needs a
 verified licence) activates the person and sends the invitation from "MKW Advisors". The partner profile edit
 (`PUT /api/ops/partners/:id`) used to accept a `status` field, which skipped the licence and agreement gates; it now
-refuses it, so every move goes through `POST /api/ops/partners/:id/status`.
+refuses it, so every move goes through `POST /api/ops/partners/:id/status`. Deactivating a held admin cancels the
+invitation; reactivation refuses a held one. The console email transport masks six-digit runs, so a sign-in code is
+never written to a log; on staging the founder signs in once SES is live.
+
+**D50. Migrations take turns on Postgres.** (O10.) The app, the scheduled jobs task and one-off tasks all migrate on
+start. On Postgres each migration file now runs in its own transaction holding an advisory lock and re-checks
+`schema_migrations` first, so tasks starting together never run the same DDL twice (checked with three processes
+migrating one PostgreSQL 16 database at once). PGlite, single-process, is unchanged.
 
 **D48. The database connection is verified, not only encrypted.** (O10.) RDS for PostgreSQL 15+ refuses plain
 connections. The image carries AWS's RDS certificate bundle and the task connects with

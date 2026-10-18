@@ -7,8 +7,13 @@ import { aedToFils, isBlank, newReport, readTable, type Report, type ReportRow }
  * Government fees tab → the fee table (O10). Rows without a fee are skipped. A row is `verified` only when
  * "Verified by" names the fee verifier the owner named in Owner-Decisions.md (row 12), "Verified on" is a date and
  * the source is an http(s) link (the same conditions the founder's Verify button checks). Every other row is
- * UNCERTAIN, so pricing stops any line resting on it for ops. A live row with the same figures is unchanged; a
- * different one for the same code, place and effective date is retired and replaced, as the console does.
+ * UNCERTAIN, so pricing stops any line resting on it for ops. Recording a verification needs `--as` (the founder is
+ * the accountable actor in the audit trail, as with the Verify button).
+ *
+ * The console is the record for anything a person has touched: a row added in the console, a row verified there, or
+ * a row retired there is never overwritten or brought back; the difference is reported. Only rows this importer
+ * created and nobody has verified are replaced when the file changes. A blank "Effective from" matches the latest
+ * live row for that code and place, so applying again on another day changes nothing.
  */
 export async function importFees(tx: Queryable, book: Workbook, source: string, feeVerifier: string | null, actor: SessionUser | null = null): Promise<Report> {
   const report = newReport("fees", source);
@@ -52,8 +57,8 @@ export async function importFees(tx: Queryable, book: Workbook, source: string, 
       continue;
     }
     const fromRaw = cell(cells, C.from);
-    const effectiveFrom = isBlank(fromRaw) ? today : excelDate(fromRaw);
-    if (!effectiveFrom) {
+    const givenFrom = isBlank(fromRaw) ? null : excelDate(fromRaw);
+    if (!isBlank(fromRaw) && !givenFrom) {
       row.reason = `effective-from "${fromRaw}" is not a date`;
       continue;
     }
@@ -61,16 +66,37 @@ export async function importFees(tx: Queryable, book: Workbook, source: string, 
     const sourceNote = cell(cells, C.note);
     const by = cell(cells, C.by);
     const on = excelDate(cell(cells, C.on));
-    const verified = !!feeVerifier && by.toLowerCase() === feeVerifier.toLowerCase() && !!on && /^https?:\/\//i.test(sourceUrl);
-    if (by && !verified) row.warnings = [feeVerifier && by.toLowerCase() !== feeVerifier.toLowerCase() ? "verified by someone other than the named fee verifier: stays UNCERTAIN" : "verification incomplete (named verifier, date and an http(s) source are all needed): stays UNCERTAIN"];
+    const signed = !!feeVerifier && by.toLowerCase() === feeVerifier.toLowerCase() && !!on && /^https?:\/\//i.test(sourceUrl);
+    const verified = signed && !!actor && actor.role === "founder";
+    if (by && !signed) row.warnings = [feeVerifier && by.toLowerCase() !== feeVerifier.toLowerCase() ? "verified by someone other than the named fee verifier: stays UNCERTAIN" : "verification incomplete (named verifier, date and an http(s) source are all needed): stays UNCERTAIN"];
+    if (signed && !verified) row.warnings = ["signed by the named verifier, but a verification is recorded only when the founder runs the import (--as): stays UNCERTAIN"];
     const confidence = verified ? "verified" : "UNCERTAIN";
 
+    // The live row for this code and place: on the file's date, or, with no date in the file, the latest one.
     const live = (
       await tx.query<Record<string, unknown>>(
-        "select id, fee_fils, source_url, source_note, confidence, verified_by, verified_at::text as verified_at from government_fees where code = $1 and emirate = $2 and free_zone is not distinct from $3 and effective_from = $4::date and retired_at is null",
-        [code, emirate, zone, effectiveFrom],
+        `select id, fee_fils, source_url, source_note, confidence, verified_by, verified_at::text as verified_at, created_by, effective_from::text as effective_from
+         from government_fees where code = $1 and emirate = $2 and free_zone is not distinct from $3 and retired_at is null and ($4::date is null or effective_from = $4::date)
+         order by effective_from desc limit 1`,
+        [code, emirate, zone, givenFrom],
       )
     ).rows[0];
+    const effectiveFrom = givenFrom ?? (live ? String(live.effective_from).slice(0, 10) : today);
+    if (!live) {
+      const retired = (await tx.query("select 1 from government_fees where code = $1 and emirate = $2 and free_zone is not distinct from $3 and effective_from = $4::date and retired_at is not null limit 1", [code, emirate, zone, effectiveFrom])).rows.length;
+      if (retired) {
+        row.reason = "retired on the platform; the file does not bring it back";
+        continue;
+      }
+    }
+    const sameFigures = live && num(live.fee_fils) === fee && live.source_url === sourceUrl && live.source_note === sourceNote;
+    if (live && (live.created_by || live.confidence === "verified") && !(sameFigures && live.confidence === confidence)) {
+      row.action = sameFigures ? "unchanged" : "skipped";
+      row.reason = sameFigures
+        ? `${live.confidence === "verified" ? "verified" : "added"} on the platform; kept as it is`
+        : `${live.created_by ? "added" : "verified"} on the platform with different figures; the console is the record (check and change it there)`;
+      continue;
+    }
     if (
       live &&
       num(live.fee_fils) === fee &&
@@ -87,7 +113,7 @@ export async function importFees(tx: Queryable, book: Workbook, source: string, 
     const created = (
       await tx.query<{ id: string }>(
         `insert into government_fees (code, emirate, free_zone, fee_fils, source_url, source_note, effective_from, confidence, verified_by, verified_at)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning id`,
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning id`, // created_by stays null: the import's own row
         [code, emirate, zone, fee, sourceUrl, sourceNote, effectiveFrom, confidence, verified ? by : null, verified ? on : null],
       )
     ).rows[0]!;

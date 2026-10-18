@@ -9,6 +9,11 @@ import { inflateRawSync } from "node:zlib";
  */
 
 const MAX_ENTRY_BYTES = 64 * 1024 * 1024;
+/** Limits a go-live workbook never comes near; a file beyond them is refused rather than read. */
+const MAX_TOTAL_BYTES = 128 * 1024 * 1024;
+export const MAX_ROWS = 100_000;
+export const MAX_COLS = 200;
+const MAX_CELLS = 2_000_000;
 
 interface ZipEntry {
   name: string;
@@ -66,6 +71,37 @@ export function xmlText(s: string): string {
   });
 }
 
+/**
+ * Each `<tag ...>...</tag>` block in order, found with indexOf so the scan is linear even on a malformed file; an
+ * element that is opened and never closed is an error, not a slow search.
+ */
+function* blocks(xml: string, tag: string): Generator<{ attrs: string; body: string }> {
+  const open = `<${tag}`;
+  const close = `</${tag}>`;
+  let at = 0;
+  for (;;) {
+    const start = xml.indexOf(open, at);
+    if (start < 0) return;
+    const next = xml.charAt(start + open.length);
+    if (next !== ">" && next !== " " && next !== "/" && next !== "\t" && next !== "\n" && next !== "\r") {
+      at = start + open.length;
+      continue;
+    }
+    const tagEnd = xml.indexOf(">", start);
+    if (tagEnd < 0) throw new Error(`Malformed workbook: an unfinished <${tag}> tag`);
+    const attrs = xml.slice(start + open.length, xml.charAt(tagEnd - 1) === "/" ? tagEnd - 1 : tagEnd);
+    if (xml.charAt(tagEnd - 1) === "/") {
+      yield { attrs, body: "" };
+      at = tagEnd + 1;
+      continue;
+    }
+    const end = xml.indexOf(close, tagEnd);
+    if (end < 0) throw new Error(`Malformed workbook: a <${tag}> element is never closed`);
+    yield { attrs, body: xml.slice(tagEnd + 1, end) };
+    at = end + close.length;
+  }
+}
+
 /** Text of an <si> or <is> element: every <t>, skipping phonetic runs. */
 function runText(xml: string): string {
   const clean = xml.replace(/<rPh\b[\s\S]*?<\/rPh>/g, "");
@@ -83,11 +119,16 @@ const attr = (tag: string, name: string) => new RegExp(`\\b${name}="([^"]*)"`).e
 
 export type Workbook = Map<string, string[][]>;
 
-export function readXlsx(buf: Buffer): Workbook {
+/** Read the workbook's sheets as grids of text; `only` limits it to the named tabs (the rest are never unpacked). */
+export function readXlsx(buf: Buffer, only?: string[]): Workbook {
   const entries = zipEntries(buf);
+  let unpacked = 0;
   const part = (name: string) => {
     const e = entries.get(name.replace(/^\//, ""));
-    return e ? readEntry(buf, e) : null;
+    if (!e) return null;
+    unpacked += e.size;
+    if (unpacked > MAX_TOTAL_BYTES) throw new Error("The workbook is too large to import");
+    return readEntry(buf, e);
   };
   const workbook = part("xl/workbook.xml");
   if (!workbook) throw new Error("Not an .xlsx workbook (xl/workbook.xml missing)");
@@ -99,21 +140,24 @@ export function readXlsx(buf: Buffer): Workbook {
     if (id && target) targets.set(id, target.startsWith("/") ? target.slice(1) : `xl/${target}`);
   }
   const sharedXml = part("xl/sharedStrings.xml");
-  const shared = sharedXml ? [...sharedXml.matchAll(/<si>([\s\S]*?)<\/si>/g)].map((m) => runText(m[1]!)) : [];
+  const shared = sharedXml ? [...blocks(sharedXml, "si")].map((b) => runText(b.body)) : [];
 
   const out: Workbook = new Map();
   for (const m of workbook.matchAll(/<sheet\b[^>]*\/?>/g)) {
     const name = xmlText(attr(m[0], "name") ?? "");
+    if (only && !only.includes(name)) continue;
     const rid = attr(m[0], "r:id");
     const xml = rid && targets.get(rid) ? part(targets.get(rid)!) : null;
     if (!xml) continue;
     const grid: string[][] = [];
-    for (const row of xml.matchAll(/<row\b([^>]*)>([\s\S]*?)<\/row>|<row\b([^>]*)\/>/g)) {
-      const r = Number(attr(row[1] ?? row[3] ?? "", "r") ?? grid.length + 1) - 1;
+    let cellCount = 0;
+    for (const row of blocks(xml, "row")) {
+      const r = Number(attr(row.attrs, "r") ?? grid.length + 1) - 1;
+      if (!Number.isInteger(r) || r < 0 || r >= MAX_ROWS) throw new Error(`Sheet "${name}" has a row beyond ${MAX_ROWS}; refused`);
       const cells: string[] = [];
-      for (const c of (row[2] ?? "").matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
-        const tag = c[1] ?? "";
-        const body = c[2] ?? "";
+      for (const c of blocks(row.body, "c")) {
+        const tag = c.attrs;
+        const body = c.body;
         const ref = attr(tag, "r") ?? "";
         const t = attr(tag, "t");
         const v = /<v>([\s\S]*?)<\/v>/.exec(body)?.[1];
@@ -122,7 +166,10 @@ export function readXlsx(buf: Buffer): Workbook {
         else if (t === "inlineStr") value = runText(/<is>([\s\S]*?)<\/is>/.exec(body)?.[1] ?? "");
         else if (t === "b") value = v === "1" ? "TRUE" : "FALSE";
         else value = v === undefined ? "" : xmlText(v);
-        cells[ref ? colIndex(ref) : cells.length] = value;
+        const col = ref ? colIndex(ref) : cells.length;
+        if (col >= MAX_COLS) throw new Error(`Sheet "${name}" has a column beyond ${MAX_COLS}; refused`);
+        if (++cellCount > MAX_CELLS) throw new Error(`Sheet "${name}" has too many cells; refused`);
+        cells[col] = value;
       }
       grid[r] = Array.from({ length: cells.length }, (_, i) => cells[i] ?? "");
     }
@@ -136,13 +183,22 @@ export function excelDate(v: string | undefined): string | null {
   const s = String(v ?? "").trim();
   if (!s) return null;
   const iso = /^(\d{4})-(\d{2})-(\d{2})(?:[T ].*)?$/.exec(s);
-  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  if (iso) return realDate(Number(iso[1]), Number(iso[2]), Number(iso[3]));
   if (/^\d+(\.\d+)?$/.test(s)) {
+    // Serial numbers between 1990 and 2100 only: anything else in a date column is not a date.
     const serial = Math.floor(Number(s));
-    if (serial < 1 || serial > 2_958_465) return null;
+    if (serial < 32_874 || serial > 73_051) return null;
     return new Date(Date.UTC(1899, 11, 30) + serial * 86_400_000).toISOString().slice(0, 10);
   }
   const dmy = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s); // 31/01/2027, the UAE way of writing a date
-  if (dmy) return `${dmy[3]}-${dmy[2]!.padStart(2, "0")}-${dmy[1]!.padStart(2, "0")}`;
+  if (dmy) return realDate(Number(dmy[3]), Number(dmy[2]), Number(dmy[1]));
   return null;
+}
+
+/** YYYY-MM-DD for a date that exists (no 30 February, no month 13), between 1990 and 2100; else null. */
+export function realDate(y: number, m: number, d: number): string | null {
+  if (y < 1990 || y > 2100 || m < 1 || m > 12 || d < 1 || d > 31) return null;
+  const t = new Date(Date.UTC(y, m - 1, d));
+  if (t.getUTCMonth() !== m - 1 || t.getUTCDate() !== d) return null;
+  return t.toISOString().slice(0, 10);
 }

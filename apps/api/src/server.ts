@@ -632,7 +632,8 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     const user = requireRole(req, "founder");
     const kind = z.enum(["client_terms", "partner_agreement"]).parse(req.params.kind);
     const body = z.object({ lawyer: z.string().min(2).max(120), approvedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).parse(req.body);
-    return asPlatform(db, user, (tx) => recordLegalSignOff(tx, user, kind, Number(req.params.version), body.lawyer, body.approvedOn));
+    const version = z.coerce.number().int().positive().parse(req.params.version);
+    return asPlatform(db, user, (tx) => recordLegalSignOff(tx, user, kind, version, body.lawyer, body.approvedOn));
   });
   app.get("/api/admin/holidays", async (req) => {
     const user = requireRole(req, ...PLATFORM_ROLES);

@@ -65,6 +65,7 @@ describe("legal texts", () => {
   it("records the lawyer's sign-off: founder only, audited, the draft note goes", async () => {
     expect((await env.call("ops", "POST", "/api/admin/legal/client_terms/1/sign-off", { lawyer: "A. Lawyer", approvedOn: "2026-10-18" })).status).toBe(403);
     expect((await env.call("founder", "POST", "/api/admin/legal/client_terms/1/sign-off", { lawyer: "A. Lawyer", approvedOn: "18/10/2026" })).status).toBe(400);
+    expect((await env.call("founder", "POST", "/api/admin/legal/client_terms/abc/sign-off", { lawyer: "A. Lawyer", approvedOn: "2026-10-18" })).status).toBe(400);
     expect((await env.call("founder", "POST", "/api/admin/legal/client_terms/1/sign-off", { lawyer: "A. Lawyer", approvedOn: "2026-10-18" })).status).toBe(200);
     expect((await env.call("client", "GET", "/api/legal/client_terms")).body).toMatchObject({ draft: false, approvedByLawyer: "A. Lawyer", approvedOn: "2026-10-18" });
     const overview = (await env.call("ops", "GET", "/api/admin/legal")).body;

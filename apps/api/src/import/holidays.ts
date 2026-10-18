@@ -6,8 +6,9 @@ import { newReport, readTable, sameValue, type Report, type ReportRow } from "./
 
 /**
  * UAE holidays tab → the `holidays` setting the working-time clock reads (O10). Matched on date. Each date keeps
- * its status: "Expected" (lunar or not yet announced) or "Confirmed". Dates already on the platform that the file
- * does not list are left alone; the founder removes them on Settings.
+ * its status: "Expected" (lunar or not yet announced) or "Confirmed". The founder's calendar on Settings is the record:
+ * the file adds dates that are not there and may confirm an expected one, but never renames a date, turns a confirmed
+ * one back to expected, or brings back a date the founder removed. Dates the file does not list are left alone.
  */
 export async function importHolidays(tx: Queryable, book: Workbook, source: string, actor: SessionUser | null = null): Promise<Report> {
   const report = newReport("holidays", source);
@@ -52,6 +53,18 @@ export async function importHolidays(tx: Queryable, book: Workbook, source: stri
     if (before && sameValue(before, h)) {
       row.action = "unchanged";
       continue;
+    }
+    if (before && !(before.status === "expected" && h.status === "confirmed" && before.name === h.name)) {
+      row.action = "unchanged";
+      row.reason = "changed on Settings; the founder's version stands";
+      continue;
+    }
+    if (!before) {
+      const removed = (await tx.query("select 1 from audit_events where action = 'settings.holiday_removed' and data->>'date' = $1 limit 1", [date])).rows.length;
+      if (removed) {
+        row.reason = "removed on Settings; the file does not bring it back";
+        continue;
+      }
     }
     byDate.set(date, h);
     dirty = true;

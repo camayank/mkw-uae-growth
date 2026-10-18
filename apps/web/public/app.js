@@ -320,6 +320,11 @@ document.addEventListener("keydown", (ev) => {
 document.addEventListener("click", (ev) => {
   if (!ev.target.closest(".navgroup")) closeNavMenus();
 });
+// Tabbing out of an open menu closes it, so it never hangs over the page behind the focus.
+document.addEventListener("focusout", (ev) => {
+  const group = ev.target.closest?.("#nav .navgroup");
+  if (group && !(ev.relatedTarget && group.contains(ev.relatedTarget))) closeNavMenus();
+});
 
 function langSwitch() {
   const available = state.me ? state.me.arabic?.available : !!state.health?.arabic;
@@ -1884,7 +1889,7 @@ async function renderHolidaySection() {
     ["Date", "Holiday", "Status", "Note", ""],
     list.map(
       (h) => `<tr><td>${date(h.date)}</td><td>${esc(h.name)}</td><td>${h.status === "confirmed" ? badge("verified", "confirmed") : badge("UNCERTAIN", "expected")}</td><td class="small">${esc(h.note || "")}</td>
-      <td>${founder ? `${h.status === "expected" ? `<button class="sm" data-act="holiday-confirm" data-date="${h.date}" data-name="${esc(h.name)}">Confirm</button> ` : ""}<button class="sm" data-act="holiday-remove" data-date="${h.date}">Remove</button>` : ""}</td></tr>`,
+      <td>${founder ? `${h.status === "expected" ? `<button class="sm" data-act="holiday-confirm" data-date="${h.date}" data-name="${esc(h.name)}" data-note="${esc(h.note || "")}" aria-label="Confirm ${esc(h.name)} on ${date(h.date)}">Confirm</button> ` : ""}<button class="sm" data-act="holiday-remove" data-date="${h.date}" aria-label="Remove ${esc(h.name)} on ${date(h.date)}">Remove</button>` : ""}</td></tr>`,
     ),
     "No holidays loaded: every weekday counts as a working day.",
   )}
@@ -1989,7 +1994,7 @@ document.addEventListener("click", (ev) => {
     "holiday-confirm": () => {
       const reason = prompt("Where was it announced? (recorded in the audit trail)");
       if (!reason) return;
-      act(() => api("PUT", "/api/admin/holidays", { date: el.dataset.date, name: el.dataset.name, status: "confirmed", reason }), "Holiday confirmed");
+      act(() => api("PUT", "/api/admin/holidays", { date: el.dataset.date, name: el.dataset.name, note: el.dataset.note || "", status: "confirmed", reason }), "Holiday confirmed");
     },
     "ms-start": () => act(() => api("POST", `/api/milestones/${id}/start`), "Started"),
     "ms-submit": () => act(() => api("POST", `/api/milestones/${id}/submit`), "Sent to MKW Advisors for checking"),

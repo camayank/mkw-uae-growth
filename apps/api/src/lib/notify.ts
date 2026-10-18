@@ -67,7 +67,9 @@ export function consoleTransport(log: (msg: string) => void = console.log): Tran
     kind: "console",
     async deliver(email) {
       n += 1;
-      log(`[email] to ${email.to} from "${email.fromName}" <${email.from}>: ${email.subject}`);
+      // Logs are read by more people than a mailbox: a sign-in code never reaches them (development shows the code
+      // on screen with DEV_LOGIN instead). Six-digit runs (the code's length, D11) in the subject are masked.
+      log(`[email] to ${email.to} from "${email.fromName}" <${email.from}>: ${email.subject.replace(/\b\d{6}\b/g, "••••••")}`);
       return { providerRef: `console-${n}` };
     },
   };

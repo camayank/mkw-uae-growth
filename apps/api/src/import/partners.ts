@@ -12,6 +12,9 @@ import { isBlank, listCell, newReport, readTable, sameValue, type Report, type R
  * - Emirates and service codes are checked against the platform's lists; unknown values are reported, never guessed.
  * - `ftaTaxAgent` is never set here. A person confirms the firm on the FTA register and ticks it in the console.
  * - Once a firm has moved past `contacted`, MKW's console is the record: the row is skipped, not overwritten.
+ * - Before that, a re-import updates only the fields MKW has not changed in the console since the last import: the
+ *   profile keeps what the file said last (`importedValues`), and a field whose value differs from it was changed by a
+ *   person and is kept (three-way merge).
  * - Priority score and routing rank are not stored (they rank outreach, not delivery).
  */
 
@@ -190,7 +193,7 @@ export async function importPartners(tx: Queryable, book: Workbook, source: stri
         row.reason = "a partner with this name already exists on the platform without a Partner ID; link or rename it by hand (ask the owner)";
         continue;
       }
-      const profile = { ...fields, status: "prospect", licenceActive: false, agreementSigned: false, ftaTaxAgent: false, quality: 60, changeOrderRate: 0, deliveredOnTime: 0 };
+      const profile = { ...fields, importedValues: { ...fields, name }, status: "prospect", licenceActive: false, agreementSigned: false, ftaTaxAgent: false, quality: 60, changeOrderRate: 0, deliveredOnTime: 0 };
       const org = (await tx.query<{ id: string }>("insert into orgs (type, name, profile) values ('partner', $1, $2) returning id", [name, JSON.stringify(profile)])).rows[0]!;
       await audit(tx, actor, "partner.imported", "org", org.id, { sourceId, action: "created", source: source.split("/").pop(), codes: codes.length, emirates });
       row.action = "created";
@@ -205,13 +208,35 @@ export async function importPartners(tx: Queryable, book: Workbook, source: stri
       row.reason = `the firm is ${status}; MKW's console is the record now, so the file does not overwrite it`;
       continue;
     }
-    const changed = FIELD_KEYS.filter((k) => !sameValue(existing.profile[k], fields[k]));
-    const renamed = existing.name !== name;
-    if (changed.length || renamed) {
-      await tx.query("update orgs set name = $2, profile = profile || $3::jsonb where id = $1", [existing.id, name, JSON.stringify(fields)]);
-      await audit(tx, actor, "partner.imported", "org", existing.id, { sourceId, action: "updated", source: source.split("/").pop(), changed: [...changed, ...(renamed ? ["name"] : [])] });
+    // Three-way: file now vs platform now vs what the file said last time.
+    const last = (existing.profile.importedValues ?? null) as (Partial<SheetFields> & { name?: string }) | null;
+    const patch: Record<string, unknown> = {};
+    const changed: string[] = [];
+    const kept: string[] = [];
+    for (const k of FIELD_KEYS) {
+      if (sameValue(existing.profile[k], fields[k])) continue;
+      if (last && !sameValue(existing.profile[k], last[k])) {
+        kept.push(k);
+        continue;
+      }
+      patch[k] = fields[k];
+      changed.push(k);
+    }
+    let newName: string | null = null;
+    if (existing.name !== name) {
+      if (last && existing.name !== last.name) kept.push("name");
+      else {
+        newName = name;
+        changed.push("name");
+      }
+    }
+    if (kept.length) (row.warnings ??= []).push(`kept MKW's changes to ${kept.join(", ")}`);
+    if (changed.length) {
+      const snapshot = { ...(last ?? {}), ...Object.fromEntries(changed.map((k) => [k, k === "name" ? name : fields[k as keyof SheetFields]])) };
+      await tx.query("update orgs set name = coalesce($2, name), profile = profile || $3::jsonb where id = $1", [existing.id, newName, JSON.stringify({ ...patch, importedValues: snapshot })]);
+      await audit(tx, actor, "partner.imported", "org", existing.id, { sourceId, action: "updated", source: source.split("/").pop(), changed, keptFromConsole: kept });
       row.action = "updated";
-      row.reason = `changed: ${[...changed, ...(renamed ? ["name"] : [])].join(", ")}`;
+      row.reason = `changed: ${changed.join(", ")}`;
     } else {
       row.action = "unchanged";
     }

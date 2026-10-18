@@ -79,3 +79,10 @@ export function makeXlsx(sheets: Record<string, Array<Array<string | number | nu
     .join("")}</Relationships>`;
   return zip([["xl/workbook.xml", workbook], ["xl/_rels/workbook.xml.rels", rels], ...names.map((n, i): [string, string] => [`xl/worksheets/sheet${i + 1}.xml`, sheetXml(sheets[n]!)])]);
 }
+
+/** The workbook from `makeXlsx` with its first sheet's XML replaced by `sheetXml` verbatim (for hostile-input tests). */
+export function makeXlsxRaw(_template: Buffer, sheetXml: string): Buffer {
+  const workbook = `<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheets><sheet xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" name="S" sheetId="1" r:id="rId1"/></sheets></workbook>`;
+  const rels = `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="/xl/worksheets/sheet1.xml" Id="rId1"/></Relationships>`;
+  return zip([["xl/workbook.xml", workbook], ["xl/_rels/workbook.xml.rels", rels], ["xl/worksheets/sheet1.xml", sheetXml]]);
+}

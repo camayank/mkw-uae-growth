@@ -60,8 +60,9 @@ the cloud account and domain exist. The staff console fits on one line.
    load balancer, secrets in AWS Secrets Manager, `TRUST_PROXY=1`, `DEV_LOGIN` unset, the jobs on an
    EventBridge schedule, and a separate demo service for the smoke test. Validated locally with `cdk synth`.
    `docs/DEPLOY.md` gets the step-by-step staging runbook.
-9. **Console menu.** The MKW staff menu groups its links (Work, Partners, Money, Setup) in keyboard-accessible
-   disclosure menus, on one row at 1280 px and in a compact bar at 390 px.
+9. **Console menu.** The MKW staff menu groups its fourteen links into four entries: Work and Setup as
+   keyboard-accessible disclosure menus, Partners and Dashboard as direct links (a "Money" menu would have held the
+   dashboard alone; payout runs live on the Partners page). One row at 1280 px, a compact bar at 390 px.
 
 ## Exclusions
 
@@ -79,8 +80,8 @@ the cloud account and domain exist. The staff console fits on one line.
   reasons; the real Sheet header row parses.
 - `apps/api/test/legal.test.ts`: acceptance stores the terms version; a stale version is refused; the partner
   accepts the agreement; sign-off clears the draft note and is founder-only and audited.
-- `apps/api/test/calendar.test.ts`: a loaded holiday moves an SLA deadline; holiday edits are founder-only and
-  audited.
+- `apps/api/test/legal.test.ts` ("holiday calendar") and `import.test.ts` ("holidays"): a loaded holiday moves an
+  SLA deadline and stops the ops digest; holiday edits are founder-only and audited.
 - Partner status `invite_pending` cannot sign in; moving to pilot activates and invites (test).
 - Dry-run reports of the real workbook under `docs/evidence/O10/` with contact details removed.
 - `scripts/smoke.mjs` passes with screenshots of the grouped menu, the holiday and legal sections of Settings,

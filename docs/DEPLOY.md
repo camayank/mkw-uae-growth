@@ -194,7 +194,8 @@ hour (RDS, NAT gateway, load balancers, Fargate); the owner approves the account
      --network-configuration 'awsvpcConfiguration={subnets=[<subnet-a>,<subnet-b>],securityGroups=[<sg>],assignPublicIp=DISABLED}' \
      --overrides '{"containerOverrides":[{"name":"ScheduledContainer","command":["sh","-c","export DATABASE_URL=\"postgres://$DB_USER:$DB_PASSWORD@$DB_HOST:$DB_PORT/$DB_NAME?sslmode=verify-full&sslrootcert=/etc/ssl/certs/rds-global-bundle.pem\" && exec node --conditions=production dist/scripts/create-founder.js connect@mkwadvisors.com \"Full Name\""]}]}'
    ```
-   The task's log (`JobLogs` group) prints what it did.
+   The task's log (`JobLogs` group) prints what it did. The founder can sign in once email works (step 7): sign-in
+   codes are emailed only, never written to the logs, and development sign-in is off on staging.
 5. **Dry-run the go-live data on staging and show the owner.** Upload the five files to the files bucket under
    `import/` (`aws s3 cp data/import/ s3://<FilesBucket>/import/ --recursive --sse AES256`), then run a one-off task as
    in step 4, keeping the `export DATABASE_URL=... && exec` wrapper and replacing only the final command with

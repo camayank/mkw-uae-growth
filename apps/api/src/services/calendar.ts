@@ -2,6 +2,7 @@ import { UAE_CALENDAR, type WorkCalendar } from "@tasees/core";
 import { audit, type SessionUser } from "../lib/context.ts";
 import type { Queryable } from "../lib/db.ts";
 import { badRequest, forbidden, notFound } from "../lib/errors.ts";
+import { realDate } from "../import/xlsx.ts";
 
 /**
  * The UAE public holidays the working-time clock skips (O10). Kept in the `holidays` setting rather than in code,
@@ -22,7 +23,8 @@ const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
 export function validHoliday(h: Partial<Holiday>): Holiday {
   const date = String(h.date ?? "").trim();
-  if (!ISO.test(date) || Number.isNaN(Date.parse(`${date}T00:00:00Z`))) throw badRequest("Give the date as YYYY-MM-DD");
+  const [y, m, d] = date.split("-").map(Number);
+  if (!ISO.test(date) || realDate(y!, m!, d!) !== date) throw badRequest("Give a real date as YYYY-MM-DD");
   const name = String(h.name ?? "").trim();
   if (name.length < 2 || name.length > 120) throw badRequest("Name the holiday");
   const status = h.status === "confirmed" ? "confirmed" : h.status === "expected" || h.status === undefined ? "expected" : null;

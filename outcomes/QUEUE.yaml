@@ -26,7 +26,8 @@ outcomes:
     needs_from_owner: [email provider account, DNS access for SPF and DKIM]
   - id: O3
     title: Payments and invoices (card links, signed webhook, tax invoices, payout runs, bank file)
-    status: queued
+    status: verified-pending-merge
+    contract: outcomes/O3-payments-and-invoices.md
     depends_on: [O1, O2]
     needs_from_owner: [merchant account and keys, MKW TRN, sample bank bulk-transfer file]
   - id: O4

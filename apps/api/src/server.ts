@@ -1,6 +1,5 @@
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize, resolve } from "node:path";
-import { timingSafeEqual } from "node:crypto";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { z } from "zod";
 import { aed, type Tier } from "@tasees/core";
@@ -16,10 +15,13 @@ import {
   verifyLoginCode,
 } from "./lib/auth.ts";
 import { asPlatform, asUser, audit } from "./lib/context.ts";
-import { withClock, type Database } from "./lib/db.ts";
-import { badRequest, HttpError, notFound } from "./lib/errors.ts";
+import { num, withClock, type Database } from "./lib/db.ts";
+import { badRequest, forbidden, HttpError, notFound } from "./lib/errors.ts";
 import type { Notifier } from "./lib/notify.ts";
 import type { Storage } from "./lib/storage.ts";
+import type { PaymentProvider } from "./lib/payments.ts";
+import { issueHeldInvoices, loadCompany, refundPayment, statement, updateCompany } from "./services/invoices.ts";
+import { cancelPayoutRun, createPayoutRun, exportPayoutRun, listPayoutRuns, markPayoutRunPaid, payablePayouts, setPartnerBank, uploadPartnerInvoice } from "./services/payouts.ts";
 import {
   acceptOffer,
   addEvidence,
@@ -61,6 +63,7 @@ export interface AppOptions {
   db: Database;
   notify: Notifier;
   storage: Storage;
+  provider: PaymentProvider;
   now?: () => Date;
   /** Return one-time login codes in the response. Development only. */
   devLogin?: boolean;
@@ -74,7 +77,17 @@ const COOKIE = "tasees_session";
 export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 25 * 1024 * 1024 });
   const db = withClock(opts.db, opts.now);
-  const deps: Deps = { notify: opts.notify, now: opts.now };
+  const deps: Deps = { notify: opts.notify, now: opts.now, provider: opts.provider, storage: opts.storage };
+
+  // Keep the raw JSON body: the payment webhook signature covers the bytes as sent, not a re-serialisation.
+  app.addContentTypeParser("application/json", { parseAs: "string" }, (req, body, done) => {
+    req.rawBody = body as string;
+    try {
+      done(null, body === "" ? null : JSON.parse(body as string));
+    } catch (e) {
+      done(Object.assign(e as Error, { statusCode: 400 }), undefined);
+    }
+  });
 
   // Queued notifications go out once the response is on its way, after every transaction of the request.
   app.addHook("onResponse", async () => {
@@ -478,7 +491,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
 
   app.get("/api/admin/orgs", async (req) => {
     const user = requireRole(req, ...PLATFORM_ROLES);
-    return asPlatform(db, user, (tx) => listOrganisations(tx));
+    return asPlatform(db, user, (tx) => listOrganisations(tx, user.role !== "ops"));
   });
 
   app.post("/api/admin/partners", async (req) => {
@@ -609,16 +622,133 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     return asPlatform(db, user, (tx) => retireFee(tx, user, req.params.id, reason));
   });
 
-  // Payment provider webhook ------------------------------------------------------
+  // Payment provider webhook: a signed message from the provider is the one automated path that records money.
   app.post("/api/webhooks/payments", async (req, reply) => {
-    const secret = opts.webhookSecret;
-    const given = String(req.headers["x-webhook-secret"] ?? "");
-    if (!secret || given.length !== secret.length || !timingSafeEqual(Buffer.from(given), Buffer.from(secret))) {
-      return reply.status(401).send({ error: "unauthorised", message: "Bad webhook secret" });
+    let event;
+    // Unauthenticated callers must not be able to grow the audit chain: refusals are logged and rate-limited, not audited.
+    throttle(req, "webhook", 60);
+    try {
+      event = opts.provider.verifyWebhook(req.rawBody ?? "", req.headers);
+    } catch (e) {
+      app.log.warn({ ip: req.ip, reason: (e as Error).message }, "payment webhook refused");
+      return reply.status(401).send({ error: "unauthorised", message: `Webhook refused: ${(e as Error).message}` });
     }
-    const body = z.object({ paymentId: z.string().uuid(), status: z.literal("paid"), reference: z.string().min(3) }).parse(req.body);
-    await asPlatform(db, null, (tx) => markPaymentPaid(tx, null, body.paymentId, body.reference, deps));
+    await asPlatform(db, null, (tx) => markPaymentPaid(tx, null, event.paymentId, event.reference, deps, event.amountFils));
     return { ok: true };
+  });
+
+  // Statements and invoices (O3) ------------------------------------------------------------------
+  app.get("/api/client/statement", async (req) => {
+    const user = requireRole(req, ...CLIENT_ROLES);
+    return asPlatform(db, user, (tx) => statement(tx, user.orgId));
+  });
+
+  app.get<{ Params: { id: string } }>("/api/ops/clients/:id/statement", async (req) => {
+    const user = requireRole(req, ...PLATFORM_ROLES);
+    return asPlatform(db, user, (tx) => statement(tx, req.params.id));
+  });
+
+  app.get<{ Params: { id: string } }>("/api/invoices/:id/pdf", async (req, reply) => {
+    const user = requireUser(req);
+    if (user.orgType === "partner") throw forbidden("Partners do not see client invoices");
+    // Clients read under their own database role: row-level security decides whether the invoice is theirs.
+    const visible =
+      user.orgType === "platform"
+        ? await asPlatform(db, user, async (tx) => (await tx.query<{ id: string }>("select id from invoices where id = $1", [req.params.id])).rows[0])
+        : await asUser(db, user, async (tx) => (await tx.query<{ id: string }>("select id from invoices where id = $1", [req.params.id])).rows[0]);
+    if (!visible) throw notFound("Invoice not found");
+    const inv = await asPlatform(db, user, async (tx) => (await tx.query<{ file_key: string | null; number: string }>("select file_key, number from invoices where id = $1", [req.params.id])).rows[0]!);
+    if (!inv.file_key) throw notFound("This invoice has no document yet");
+    const data = await opts.storage.get(inv.file_key);
+    reply.header("content-disposition", `attachment; filename="${inv.number}.pdf"`);
+    return reply.type("application/pdf").send(data);
+  });
+
+  app.post<{ Params: { id: string } }>("/api/ops/payments/:id/refund", async (req) => {
+    const user = requireRole(req, "finance", "founder");
+    const body = z.object({ reference: z.string().min(3).max(120), reason: z.string().min(3).max(500) }).parse(req.body);
+    return asPlatform(db, user, (tx) => refundPayment(tx, user, req.params.id, body.reference, body.reason, opts.storage, opts.notify));
+  });
+
+  app.get("/api/admin/company", async (req) => {
+    const user = requireRole(req, ...PLATFORM_ROLES);
+    const c = await asPlatform(db, user, (tx) => loadCompany(tx));
+    const held = await asPlatform(db, user, async (tx) => num((await tx.query<{ n: number }>("select count(*)::int as n from invoices where status = 'pending_trn'")).rows[0]?.n));
+    return { ...c, iban: user.role === "ops" ? (c.iban ? "set" : "") : c.iban, heldInvoices: held };
+  });
+
+  app.put("/api/admin/company", async (req) => {
+    const user = requireRole(req, "founder");
+    const body = z
+      .object({
+        legalName: z.string().min(2).max(200).optional(),
+        trn: z.string().max(20).nullable().optional(),
+        address: z.string().max(500).optional(),
+        bankName: z.string().max(120).optional(),
+        iban: z.string().max(40).optional(),
+        swift: z.string().max(20).optional(),
+        govFeesConfirmed: z.boolean().optional(),
+        note: z.string().min(3).max(500),
+      })
+      .parse(req.body);
+    const { note, ...patch } = body;
+    return asPlatform(db, user, (tx) => updateCompany(tx, user, patch, note));
+  });
+
+  app.post("/api/admin/invoices/issue-held", async (req) => {
+    const user = requireRole(req, "founder");
+    return asPlatform(db, user, (tx) => issueHeldInvoices(tx, user, opts.storage, opts.notify));
+  });
+
+  // Partner bank details and invoices; payout runs (O3) -------------------------------------------
+  app.put("/api/partner/bank", async (req) => {
+    const user = requireRole(req, "partner_admin");
+    const body = z.object({ beneficiary: z.string().min(2).max(140), iban: z.string().min(10).max(40), bank: z.string().min(2).max(120) }).parse(req.body);
+    return asPlatform(db, user, (tx) => setPartnerBank(tx, user, body));
+  });
+
+  app.post<{ Params: { id: string } }>("/api/payouts/:id/invoice", async (req) => {
+    const user = requireRole(req, "partner_admin");
+    const body = z
+      .object({ number: z.string().min(1).max(60), amountAed: z.number().min(0), vatAed: z.number().min(0).default(0), fileName: z.string().min(1).max(200), contentBase64: z.string().min(1) })
+      .parse(req.body);
+    return asPlatform(db, user, (tx) =>
+      uploadPartnerInvoice(tx, user, { payoutId: req.params.id, number: body.number, amountFils: aed(body.amountAed), vatFils: aed(body.vatAed), fileName: body.fileName, content: Buffer.from(body.contentBase64, "base64") }, opts.storage),
+    );
+  });
+
+  app.get("/api/ops/payouts/payable", async (req) => {
+    const user = requireRole(req, "finance", "founder");
+    return asPlatform(db, user, (tx) => payablePayouts(tx));
+  });
+
+  app.get("/api/ops/payout-runs", async (req) => {
+    const user = requireRole(req, "finance", "founder");
+    return asPlatform(db, user, (tx) => listPayoutRuns(tx));
+  });
+
+  app.post("/api/ops/payout-runs", async (req) => {
+    const user = requireRole(req, "finance", "founder");
+    return asPlatform(db, user, (tx) => createPayoutRun(tx, user));
+  });
+
+  app.get<{ Params: { id: string } }>("/api/ops/payout-runs/:id/file", async (req, reply) => {
+    const user = requireRole(req, "finance", "founder");
+    const { csv, fileName } = await asPlatform(db, user, (tx) => exportPayoutRun(tx, user, req.params.id, opts.storage));
+    reply.header("content-disposition", `attachment; filename="${fileName}"`);
+    return reply.type("text/csv; charset=utf-8").send(csv);
+  });
+
+  app.post<{ Params: { id: string } }>("/api/ops/payout-runs/:id/paid", async (req) => {
+    const user = requireRole(req, "finance", "founder");
+    const { bankReference } = z.object({ bankReference: z.string().min(3).max(120) }).parse(req.body);
+    return asPlatform(db, user, (tx) => markPayoutRunPaid(tx, user, req.params.id, bankReference, opts.notify));
+  });
+
+  app.post<{ Params: { id: string } }>("/api/ops/payout-runs/:id/cancel", async (req) => {
+    const user = requireRole(req, "finance", "founder");
+    const body = z.object({ reason: z.string().min(3).max(300), confirmNotSubmitted: z.boolean().default(false) }).parse(req.body);
+    return asPlatform(db, user, (tx) => cancelPayoutRun(tx, user, req.params.id, body.reason, body.confirmNotSubmitted));
   });
 
   app.get("/api/health", async () => ({ ok: true, db: db.kind, devLogin: !!opts.devLogin }));

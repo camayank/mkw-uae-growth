@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { forbiddenFields } from "@tasees/core";
+import { signWebhook } from "../src/lib/payments.ts";
 import { makeEnv, type TestEnv } from "./helpers.ts";
 
 /**
@@ -80,12 +81,14 @@ describe("managed engagement lifecycle", () => {
     expect(before.body.allocations).toEqual([]);
     const deposit = before.body.payments.find((p: any) => p.kind === "deposit");
     const paid = await env.call("anon", "POST", "/api/webhooks/payments", { paymentId: deposit.id, status: "paid", reference: "PSP-123" });
-    expect(paid.status).toBe(401); // no secret
+    expect(paid.status).toBe(401); // unsigned
+    const raw = JSON.stringify({ kind: "payment.paid", paymentId: deposit.id, amountFils: deposit.amount, reference: "PSP-123" });
+    const sig = signWebhook("test-secret", raw, Math.floor(env.clock.now.getTime() / 1000));
     const ok = await env.app.inject({
       method: "POST",
       url: "/api/webhooks/payments",
-      headers: { "x-webhook-secret": "test-secret" },
-      payload: { paymentId: deposit.id, status: "paid", reference: "PSP-123" },
+      headers: { "content-type": "application/json", "x-webhook-timestamp": sig.timestamp, "x-webhook-signature": sig.signature },
+      payload: raw,
     });
     expect(ok.statusCode).toBe(200);
     const after = await env.call("ops", "GET", `/api/engagements/${engagementId}`);
@@ -175,6 +178,14 @@ describe("managed engagement lifecycle", () => {
 
     const payout = ops.payouts[0];
     expect((await env.call("ops", "POST", `/api/ops/payouts/${payout.id}/release`)).status).toBe(403);
+    // O3: a payout is released only against the partner's own invoice for it.
+    expect((await env.call("finance", "POST", `/api/ops/payouts/${payout.id}/release`)).status).toBe(409);
+    let uploaded = false;
+    for (const k of ["setup", "corp", "tax"]) {
+      const r = await env.call(k, "POST", `/api/payouts/${payout.id}/invoice`, { number: "INV-001", amountAed: payout.amount / 100, fileName: "inv.pdf", contentBase64: Buffer.from("%PDF-1.4").toString("base64") });
+      if (r.status === 200) uploaded = true;
+    }
+    expect(uploaded).toBe(true);
     expect((await env.call("finance", "POST", `/api/ops/payouts/${payout.id}/release`)).status).toBe(200);
     expect((await env.call("finance", "POST", `/api/ops/payouts/${payout.id}/release`)).status).toBe(409);
   });

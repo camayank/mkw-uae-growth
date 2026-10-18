@@ -20,7 +20,9 @@ export type TemplateName =
   | "change_order_to_approve"
   | "payout_released"
   | "user_invited"
-  | "ops_digest";
+  | "ops_digest"
+  | "invoice_issued"
+  | "payout_remittance";
 
 export type Vars = Record<string, string | number | undefined>;
 
@@ -46,6 +48,8 @@ export const TEMPLATE_AUDIENCE: Record<TemplateName, Audience | "any"> = {
   payout_released: "partner",
   user_invited: "any",
   ops_digest: "staff",
+  invoice_issued: "client",
+  payout_remittance: "partner",
 };
 
 export const BRAND: Record<Audience, { name: string; signOff: string }> = {
@@ -86,8 +90,12 @@ export function renderTemplate(template: TemplateName, audience: Audience, vars:
     case "payment_due":
       return {
         inApp: true,
-        subject: `Deposit of ${aed(vars.amountFils)} to start your engagement`,
-        body: `Thank you for accepting your offer. To start the work, please pay the deposit of ${aed(vars.amountFils)}: half of the professional fees plus all government fees, which we pass on at cost.\n\nPay by bank transfer to MKW Advisors quoting reference ${ref(vars.engagementId)}, or use the payment link in your engagement: ${link(`/engagement/${vars.engagementId}`)}.${sign}`,
+        subject: vars.kind === "balance" ? `Balance of ${aed(vars.amountFils)} due on completion` : `Deposit of ${aed(vars.amountFils)} to start your engagement`,
+        body:
+          (vars.kind === "balance"
+            ? `Your engagement is complete. The balance of ${aed(vars.amountFils)} (the second half of the professional fees) is now due.`
+            : `Thank you for accepting your offer. To start the work, please pay the deposit of ${aed(vars.amountFils)}: half of the professional fees plus all government fees, which we pass on at cost.`) +
+          `\n\nPay by bank transfer to MKW Advisors quoting reference ${ref(vars.engagementId)}${vars.payUrl ? `, or by card at ${vars.payUrl}` : ""}. Your engagement: ${link(`/engagement/${vars.engagementId}`)}.${sign}`,
       };
     case "allocation_offered":
       return {
@@ -130,6 +138,20 @@ export function renderTemplate(template: TemplateName, audience: Audience, vars:
         inApp: false,
         subject: `You have been added to ${brand.name}`,
         body: `An account has been created for you at ${vars.orgName} as ${roleWords(vars.role)}. Sign in with your work email at ${link("/")}; we email you a six-digit code each time, no password needed.${sign}`,
+      };
+    case "invoice_issued":
+      return {
+        inApp: true,
+        subject: vars.creditNote ? `Credit note ${vars.number} for ${aed(vars.amountFils)}` : `Tax invoice ${vars.number} for ${aed(vars.amountFils)}`,
+        body: vars.creditNote
+          ? `We have refunded ${aed(vars.amountFils)} and issued credit note ${vars.number}. Download it from your engagement: ${link(`/engagement/${vars.engagementId}`)}.${sign}`
+          : `Thank you for your payment of ${aed(vars.amountFils)}. Tax invoice ${vars.number} is ready to download from your engagement: ${link(`/engagement/${vars.engagementId}`)}.${sign}`,
+      };
+    case "payout_remittance":
+      return {
+        inApp: true,
+        subject: `Remittance advice: ${aed(vars.amountFils)} paid to your firm`,
+        body: `MKW Advisors has paid ${aed(vars.amountFils)} to your firm's account in payout run ${vars.runReference} (bank reference ${vars.bankReference}). It covers ${vars.count} payout(s); details are at ${link("/payouts")}.${sign}`,
       };
     case "ops_digest":
       return {

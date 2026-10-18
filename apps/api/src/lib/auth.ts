@@ -128,6 +128,8 @@ export async function revokeSession(db: Database, token: string): Promise<void> 
 declare module "fastify" {
   interface FastifyRequest {
     user?: SessionUser;
+    /** The request body exactly as received, for webhook signature checks. */
+    rawBody?: string;
   }
 }
 

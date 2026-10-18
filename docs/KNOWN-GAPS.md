@@ -8,11 +8,20 @@ in a browser; everything listed here is not.
 1. **Email account.** The SES transport, the eleven English templates, the delivery log and the in-app bell
    are built (O2); real delivery waits for the SES account, the SPF/DKIM/DMARC records on mkwadvisors.com and
    the two verified sender addresses. Until `EMAIL=ses`, messages are recorded and printed, not emailed.
-2. **Payment provider.** `/api/webhooks/payments` accepts a shared-secret call marking a payment paid. Wire it
-   to the chosen provider's signed webhook (verify their signature, not only the shared secret) and create
-   payment links on acceptance. Finance can record bank transfers by hand today.
-3. **Tax invoices.** No VAT tax invoice PDFs yet. MKW Advisors needs FTA-compliant tax invoices for every
-   payment (TRN, sequential number, VAT breakdown). Generate them from `payments` and store them as evidence.
+2. **Payment provider account.** Payment links, the signed webhook contract (HMAC over timestamp and raw body,
+   five-minute window, amount must match) and the client "pay by card" flow exist (O3) behind the `memory`
+   provider, whose links lead to a page that says card payments are not live yet. The adapter for the chosen
+   provider (Network International, Telr, Checkout.com or Stripe UAE) is written once the merchant account
+   exists; their signature scheme replaces the generic one in `lib/payments.ts`.
+3. **Invoices wait for MKW's TRN and the tax adviser.** Tax invoices and credit notes are issued, numbered
+   gap-free and rendered as PDFs (O3), but they are held as `pending_trn` until the founder enters the TRN on
+   the Settings page. Government fees are shown as disbursements with no VAT; that treatment is UNCERTAIN until
+   the tax adviser confirms it (checkbox on the Settings page). Partial refunds, invoice re-issue and
+   e-invoicing are not built; the invoice PDF is plain text (Courier) and Latin script only until O9.
+3b. **Invoice PDF is Latin-script only.** Client legal names in Arabic render as "?" until O9 replaces the
+   text writer with one that embeds a font; the FTA requires the recipient's name on a tax invoice.
+3a. **Bank bulk-transfer format.** The payout run exports a generic CSV (beneficiary, IBAN, bank, amount,
+   reference). Replace the columns with the bank's own template when the sample file arrives.
 4. **Verified fee and rule data.** The 83-service catalogue, the government fee table (source, verifier, date,
    90-day staleness) and the rules admin exist (O4). The data in them is still a working estimate: market mids
    are the Sheet's Oct 2026 mid-points, the fee table starts empty (partners' stated fees are used and every
@@ -63,7 +72,7 @@ in a browser; everything listed here is not.
 
 ## Verified so far
 
-- 40 domain tests (`packages/core`) and 86 API tests (`apps/api`), all passing on PGlite and on PostgreSQL 16;
+- 40 domain tests (`packages/core`) and 98 API tests (`apps/api`), all passing on PGlite and on PostgreSQL 16;
   typecheck clean; `pnpm build` compiles and the compiled server runs in production mode from a fresh database.
 - O1: partner creation, invitations, role changes and deactivation (sessions revoked, codes refused) are tested as
   every role; PDPL export contains one person's data and no audit payloads (a test reproduces the leak that the
@@ -83,6 +92,12 @@ in a browser; everything listed here is not.
   `rules_as_of`; founder-only writes, database denies rules and fees to clients and partners; ten sample
   requests (30+ lines, new and old codes, agent and reseller) reproduce the margin rule to the fils, and the
   Sheet's OF-0001 totals are reproduced (`docs/evidence/O4/`, 29 smoke checks).
+- O3: payment link on acceptance; unsigned, mis-signed, stale, tampered and short-paid webhooks refused and
+  audited, a good one idempotent; invoices held without a TRN and issued in sequence after it, lines add up to
+  the payment, PDF well-formed and downloadable by the client only; refund → credit note, payouts withheld,
+  statement balances; partner invoice must match the payout and only its partner may upload; payout run total
+  equals the bank file total, one line per partner, marking paid releases and sends remittances without the
+  name Tasees; ops locked out of runs, files and refunds (`docs/evidence/O3/`, 43 smoke checks).
 - `pricing.test.ts` reproduces the Google Sheet Offer Builder example exactly.
 - `security.test.ts` shows Postgres refusing margin and partner-cost columns to clients, client price to partners,
   and other organisations' rows; sign-in throttling; security headers.

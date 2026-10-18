@@ -61,7 +61,7 @@ async function assertNotLastFounder(tx: Queryable, user: UserRow): Promise<void>
 
 // Organisations and people ------------------------------------------------------------
 
-export async function listOrganisations(tx: Queryable) {
+export async function listOrganisations(tx: Queryable, seesBank = false) {
   const orgs = await tx.query<OrgRow & { profile: Record<string, unknown>; created_at: string }>(
     "select id, type, name, status, profile, created_at from orgs order by case type when 'platform' then 0 when 'partner' then 1 else 2 end, name",
   );
@@ -73,7 +73,8 @@ export async function listOrganisations(tx: Queryable) {
     type: o.type,
     name: o.name,
     status: o.status,
-    profile: o.type === "partner" ? o.profile : undefined,
+    // Bank details are finance's business; everyone else sees the profile without them.
+    profile: o.type === "partner" ? (seesBank ? o.profile : Object.fromEntries(Object.entries(o.profile ?? {}).filter(([k]) => k !== "bank"))) : undefined,
     createdAt: o.created_at,
     users: users.rows
       .filter((u) => u.org_id === o.id)

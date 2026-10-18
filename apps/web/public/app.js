@@ -8,7 +8,7 @@ const $who = document.getElementById("who");
 const $brand = document.getElementById("brand");
 const $toast = document.getElementById("toast");
 
-const state = { me: null, health: null, deliverables: null };
+const state = { me: null, health: null, deliverables: null, unread: 0 };
 
 // Helpers ---------------------------------------------------------------------
 
@@ -153,7 +153,11 @@ function chrome() {
   $nav.innerHTML = navFor()
     .map(([p, label]) => `<a href="#/${p}" class="${page === p ? "on" : ""}">${esc(label)}</a>`)
     .join("");
-  $who.innerHTML = `<span>${esc(state.me.name)} · ${esc(state.me.orgName)} · ${esc(words(state.me.role))}</span><button class="sm" data-act="logout">Sign out</button>`;
+  $who.innerHTML = `<span>${esc(state.me.name)} · ${esc(state.me.orgName)} · ${esc(words(state.me.role))}</span>
+    <a class="bell ${page === "notifications" ? "on" : ""}" href="#/notifications" aria-label="Notifications${state.unread ? `, ${state.unread} unread` : ""}" title="Notifications">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+      ${state.unread ? `<b class="count" data-unread>${state.unread > 99 ? "99+" : state.unread}</b>` : ""}</a>
+    <button class="sm" data-act="logout">Sign out</button>`;
 }
 
 // Renders run one at a time; a request made mid-render runs once more afterwards, so the
@@ -175,12 +179,22 @@ function render() {
   return rendering;
 }
 
+async function refreshUnread() {
+  try {
+    state.unread = (await api("GET", "/api/notifications")).unread ?? 0;
+  } catch {
+    state.unread = 0;
+  }
+}
+
 async function renderOnce() {
+  if (state.me && route().page !== "notifications") await refreshUnread();
   chrome();
   if (!state.me) return renderSignIn();
   const { page, id } = route();
   try {
     await deliverables();
+    if (page === "notifications") return await renderNotifications();
     if (page === "engagement" && id) return await renderEngagement(id);
     if (isClient()) {
       if (page === "offer" && id) return await renderClientOffer(id);
@@ -804,6 +818,52 @@ async function renderAudit() {
 }
 
 
+// Notifications: each person's bell ------------------------------------------------------------
+
+async function renderNotifications() {
+  const n = await api("GET", "/api/notifications");
+  state.unread = n.unread ?? 0;
+  chrome();
+  $app.innerHTML = `
+  <div class="row between"><h1>Notifications</h1>${n.unread ? `<button class="sm" data-act="read-all">Mark all as read</button>` : ""}</div>
+  <p class="muted">${isClient() ? "Notices from Tasees, by MKW Advisors." : "Notices from MKW Advisors."} ${n.unread ? `${n.unread} unread.` : "All read."} The same notices are sent to your email.</p>
+  <div class="stack">${
+    n.items.length
+      ? n.items
+          .map(
+            (i) => `<div class="card notice-item ${i.readAt ? "" : "unread"}" data-act="read-one" data-id="${i.id}">
+            <div class="row between"><b>${esc(i.subject)}</b><span class="small muted">${dateTime(i.createdAt)}</span></div>
+            <div class="small" style="white-space:pre-wrap;margin-top:6px">${linkify(i.body)}</div></div>`,
+          )
+          .join("")
+      : `<p class="empty">Nothing yet.</p>`
+  }</div>`;
+}
+
+/** Turn in-app links to this workspace into anchors; everything else stays escaped text. */
+function linkify(text) {
+  return esc(text).replace(/(https?:\/\/[^\s]+#\/[^\s]*?)([.,;:]?)(?=\s|$)/g, (_m, url, tail) => {
+    const hash = url.slice(url.indexOf("#"));
+    return `<a href="${esc(hash)}">${esc(hash)}</a>${tail}`;
+  });
+}
+
+async function renderDeliveryLog() {
+  const rows = await api("GET", "/api/admin/notifications");
+  return `<h2 style="margin-top:24px">Delivery log</h2>
+  <p class="muted">Every message the platform raised, who it went to and whether the email provider accepted it. Clients see "Tasees, by MKW Advisors"; partners and staff see "MKW Advisors".</p>
+  <div class="card flush">${table(
+    ["When", "To", "Audience", "Message", "Status", "Provider"],
+    rows.map(
+      (r) => `<tr><td>${dateTime(r.createdAt)}</td><td class="small">${esc(r.recipient ?? "")}<br><span class="muted">${esc(r.toEmail)}</span></td><td>${esc(r.audience)}</td>
+      <td class="small">${esc(words(r.template))}<br><span class="muted">${esc(r.subject)}</span></td>
+      <td>${badge(r.status === "sent" ? "ok" : r.status === "failed" ? "rejected" : "pending", r.status)}${r.error ? `<br><span class="small muted">${esc(r.error)}</span>` : ""}${r.readAt ? `<br><span class="small muted">read ${dateTime(r.readAt)}</span>` : ""}</td>
+      <td class="small mono">${esc(r.providerRef ?? "–")}</td></tr>`,
+    ),
+    "Nothing sent yet.",
+  )}</div>`;
+}
+
 // People: organisations, users, data requests ------------------------------------------------
 
 const ROLES_FOR = {
@@ -915,7 +975,8 @@ async function renderSettings() {
       ? `<div class="pad" style="padding-top:8px"><div class="field"><label>Who confirmed these periods, and when</label><input name="note" required minlength="3" placeholder="e.g. Confirmed with [law firm] on 20 Oct 2026" /></div>
         <button class="primary" type="submit">Confirm retention periods</button></div>`
       : `<p class="small muted pad">Only the founder can confirm these periods.</p>`
-  }</form>`;
+  }</form>
+  ${await renderDeliveryLog()}`;
 }
 
 // Events ----------------------------------------------------------------------------------
@@ -989,6 +1050,11 @@ document.addEventListener("click", (ev) => {
         toast(`Timers run: ${r.allocationTimeouts} re-routed, ${r.autoApprovals} auto-approved, ${r.offersExpired} offers expired`);
       }, null),
     "partner-status": () => act(() => api("PUT", `/api/ops/partners/${id}`, { status: el.dataset.status }), "Partner updated"),
+    "read-all": () => act(() => api("POST", "/api/notifications/read", {}), "All read"),
+    "read-one": () => {
+      if (!el.classList.contains("unread") || ev.target.closest("a")) return;
+      act(() => api("POST", "/api/notifications/read", { ids: [id] }), null);
+    },
     "user-deactivate": () => {
       if (!confirm("Deactivate this account? They are signed out everywhere and cannot sign in again until reactivated.")) return;
       act(() => api("POST", `/api/admin/users/${id}/deactivate`), "Account deactivated");

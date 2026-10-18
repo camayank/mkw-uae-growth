@@ -177,6 +177,30 @@ check("client page hides the partner's phone and email:", !pageText.includes("12
 check("client page shows no partner cost or margin:", !/partner cost|margin/i.test(pageText));
 await shot(client, "13-client-engagement-approved");
 
+// Notifications (O2): the client's bell holds the offer and deposit notices; a partner's never says Tasees
+await client.goto(BASE + "/#/home"); await client.reload();
+await client.waitForSelector("#who .bell");
+const unreadBefore = Number((await client.locator("#who .bell .count").textContent().catch(() => "0")) || 0);
+check("client bell shows unread notices after the flow:", unreadBefore >= 2);
+await client.goto(BASE + "/#/notifications");
+await client.waitForSelector('main h1:text-is("Notifications")');
+const noticeText = await client.locator("main").innerText();
+check("client notifications mention the offers and the deposit:", /offers are ready/i.test(noticeText) && /deposit/i.test(noticeText));
+check("client notifications carry no partner cost or margin:", !/partner cost|margin/i.test(noticeText));
+await shot(client, "22-client-notifications");
+await client.locator('button[data-act="read-all"]').click();
+await client.waitForTimeout(600);
+check("mark all as read clears the bell:", (await client.locator("#who .bell .count").count()) === 0);
+const partnerNotices = partnerPages[0];
+if (partnerNotices) {
+  await partnerNotices.goto(BASE + "/#/notifications"); await partnerNotices.reload();
+  await partnerNotices.waitForSelector('main h1:text-is("Notifications")');
+  const pt = await partnerNotices.locator("main").innerText();
+  check("partner notifications come from MKW Advisors and never say Tasees:", /MKW Advisors/.test(pt) && !/tasees/i.test(pt));
+  check("partner notifications carry no client price:", !/client price|AED 4,200/i.test(pt));
+  await shot(partnerNotices, "23-partner-notifications");
+}
+
 // Mobile
 const m = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
 const mp = await m.newPage();
@@ -189,6 +213,11 @@ await mp.waitForTimeout(700);
 const overflow = await mp.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
 check("client page at 390 px has no horizontal overflow:", !overflow);
 await mp.screenshot({ path: `${OUT}/14-mobile-client.png`, fullPage: false });
+await mp.goto(BASE + "/#/notifications"); await mp.reload();
+await mp.waitForSelector('main h1:text-is("Notifications")');
+await mp.waitForTimeout(500);
+check("notifications at 390 px have no horizontal overflow:", !(await mp.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
+await mp.screenshot({ path: `${OUT}/24-mobile-notifications.png`, fullPage: false });
 
 // Audit
 const founder = await session("founder@mkwadvisors.test");
@@ -265,6 +294,8 @@ await shot(founder, "19-settings-retention-confirmed");
 await finance.goto(BASE + "/#/settings"); await finance.reload();
 await finance.waitForSelector("main h1");
 check("finance cannot confirm retention periods:", (await finance.locator('form[data-form="retention"] button[type="submit"]').count()) === 0);
+const logText = await finance.locator("main").innerText();
+check("delivery log lists sent messages for client and partner audiences:", /Delivery log/.test(logText) && /offer ready/i.test(logText) && /allocation offered/i.test(logText));
 
 // Mobile views of the new screens
 const mf = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });

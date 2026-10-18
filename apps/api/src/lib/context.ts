@@ -1,5 +1,22 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { ROLE_ORG, type OrgType, type Role } from "@tasees/core";
 import type { Database, Queryable } from "./db.ts";
+
+/**
+ * Work deferred until the surrounding transaction has committed: notifications queue here while a transaction
+ * is open and are released only after `db.transaction` returns, so a rolled-back change never sends anything.
+ */
+export interface Deferred {
+  run(): void;
+}
+export const txScope = new AsyncLocalStorage<Deferred[]>();
+
+async function inScope<T>(fn: () => Promise<T>): Promise<T> {
+  const deferred: Deferred[] = [];
+  const result = await txScope.run(deferred, fn);
+  for (const d of deferred) d.run(); // only reached after a successful commit
+  return result;
+}
 
 export interface SessionUser {
   id: string;
@@ -33,18 +50,22 @@ async function enter(tx: Queryable, orgType: OrgType, orgId: string | null, user
  */
 export function asUser<T>(db: Database, user: SessionUser, fn: (tx: Queryable) => Promise<T>): Promise<T> {
   if (ROLE_ORG[user.role] !== user.orgType) throw new Error("role does not match organisation type");
-  return db.transaction(async (tx) => {
-    await enter(tx, user.orgType, user.orgId, user.id, user.role);
-    return fn(tx);
-  });
+  return inScope(() =>
+    db.transaction(async (tx) => {
+      await enter(tx, user.orgType, user.orgId, user.id, user.role);
+      return fn(tx);
+    }),
+  );
 }
 
 /** Run server-side commands with full access, after the caller has been authorised in code. */
 export function asPlatform<T>(db: Database, actor: SessionUser | null, fn: (tx: Queryable) => Promise<T>): Promise<T> {
-  return db.transaction(async (tx) => {
-    await enter(tx, "platform", actor?.orgId ?? null, actor?.id ?? null, actor?.role ?? "system");
-    return fn(tx);
-  });
+  return inScope(() =>
+    db.transaction(async (tx) => {
+      await enter(tx, "platform", actor?.orgId ?? null, actor?.id ?? null, actor?.role ?? "system");
+      return fn(tx);
+    }),
+  );
 }
 
 export async function audit(

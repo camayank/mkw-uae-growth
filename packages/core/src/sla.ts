@@ -29,6 +29,17 @@ function isWorkingDay(dubai: Date, cal: WorkCalendar): boolean {
   return cal.workingWeekdays.includes(dubai.getUTCDay()) && !cal.holidays.includes(iso);
 }
 
+/** Whether the instant falls on a UAE working day (Monday to Friday, not a listed holiday). */
+export function isUaeWorkingDay(at: Date, cal: WorkCalendar = UAE_CALENDAR): boolean {
+  return isWorkingDay(toDubai(at), cal);
+}
+
+/** The Dubai calendar date (YYYY-MM-DD) and hour of an instant. */
+export function dubaiDateHour(at: Date): { date: string; hour: number } {
+  const d = toDubai(at);
+  return { date: d.toISOString().slice(0, 10), hour: d.getUTCHours() };
+}
+
 /** Add working hours to an instant, skipping nights, weekends and holidays. */
 export function addWorkingHours(start: Date, hours: number, cal: WorkCalendar = UAE_CALENDAR): Date {
   if (hours < 0) throw new Error("hours must not be negative");

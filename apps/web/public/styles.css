@@ -169,6 +169,11 @@ legend { padding: 0 6px; color: var(--muted); font-size: 0.85rem; }
 #toast.show { opacity: 1; }
 #toast.err { background: var(--bad); color: #fff; }
 
+.bell { position: relative; display: inline-flex; align-items: center; padding: 6px; border-radius: 8px; color: var(--muted); }
+.bell.on, .bell:hover { background: var(--surface-2); color: var(--text); }
+.bell .count { position: absolute; top: -2px; right: -4px; background: var(--bad); color: #fff; font-size: 0.65rem; line-height: 1; padding: 3px 5px; border-radius: 999px; }
+.notice-item.unread { border-left: 3px solid var(--brand); cursor: pointer; }
+
 @media (max-width: 640px) {
   .top { padding: 10px 16px; gap: 8px 12px; }
   /* The menu takes its own full row and wraps, so seven links do not stack into a tall column. */

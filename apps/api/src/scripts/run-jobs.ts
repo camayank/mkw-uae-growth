@@ -1,10 +1,14 @@
+// One sweep of the scheduled jobs, for cron when IN_PROCESS_JOBS=0. Uses the same recording notifier as the
+// server, so digests and reminders raised here are recorded, emailed and shown in the bell like any other.
 import { openDatabase, migrate } from "../lib/db.ts";
-import { consoleNotifier } from "../lib/notify.ts";
+import { notifierFromEnv } from "../lib/notify.ts";
 import { runJobs } from "../jobs/run.ts";
 
 const db = await openDatabase();
 await migrate(db);
-const result = await runJobs(db, { notify: consoleNotifier() });
+const { notify } = notifierFromEnv(db);
+const result = await runJobs(db, { notify });
+await notify.flush();
 console.log(JSON.stringify(result));
 await db.close();
 process.exit(result.errors.length ? 1 : 0);

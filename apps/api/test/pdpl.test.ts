@@ -106,6 +106,7 @@ describe("PDPL export and erasure", () => {
     expect(before.chain.intact).toBe(true);
     expect(before.payments.length).toBeGreaterThan(0);
 
+    await env.call("anon", "POST", "/api/auth/request-code", { email: EMAILS.clientMember }); // leaves a notification row to be tombstoned
     expect((await env.call("ops", "POST", `/api/admin/users/${memberId}/erase`, { confirm: "ERASE" })).status).toBe(403);
     expect((await env.call("founder", "POST", `/api/admin/users/${memberId}/erase`, { confirm: "yes" })).status).toBe(400);
     const r = await env.call("founder", "POST", `/api/admin/users/${memberId}/erase`, { confirm: "ERASE" });
@@ -126,6 +127,10 @@ describe("PDPL export and erasure", () => {
     expect(after.user.erased_at).toBeTruthy();
     expect(after.messages[0]).toEqual({ author_name: TOMBSTONE_NAME, body_original: TOMBSTONE_TEXT, body_shown: TOMBSTONE_TEXT });
     expect(after.messages[1].body_original).toBe("Partner here, passport copies please"); // somebody else's message is untouched
+    const notices = await asPlatform(env.db, null, (tx) => tx.query<any>("select to_email, subject, body, vars from notifications where user_id = $1 or to_email = $2", [memberId, `erased-${memberId}@erased.invalid`]));
+    for (const n of notices.rows) expect(n).toEqual({ to_email: `erased-${memberId}@erased.invalid`, subject: TOMBSTONE_TEXT, body: "", vars: {} });
+    expect(r.body.notificationsTombstoned).toBe(notices.rows.length);
+    expect(notices.rows.length).toBeGreaterThan(0);
     expect(after.payments).toEqual(before.payments);
     expect(after.payouts).toEqual(before.payouts);
     // Every earlier audit row is byte-for-byte the same, and the chain including the new erasure event verifies.

@@ -1,8 +1,0 @@
-{
-  "name": "asp-selector-tests",
-  "private": true,
-  "version": "1.0.0",
-  "description": "Headless smoke tests for the UAE ASP Selector",
-  "scripts": { "test": "node test.js" },
-  "devDependencies": { "jsdom": "24.1.0" }
-}

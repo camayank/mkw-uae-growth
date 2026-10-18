@@ -1,6 +1,7 @@
 import { dubaiDateHour, isUaeWorkingDay } from "@tasees/core";
 import type { Queryable } from "../lib/db.ts";
 import { exceptionQueue } from "./views.ts";
+import { loadCalendar } from "./calendar.ts";
 import type { Deps } from "./engagements.ts";
 
 /**
@@ -12,7 +13,7 @@ export const DIGEST_WINDOW = { fromHour: 8, toHour: 10 };
 
 export async function sendOpsDigest(tx: Queryable, deps: Deps): Promise<number> {
   const now = deps.now ? deps.now() : new Date();
-  if (!isUaeWorkingDay(now)) return 0;
+  if (!isUaeWorkingDay(now, await loadCalendar(tx))) return 0;
   const { date, hour } = dubaiDateHour(now);
   if (hour < DIGEST_WINDOW.fromHour || hour >= DIGEST_WINDOW.toHour) return 0;
   const staff = (await tx.query<{ email: string }>("select email from users where role in ('ops', 'founder') and status = 'active' order by email")).rows;

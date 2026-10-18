@@ -85,3 +85,20 @@ jobs:
           for i in $(seq 1 30); do curl -sf http://localhost:8787/api/health && break; sleep 1; done
           curl -sf http://localhost:8787/api/health | grep '"ok":true'
           docker logs tasees
+
+  infra:
+    name: Staging infrastructure synthesises (no AWS call)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install the infrastructure package on its own
+        run: pnpm --dir infra install --frozen-lockfile --ignore-workspace
+      - name: Typecheck and synthesise both stacks with example values
+        run: pnpm --dir infra synth:check

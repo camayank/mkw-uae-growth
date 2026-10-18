@@ -9,3 +9,6 @@ coverage/
 .DS_Store
 smoke-shots/
 smoke-server.pid
+
+# Real business data for importers (O10): contact details and MKW commercial terms. Never commit.
+data/import/

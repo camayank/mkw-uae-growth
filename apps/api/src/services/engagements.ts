@@ -26,6 +26,8 @@ import type { PaymentProvider } from "../lib/payments.ts";
 import type { Storage } from "../lib/storage.ts";
 import { issueInvoiceForPayment } from "./invoices.ts";
 import { generateObligations } from "./compliance.ts";
+import { loadCalendar } from "./calendar.ts";
+import { requiredTermsVersion } from "./legal.ts";
 import { loadDeliverables, loadPartners, loadRateCards, loadRules, loadSettings, today } from "./repo.ts";
 
 export const ALLOCATION_SLA_HOURS = 4;
@@ -57,7 +59,7 @@ const nowOf = (deps: Deps) => (deps.now ? deps.now() : new Date());
 
 // Offers -> engagements --------------------------------------------------------
 
-export async function acceptOffer(tx: Queryable, user: SessionUser, offerId: string, deps: Deps): Promise<string> {
+export async function acceptOffer(tx: Queryable, user: SessionUser, offerId: string, deps: Deps, termsVersion?: number): Promise<string> {
   const o = (
     await tx.query<Record<string, unknown>>(
       `select o.*, r.answers from offers o join requests r on r.id = o.request_id where o.id = $1`,
@@ -69,6 +71,8 @@ export async function acceptOffer(tx: Queryable, user: SessionUser, offerId: str
   if (user.role !== "client_owner") throw forbidden("Only the account owner can accept offers");
   if (String(o.valid_to).slice(0, 10) < today(nowOf(deps))) throw conflict("This offer has expired. Ask for a fresh one.");
   if (o.status !== "published") throw conflict("This offer is not open for acceptance");
+  // The client accepts the current client terms with the offer; the engagement keeps which version.
+  const acceptedTerms = await requiredTermsVersion(tx, termsVersion);
 
   await tx.query("update offers set status = 'accepted', accepted_at = app_now() where id = $1", [offerId]);
   await tx.query(
@@ -79,9 +83,9 @@ export async function acceptOffer(tx: Queryable, user: SessionUser, offerId: str
   const answers = (o.answers ?? {}) as { emirate?: string; freeZone?: string | null };
   const eng = (
     await tx.query<{ id: string }>(
-      `insert into engagements (offer_id, request_id, client_org_id, status, emirate, free_zone)
-       values ($1,$2,$3,'awaiting_payment',$4,$5) returning id`,
-      [offerId, o.request_id, o.client_org_id, answers.emirate ?? "Dubai", answers.freeZone ?? null],
+      `insert into engagements (offer_id, request_id, client_org_id, status, emirate, free_zone, client_terms_version)
+       values ($1,$2,$3,'awaiting_payment',$4,$5,$6) returning id`,
+      [offerId, o.request_id, o.client_org_id, answers.emirate ?? "Dubai", answers.freeZone ?? null, acceptedTerms],
     )
   ).rows[0]!;
   await tx.query("insert into engagement_parties (engagement_id, org_id, party) values ($1,$2,'client')", [eng.id, o.client_org_id]);
@@ -113,7 +117,7 @@ export async function acceptOffer(tx: Queryable, user: SessionUser, offerId: str
   await tx.query(`insert into payments (engagement_id, client_org_id, kind, amount_fils, status) values ($1,$2,'balance',$3,'scheduled')`, [eng.id, o.client_org_id, plan.clientOnCompletion]);
   // The client's acceptance is the action that creates the payment link.
   const payUrl = await attachPaymentLink(tx, deps, deposit.id, eng.id, "deposit", plan.clientOnAcceptance);
-  await audit(tx, user, "offer.accepted", "engagement", eng.id, { offerId, deposit: plan.clientOnAcceptance, paymentLink: !!payUrl });
+  await audit(tx, user, "offer.accepted", "engagement", eng.id, { offerId, deposit: plan.clientOnAcceptance, paymentLink: !!payUrl, clientTermsVersion: acceptedTerms });
   await deps.notify.send({ to: user.email, channel: "email", template: "payment_due", vars: { engagementId: eng.id, amountFils: plan.clientOnAcceptance, kind: "deposit", payUrl: payUrl ?? undefined } });
   return eng.id;
 }
@@ -233,7 +237,7 @@ export async function runAllocation(
       continue;
     }
     const payoutLines = await payoutLinesFor(tx, decision.partnerId, group);
-    const deadline = addWorkingHours(nowOf(deps), ALLOCATION_SLA_HOURS);
+    const deadline = addWorkingHours(nowOf(deps), ALLOCATION_SLA_HOURS, await loadCalendar(tx));
     const a = (
       await tx.query<{ id: string }>(
         `insert into allocations (engagement_id, partner_org_id, codes, reason, deadline, fallback_org_id, payout_lines, brief)
@@ -340,6 +344,7 @@ export async function respondToAllocation(
     (await tx.query<{ n: number }>("select coalesce(max(seq), 0)::int as n from milestones where engagement_id = $1", [engagementId])).rows[0]?.n,
   );
   const start = nowOf(deps);
+  const cal = await loadCalendar(tx);
   for (const pl of payoutLines) {
     await tx.query(
       "update engagement_lines set partner_org_id = $3, partner_unit_fils = $4 where engagement_id = $1 and code = $2",
@@ -352,7 +357,7 @@ export async function respondToAllocation(
         await tx.query<{ id: string }>(
           `insert into milestones (engagement_id, partner_org_id, code, seq, name, is_key, due_date, evidence_required)
            values ($1,$2,$3,$4,$5,$6,$7,$8) returning id`,
-          [engagementId, user.orgId, pl.code, seq, m.name, m.isKey, addWorkingDays(start, m.dueOffsetDays).toISOString().slice(0, 10), m.evidence],
+          [engagementId, user.orgId, pl.code, seq, m.name, m.isKey, addWorkingDays(start, m.dueOffsetDays, cal).toISOString().slice(0, 10), m.evidence],
         )
       ).rows[0]!;
       // The client's document checklist for the first step of each line (O6).
@@ -525,12 +530,13 @@ export async function resolveDispute(tx: Queryable, user: SessionUser, milestone
 
 /** Milestones QA-passed and not reviewed by the client within the review window count as approved. */
 export async function sweepAutoApprovals(tx: Queryable, deps: Deps): Promise<number> {
+  const cal = await loadCalendar(tx);
   const candidates = (
     await tx.query<{ id: string; qa_passed_at: string }>("select id, qa_passed_at from milestones where status = 'qa_passed'")
   ).rows;
   let n = 0;
   for (const c of candidates) {
-    if (addWorkingDays(new Date(c.qa_passed_at), CLIENT_REVIEW_DAYS) < nowOf(deps)) {
+    if (addWorkingDays(new Date(c.qa_passed_at), CLIENT_REVIEW_DAYS, cal) < nowOf(deps)) {
       await clientReviewMilestone(tx, null, c.id, true, undefined, deps);
       n++;
     }
@@ -678,7 +684,7 @@ export async function openQuoteRequest(tx: Queryable, user: SessionUser, request
     .sort((a, b) => b.quality - a.quality)
     .slice(0, 5);
   if (invited.length === 0) throw conflict("No signed partner offers these services yet");
-  const deadline = addWorkingHours(nowOf(deps), 9);
+  const deadline = addWorkingHours(nowOf(deps), 9, await loadCalendar(tx));
   const qr = (
     await tx.query<{ id: string }>("insert into quote_requests (request_id, deadline) values ($1,$2) returning id", [requestId, deadline.toISOString()])
   ).rows[0]!;

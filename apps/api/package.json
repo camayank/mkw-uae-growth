@@ -11,6 +11,9 @@
     "start": "node --conditions=production dist/main.js",
     "jobs": "node --conditions=production dist/scripts/run-jobs.js",
     "import:sheet": "node --conditions=production dist/scripts/import-sheet.js",
+    "import": "node --conditions=production dist/scripts/import.js",
+    "import:dev": "tsx src/scripts/import.ts",
+    "create-founder": "node --conditions=production dist/scripts/create-founder.js",
     "verify:audit": "node --conditions=production dist/scripts/verify-audit.js",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json"

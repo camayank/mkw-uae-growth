@@ -82,6 +82,11 @@ export async function createSession(db: Database, email: string): Promise<string
 
 type Tx = Parameters<Parameters<typeof asPlatform>[2]>[0];
 
+/** The active user with this email as a session user, for command-line tools that act as a named person (imports). */
+export async function sessionUserForEmail(db: Database, email: string): Promise<SessionUser> {
+  return asPlatform(db, null, (tx) => loadUserByEmail(tx, email.trim().toLowerCase()));
+}
+
 async function loadUserByEmail(tx: Tx, email: string): Promise<SessionUser> {
   const r = await tx.query<UserRow>(USER_SQL + " where u.email = $1 and u.status = 'active'", [email]);
   if (!r.rows[0]) throw unauthorised("No account for that email");

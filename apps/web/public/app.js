@@ -68,6 +68,30 @@ function reportGaps() {
 
 // Screen readers hear where they are after every route change: the page title follows the heading and the
 // main region takes focus. The skip link moves focus without changing the route.
+// A table wider than the screen scrolls sideways; when nothing inside it can take focus, keyboard users could not
+// scroll it, so it becomes a named region they can tab to (O10, axe at 390 px). Tables that fit get no tab stop.
+function keyboardScrollables() {
+  for (const wrap of $app.querySelectorAll(".table-wrap")) {
+    const scrolls = wrap.scrollWidth > wrap.clientWidth + 1;
+    const focusable = wrap.querySelector("a[href], button, input, select, textarea, [tabindex]");
+    if (scrolls && !focusable) {
+      let heading = null;
+      for (let el = wrap; el && el !== $app && !heading; el = el.parentElement)
+        for (let sib = el.previousElementSibling; sib && !heading; sib = sib.previousElementSibling) if (/^H[1-3]$/.test(sib.tagName)) heading = sib;
+      wrap.setAttribute("tabindex", "0");
+      wrap.setAttribute("role", "region");
+      wrap.setAttribute("aria-label", heading?.textContent?.trim() || document.querySelector("h1")?.textContent?.trim() || "Table");
+    } else if (wrap.getAttribute("role") === "region") {
+      for (const a of ["tabindex", "role", "aria-label"]) wrap.removeAttribute(a);
+    }
+  }
+}
+let resizeTimer = 0;
+window.addEventListener("resize", () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(keyboardScrollables, 200);
+});
+
 let lastAnnounced = "";
 function announceRoute() {
   const h1 = $app.querySelector("h1")?.textContent?.trim();
@@ -406,6 +430,7 @@ async function renderOnce() {
       announceRoute();
       if (lang() === "ar" && state.me.arabic?.preview) $app.insertAdjacentHTML("afterbegin", `<p class="notice small" data-no-i18n>النسخة العربية مسودة إلى أن يعتمدها المراجع؛ أنت تعاينها بصفتك من فريق MKW. <span lang="en" dir="ltr">Arabic is a draft until the reviewer signs it off; you are previewing it as MKW staff.</span></p>`);
       translatePage();
+      keyboardScrollables();
     }
   } catch (e) {
     if (e.status === 401) {

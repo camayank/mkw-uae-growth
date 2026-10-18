@@ -506,6 +506,9 @@ describe("logs and names", () => {
     await consoleTransport((m) => lines.push(m)).deliver({ to: "a@b.test", from: "x@y.test", fromName: "Tasees", subject: "482913 is your Tasees sign-in code", text: "Your code is 482913" });
     expect(lines.join("\n")).not.toMatch(/482913/);
     expect(lines.join("\n")).toMatch(/•••••• is your Tasees sign-in code/);
+    // A document number that merely contains six digits stays readable.
+    await consoleTransport((m) => lines.push(m)).deliver({ to: "a@b.test", from: "x@y.test", fromName: "Tasees", subject: "Tax invoice TI-2026-000001 for AED 10.00", text: "" });
+    expect(lines.join("\n")).toMatch(/TI-2026-000001/);
   });
 
   it("only a person's name counts as a verifier", () => {

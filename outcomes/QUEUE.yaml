@@ -68,7 +68,7 @@ outcomes:
     needs_from_owner: [Arabic reviewer]
   - id: O10
     title: Real data and staging (importers for the go-live workbook, legal texts, holiday calendar, staging as code, console menu)
-    status: in-progress
+    status: verified-pending-merge
     contract: outcomes/O10-real-data-and-staging.md
     depends_on: [O9]
     needs_from_owner: [AWS account and credentials, domain and DNS, SES sender verification, named fee verifier, lawyer sign-off on client terms and partner agreement]

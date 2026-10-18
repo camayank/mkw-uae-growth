@@ -68,8 +68,9 @@ export function consoleTransport(log: (msg: string) => void = console.log): Tran
     async deliver(email) {
       n += 1;
       // Logs are read by more people than a mailbox: a sign-in code never reaches them (development shows the code
-      // on screen with DEV_LOGIN instead). Six-digit runs (the code's length, D11) in the subject are masked.
-      log(`[email] to ${email.to} from "${email.fromName}" <${email.from}>: ${email.subject.replace(/\b\d{6}\b/g, "••••••")}`);
+      // on screen with DEV_LOGIN instead). Standalone six-digit runs (the code's length, D11) in the subject are
+      // masked; document numbers such as TI-2026-000001 are not.
+      log(`[email] to ${email.to} from "${email.fromName}" <${email.from}>: ${email.subject.replace(/(?<![\w-])\d{6}(?![\w-])/g, "••••••")}`);
       return { providerRef: `console-${n}` };
     },
   };

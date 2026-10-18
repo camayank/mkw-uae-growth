@@ -107,7 +107,7 @@ in a browser; everything listed here is not.
 
 ## Verified so far
 
-- 51 domain tests (`packages/core`) and 148 API tests (`apps/api`), all passing on PGlite and on PostgreSQL 16;
+- 51 domain tests (`packages/core`) and 184 API tests (`apps/api`), all passing on PGlite and on PostgreSQL 16;
   typecheck clean; `pnpm build` compiles and the compiled server runs in production mode from a fresh database.
 - O1: partner creation, invitations, role changes and deactivation (sessions revoked, codes refused) are tested as
   every role; PDPL export contains one person's data and no audit payloads (a test reproduces the leak that the
@@ -163,6 +163,12 @@ in a browser; everything listed here is not.
   withdrawing the sign-off resets clients to English. Smoke: axe-core zero violations on 15 screens in both
   languages (`docs/evidence/O9/axe.json`), keyboard-only sign-in and navigation, Arabic screenshots
   (`docs/evidence/O9/`, 109 smoke checks).
+- O10: each importer's dry run writes nothing, `--apply` is idempotent with one audit event per record and no
+  notification rows, and re-imports keep what MKW changed in the console; hostile workbooks are refused; the five
+  real files dry-run cleanly (redacted reports in `docs/evidence/O10/`); `invite_pending` users cannot sign in until
+  the pilot move; the terms version is stored on acceptance and stale versions refused; holidays from Settings move
+  SLA deadlines; `cdk synth` builds both stacks; concurrent migrations on PostgreSQL 16 apply each file once. Smoke:
+  grouped menu, legal and holiday Settings, terms at acceptance and the agreement at 1280 and 390 px, axe-core clean.
 - `pricing.test.ts` reproduces the Google Sheet Offer Builder example exactly.
 - `security.test.ts` shows Postgres refusing margin and partner-cost columns to clients, client price to partners,
   and other organisations' rows; sign-in throttling; security headers.

@@ -1,6 +1,6 @@
 # O2 Notifications
 
-Status: verified-pending-merge (branch `outcome/O2-notifications`, stacked on O1, 17 Oct 2026)
+Status: merged (pull request camayank/mkw-uae-growth#2 into `main`, 18 Oct 2026; was: branch `outcome/O2-notifications`, stacked on O1, 17 Oct 2026)
 
 ## Business result
 

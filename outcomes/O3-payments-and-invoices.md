@@ -1,6 +1,6 @@
 # O3 Payments and invoices
 
-Status: verified-pending-merge (branch `outcome/O3-payments-and-invoices`, stacked on O4, 17 Oct 2026)
+Status: merged (pull request camayank/mkw-uae-growth#4 into `main`, 18 Oct 2026; was: branch `outcome/O3-payments-and-invoices`, stacked on O4, 17 Oct 2026)
 
 ## Business result
 

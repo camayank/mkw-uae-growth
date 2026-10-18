@@ -1,6 +1,6 @@
 # O6 Partners and delivery
 
-Status: verified-pending-merge (branch `outcome/O6-partners-and-delivery`, stacked on O5, 17 Oct 2026)
+Status: merged (pull request camayank/mkw-uae-growth#6 into `main`, 18 Oct 2026; was: branch `outcome/O6-partners-and-delivery`, stacked on O5, 17 Oct 2026)
 
 ## Business result
 

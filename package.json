@@ -16,6 +16,8 @@
     "typecheck": "pnpm -r typecheck",
     "jobs": "pnpm --filter @tasees/api jobs",
     "import:sheet": "pnpm --filter @tasees/api import:sheet",
+    "import": "pnpm --filter @tasees/api import",
+    "import:dev": "pnpm --filter @tasees/api import:dev",
     "verify:audit": "pnpm --filter @tasees/api verify:audit",
     "smoke": "node scripts/smoke.mjs"
   },

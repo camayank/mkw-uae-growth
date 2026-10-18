@@ -326,6 +326,10 @@ export async function exceptionQueue(tx: Queryable) {
      union all
      select 'partner_document', pd.id::text, 'Partner document to verify: ' || pd.kind || ' (' || o.name || ')', pd.uploaded_at::text from partner_documents pd join orgs o on o.id = pd.partner_org_id where pd.status = 'uploaded'
      union all
+     select 'obligation', ob.id::text, 'Compliance date to confirm: ' || ob.title || ' (' || c.name || ')', ob.created_at::text from obligations ob join orgs c on c.id = ob.client_org_id where ob.status = 'pending_review'
+     union all
+     select 'obligation_evidence', ob.id::text, 'Filing evidence to check: ' || ob.title || ' (' || c.name || ')', ob.evidence_uploaded_at::text from obligations ob join orgs c on c.id = ob.client_org_id where ob.status = 'evidence_uploaded'
+     union all
      select 'partner_review', o.id::text, 'Partner application to review: ' || o.name, (o.profile->>'appliedAt')::timestamptz::text from orgs o where o.type = 'partner' and o.profile->>'status' = 'applied'
      order by at`,
   );

@@ -16,7 +16,7 @@ import {
 } from "./lib/auth.ts";
 import { asPlatform, asUser, audit } from "./lib/context.ts";
 import { num, withClock, type Database } from "./lib/db.ts";
-import { badRequest, forbidden, HttpError, notFound } from "./lib/errors.ts";
+import { badRequest, conflict, forbidden, HttpError, notFound } from "./lib/errors.ts";
 import type { Notifier } from "./lib/notify.ts";
 import type { Storage } from "./lib/storage.ts";
 import type { PaymentProvider } from "./lib/payments.ts";
@@ -26,6 +26,8 @@ import { draftScopeForRequest, listDrafts, reviewDraft } from "./services/drafts
 import { publicIntake, PublicIntakeSchema, listLeads, handleLead } from "./services/intake.ts";
 import type { AiModel } from "./lib/ai.ts";
 import { DOCUMENT_KINDS, invitePartnerStaff, movePartner, partnerOnboarding, recomputeScorecards, reviewDocument, setPartnerStaffActive, submitApplication, uploadDocument as uploadPartnerDocument, scorecardHistory } from "./services/partners.ts";
+import { accountingExport, dashboard, exportLog, partnerDashboard } from "./services/reporting.ts";
+import { addObligation, clientCalendar, confirmObligation, markObligationMet, obligationFile, opsCalendar, uploadObligationEvidence, waiveObligation } from "./services/compliance.ts";
 import { addDocumentRequest, allocateManually, attributeDelay, decideCredit, decideDocument, delayQueue, documentFileKey, offerDocument, rateEngagement, settleCredit, uploadDocument as uploadClientDocument } from "./services/delivery.ts";
 import { cancelPayoutRun, createPayoutRun, exportPayoutRun, listPayoutRuns, markPayoutRunPaid, payablePayouts, setPartnerBank, uploadPartnerInvoice } from "./services/payouts.ts";
 import {
@@ -789,6 +791,83 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     const { pdf, fileName } = await asPlatform(db, user, (tx) => offerDocument(tx, user, req.params.id));
     reply.header("content-disposition", `attachment; filename="${fileName}"`);
     return reply.type("application/pdf").send(pdf);
+  });
+
+  // Reporting and compliance (O8) ------------------------------------------------------------------
+  app.get<{ Querystring: { period?: string } }>("/api/admin/dashboard", async (req) => {
+    const user = requireRole(req, ...PLATFORM_ROLES);
+    const period = req.query.period ?? new Date(Date.now() + 4 * 3600 * 1000).toISOString().slice(0, 7); // Gulf time
+    return asPlatform(db, user, (tx) => dashboard(tx, user, period));
+  });
+  app.get("/api/partner/dashboard", async (req) => {
+    const user = requireRole(req, ...PARTNER_ROLES);
+    return asPlatform(db, user, (tx) => partnerDashboard(tx, user));
+  });
+  app.get<{ Querystring: { set?: string; from?: string; to?: string } }>("/api/admin/accounting/export", async (req, reply) => {
+    const user = requireRole(req, "ops", "finance", "founder");
+    const q = z.object({ set: z.enum(["sales", "payments", "payouts", "margin"]), from: z.string(), to: z.string() }).parse(req.query);
+    const { csv, fileName } = await asPlatform(db, user, (tx) => accountingExport(tx, user, q.set, q.from, q.to));
+    reply.header("content-disposition", `attachment; filename="${fileName}"`);
+    return reply.type("text/csv; charset=utf-8").send(csv);
+  });
+  app.get("/api/admin/accounting/exports", async (req) => {
+    const user = requireRole(req, "ops", "finance", "founder");
+    return asPlatform(db, user, (tx) => exportLog(tx));
+  });
+
+  app.get("/api/client/compliance", async (req) => {
+    const user = requireRole(req, ...CLIENT_ROLES);
+    return asUser(db, user, (tx) => clientCalendar(tx));
+  });
+  app.get<{ Querystring: { client?: string } }>("/api/ops/compliance", async (req) => {
+    const user = requireRole(req, ...PLATFORM_ROLES);
+    const client = req.query.client && z.string().uuid().safeParse(req.query.client).success ? req.query.client : undefined;
+    return asPlatform(db, user, (tx) => opsCalendar(tx, client));
+  });
+  app.post<{ Params: { id: string } }>("/api/ops/clients/:id/obligations", async (req) => {
+    const user = requireRole(req, "ops", "founder");
+    const body = z
+      .object({
+        kind: z.enum(["licence_renewal", "visa_expiry", "vat_return", "ct_return", "esr_notification", "ubo_update", "audit_filing", "custom"]),
+        title: z.string().min(3).max(200),
+        dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        recurrence: z.enum(["none", "monthly", "quarterly", "yearly"]).default("none"),
+        basis: z.string().max(500).optional(),
+        periodLabel: z.string().max(60).optional(),
+      })
+      .parse(req.body);
+    return asPlatform(db, user, (tx) => addObligation(tx, user, req.params.id, body));
+  });
+  app.post<{ Params: { id: string } }>("/api/ops/obligations/:id/confirm", async (req) => {
+    const user = requireRole(req, "ops", "founder");
+    const body = z.object({ dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), title: z.string().max(200).optional(), periodLabel: z.string().max(60).optional(), note: z.string().min(1).max(500), allowPast: z.boolean().optional() }).parse(req.body);
+    return asPlatform(db, user, (tx) => confirmObligation(tx, user, req.params.id, body));
+  });
+  app.post<{ Params: { id: string } }>("/api/ops/obligations/:id/waive", async (req) => {
+    const user = requireRole(req, "ops", "founder");
+    const { reason } = z.object({ reason: z.string().min(3).max(500) }).parse(req.body);
+    return asPlatform(db, user, (tx) => waiveObligation(tx, user, req.params.id, reason));
+  });
+  app.post<{ Params: { id: string } }>("/api/ops/obligations/:id/met", async (req) => {
+    const user = requireRole(req, "ops", "founder");
+    const { note } = z.object({ note: z.string().max(500).default("") }).parse(req.body ?? {});
+    return asPlatform(db, user, (tx) => markObligationMet(tx, user, req.params.id, note));
+  });
+  app.post<{ Params: { id: string } }>("/api/obligations/:id/evidence", async (req) => {
+    const user = requireRole(req, ...CLIENT_ROLES, "ops", "founder");
+    const body = fileBody.parse(req.body);
+    const o = await asPlatform(db, user, async (tx) => (await tx.query<{ client_org_id: string; status: string }>("select client_org_id, status from obligations where id = $1", [req.params.id])).rows[0]);
+    if (!o || (user.orgType === "client" && o.client_org_id !== user.orgId)) throw notFound("Obligation not found");
+    if (!["open", "evidence_uploaded"].includes(o.status)) throw conflict(`Evidence can be attached to an open obligation only (this one is ${o.status})`);
+    const key = await putFile(o.client_org_id, body.fileName, body.contentBase64);
+    return asPlatform(db, user, (tx) => uploadObligationEvidence(tx, user, req.params.id, { key, name: body.fileName }));
+  });
+  app.get<{ Params: { id: string } }>("/api/obligations/:id/file", async (req, reply) => {
+    const user = requireUser(req);
+    const f = await asPlatform(db, user, (tx) => obligationFile(tx, user, req.params.id));
+    const data = await opts.storage.get(f.key);
+    reply.header("content-disposition", `attachment; filename="${f.name.replace(/"/g, "")}"`);
+    return reply.type("application/octet-stream").send(data);
   });
 
   // Public intake (O5): the Tasees lead page posts here. Rate-limited per IP; consent required; honeypot.

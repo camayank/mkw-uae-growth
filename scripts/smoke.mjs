@@ -558,6 +558,51 @@ await ops.goto(BASE + "/#/delays"); await ops.reload();
 await ops.waitForSelector('main h1:text-is("Delays and service guarantee")');
 await shot(ops, "46-ops-delays");
 
+// Reporting and compliance (O8): dashboard, accounting export, compliance calendar, partner performance
+await founder.goto(BASE + "/#/dashboard"); await founder.reload();
+await founder.waitForSelector('main h1:text-is("Dashboard")');
+const dashText = await founder.locator("main").innerText();
+check("founder dashboard shows revenue, cash and margin:", /Revenue/.test(dashText) && /Cash collected/.test(dashText) && /Margin on accepted offers/.test(dashText));
+await shot(founder, "49-founder-dashboard");
+await ops.goto(BASE + "/#/dashboard"); await ops.reload();
+await ops.waitForSelector('main h1:text-is("Dashboard")');
+check("ops dashboard hides margin:", !/Margin on accepted offers/.test(await ops.locator("main").innerText()));
+const today = new Date().toISOString().slice(0, 10);
+const csv = await founder.request.get(`${BASE}/api/admin/accounting/export?set=sales&from=2026-01-01&to=${today}`);
+check("accounting export downloads as CSV:", csv.status() === 200 && /text\/csv/.test(csv.headers()["content-type"] ?? "") && (await csv.text()).startsWith("Date,Type,Number"));
+const marginCsv = await ops.request.get(`${BASE}/api/admin/accounting/export?set=margin&from=2026-01-01&to=${today}`);
+check("ops cannot export margin:", marginCsv.status() === 403);
+// Ops adds an obligation for the sample client; the client uploads the filing confirmation; ops marks it met
+await ops.goto(BASE + "/#/compliance"); await ops.reload();
+await ops.waitForSelector('form[data-form="obligation-add"]');
+await ops.selectOption('form[data-form="obligation-add"] select[name="kind"]', "vat_return");
+await ops.fill('form[data-form="obligation-add"] input[name="title"]', "VAT return Q4 2026");
+await ops.fill('form[data-form="obligation-add"] input[name="dueDate"]', "2027-01-28");
+await ops.selectOption('form[data-form="obligation-add"] select[name="recurrence"]', "quarterly");
+await ops.fill('form[data-form="obligation-add"] input[name="basis"]', "FTA portal, tax period Oct-Dec");
+await ops.locator('form[data-form="obligation-add"] button[type="submit"]').click();
+await ops.waitForTimeout(800);
+check("obligation added:", /VAT return Q4 2026/.test(await ops.locator("main").innerText()));
+await shot(ops, "50-ops-compliance");
+await client.goto(BASE + "/#/compliance"); await client.reload();
+await client.waitForSelector('main h1:text-is("Your compliance calendar")');
+check("client sees the confirmed obligation:", /VAT return Q4 2026/.test(await client.locator("main").innerText()));
+await client.setInputFiles('form[data-form="obligation-evidence"] input[name="file"] >> nth=0', { name: "vat-return-acknowledgement.pdf", mimeType: "application/pdf", buffer: pdfBytes });
+await client.locator('form[data-form="obligation-evidence"] button[type="submit"]').first().click();
+await client.waitForTimeout(800);
+check("client uploaded filing evidence:", /MKW Advisors will check/.test(await toastText(client)));
+await shot(client, "51-client-compliance");
+await ops.reload();
+await ops.waitForSelector('button[data-act="obligation-met"]');
+await ops.locator('button[data-act="obligation-met"]').first().click();
+await ops.waitForTimeout(800);
+check("ops marked the obligation met and the next one rolled forward:", /Marked met/.test(await toastText(ops)) && (await ops.locator("main").innerText()).split("VAT return Q4 2026").length >= 3);
+// Partner performance
+await partnerPages[0].goto(BASE + "/#/performance"); await partnerPages[0].reload();
+await partnerPages[0].waitForSelector('main h1:text-is("Your performance")');
+check("partner performance page has no client or margin figures:", !/margin|client price/i.test(await partnerPages[0].locator("main").innerText()));
+await shot(partnerPages[0], "52-partner-performance");
+
 // Mobile views of the new screens
 const mf = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
 const mfp = await mf.newPage();
@@ -566,7 +611,7 @@ await mfp.goto(BASE + "/");
 await mfp.locator('button[data-email="founder@mkwadvisors.test"]').click();
 await mfp.locator('form[data-form="verify"] button[type="submit"]').click();
 await mfp.waitForSelector("#nav a");
-for (const [route, name] of [["people", "20-mobile-people"], ["settings", "21-mobile-settings"], ["catalogue", "27-mobile-catalogue"], ["rules", "28-mobile-rules"], ["partners", "33-mobile-partners-runs"], ["scoping", "40-mobile-scoping"], ["agent", "41-mobile-ai-queue"], ["delays", "47-mobile-delays"]]) {
+for (const [route, name] of [["people", "20-mobile-people"], ["settings", "21-mobile-settings"], ["catalogue", "27-mobile-catalogue"], ["rules", "28-mobile-rules"], ["partners", "33-mobile-partners-runs"], ["scoping", "40-mobile-scoping"], ["agent", "41-mobile-ai-queue"], ["delays", "47-mobile-delays"], ["dashboard", "53-mobile-dashboard"], ["compliance", "54-mobile-compliance"]]) {
   await mfp.goto(BASE + "/#/" + route); await mfp.reload();
   await mfp.waitForSelector("main h1");
   await mfp.waitForTimeout(600);

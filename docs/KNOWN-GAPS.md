@@ -52,6 +52,9 @@ in a browser; everything listed here is not.
    is `approved` for finance to refund by card or transfer and record the reference; a partial card refund
    through the provider waits for the provider.
 10. **Arabic and right-to-left layout** for client screens.
+13. **Accounting system mapping.** Exports use a generic column layout; the Zoho Books / Xero / QuickBooks
+    import mapping waits for the owner to name the system. Obligation rules (visa term, VAT periods, CT
+    year end, ESR scope) are working assumptions marked UNCERTAIN until ops confirms each date.
 11. **WhatsApp notifications** (via the WhatsApp Business API) alongside email. The notifier records a
     `whatsapp` channel as `skipped` today.
 12. **Accounting export** of payments, payouts and VAT to the accounting system.
@@ -78,7 +81,7 @@ in a browser; everything listed here is not.
 
 ## Verified so far
 
-- 45 domain tests (`packages/core`) and 141 API tests (`apps/api`), all passing on PGlite and on PostgreSQL 16;
+- 51 domain tests (`packages/core`) and 145 API tests (`apps/api`), all passing on PGlite and on PostgreSQL 16;
   typecheck clean; `pnpm build` compiles and the compiled server runs in production mode from a fresh database.
 - O1: partner creation, invitations, role changes and deactivation (sessions revoked, codes refused) are tested as
   every role; PDPL export contains one person's data and no audit payloads (a test reproduces the leak that the
@@ -121,6 +124,13 @@ in a browser; everything listed here is not.
   partner, feeding the scorecard; month share per category; manual allocation refused for ineligible or
   over-cost partners and audited with the engine's own choice; offer PDF names no partner
   (`docs/evidence/O6/`, 68 smoke checks).
+- O8: founder figures (revenue, VAT, cash, payouts due, margin, on-time, funnel) reconcile to the database
+  rows; ops gets the same without margin; period parsing and previous period; partner dashboard carries no
+  client price or other firm; CSV exports match the rows, neutralise formula text, refuse margin to ops, are
+  logged and audited; obligations generated pending review and invisible to the client at the API and the
+  database, confirmed with a note, waived with a reason, met only with checked evidence, rolled forward,
+  reminded at 30 and 7 days and once overdue from Tasees with the "we do not file" line
+  (`docs/evidence/O8/`, 79 smoke checks).
 - `pricing.test.ts` reproduces the Google Sheet Offer Builder example exactly.
 - `security.test.ts` shows Postgres refusing margin and partner-cost columns to clients, client price to partners,
   and other organisations' rows; sign-in throttling; security headers.

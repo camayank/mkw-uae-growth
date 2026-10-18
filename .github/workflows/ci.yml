@@ -39,13 +39,18 @@ jobs:
 
       - name: Seed demo data and start the compiled server
         run: |
-          pnpm seed
+          set -o pipefail
+          if ! pnpm seed > seed.log 2>&1; then
+            echo "::error title=seed failed::$(tail -c 1500 seed.log | tr '\n' ' ')"
+            exit 1
+          fi
           cd apps/api
           DEV_LOGIN=1 PAYMENT_WEBHOOK_SECRET=ci-secret PGLITE_DIR=./data/pglite LOG=0 \
             node --conditions=production dist/main.js > ../../smoke-server.log 2>&1 &
           echo $! > ../../smoke-server.pid
-          for i in $(seq 1 30); do curl -sf http://localhost:8787/api/health && break; sleep 1; done
-          curl -sf http://localhost:8787/api/health
+          # A cold runner loads the PGlite engine slowly: allow 90 s, then show the server log on failure.
+          for i in $(seq 1 90); do curl -sf http://localhost:8787/api/health && break; sleep 1; done
+          curl -sf http://localhost:8787/api/health || { echo "::error title=server did not answer::$(tail -c 1500 ../../smoke-server.log | tr '\n' ' ')"; exit 1; }
 
       - name: Browser smoke test against the compiled build
         run: OUT=./smoke-shots node scripts/smoke.mjs
@@ -63,6 +68,7 @@ jobs:
           path: |
             smoke-shots/
             smoke-server.log
+            seed.log
           if-no-files-found: ignore
 
   image:

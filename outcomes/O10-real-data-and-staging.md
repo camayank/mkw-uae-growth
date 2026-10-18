@@ -123,7 +123,7 @@ console edits or removes. The holiday setting falls back to no holidays if the k
 | Holidays | a loaded holiday moves an SLA deadline and stops the ops digest; holiday edits are founder-only and audited; re-imports never undo the founder's calendar |
 | Staging | `pnpm --dir infra synth:check` synthesises `TaseesStaging` and `TaseesDemo` for me-central-1 (also a CI job); three processes migrating one PostgreSQL 16 database at once apply each file once |
 | Screens | `docs/evidence/O10/`: `61-console-menu.png`, `62-settings-legal-holidays.png`, `63-ops-imported-prospect.png`, `64-partner-agreement.png`, `07-client-offer.png` (1280 px); `65-mobile-console-menu.png`, `66-mobile-settings-legal.png`, `67-mobile-partner-agreement.png` (390 px) |
-| Smoke and accessibility | `docs/evidence/O10/log.txt` (all checks OK against a freshly seeded demo); axe-core WCAG 2.1 AA zero violations on 22 screens including the six O10 screens at both widths (`docs/evidence/O10/axe.json`); keyboard: the menus open with Enter or Space, close with Escape and when focus leaves them |
+| Smoke and accessibility | `docs/evidence/O10/log.txt` (135 checks OK against a freshly seeded demo); axe-core WCAG 2.1 AA zero violations on 22 screens, seven of them O10 screens (four at 1280 px, three at 390 px) (`docs/evidence/O10/axe.json`); keyboard: the menus open with Enter or Space, close with Escape and when focus leaves them |
 
 ## Could not verify
 

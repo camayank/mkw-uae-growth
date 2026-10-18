@@ -37,6 +37,30 @@ in a browser; everything listed here is not.
 6a. **Staging deployment.** The compiled build, image and CI exist; nothing is deployed because no cloud account
    exists yet. The container image build is exercised only by CI (`image` job), not yet by a run of that job.
 
+## O10: go-live data and staging
+
+18. **Nothing is deployed.** No cloud account, domain or DNS has been provided, so staging exists only as code
+    (`infra/`, checked with `cdk synth`) and a runbook (`docs/DEPLOY.md`). The first deployment will be the first time
+    the stacks meet AWS; follow the runbook step by step and expect to fix details (quotas, certificate, DNS).
+19. **The real data is not loaded anywhere.** The importers ran as dry runs against a local database
+    (`docs/evidence/O10/`). On staging they run only after the owner has seen the staging dry-run report.
+20. **Owner decisions and company details are blank.** Every decision keeps its built default and stays UNCERTAIN; no
+    fee verifier is named, so all 29 government-fee rows stay unloaded (none has a fee yet) and any fee loaded later
+    stays UNCERTAIN until the named verifier signs it. MKW's legal name, licence, address and TRN are blank, so tax
+    invoices stay held. Licence number, licensing authority, corporate tax TRN and signatory have no field on the
+    platform yet (only legal name, VAT TRN, address and bank name do).
+21. **Legal texts are drafts.** Both texts show "Draft, pending legal review" until the lawyer's review is recorded.
+    They are English only: an Arabic-speaking client sees the English terms.
+22. **No rate cards from the roster.** The workbook's two rate-card rows are drafts without fees. Partners' prices
+    arrive through the Sheet export (`pnpm import:sheet`) or the portal once firms are recruited.
+23. **FTA tax agents unconfirmed.** 30 of the 60 firms say "Likely" on the FTA register; none is marked a tax agent
+    until a person checks the register and ticks it in the console, so tax-agency codes cannot be allocated to them.
+24. **Fairness cap, deposit and quality bar are code constants.** An owner answer other than "Agree" needs a code
+    change; the import reports it rather than applying it.
+25. **Static storage key on staging.** The files bucket is reached with a put-and-get IAM key from Secrets Manager
+    (D49); rotate it yearly until the storage adapter reads the task role's credentials.
+26. **Imports run from the command line** (a one-off ECS task on staging); there is no upload screen for them.
+
 ## Soon after
 
 7. **Scoping rules and zone data are working estimates.** The advice engine, rule confidence, zone table,
@@ -45,9 +69,8 @@ in a browser; everything listed here is not.
    AI model is the deterministic in-memory double until an API key and spend cap exist; the Claude adapter is
    written against the same interface. The pack's lead page (`03-lead-page`) should post to
    `/api/public/intake` as `intake.html` does; WhatsApp capture waits for the Business number.
-8. **E-signature and public holidays.** The Partner Network Agreement is uploaded signed and verified by MKW
-   (O6); e-signature waits for the provider. The UAE working-time clock has no public holidays until the owner
-   supplies the year's list (`UAE_CALENDAR.holidays`), so a delay noticed over a holiday counts those days.
+8. **E-signature.** The Partner Network Agreement is accepted online per version (O10) and uploaded signed and
+   verified by MKW (O6); e-signature waits for the provider.
 9. **Guarantee settlement after the balance is paid.** When the balance was already paid, an approved credit
    is `approved` for finance to refund by card or transfer and record the reference; a partial card refund
    through the provider waits for the provider.
@@ -76,9 +99,9 @@ in a browser; everything listed here is not.
     launch; Arabic versions are O9.
 17b. **`deliverables.active` is not editable yet.** The column exists and inactive codes are hidden, but no
     screen switches a code off; do it by SQL until the catalogue screen gets the control.
-17a. **UAE public holidays are not loaded.** `UAE_CALENDAR.holidays` is empty, so SLA clocks and the ops digest
-    treat Eid and National Day as working days until the dates are entered each year (moon-sighting holidays
-    are confirmed late). Add a settings entry and a founder screen for them.
+17a. **UAE public holidays are expected dates.** The calendar is a setting with a founder screen (O10); the import
+    loads the 14 dates from the go-live workbook (2 Dec 2026 to 3 Dec 2027), every one "expected". The founder confirms
+    each when the government announces it, and adds the next year's dates before December 2027.
 17. **Row-level security tests run on PGlite in CI.** They also pass on PostgreSQL 16 locally
     (`TEST_DATABASE_URL`); CI should add a Postgres service so that run is repeated on every pull request.
 

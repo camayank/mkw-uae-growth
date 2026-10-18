@@ -26,6 +26,8 @@ pnpm typecheck
 pnpm build         # compiles to dist/; `pnpm start` then runs the compiled build (what production and the Dockerfile run)
 npx playwright install chromium && pnpm smoke   # browser smoke test against a running demo; screenshots in ./smoke-shots
 TEST_DATABASE_URL=postgres://... pnpm test       # the same suites on a real Postgres server
+pnpm import:dev all data/import                  # go-live importers, dry run (add --apply --as <founder>); see docs/DEPLOY.md
+pnpm --dir infra synth:check                     # staging and demo as code (AWS CDK), checked locally; see docs/DEPLOY.md
 ```
 
 No database server is needed for development: the API runs an embedded Postgres (PGlite) on disk.

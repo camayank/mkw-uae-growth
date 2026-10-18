@@ -15,9 +15,14 @@
  *   all          a folder holding the five files above, in that order
  *
  * `--evidence dir` also writes a redacted copy of each report (no firm names or contact details) to dir/<kind>.md.
+ * `--from-storage` reads the file (or, for `all`, the folder) from the configured storage bucket instead of local disk,
+ * so on staging the go-live files stay in the private UAE bucket and never enter the container image:
+ *   node dist/scripts/import.js all import/ --from-storage --as connect@mkwadvisors.com
  */
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { basename, join } from "node:path";
+import { storageFromEnv } from "../lib/storage.ts";
 import { migrate, openDatabase, type Database } from "../lib/db.ts";
 import { sessionUserForEmail } from "../lib/auth.ts";
 import type { SessionUser } from "../lib/context.ts";
@@ -37,7 +42,8 @@ const flag = (name: string) => {
   return i >= 0 ? args[i + 1] : undefined;
 };
 const positional = args.filter((a, i) => !a.startsWith("--") && !["--as", "--decisions", "--evidence"].includes(args[i - 1] ?? ""));
-const [kind, file] = positional;
+const [kind, fileArg] = positional;
+let file = fileArg;
 const apply = args.includes("--apply");
 const KINDS = ["partners", "rate-cards", "fees", "holidays", "company", "decisions", "legal", "all"];
 if (!kind || !file || !KINDS.includes(kind)) {
@@ -54,6 +60,24 @@ if (actor && actor.role !== "founder") {
   process.exit(2);
 }
 const evidenceDir = flag("--evidence");
+const GO_LIVE_FILES = ["Tasees-Client-Terms.md", "MKW-Partner-Network-Agreement.md", "Tasees-Go-Live-Data.xlsx", "MKW-Company-Details.md", "Owner-Decisions.md"];
+let tempDir: string | null = null;
+let decisionsFlag = flag("--decisions");
+if (args.includes("--from-storage")) {
+  // Copy the named objects to a private temporary folder for this run; it is deleted at the end.
+  const { storage } = storageFromEnv();
+  tempDir = await mkdtemp(join(tmpdir(), "tasees-import-"));
+  const keys = kind === "all" ? GO_LIVE_FILES.map((n) => `${file!.replace(/\/?$/, "/")}${n}`) : [file!, ...(decisionsFlag ? [decisionsFlag] : [])];
+  for (const key of keys) {
+    try {
+      await writeFile(join(tempDir, basename(key)), await storage.get(key));
+    } catch (e) {
+      console.error(`Could not read ${key} from storage: ${(e as Error).message}`);
+    }
+  }
+  file = kind === "all" ? tempDir : join(tempDir, basename(file!));
+  if (decisionsFlag) decisionsFlag = join(tempDir, basename(decisionsFlag));
+}
 const stamp = new Date().toISOString().slice(0, 16).replace("T", " ") + " UTC";
 
 async function grid(path: string, tab: string): Promise<string[][]> {
@@ -115,7 +139,7 @@ const plan: Array<[string, string, string?]> =
         ["company", join(file, "MKW-Company-Details.md")],
         ["decisions", join(file, "Owner-Decisions.md")],
       ]
-    : [[kind, file, flag("--decisions")]];
+    : [[kind, file, decisionsFlag]];
 
 let failed = false;
 for (const [k, path, decisions] of plan) {
@@ -133,4 +157,5 @@ for (const [k, path, decisions] of plan) {
   }
 }
 await db.close();
+if (tempDir) await rm(tempDir, { recursive: true, force: true });
 process.exit(failed ? 1 : 0);

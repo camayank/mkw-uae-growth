@@ -26,7 +26,7 @@ async function session(email) {
   await page.goto(BASE + "/");
   await page.locator(`button[data-email="${email}"]`).click();
   await page.locator('form[data-form="verify"] button[type="submit"]').click();
-  await page.waitForSelector("#nav a");
+  await page.waitForSelector("#nav > :is(a, .navgroup)");
   return page;
 }
 /** Sign in through the real email form (for accounts that are not demo buttons). Development mode fills the code in. */
@@ -39,7 +39,7 @@ async function sessionByEmail(email) {
   await page.locator('form[data-form="request-code"] button[type="submit"]').click();
   await page.waitForSelector('form[data-form="verify"]');
   await page.locator('form[data-form="verify"] button[type="submit"]').click();
-  await page.waitForSelector("#nav a");
+  await page.waitForSelector("#nav > :is(a, .navgroup)");
   return page;
 }
 const shot = async (page, name) => {
@@ -48,6 +48,20 @@ const shot = async (page, name) => {
   log.push(name);
 };
 const toastText = async (page) => (await page.locator("#toast").textContent()) ?? "";
+// axe-core is evaluated through the browser's debugging protocol, which the page's content security policy does not
+// govern (the policy still refuses any injected <script>, as it should).
+const axeSource = readFileSync(new URL("../node_modules/axe-core/axe.min.js", import.meta.url), "utf8");
+const axeResults = [];
+async function axeCheck(page, name) {
+  if (!(await page.evaluate(() => !!window.axe))) await page.evaluate(axeSource);
+  const r = await page.evaluate(async () => {
+    const res = await window.axe.run(document, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"] } });
+    return res.violations.map((v) => ({ id: v.id, impact: v.impact, help: v.help, nodes: v.nodes.slice(0, 3).map((n) => n.target.join(" ")) }));
+  });
+  axeResults.push({ screen: name, violations: r });
+  check(`axe: no WCAG 2.1 AA violations on ${name}:`, r.length === 0);
+  if (r.length) log.push(`axe ${name}: ${JSON.stringify(r)}`);
+}
 
 await (await import("node:fs/promises")).mkdir(OUT, { recursive: true });
 
@@ -104,9 +118,16 @@ await finance.goto(BASE + "/" + standard[1]);
 await finance.waitForSelector(".kpis");
 await shot(finance, "06-finance-offer-with-margin");
 
-// Client: view and accept
+// Client: view and accept. The client terms come first (O10): version, draft note, a tick to accept.
 await client.goto(BASE + "/" + standard[1]);
 await client.waitForSelector('button[data-act="accept-offer"]');
+await axeCheck(client, "client offer with the client terms (O10)");
+check("client sees the client terms with their version before accepting:", (await client.locator("input[data-terms-version]").count()) === 1 && /version 1/.test(await client.locator(".accept-terms").innerText()));
+check("client terms show the draft note until the lawyer's review is recorded:", (await client.getByText("Draft, pending legal review").count()) >= 1);
+await client.locator('button[data-act="accept-offer"]').click();
+await client.waitForTimeout(300);
+check("acceptance without ticking the terms is stopped:", /accept the client terms/i.test(await toastText(client)) && /#\/offer\//.test(client.url()));
+await client.locator("input[data-terms-version]").check();
 await shot(client, "07-client-offer");
 await client.locator('button[data-act="accept-offer"]').click();
 await client.waitForURL(/engagement/);
@@ -212,7 +233,7 @@ const mp = await m.newPage();
 await mp.goto(BASE + "/");
 await mp.locator('button[data-email="founder@sample-client.test"]').click();
 await mp.locator('form[data-form="verify"] button[type="submit"]').click();
-await mp.waitForSelector("#nav a");
+await mp.waitForSelector("#nav > :is(a, .navgroup)");
 await mp.goto(engagementUrl); await mp.reload();
 await mp.waitForTimeout(700);
 const overflow = await mp.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
@@ -297,7 +318,10 @@ log.push("retention UNCERTAIN badges before: " + (await founder.locator('form[da
 await shot(founder, "18-settings-retention");
 await founder.fill('form[data-form="retention"] input[name="note"]', "Smoke test: confirmed by the founder");
 await founder.locator('form[data-form="retention"] button[type="submit"]').click();
-await founder.waitForTimeout(800);
+// Wait for the re-rendered table rather than a fixed pause: Settings loads several sections before it redraws.
+await founder
+  .waitForFunction(() => { const b = [...document.querySelectorAll('form[data-form="retention"] .badge')]; return b.length > 0 && !b.some((x) => x.textContent === "UNCERTAIN"); }, null, { timeout: 20000 })
+  .catch(() => {});
 log.push("retention: " + (await toastText(founder)));
 check("no UNCERTAIN retention badge after the founder confirms:", (await founder.locator('form[data-form="retention"] .badge:text-is("UNCERTAIN")').count()) === 0);
 await shot(founder, "19-settings-retention-confirmed");
@@ -604,18 +628,6 @@ check("partner performance page has no client or margin figures:", !/margin|clie
 await shot(partnerPages[0], "52-partner-performance");
 
 // Arabic and accessibility (O9): sign-off gate, Arabic client screens, axe-core on key screens, keyboard-only path
-const axeSource = readFileSync(new URL("../node_modules/axe-core/axe.min.js", import.meta.url), "utf8");
-const axeResults = [];
-async function axeCheck(page, name) {
-  await page.addScriptTag({ content: axeSource });
-  const r = await page.evaluate(async () => {
-    const res = await window.axe.run(document, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"] } });
-    return res.violations.map((v) => ({ id: v.id, impact: v.impact, help: v.help, nodes: v.nodes.slice(0, 3).map((n) => n.target.join(" ")) }));
-  });
-  axeResults.push({ screen: name, violations: r });
-  check(`axe: no WCAG 2.1 AA violations on ${name}:`, r.length === 0);
-  if (r.length) log.push(`axe ${name}: ${JSON.stringify(r)}`);
-}
 const a11y = await browser.newContext({ viewport: { width: 1280, height: 900 }, bypassCSP: true });
 const ap = await a11y.newPage();
 ap.on("pageerror", (e) => errors.push(`a11y: ${e.message}`));
@@ -636,7 +648,7 @@ await ap.keyboard.type("founder@sample-client.test");
 await ap.keyboard.press("Enter");
 await ap.waitForSelector('form[data-form="verify"]');
 await ap.keyboard.press("Enter"); // the code is focused and filled in development mode
-await ap.waitForSelector("#nav a");
+await ap.waitForSelector("#nav > :is(a, .navgroup)");
 let onOffer = false;
 for (let i = 0; i < 60 && !onOffer; i++) {
   await ap.keyboard.press("Tab");
@@ -660,7 +672,7 @@ ap2.on("pageerror", (e) => errors.push(`a11y partner: ${e.message}`));
 await ap2.goto(BASE + "/");
 await ap2.locator('button[data-email="admin@setup-partner.test"]').click();
 await ap2.locator('form[data-form="verify"] button[type="submit"]').click();
-await ap2.waitForSelector("#nav a");
+await ap2.waitForSelector("#nav > :is(a, .navgroup)");
 await axeCheck(ap2, "partner home (en)");
 await ap2.goto(BASE + "/#/firm"); await ap2.waitForSelector("main h1");
 await axeCheck(ap2, "partner firm (en)");
@@ -695,7 +707,8 @@ await client.waitForTimeout(500);
 check("engagement in Arabic:", /الخطوات/.test(await client.locator("main").innerText()));
 await shot(client, "57-client-engagement-ar");
 await client.goto(BASE + "/#/compliance"); await client.waitForSelector("main h1");
-await client.waitForTimeout(500);
+// Wait for the compliance page itself, not the previous page's heading that is still on screen while it loads.
+await client.waitForFunction(() => /تقويم التزاماتك/.test(document.querySelector("main")?.innerText ?? ""), null, { timeout: 20000 }).catch(() => {});
 check("compliance in Arabic:", /تقويم التزاماتك/.test(await client.locator("main").innerText()));
 await shot(client, "58-client-compliance-ar");
 await pp.goto(BASE + "/intake.html?lang=ar"); await pp.waitForSelector('html[dir="rtl"]');
@@ -708,7 +721,7 @@ ap3.on("pageerror", (e) => errors.push(`a11y ar: ${e.message}`));
 await ap3.goto(BASE + "/");
 await ap3.locator('button[data-email="founder@sample-client.test"]').click();
 await ap3.locator('form[data-form="verify"] button[type="submit"]').click();
-await ap3.waitForSelector("#nav a");
+await ap3.waitForSelector("#nav > :is(a, .navgroup)");
 await ap3.waitForSelector('html[dir="rtl"]');
 await axeCheck(ap3, "client home (ar)");
 await ap3.goto(BASE + "/" + standard[1]); await ap3.waitForSelector("main h1");
@@ -726,13 +739,130 @@ const msgs = await ap3.locator(".msg div[data-no-i18n]").allInnerTexts();
 check("people's own words are left untranslated:", msgs.length >= 1 && msgs.every((m) => !/[\u0600-\u06FF]/.test(m)));
 await ap3.goto(BASE + "/intake.html?lang=ar"); await ap3.waitForSelector('html[dir="rtl"]');
 await axeCheck(ap3, "public intake (ar)");
+// O10: legal texts and holidays on Settings, the grouped console menu, the partner agreement, an imported prospect.
+{
+  const signIn = async (page, email) => {
+    await page.goto(BASE + "/");
+    await page.locator(`button[data-email="${email}"]`).click();
+    await page.locator('form[data-form="verify"] button[type="submit"]').click();
+    await page.waitForSelector("#nav > :is(a, .navgroup)");
+  };
+  const desk = await browser.newContext({ viewport: { width: 1280, height: 900 }, bypassCSP: true });
+  const fp = await desk.newPage();
+  fp.on("pageerror", (e) => errors.push(`O10 founder: ${e.message}`));
+  fp.on("dialog", (d) => d.accept(d.type() === "prompt" ? "Announced by the government" : undefined));
+  await signIn(fp, "founder@mkwadvisors.test");
+  // The staff menu: four entries on one row; a menu opens and closes by keyboard.
+  const oneRow = await fp.evaluate(() => {
+    const items = [...document.querySelectorAll("#nav > a, #nav > .navgroup")].map((e) => e.getBoundingClientRect().top);
+    return items.length > 0 && Math.max(...items) - Math.min(...items) < 4;
+  });
+  check("staff menu fits on one row at 1280 px:", oneRow);
+  check("staff menu has four entries (Work, Partners, Dashboard, Setup):", (await fp.locator("#nav > a, #nav > .navgroup").count()) === 4);
+  await fp.locator('#nav button[aria-controls="nav-work"]').focus();
+  await fp.keyboard.press("Enter");
+  const openWork = await fp.evaluate(() => !document.getElementById("nav-work").hidden && document.activeElement?.getAttribute("href") === "#/home");
+  check("Enter opens the Work menu and focuses its first link:", openWork);
+  await fp.screenshot({ path: `${OUT}/61-console-menu.png`, fullPage: false });
+  log.push("61-console-menu");
+  await axeCheck(fp, "console with the Work menu open (O10)");
+  await fp.keyboard.press("Escape");
+  check("Escape closes the menu and returns focus to its button:", await fp.evaluate(() => document.getElementById("nav-work").hidden && document.activeElement?.getAttribute("aria-controls") === "nav-work"));
+  await fp.locator('#nav button[aria-controls="nav-setup"]').click();
+  await fp.locator('#nav-setup a[href="#/settings"]').click();
+  await fp.waitForSelector('form[data-form="holiday-set"]');
+  check("Setup tells screen readers which page is open:", /Setup: Settings/.test((await fp.locator('#nav button[aria-controls="nav-setup"]').textContent()) ?? "") && (await fp.locator('#nav button[aria-controls="nav-setup"].on').count()) === 1);
+  check("staff menu still on one row with the longest label open:", await fp.evaluate(() => {
+    const items = [...document.querySelectorAll("#nav > a, #nav > .navgroup")].map((e) => e.getBoundingClientRect().top);
+    return Math.max(...items) - Math.min(...items) < 4;
+  }));
+  // Legal texts: both drafts; the founder records the lawyer's review of the client terms.
+  check("settings lists both legal texts as drafts:", (await fp.locator('form[data-form="legal-signoff"]').count()) === 2);
+  const signoff = fp.locator('form[data-form="legal-signoff"][data-kind="client_terms"]');
+  await signoff.locator('input[name="lawyer"]').fill("Demo Law LLP");
+  await signoff.locator('input[name="approvedOn"]').fill("2026-10-18");
+  await signoff.locator('button[type="submit"]').click();
+  await fp.waitForSelector('form[data-form="legal-signoff"][data-kind="client_terms"]', { state: "detached" });
+  check("the review is recorded and the client terms are no longer a draft:", /Demo Law LLP/.test(await fp.locator("main").innerText()));
+  // Holidays: the founder adds an expected date with its source.
+  const hf = fp.locator('form[data-form="holiday-set"]');
+  await hf.locator('input[name="date"]').fill("2027-03-09");
+  await hf.locator('input[name="name"]').fill("Eid Al Fitr");
+  await hf.locator('input[name="reason"]').fill("Expected date, published 2027 calendar");
+  await hf.locator('button[type="submit"]').click();
+  await fp.waitForSelector('button[data-act="holiday-confirm"][data-date="2027-03-09"]');
+  check("the holiday shows as expected until confirmed:", /Eid Al Fitr/.test(await fp.locator("main").innerText()));
+  await shot(fp, "62-settings-legal-holidays");
+  await axeCheck(fp, "settings: legal texts and holidays (O10)");
+  // An imported prospect, as ops sees it (synthetic firm from the development seed).
+  const op = await desk.newPage();
+  op.on("pageerror", (e) => errors.push(`O10 ops: ${e.message}`));
+  await op.goto(BASE + "/#/partners");
+  await op.reload();
+  await op.locator("main a", { hasText: "Example Prospect Consultants" }).first().click();
+  await op.waitForSelector("text=From the partner roster");
+  const roster = await op.locator("main").innerText();
+  check("an imported prospect shows its Partner ID and an unconfirmed FTA claim:", /GB0000/.test(roster) && /check the FTA register/.test(roster) && /prospect/.test(roster));
+  await shot(op, "63-ops-imported-prospect");
+  await desk.close();
+
+  // The partner admin reads and accepts the Partner Network Agreement; only MKW Advisors is named.
+  const pctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, bypassCSP: true });
+  const pp = await pctx.newPage();
+  pp.on("pageerror", (e) => errors.push(`O10 partner: ${e.message}`));
+  pp.on("dialog", (d) => d.accept());
+  await signIn(pp, "admin@setup-partner.test");
+  await pp.goto(BASE + "/#/firm");
+  await pp.reload();
+  await pp.waitForSelector('button[data-act="agreement-accept"]');
+  check("the partner sees the agreement as a draft pending legal review:", (await pp.getByText("Draft, pending legal review").count()) >= 1);
+  await axeCheck(pp, "partner firm: the agreement (O10)");
+  await pp.locator('button[data-act="agreement-accept"]').click();
+  await pp.waitForSelector("text=Accepted online: version 1");
+  check("partner screens never show the name Tasees:", !/\bTasees\b/.test(await pp.locator("body").innerText()));
+  await shot(pp, "64-partner-agreement");
+  await pctx.close();
+
+  // Phone width: the menu opens as a panel and nothing runs off the screen.
+  const mob = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+  const mp2 = await mob.newPage();
+  mp2.on("pageerror", (e) => errors.push(`O10 mobile: ${e.message}`));
+  await signIn(mp2, "founder@mkwadvisors.test");
+  await mp2.goto(BASE + "/#/settings");
+  await mp2.reload();
+  await mp2.waitForSelector('form[data-form="holiday-set"]');
+  await mp2.locator('#nav button[aria-controls="nav-setup"]').click();
+  const overOpen = await mp2.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
+  check("console menu open at 390 px has no horizontal overflow:", !overOpen);
+  await mp2.screenshot({ path: `${OUT}/65-mobile-console-menu.png`, fullPage: false });
+  log.push("65-mobile-console-menu");
+  await mp2.keyboard.press("Escape");
+  await mp2.locator("h2", { hasText: "Legal texts" }).scrollIntoViewIfNeeded();
+  check("settings with legal texts and holidays at 390 px has no horizontal overflow:", !(await mp2.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
+  await mp2.screenshot({ path: `${OUT}/66-mobile-settings-legal.png`, fullPage: false });
+  log.push("66-mobile-settings-legal");
+  const mobPartner = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+  const mpart = await mobPartner.newPage();
+  mpart.on("pageerror", (e) => errors.push(`O10 mobile partner: ${e.message}`));
+  await signIn(mpart, "admin@setup-partner.test");
+  await mpart.goto(BASE + "/#/firm");
+  await mpart.reload();
+  await mpart.waitForSelector("text=Partner Network Agreement");
+  check("partner agreement at 390 px has no horizontal overflow:", !(await mpart.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
+  await mpart.locator("h2", { hasText: "Partner Network Agreement" }).scrollIntoViewIfNeeded();
+  await mpart.screenshot({ path: `${OUT}/67-mobile-partner-agreement.png`, fullPage: false });
+  log.push("67-mobile-partner-agreement");
+  await mobPartner.close();
+  await mob.close();
+}
+
 writeFileSync(`${OUT}/axe.json`, JSON.stringify(axeResults, null, 2));
 // Back to English for the mobile shots that follow, after one Arabic phone shot
 const mar = await (await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 })).newPage();
 await mar.goto(BASE + "/");
 await mar.locator('button[data-email="founder@sample-client.test"]').click();
 await mar.locator('form[data-form="verify"] button[type="submit"]').click();
-await mar.waitForSelector("#nav a");
+await mar.waitForSelector("#nav > :is(a, .navgroup)");
 await mar.waitForSelector('html[dir="rtl"]');
 await mar.waitForTimeout(600);
 check("Arabic home at 390 px has no horizontal overflow:", !(await mar.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
@@ -747,7 +877,7 @@ mfp.on("pageerror", (e) => errors.push(`mobile founder: ${e.message}`));
 await mfp.goto(BASE + "/");
 await mfp.locator('button[data-email="founder@mkwadvisors.test"]').click();
 await mfp.locator('form[data-form="verify"] button[type="submit"]').click();
-await mfp.waitForSelector("#nav a");
+await mfp.waitForSelector("#nav > :is(a, .navgroup)");
 for (const [route, name] of [["people", "20-mobile-people"], ["settings", "21-mobile-settings"], ["catalogue", "27-mobile-catalogue"], ["rules", "28-mobile-rules"], ["partners", "33-mobile-partners-runs"], ["scoping", "40-mobile-scoping"], ["agent", "41-mobile-ai-queue"], ["delays", "47-mobile-delays"], ["dashboard", "53-mobile-dashboard"], ["compliance", "54-mobile-compliance"]]) {
   await mfp.goto(BASE + "/#/" + route); await mfp.reload();
   await mfp.waitForSelector("main h1");
@@ -765,7 +895,7 @@ await mpp.fill('form[data-form="request-code"] input[name="email"]', partnerEmai
 await mpp.locator('form[data-form="request-code"] button[type="submit"]').click();
 await mpp.waitForSelector('form[data-form="verify"]');
 await mpp.locator('form[data-form="verify"] button[type="submit"]').click();
-await mpp.waitForSelector("#nav a");
+await mpp.waitForSelector("#nav > :is(a, .navgroup)");
 await mpp.goto(BASE + "/#/firm"); await mpp.reload();
 await mpp.waitForSelector("main h1");
 await mpp.waitForTimeout(600);

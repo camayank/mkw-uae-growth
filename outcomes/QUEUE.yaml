@@ -31,7 +31,8 @@ outcomes:
     needs_from_owner: [merchant account and keys, MKW TRN, sample bank bulk-transfer file]
   - id: O4
     title: Catalogue and fees (83 services, government fee table with sources, rules admin)
-    status: queued
+    status: verified-pending-merge
+    contract: outcomes/O4-catalogue-and-fees.md
     depends_on: [O1]
     needs_from_owner: [named person who verifies fees and rules]
   - id: O5

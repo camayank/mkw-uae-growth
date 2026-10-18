@@ -1,0 +1,82 @@
+# O4 Catalogue and fees
+
+Status: verified-pending-merge (branch `outcome/O4-catalogue-and-fees`, stacked on O2, 17 Oct 2026)
+
+## Business result
+
+Ops can price any of the 83 services in the Service Catalogue, every government fee a client is charged comes
+from MKW's own table with a source and a verification date (or is plainly marked UNCERTAIN and stopped for a
+person), and the founder changes margin rates, floors and fees from the console with an effective date, with
+every change on the audit trail and earlier offers keeping the rules they were priced under.
+
+## Scope
+
+1. **Full catalogue.** The 20 starter codes stay as they are (tests and rate cards depend on them); 62 codes
+   are added so all 83 services of the Service Catalogue tab are quotable, each with category, contracting
+   model (agent for the regulated ones), billing, market mid and basis, required evidence and the Service
+   Catalogue row it came from. Five new margin categories (HR, Advisory, Private Client, Growth, Other) get
+   default rules marked for the owner to confirm. Catalogue screen for platform roles.
+2. **Government fee table.** `government_fees`: fee per code, emirate and free zone, with source link, note,
+   effective date, who verified it and when, and a confidence (`UNCERTAIN` until a named person verifies).
+   A fee is **stale** 90 days after verification. Pricing uses the table for the request's emirate and zone;
+   a line priced on an UNCERTAIN or stale fee goes to ops review with the reason, so it cannot reach a client
+   without a person's decision. Where the table has no row the partner's stated fee is used, as before, and the
+   line says so.
+3. **Rules admin with effective dates.** `margin_rule_versions` holds every rate and floor with an effective
+   date; pricing loads the version in force on the build date; `offers.rules_as_of` records it, so an earlier
+   offer is never re-priced by a later rule. Founder-only API and screen to schedule a rule change, add or
+   verify a fee and change the pricing settings (cap factor, rounding). Every change is audited with before
+   and after.
+4. **Sample reproduction.** Ten sample requests priced through the engine, checked line by line against the
+   Offer Builder's rule (`max(cost × (1+m), cost + floor)`, rounded up to AED 50, cap 1.25 × mid), including
+   the Sheet's own OF-0001 example.
+
+## Exclusions
+
+Verified fee data itself (needs the named verifier); scoping intelligence that picks the zone (O5); rate card
+import changes; Arabic names (O9).
+
+## Acceptance evidence
+
+- Tests: 83 services load; every code has a rule; fee lookup by emirate and zone (zone row beats emirate row);
+  UNCERTAIN and stale fees send the line to review with the reason, verified fees do not; a scheduled rule
+  version applies only from its date and an offer built earlier keeps its figures; founder-only writes, finance
+  and ops read, clients and partners refused at the API and the database; audit before/after; ten sample
+  requests reproduce the rule to the fils.
+- Smoke: catalogue and rules screens at 1280 px and 390 px; a fee added UNCERTAIN shows on the rules screen.
+
+## Dependencies and owner decisions
+
+- Named person who verifies fees and rules (monthly), and the margin rules for the five new categories.
+- Whether the partner's stated government fee may be used when the table has none (built: yes, with a note).
+
+## Risks
+
+- A wrong fee in the table is charged to every client of that zone: mitigated by the verifier name and date on
+  every row and the 90-day staleness rule.
+
+## Rollback
+
+Additive migration; `STORAGE`, notifications and the pricing formula are untouched. Reverting the pull request
+leaves the extra catalogue rows in place (harmless) and returns to the single current rule per category.
+
+## Evidence
+
+| Claim | Evidence |
+| --- | --- |
+| Tests | `pnpm test`: 40 core + 86 API = 126 (O2: 113); `apps/api/test/catalogue.test.ts` (13 tests) |
+| Review | independent reviewer: 14 findings (same-day versions overwritable, publish without evidenced approval, change orders on the wrong clock, ops seeing rates, case-sensitive zone match, no uniqueness on fees, thin audits, unvalidated source URL, circular sample test, dead columns); all fixed with tests or recorded |
+| 83 services | 82 codes; the test maps every code to its Service Catalogue rows and proves rows 1..83 are all covered |
+| Fee table | emirate and zone rows, UNCERTAIN → review, verified → clear, 91 days → stale → review, retire → fallback, other emirate unaffected, source required to verify |
+| Effective dates | rule scheduled for tomorrow leaves today's rebuild unchanged; tomorrow's build uses it; earlier offer rows and `rules_as_of` unchanged; today and past dates refused; audit before/after |
+| Evidenced publish | an offer on an UNCERTAIN fee returns 409 on publish until acknowledged; the audit event lists the acknowledged line, reason and figures |
+| Hand-computed figures | SET-FZ-LIC 2,800 → 3,400; VISA-RES 1,600 → 2,000; SET-ML-LIC 6,500 → 7,800; AUD-EXT agent fee 800; TAX-AGENT fee 1,150; ACC-BOOK 650 → 850 (literal fils, independent of the engine's helpers) |
+| Access | ops and finance cannot schedule rules; clients and partners are refused at the API and `permission denied` at the database for fees, versions and rules |
+| Ten samples | 10 requests, 30+ lines, every line and total recomputed independently from the rule; OF-0001 totals reproduced |
+| Smoke | `docs/evidence/O4/log.txt` (29 checks OK); screenshots `25-catalogue.png`, `26-rules.png` (1280 px), `27-mobile-catalogue.png`, `28-mobile-rules.png` (390 px) |
+
+## Could not verify
+
+The figures themselves: market mids and the empty fee table need the named verifier. The Offer Builder tab was
+reproduced for its one worked example (OF-0001); the other nine samples are checked against the rule, not
+against figures the owner has typed into the Sheet.

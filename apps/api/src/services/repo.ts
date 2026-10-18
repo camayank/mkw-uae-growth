@@ -31,9 +31,57 @@ export async function loadDeliverables(tx: Queryable): Promise<Map<string, Deliv
   );
 }
 
-export async function loadRules(tx: Queryable): Promise<Map<string, MarginRule>> {
-  const r = await tx.query<{ category: string; rate_bp: number; floor_fils: number }>("select * from margin_rules");
+/** The margin rule per category in force on `asOf` (default today): the latest version whose effective date has arrived. */
+export async function loadRules(tx: Queryable, asOf: string = today()): Promise<Map<string, MarginRule>> {
+  const r = await tx.query<{ category: string; rate_bp: number; floor_fils: number }>(
+    `select distinct on (category) category, rate_bp, floor_fils from margin_rule_versions
+     where effective_from <= $1::date order by category, effective_from desc`,
+    [asOf],
+  );
   return new Map(r.rows.map((m) => [m.category, { category: m.category, rateBp: num(m.rate_bp), floor: num(m.floor_fils) }]));
+}
+
+export const FEE_STALE_DAYS = 90;
+
+export interface FeeLookup {
+  id: string;
+  fee: number;
+  confidence: "UNCERTAIN" | "verified";
+  /** Verified more than FEE_STALE_DAYS ago. */
+  stale: boolean;
+  scope: "free_zone" | "emirate";
+  verifiedBy: string | null;
+  verifiedAt: string | null;
+}
+
+/**
+ * MKW's government fee for each code at a place. A free-zone row beats an emirate-wide row; only rows in force
+ * on `asOf` and not retired count. Codes without a row are absent from the map (the partner's figure is used).
+ */
+export async function loadGovernmentFees(tx: Queryable, codes: string[], emirate: string, freeZone: string | null, asOf: string = today()): Promise<Map<string, FeeLookup>> {
+  if (codes.length === 0) return new Map();
+  const r = await tx.query<Record<string, unknown>>(
+    `select distinct on (code) id, code, fee_fils, confidence, free_zone, verified_by, verified_at::text as verified_at from government_fees
+     where code = any($1) and lower(trim(emirate)) = lower(trim($2)) and (free_zone is null or lower(trim(free_zone)) = lower(trim($3)))
+       and effective_from <= $4::date and retired_at is null
+     order by code, (free_zone is not null) desc, effective_from desc, created_at desc, id`,
+    [codes, emirate, freeZone ?? "", asOf],
+  );
+  const out = new Map<string, FeeLookup>();
+  for (const row of r.rows) {
+    const verifiedAt = row.verified_at ? String(row.verified_at).slice(0, 10) : null;
+    const ageDays = verifiedAt ? Math.floor((Date.parse(`${asOf}T00:00:00Z`) - Date.parse(`${verifiedAt}T00:00:00Z`)) / 86_400_000) : null;
+    out.set(String(row.code), {
+      id: String(row.id),
+      fee: num(row.fee_fils),
+      confidence: row.confidence as FeeLookup["confidence"],
+      stale: row.confidence === "verified" && (ageDays === null || ageDays > FEE_STALE_DAYS),
+      scope: row.free_zone ? "free_zone" : "emirate",
+      verifiedBy: (row.verified_by as string | null) ?? null,
+      verifiedAt,
+    });
+  }
+  return out;
 }
 
 export async function loadSettings(tx: Queryable): Promise<PricingSettings> {
@@ -52,6 +100,8 @@ interface ProfileJson {
   emirates?: string[];
   codes?: string[];
   ftaTaxAgent?: boolean;
+  licensedLawFirm?: boolean;
+  regulatoryAdviser?: boolean;
   approvedAuditorZones?: string[];
   registeredLiquidator?: boolean;
   conflicts?: string[];
@@ -85,6 +135,8 @@ export async function loadPartners(tx: Queryable): Promise<Map<string, PartnerPr
           emirates: p.emirates ?? [],
           codes: p.codes ?? [],
           ftaTaxAgent: p.ftaTaxAgent ?? false,
+          licensedLawFirm: p.licensedLawFirm ?? false,
+          regulatoryAdviser: p.regulatoryAdviser ?? false,
           approvedAuditorZones: p.approvedAuditorZones ?? [],
           registeredLiquidator: p.registeredLiquidator ?? false,
           conflicts: p.conflicts ?? [],
@@ -141,6 +193,12 @@ export async function loadRfqQuotes(tx: Queryable, requestId: string): Promise<C
 }
 
 export const today = (d = new Date()) => d.toISOString().slice(0, 10);
+
+/** Today by the application clock (app_now(), which tests and replays can set), as YYYY-MM-DD. */
+export async function dbToday(tx: Queryable): Promise<string> {
+  const r = await tx.query<{ d: string }>("select app_now()::date::text as d");
+  return String(r.rows[0]!.d).slice(0, 10);
+}
 
 export function addDays(iso: string, days: number): string {
   const d = new Date(`${iso}T00:00:00Z`);

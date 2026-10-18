@@ -13,9 +13,12 @@ in a browser; everything listed here is not.
    payment links on acceptance. Finance can record bank transfers by hand today.
 3. **Tax invoices.** No VAT tax invoice PDFs yet. MKW Advisors needs FTA-compliant tax invoices for every
    payment (TRN, sequential number, VAT breakdown). Generate them from `payments` and store them as evidence.
-4. **Verified fee and rule data.** Government fees and market mids in `seed-data.ts` are working estimates
-   from the Service Catalogue. Scope rules in `packages/core/src/scope.ts` are simplified. A qualified person
-   must verify both; uncertain results must be shown as uncertain to ops, never as fact.
+4. **Verified fee and rule data.** The 83-service catalogue, the government fee table (source, verifier, date,
+   90-day staleness) and the rules admin exist (O4). The data in them is still a working estimate: market mids
+   are the Sheet's Oct 2026 mid-points, the fee table starts empty (partners' stated fees are used and every
+   such line says so), and the five new margin categories carry default rules marked "default, confirm". A
+   named qualified person must enter and verify fees before real clients are quoted; pricing stops any line on
+   an UNCERTAIN or stale fee for ops.
 5. **Partner onboarding beyond creation.** The People page creates a partner firm and its first admin, and the
    Partners page pauses, resumes and edits profile fields, but the licence and agreement checks are still boxes
    ops ticks by hand; the onboarding flow with documents and licence expiry watch is O6.
@@ -50,6 +53,8 @@ in a browser; everything listed here is not.
     the start of each period.
 16. **Template wording approval.** The English wording in `templates.ts` needs the owner's sign-off before
     launch; Arabic versions are O9.
+17b. **`deliverables.active` is not editable yet.** The column exists and inactive codes are hidden, but no
+    screen switches a code off; do it by SQL until the catalogue screen gets the control.
 17a. **UAE public holidays are not loaded.** `UAE_CALENDAR.holidays` is empty, so SLA clocks and the ops digest
     treat Eid and National Day as working days until the dates are entered each year (moon-sighting holidays
     are confirmed late). Add a settings entry and a founder screen for them.
@@ -58,7 +63,7 @@ in a browser; everything listed here is not.
 
 ## Verified so far
 
-- 40 domain tests (`packages/core`) and 73 API tests (`apps/api`), all passing on PGlite and on PostgreSQL 16;
+- 40 domain tests (`packages/core`) and 86 API tests (`apps/api`), all passing on PGlite and on PostgreSQL 16;
   typecheck clean; `pnpm build` compiles and the compiled server runs in production mode from a fresh database.
 - O1: partner creation, invitations, role changes and deactivation (sessions revoked, codes refused) are tested as
   every role; PDPL export contains one person's data and no audit payloads (a test reproduces the leak that the
@@ -72,6 +77,12 @@ in a browser; everything listed here is not.
   only their rows (database-enforced); a provider failure is recorded and never blocks the action; the digest
   fires once per working morning and not on Friday evening or Saturday; the SES transport is verified against a
   loopback fake that recomputes the signature (`docs/evidence/O2/`, 21 smoke checks).
+- O4: 82 codes cover the 83 Service Catalogue rows and every code has a rule and evidence types; fee lookup by
+  emirate and zone (zone beats emirate); UNCERTAIN and stale fees send the line to review with the reason and a
+  verified one clears it; a scheduled rule applies only from its date, earlier offers keep their figures and
+  `rules_as_of`; founder-only writes, database denies rules and fees to clients and partners; ten sample
+  requests (30+ lines, new and old codes, agent and reseller) reproduce the margin rule to the fils, and the
+  Sheet's OF-0001 totals are reproduced (`docs/evidence/O4/`, 29 smoke checks).
 - `pricing.test.ts` reproduces the Google Sheet Offer Builder example exactly.
 - `security.test.ts` shows Postgres refusing margin and partner-cost columns to clients, client price to partners,
   and other organisations' rows; sign-in throttling; security headers.

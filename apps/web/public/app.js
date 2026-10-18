@@ -139,7 +139,7 @@ document.addEventListener("visibilitychange", () => {
 function navFor() {
   if (isClient()) return [["home", "Overview"], ["new", "New request"], ["statement", "Statement"]];
   if (isPartner()) return [["home", "Work"], ["rates", "Rate card"], ["payouts", "Payouts"]];
-  return [["home", "Queue"], ["pipeline", "Pipeline"], ["partners", "Partners"], ["people", "People"], ["catalogue", "Catalogue"], ["rules", "Rules"], ["new", "New request"], ["settings", "Settings"], ["audit", "Audit trail"]];
+  return [["home", "Queue"], ["pipeline", "Pipeline"], ["partners", "Partners"], ["people", "People"], ["catalogue", "Catalogue"], ["rules", "Rules"], ["scoping", "Scoping"], ["agent", "AI queue"], ["new", "New request"], ["settings", "Settings"], ["audit", "Audit trail"]];
 }
 
 function chrome() {
@@ -158,7 +158,7 @@ function chrome() {
   $nav.innerHTML = navFor()
     .map(([p, label]) => `<a href="#/${p}" class="${page === p ? "on" : ""}">${esc(label)}</a>`)
     .join("");
-  $who.innerHTML = `<span>${esc(state.me.name)} · ${esc(state.me.orgName)} · ${esc(words(state.me.role))}</span>
+  $who.innerHTML = `${isPlatform() ? `<form data-form="search" class="search"><input name="q" type="search" placeholder="Search clients, partners, refs" aria-label="Search" /></form>` : ""}<span>${esc(state.me.name)} · ${esc(state.me.orgName)} · ${esc(words(state.me.role))}</span>
     <a class="bell ${page === "notifications" ? "on" : ""}" href="#/notifications" aria-label="Notifications${state.unread ? `, ${state.unread} unread` : ""}" title="Notifications">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
       ${state.unread ? `<b class="count" data-unread>${state.unread > 99 ? "99+" : state.unread}</b>` : ""}</a>
@@ -202,6 +202,7 @@ async function renderOnce() {
     if (page === "notifications") return await renderNotifications();
     if (page === "engagement" && id) return await renderEngagement(id);
     if (page === "pay" && id) return renderPayPage(id);
+    if (page === "request" && id) return await renderRequest(id);
     if (isClient()) {
       if (page === "offer" && id) return await renderClientOffer(id);
       if (page === "statement") return await renderStatement();
@@ -221,6 +222,9 @@ async function renderOnce() {
     if (page === "people") return await renderPeople();
     if (page === "catalogue") return await renderCatalogue();
     if (page === "rules") return await renderRules();
+    if (page === "scoping") return await renderScoping();
+    if (page === "agent") return await renderAgentQueue();
+    if (page === "search") return await renderSearch(decodeURIComponent(id ?? ""));
     if (page === "settings") return await renderSettings();
     return await renderQueue();
   } catch (e) {
@@ -312,14 +316,27 @@ async function renderClientHome() {
         ["Requested", "What", "Status", "Offers"],
         open.map((r) => {
           const offers = (offersByRequest.get(r.id) ?? []).filter((o) => o.status !== "withdrawn");
-          return `<tr><td>${date(r.createdAt)}</td><td>${esc((r.scope?.lines ?? []).map((l) => `${nameOf(l.code)}${l.qty > 1 ? ` ×${l.qty}` : ""}`).join(", "))}</td>
+          return `<tr><td>${date(r.createdAt)}</td><td>${esc((r.scope?.lines ?? []).map((l) => `${nameOf(l.code)}${l.qty > 1 ? ` ×${l.qty}` : ""}`).join(", "))}${
+            r.adviceStatus === "approved" ? `<br><a href="#/request/${r.id}">Our advice on structure and place</a>` : r.adviceStatus === "pending_review" ? `<br><span class="small muted">Advice being checked by a person</span>` : ""
+          }</td>
             <td>${badge(r.status)}</td>
             <td>${offers.length ? offers.map((o) => `<a href="#/offer/${o.id}">${esc(o.tier)} · ${aed(o.clientTotal)}</a>`).join("<br>") : `<span class="muted small">Being priced</span>`}</td></tr>`;
         }),
         "No open requests.",
       )}
     </div>
-  </div>`;
+  </div>
+  ${
+    h.requests.some((r) => r.adviceStatus === "approved" || r.adviceStatus === "pending_review")
+      ? `<div class="card flush" style="margin-top:16px"><h2>Advice on structure and place</h2>${table(
+          ["Request", "Structure", "Status", ""],
+          h.requests
+            .filter((r) => r.adviceStatus === "approved" || r.adviceStatus === "pending_review")
+            .map((r) => `<tr><td>${date(r.createdAt)} · ${esc((r.scope?.lines ?? []).map((l) => nameOf(l.code)).join(", "))}</td><td>${r.advice ? esc(STRUCTURE_LABEL[r.advice.structure.recommendation] ?? "to be confirmed") : "–"}</td>
+              <td>${r.adviceStatus === "approved" ? badge("ok", "reviewed by MKW Advisors") : badge("pending", "being checked by a person")}</td><td>${r.adviceStatus === "approved" ? `<a href="#/request/${r.id}">Read</a>` : ""}</td></tr>`),
+        )}</div>`
+      : ""
+  }`;
 }
 
 async function renderClientOffer(id) {
@@ -405,6 +422,16 @@ async function renderIntake() {
       <div class="field"><label>Residence visas</label><input name="visas" type="number" min="0" max="50" value="1" /></div>
       <div class="field"><label>Family visas</label><input name="dependants" type="number" min="0" max="20" value="0" /></div>
     </div>
+    <fieldset data-scoping><legend>About the business (helps us advise on structure and place)</legend>
+      <div class="grid cols-3">
+        <div class="field"><label>Main activity</label><select name="activity"><option value="">Choose</option>${["consulting", "trading", "ecommerce", "tech", "holding", "finance", "health", "education", "food", "construction", "other"].map((a) => `<option value="${a}">${esc(a)}</option>`).join("")}</select></div>
+        <div class="field"><label>Who are your customers?</label><select name="customers"><option value="">Choose</option><option value="international">Outside the UAE</option><option value="uae_mainland">Inside the UAE (mainland)</option><option value="both">Both</option></select></div>
+        <div class="field"><label>Need a physical office, shop or site?</label><select name="officeNeeded"><option value="">Not sure</option><option value="no">No</option><option value="yes">Yes</option></select></div>
+        <div class="field"><label>Setup budget, AED (optional)</label><input name="budgetAed" type="number" min="0" /></div>
+        <div class="field"><label>Expected yearly sales, AED (optional)</label><input name="expectedTurnoverAed" type="number" min="0" /></div>
+      </div>
+      <div class="field"><label>Describe what you want to do (optional)</label><textarea name="description" maxlength="2000" placeholder="e.g. We are three partners starting a software company, need 2 visas and a bank account"></textarea></div>
+    </fieldset>
     <fieldset><legend>Add services</legend><div class="choices">
       ${extras.map((d) => `<label><input type="checkbox" name="extra" value="${d.code}" /> ${esc(d.name)}</label>`).join("")}
     </div></fieldset>
@@ -753,12 +780,15 @@ const EXCEPTION_LABEL = {
   dispute: "Client raised an issue",
   unallocated: "No partner for some lines",
   payout: "Payout ready",
+  scoping: "Scoping advice to review",
+  ai_draft: "AI draft to decide",
+  lead: "Public lead for an existing account",
 };
 
 async function renderQueue() {
   const o = await api("GET", "/api/ops/overview");
   const linkFor = (x) =>
-    ["offer_review", "offer_ready"].includes(x.kind) ? `#/offer/${x.ref}` : x.kind === "needs_quote" ? `#/pipeline` : `#/engagement/${x.ref}`;
+    ["offer_review", "offer_ready"].includes(x.kind) ? `#/offer/${x.ref}` : x.kind === "needs_quote" ? `#/pipeline` : x.kind === "scoping" ? `#/request/${x.ref}` : x.kind === "ai_draft" || x.kind === "lead" ? `#/agent` : `#/engagement/${x.ref}`;
   const counts = Object.fromEntries(Object.keys(EXCEPTION_LABEL).map((k) => [k, o.exceptions.filter((x) => x.kind === k).length]));
   $app.innerHTML = `
   <h1>What needs a person today</h1>
@@ -790,7 +820,7 @@ async function renderPipeline() {
       const codes = (r.scope?.lines ?? []).map((l) => l.code);
       return `<tr><td>${date(r.createdAt)}</td><td>${esc(r.client)}</td>
       <td class="small">${esc((r.scope?.lines ?? []).map((l) => `${nameOf(l.code)}${l.qty > 1 ? ` ×${l.qty}` : ""}`).join(", "))}${(r.notes ?? []).length ? `<br><span class="muted">${esc(r.notes.join("; "))}</span>` : ""}</td>
-      <td>${badge(r.status)}</td>
+      <td>${badge(r.status)}${r.adviceStatus === "pending_review" ? `<br>${badge("UNCERTAIN", "advice to review")}` : ""}${r.channel === "public_intake" ? `<br><span class="small muted">from the lead page</span>` : ""}<br><a class="small" href="#/request/${r.id}">Scoping</a></td>
       <td class="small">${offersFor(r.id).map((f) => `<a href="#/offer/${f.id}">${esc(f.tier)}</a> ${badge(f.status)}`).join("<br>") || "–"}</td>
       <td>${canAct && ["scoped", "quoting", "offered"].includes(r.status) ? `<button class="sm" data-act="build" data-id="${r.id}">Price it</button>${r.status === "quoting" ? ` <button class="sm" data-act="rfq" data-id="${r.id}" data-codes="${esc(codes.join(","))}">Ask partners</button>` : ""}` : ""}</td></tr>`;
     }),
@@ -1044,6 +1074,119 @@ async function renderRules() {
   }</div>`;
 }
 
+
+// Scoping intelligence (O5) --------------------------------------------------------------------------
+
+const CONF_LABEL = { verified: "verified rule", rule_of_thumb: "rule of thumb", UNCERTAIN: "UNCERTAIN" };
+const confBadge = (c) => badge(c === "verified" ? "ok" : c === "rule_of_thumb" ? "pending" : "UNCERTAIN", CONF_LABEL[c] ?? c);
+const STRUCTURE_LABEL = { free_zone: "Free zone", mainland: "Mainland", offshore: "Offshore", difc_adgm: "DIFC or ADGM" };
+
+function adviceHtml(a, opts = {}) {
+  const item = (r) => `<li>${opts.editable && r.ruleKey ? `<label><input type="checkbox" name="keep" value="${esc(r.ruleKey)}" checked /> ` : ""}${esc(r.text)} ${confBadge(r.confidence)}${opts.editable && r.ruleKey ? "</label>" : ""}</li>`;
+  return `
+  <div class="grid cols-2">
+    <div class="card"><h2>Structure: ${esc(STRUCTURE_LABEL[a.structure.recommendation] ?? "to be confirmed")}</h2>
+      ${opts.editable ? `<div class="field"><label>Set the structure the client sees</label><select name="structure">${Object.entries(STRUCTURE_LABEL).map(([k, v]) => `<option value="${k}" ${a.structure.recommendation === k ? "selected" : ""}>${v}</option>`).join("")}</select></div>` : ""}
+      <ul class="plain">${a.structure.reasons.map(item).join("")}</ul>
+      ${a.licences.length ? `<h3>Licences and approvals</h3><ul class="plain">${a.licences.map(item).join("")}</ul>` : ""}
+    </div>
+    <div class="card"><h2>Where to register</h2>
+      ${a.places.length ? `<ul class="plain">${a.places.map((p) => `<li>${opts.editable ? `<label><input type="checkbox" name="keepPlace" value="${esc(p.zone)}" checked /> ` : ""}<b>${esc(p.zone)}</b> (${esc(p.emirate)}) · ${aed(p.costMinFils)} to ${aed(p.costMaxFils)} · ${p.visaQuota} visa(s) · about ${p.timelineDays} working days ${confBadge(p.confidence)}<br><span class="small muted">${esc(p.why.join("; "))}</span>${opts.editable ? "</label>" : ""}</li>`).join("")}</ul>` : `<p class="muted">No candidate places for this structure yet.</p>`}
+      <h3>What follows after setup</h3><ul class="plain">${a.obligations.map(item).join("")}</ul>
+    </div>
+  </div>
+  <p class="small muted">${a.hasUncertain ? "Items marked UNCERTAIN or rule of thumb have not yet been verified by a qualified person; MKW Advisors confirms them before anything is filed." : "Every item above is a verified rule with a named sign-off."} Nothing is filed automatically: a person at MKW Advisors handles every registration.</p>`;
+}
+
+async function renderRequest(id) {
+  if (isClient()) {
+    const h = await api("GET", "/api/client/home");
+    const r = h.requests.find((x) => x.id === id);
+    if (!r || !r.advice) {
+      $app.innerHTML = `<p><a href="#/">← Overview</a></p><h1>Our advice</h1><p class="muted">${r?.adviceStatus === "pending_review" ? "A person at MKW Advisors is checking the advice for your case; it appears here once approved." : "No advice for this request."}</p>`;
+      return;
+    }
+    $app.innerHTML = `<p><a href="#/">← Overview</a></p><h1>Our advice for your request</h1><p class="muted">Reviewed by MKW Advisors on ${date(r.adviceReviewedAt)}. Confidence is shown for each statement.</p>${adviceHtml(r.advice)}`;
+    return;
+  }
+  const r = await api("GET", `/api/ops/requests/${id}/scoping`);
+  const canAct = ["ops", "founder"].includes(role());
+  const a = r.answers ?? {};
+  $app.innerHTML = `<p><a href="#/pipeline">← Pipeline</a></p>
+  <div class="row between"><h1>Scoping · ${esc(r.client)}</h1>${badge(r.advice_status === "approved" ? "ok" : r.advice_status === "pending_review" ? "UNCERTAIN" : "pending", words(r.advice_status))}</div>
+  <div class="grid cols-2">
+    <div class="card"><h2>What the founder told us</h2>
+      <table><tr><td>Starting point</td><td>${esc(words(a.mode))}</td></tr><tr><td>Emirate / zone</td><td>${esc(a.emirate)}${a.freeZone ? ` · ${esc(a.freeZone)}` : ""}</td></tr>
+      <tr><td>Asked for</td><td>${esc(words(a.jurisdiction ?? "–"))}</td></tr><tr><td>Activity</td><td>${esc(a.activity ?? "–")}</td></tr><tr><td>Customers</td><td>${esc(words(a.customers ?? "–"))}</td></tr>
+      <tr><td>Office needed</td><td>${a.officeNeeded == null ? "–" : a.officeNeeded ? "yes" : "no"}</td></tr><tr><td>Visas</td><td>${a.visas ?? 0}</td></tr>
+      <tr><td>Budget</td><td>${a.budgetAed ? aed(a.budgetAed * 100) : "–"}</td></tr><tr><td>Expected sales</td><td>${a.expectedTurnoverAed ? aed(a.expectedTurnoverAed * 100) : "–"}</td></tr></table>
+      ${a.description ? `<p class="small" style="white-space:pre-wrap"><b>In their words:</b> ${esc(a.description)}</p>` : ""}
+      <p class="small muted">Source: ${esc(r.source?.channel ?? "console")}${r.source?.campaign ? ` · campaign ${esc(r.source.campaign)}` : ""}</p>
+    </div>
+    <div class="card"><h2>Scope sheet</h2>${table(["Service", "#Qty"], (r.scope?.lines ?? []).map((l) => `<tr><td>${esc(nameOf(l.code))}</td><td class="num">${l.qty}</td></tr>`))}
+      ${(r.notes ?? []).length ? `<p class="small muted">${esc(r.notes.join("; "))}</p>` : ""}
+      ${(r.drafts ?? []).length ? `<h3>AI drafts</h3>${r.drafts.map((d) => `<div class="small">${badge(d.status === "pending" ? "UNCERTAIN" : d.status === "approved" ? "ok" : "rejected", d.status)} ${esc(d.kind)} by ${esc(d.model)} · ${esc(d.output?.summary ?? "")}${d.status === "pending" ? ` <a href="#/agent">decide in the AI queue</a>` : ""}</div>`).join("")}` : ""}
+    </div>
+  </div>
+  ${r.advice ? `<form data-form="approve-advice" data-id="${r.id}"><h2 style="margin-top:16px">Advice ${r.advice_status === "approved" ? `(approved by ${esc(r.reviewed_by ?? "")} on ${date(r.advice_reviewed_at)})` : "to review"}</h2>
+    ${adviceHtml(r.advice, { editable: canAct && r.advice_status !== "approved" })}
+    ${canAct ? `<div class="row" style="margin-top:8px">${r.advice_status !== "approved" ? `<input name="note" placeholder="Note for the audit trail (optional)" style="max-width:360px" /><button class="primary" type="submit">Approve for the client (untick anything to leave out)</button>` : ""}<button type="button" class="sm" data-act="recompute-advice" data-id="${r.id}">Recompute from current rules</button></div>` : ""}</form>` : `<p class="muted">No scoping advice: the founder answered no scoping questions.</p>`}`;
+}
+
+async function renderScoping() {
+  const o = await api("GET", "/api/admin/scoping");
+  const founder = role() === "founder";
+  const verifyForm = (kind, key, c) => founder ? `<form class="row" data-form="verify-${kind}" data-id="${esc(key)}" style="flex-wrap:wrap;gap:4px">
+      <select name="confidence">${["verified", "rule_of_thumb", "UNCERTAIN"].map((v) => `<option value="${v}" ${c === v ? "selected" : ""}>${CONF_LABEL[v]}</option>`).join("")}</select>
+      <input name="verifiedBy" placeholder="Verified by (name, qualification)" style="width:200px" /><input name="sourceUrl" type="url" placeholder="https://source" style="width:180px" /><button class="sm" type="submit">Save</button></form>` : "";
+  $app.innerHTML = `<h1>Scoping rules and places</h1>
+  <p class="muted">The advice shown to founders is built only from these. Each starts UNCERTAIN; a qualified person verifies it with a source, the founder records that here, and from then on the advice built on it says "verified rule" with the date. ${o.pendingReviews ? `${o.pendingReviews} request(s) have advice waiting for review on the Pipeline.` : ""}</p>
+  <div class="card flush"><h2 style="padding:16px 18px 0">Rules</h2>${table(
+    ["Kind", "Rule", "Confidence", "Verified", ...(founder ? ["Record verification"] : [])],
+    o.rules.map((r) => `<tr><td class="small">${esc(r.kind)}</td><td>${esc(r.statement)}<br><span class="small mono muted">${esc(r.key)}</span>${r.sourceUrl ? ` · <a class="small" href="${esc(r.sourceUrl)}" target="_blank" rel="noopener noreferrer">source</a>` : ""}</td>
+      <td>${confBadge(r.confidence)}</td><td class="small">${r.verifiedBy ? `${esc(r.verifiedBy)}<br><span class="muted">${date(r.verifiedAt)}</span>` : "–"}</td>${founder ? `<td>${verifyForm("rule", r.key, r.confidence)}</td>` : ""}</tr>`),
+  )}</div>
+  <div class="card flush" style="margin-top:16px"><h2 style="padding:16px 18px 0">Places</h2>${table(
+    ["Place", "Type", "#Visas", "#Cost from", "#Cost to", "#Days", "Known for", "Confidence", "Verified", ...(founder ? ["Record verification"] : [])],
+    o.zones.map((z) => `<tr><td>${esc(z.name)}<br><span class="small muted">${esc(z.emirate)}</span></td><td class="small">${esc(words(z.type))}</td><td class="num">${z.visaQuota}</td><td class="num">${aed(z.costMin)}</td><td class="num">${aed(z.costMax)}</td><td class="num">${z.timelineDays}</td>
+      <td class="small">${esc((z.activities ?? []).join(", "))}</td><td>${confBadge(z.confidence)}</td><td class="small">${z.verifiedBy ? `${esc(z.verifiedBy)}<br><span class="muted">${date(z.verifiedAt)}</span>` : "–"}</td>${founder ? `<td>${verifyForm("zone", z.name, z.confidence)}</td>` : ""}</tr>`),
+  )}</div>`;
+}
+
+async function renderAgentQueue() {
+  const drafts = await api("GET", "/api/ops/drafts");
+  const canAct = ["ops", "founder"].includes(role());
+  const leads = canAct ? (await api("GET", "/api/ops/leads")).filter((l) => l.status === "held") : [];
+  $app.innerHTML = `<h1>AI review queue</h1>
+  <p class="muted">Drafts written by the model from what founders typed. Nothing here changes a request or reaches a client until a person approves it; discarded drafts are kept for the record.</p>
+  <div class="stack">${
+    drafts.length
+      ? drafts.map((d) => `<form class="card" data-form="draft" data-id="${d.id}"><div class="row between"><h2>${esc(words(d.kind))} draft for ${esc(d.client ?? "")} ${badge("UNCERTAIN")}</h2><span class="small muted">${dateTime(d.createdAt)} · model ${esc(d.model)}</span></div>
+        <p class="small muted">In the founder's words: <span style="white-space:pre-wrap">${esc(d.input?.description ?? "")}</span></p>
+        ${d.output?.lines?.length ? `<ul class="plain">${d.output.lines.map((l) => `<li><label><input type="checkbox" name="keep" value="${esc(l.code)}" checked /> ${esc(nameOf(l.code))}${l.qty > 1 ? ` ×${l.qty}` : ""} <span class="small muted">(${esc(l.why)})</span></label></li>`).join("")}</ul>` : `<p class="small">No lines suggested.</p>`}
+        ${d.output?.flags?.length ? `<p class="small">Flags: ${esc(d.output.flags.join("; "))}</p>` : ""}
+        <p class="small muted">${esc(d.output?.summary ?? "")} <a href="#/request/${d.requestId}">Open the request</a></p>
+        ${canAct ? `<div class="row"><input name="note" placeholder="Note (optional)" style="max-width:300px" /><button class="sm primary" type="submit" name="decision" value="approve">Approve: set the scope from the ticked lines</button><button class="sm" type="submit" name="decision" value="discard">Discard</button></div>` : ""}</form>`).join("")
+      : `<p class="empty">Nothing waiting.</p>`
+  }</div>
+  ${canAct ? `<h2 style="margin-top:24px">Held leads</h2>
+  <p class="muted small">Public-page submissions for an email that already has an account. Nothing was attached to that account; a person decides whether to call, merge or discard.</p>
+  <div class="card flush">${table(["Received", "Email", "Company", "Name", "Answers", ""], leads.map((l) => `<tr><td class="small">${dateTime(l.createdAt ?? l.created_at)}</td><td class="mono small">${esc(l.email)}</td><td>${esc(l.company)}</td><td>${esc(l.name)}${l.phone_given ? ' <span class="small muted">(phone given)</span>' : ""}</td>
+    <td class="small">${esc(words(l.answers?.jurisdiction ?? ""))} · ${esc(l.answers?.emirate ?? "")} · ${l.answers?.visas ?? 0} visa(s)${l.answers?.description ? `<br><span class="muted">${esc(l.answers.description.slice(0, 160))}</span>` : ""}</td>
+    <td><form data-form="lead" data-id="${l.id}" class="row"><input name="note" placeholder="What was done" style="max-width:180px" /><button class="sm" type="submit">Handled</button></form></td></tr>`), "No held leads.")}</div>` : ""}`;
+}
+
+async function renderSearch(q) {
+  const r = await api("GET", `/api/ops/search?q=${encodeURIComponent(q)}`);
+  const list = (title, rows, render) => `<div class="card flush"><h2 style="padding:16px 18px 0">${title}</h2>${table(["Name", "", ""], rows.map(render), "No matches.")}</div>`;
+  $app.innerHTML = `<h1>Search: ${esc(q)}</h1><div class="grid cols-2">
+    ${list("Clients", r.clients, (c) => `<tr><td>${esc(c.name)}</td><td class="mono small">${esc(c.id.slice(0, 8))}</td><td><a href="#/pipeline">pipeline</a></td></tr>`)}
+    ${list("Partners", r.partners, (p) => `<tr><td>${esc(p.name)}</td><td>${badge(p.status ?? "prospect")}</td><td><a href="#/partners">partners</a></td></tr>`)}
+    ${list("Engagements", r.engagements, (e) => `<tr><td>${esc(e.client)} · ${esc(e.emirate)}</td><td>${badge(e.status)}</td><td><a href="#/engagement/${e.id}">open</a></td></tr>`)}
+    ${list("Offers", r.offers, (o) => `<tr><td>${esc(o.client)} · ${esc(o.tier)}</td><td>${badge(o.status)}</td><td><a href="#/offer/${o.id}">open</a></td></tr>`)}
+  </div>`;
+}
+
 // People: organisations, users, data requests ------------------------------------------------
 
 const ROLES_FOR = {
@@ -1290,6 +1433,7 @@ document.addEventListener("click", (ev) => {
       const r = await api("POST", "/api/admin/invoices/issue-held");
       toast(`Issued ${r.issued.length} invoice(s): ${r.issued.join(", ")}`);
     }, null),
+    "recompute-advice": () => act(() => api("POST", `/api/ops/requests/${id}/scoping/recompute`), "Advice recomputed; review it again"),
     "fee-verify": () => {
       const verifiedBy = prompt("Who verified this fee against its source? Name and qualification.");
       if (!verifiedBy) return;
@@ -1358,8 +1502,14 @@ document.addEventListener("submit", (ev) => {
             visas: Number(fd.get("visas") || 0),
             dependants: Number(fd.get("dependants") || 0),
             addOns: extras,
+            ...(fd.get("activity") ? { activity: String(fd.get("activity")) } : {}),
+            ...(fd.get("customers") ? { customers: String(fd.get("customers")) } : {}),
+            ...(fd.get("officeNeeded") ? { officeNeeded: fd.get("officeNeeded") === "yes" } : {}),
+            ...(fd.get("budgetAed") ? { budgetAed: Number(fd.get("budgetAed")) } : {}),
+            ...(fd.get("expectedTurnoverAed") ? { expectedTurnoverAed: Number(fd.get("expectedTurnoverAed")) } : {}),
           }
         : { services: extras }),
+      ...(String(fd.get("description") || "").trim() ? { description: String(fd.get("description")).trim() } : {}),
     };
     if (mode === "services" && !extras.length) return toast("Choose at least one service", true);
     return act(async () => {
@@ -1394,6 +1544,31 @@ document.addEventListener("submit", (ev) => {
     };
     return act(() => api("PUT", "/api/partner/rate-cards", { cards: [card] }), "Price saved for 90 days");
   }
+  if (kind === "search") {
+    const q = String(fd.get("q") || "").trim();
+    if (q) location.hash = `#/search/${encodeURIComponent(q)}`;
+    return;
+  }
+  if (kind === "approve-advice") {
+    const all = [...form.querySelectorAll('input[name="keep"]')].map((i) => i.value);
+    const kept = fd.getAll("keep").map(String);
+    const allPlaces = [...form.querySelectorAll('input[name="keepPlace"]')].map((i) => i.value);
+    const keptPlaces = fd.getAll("keepPlace").map(String);
+    const body = { removeRuleKeys: all.filter((k) => !kept.includes(k)), removePlaces: allPlaces.filter((p) => !keptPlaces.includes(p)), structure: String(fd.get("structure") || "") || undefined, note: String(fd.get("note") || "") || undefined };
+    if (!confirm("Approve this advice for the client? Items left UNCERTAIN are shown with that label.")) return;
+    return act(() => api("POST", `/api/ops/requests/${id}/scoping/approve`, body), "Advice approved; the client can see it now");
+  }
+  if (kind === "verify-rule" || kind === "verify-zone") {
+    const body = { confidence: String(fd.get("confidence")), verifiedBy: String(fd.get("verifiedBy") || "") || undefined, sourceUrl: String(fd.get("sourceUrl") || "") || undefined };
+    return act(() => api("PUT", `/api/admin/scoping/${kind === "verify-rule" ? "rules" : "zones"}/${encodeURIComponent(id)}`, body), "Recorded");
+  }
+  if (kind === "draft") {
+    const decision = ev.submitter?.value || "discard";
+    const keepCodes = fd.getAll("keep").map(String);
+    if (decision === "approve" && !confirm("Set the request's scope from the ticked lines? The request is then priced from them.")) return;
+    return act(() => api("POST", `/api/ops/drafts/${id}/review`, { decision, note: String(fd.get("note") || ""), ...(decision === "approve" ? { keepCodes } : {}) }), decision === "approve" ? "Draft approved and applied" : "Draft discarded");
+  }
+  if (kind === "lead") return act(() => api("POST", `/api/ops/leads/${id}/handle`, { note: String(fd.get("note") || "") }), "Lead marked handled");
   if (kind === "bank") return act(() => api("PUT", "/api/partner/bank", { beneficiary: String(fd.get("beneficiary")), iban: String(fd.get("iban")), bank: String(fd.get("bank")) }), "Bank details saved");
   if (kind === "partner-invoice") {
     const file = fd.get("file");

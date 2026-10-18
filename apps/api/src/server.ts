@@ -21,6 +21,10 @@ import type { Notifier } from "./lib/notify.ts";
 import type { Storage } from "./lib/storage.ts";
 import type { PaymentProvider } from "./lib/payments.ts";
 import { issueHeldInvoices, loadCompany, refundPayment, statement, updateCompany } from "./services/invoices.ts";
+import { approveAdvice, recomputeAdvice, requestScoping, scopingOverview, search, verifyRule, verifyZone } from "./services/scoping.ts";
+import { draftScopeForRequest, listDrafts, reviewDraft } from "./services/drafts.ts";
+import { publicIntake, PublicIntakeSchema, listLeads, handleLead } from "./services/intake.ts";
+import type { AiModel } from "./lib/ai.ts";
 import { cancelPayoutRun, createPayoutRun, exportPayoutRun, listPayoutRuns, markPayoutRunPaid, payablePayouts, setPartnerBank, uploadPartnerInvoice } from "./services/payouts.ts";
 import {
   acceptOffer,
@@ -64,9 +68,12 @@ export interface AppOptions {
   notify: Notifier;
   storage: Storage;
   provider: PaymentProvider;
+  model: AiModel;
   now?: () => Date;
   /** Return one-time login codes in the response. Development only. */
   devLogin?: boolean;
+  /** Number of trusted proxy hops in front of the API; 0/undefined ignores X-Forwarded-For. */
+  trustProxy?: number;
   webhookSecret?: string;
   webDir?: string;
   logger?: boolean;
@@ -75,7 +82,9 @@ export interface AppOptions {
 const COOKIE = "tasees_session";
 
 export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
-  const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 25 * 1024 * 1024 });
+  // trustProxy: only when told how many proxy hops sit in front (TRUST_PROXY=1 behind one load balancer), so
+  // X-Forwarded-For cannot be spoofed by a direct caller and every visitor behind a proxy is not one address.
+  const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 25 * 1024 * 1024, trustProxy: opts.trustProxy ?? false });
   const db = withClock(opts.db, opts.now);
   const deps: Deps = { notify: opts.notify, now: opts.now, provider: opts.provider, storage: opts.storage };
 
@@ -180,7 +189,12 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     const body = z
       .object({ answers: IntakeSchema, clientOrgId: z.string().uuid().optional(), sourcedByPartnerId: z.string().uuid().nullish() })
       .parse(req.body);
-    return asPlatform(db, user, (tx) => createRequest(tx, user, body.answers, body.clientOrgId, body.sourcedByPartnerId));
+    return asPlatform(db, user, async (tx) => {
+      const created = await createRequest(tx, user, body.answers, body.clientOrgId, body.sourcedByPartnerId);
+      // A free-text description gets an AI draft into the review queue; nothing changes until ops approves it.
+      const draft = body.answers.description?.trim() ? await draftScopeForRequest(tx, user, created.id, opts.model) : null;
+      return { ...created, aiDraft: draft ? draft.id : null };
+    });
   });
 
   app.get<{ Params: { id: string } }>("/api/client/offers/:id", async (req) =>
@@ -620,6 +634,94 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     const user = requireRole(req, "ops", "founder");
     const { reason } = z.object({ reason: z.string().min(3).max(300) }).parse(req.body);
     return asPlatform(db, user, (tx) => retireFee(tx, user, req.params.id, reason));
+  });
+
+  // Public intake (O5): the Tasees lead page posts here. Rate-limited per IP; consent required; honeypot.
+  app.post("/api/public/intake", async (req) => {
+    throttle(req, "public-intake", 10);
+    const body = PublicIntakeSchema.parse(req.body);
+    return asPlatform(db, null, (tx) => publicIntake(tx, body, req.ip, opts.notify, opts.model));
+  });
+  app.get("/api/ops/leads", async (req) => {
+    const user = requireRole(req, "ops", "founder");
+    return asPlatform(db, user, (tx) => listLeads(tx, user));
+  });
+  app.post<{ Params: { id: string } }>("/api/ops/leads/:id/handle", async (req) => {
+    const user = requireRole(req, "ops", "founder");
+    const { note } = z.object({ note: z.string().max(300).default("") }).parse(req.body ?? {});
+    return asPlatform(db, user, (tx) => handleLead(tx, user, req.params.id, note));
+  });
+
+  // Scoping intelligence (O5) --------------------------------------------------------------------
+  app.get("/api/admin/scoping", async (req) => {
+    const user = requireRole(req, ...PLATFORM_ROLES);
+    return asPlatform(db, user, (tx) => scopingOverview(tx));
+  });
+
+  app.put<{ Params: { key: string } }>("/api/admin/scoping/rules/:key", async (req) => {
+    const user = requireRole(req, "founder");
+    const body = z.object({ confidence: z.enum(["verified", "rule_of_thumb", "UNCERTAIN"]), verifiedBy: z.string().max(120).optional(), sourceUrl: z.string().max(500).optional(), statement: z.string().max(1000).optional() }).parse(req.body);
+    return asPlatform(db, user, (tx) => verifyRule(tx, user, req.params.key, body));
+  });
+
+  app.put<{ Params: { name: string } }>("/api/admin/scoping/zones/:name", async (req) => {
+    const user = requireRole(req, "founder");
+    const body = z
+      .object({
+        confidence: z.enum(["verified", "rule_of_thumb", "UNCERTAIN"]),
+        verifiedBy: z.string().max(120).optional(),
+        sourceUrl: z.string().max(500).optional(),
+        costMinAed: z.number().min(0).optional(),
+        costMaxAed: z.number().min(0).optional(),
+        visaQuota: z.number().int().min(0).max(100).optional(),
+        timelineDays: z.number().int().min(1).max(365).optional(),
+        active: z.boolean().optional(),
+      })
+      .parse(req.body);
+    return asPlatform(db, user, (tx) =>
+      verifyZone(tx, user, req.params.name, { ...body, costMinFils: body.costMinAed === undefined ? undefined : aed(body.costMinAed), costMaxFils: body.costMaxAed === undefined ? undefined : aed(body.costMaxAed) }),
+    );
+  });
+
+  app.get<{ Params: { id: string } }>("/api/ops/requests/:id/scoping", async (req) => {
+    const user = requireRole(req, ...PLATFORM_ROLES);
+    return asPlatform(db, user, (tx) => requestScoping(tx, req.params.id));
+  });
+
+  app.post<{ Params: { id: string } }>("/api/ops/requests/:id/scoping/recompute", async (req) => {
+    const user = requireRole(req, "ops", "founder");
+    return asPlatform(db, user, (tx) => recomputeAdvice(tx, user, req.params.id));
+  });
+
+  app.post<{ Params: { id: string } }>("/api/ops/requests/:id/scoping/approve", async (req) => {
+    const user = requireRole(req, "ops", "founder");
+    const body = z
+      .object({
+        removeRuleKeys: z.array(z.string().max(80)).max(50).optional(),
+        structure: z.enum(["free_zone", "mainland", "offshore", "difc_adgm"]).optional(),
+        removePlaces: z.array(z.string().max(80)).max(20).optional(),
+        note: z.string().max(500).optional(),
+      })
+      .parse(req.body ?? {});
+    return asPlatform(db, user, (tx) => approveAdvice(tx, user, req.params.id, body));
+  });
+
+  app.get("/api/ops/drafts", async (req) => {
+    const user = requireRole(req, ...PLATFORM_ROLES);
+    const { status } = z.object({ status: z.enum(["pending", "approved", "discarded"]).default("pending") }).parse(req.query ?? {});
+    return asPlatform(db, user, (tx) => listDrafts(tx, status));
+  });
+
+  app.post<{ Params: { id: string } }>("/api/ops/drafts/:id/review", async (req) => {
+    const user = requireRole(req, "ops", "founder");
+    const body = z.object({ decision: z.enum(["approve", "discard"]), note: z.string().max(500).default(""), keepCodes: z.array(z.string().max(20)).max(40).optional() }).parse(req.body);
+    return asPlatform(db, user, (tx) => reviewDraft(tx, user, req.params.id, body.decision, body.note, body.keepCodes));
+  });
+
+  app.get("/api/ops/search", async (req) => {
+    const user = requireRole(req, ...PLATFORM_ROLES);
+    const { q } = z.object({ q: z.string().max(100).default("") }).parse(req.query ?? {});
+    return asPlatform(db, user, (tx) => search(tx, q));
   });
 
   // Payment provider webhook: a signed message from the provider is the one automated path that records money.

@@ -169,6 +169,10 @@ legend { padding: 0 6px; color: var(--muted); font-size: 0.85rem; }
 #toast.show { opacity: 1; }
 #toast.err { background: var(--bad); color: #fff; }
 
+ul.plain { list-style: none; padding: 0; margin: 0; }
+ul.plain li { padding: 6px 0; border-bottom: 1px solid var(--line); }
+.search input { width: 220px; padding: 6px 10px; }
+@media (max-width: 640px) { .search { display: none; } }
 .bell { position: relative; display: inline-flex; align-items: center; padding: 6px; border-radius: 8px; color: var(--muted); }
 .bell.on, .bell:hover { background: var(--surface-2); color: var(--text); }
 .bell .count { position: absolute; top: -2px; right: -4px; background: var(--bad); color: #fff; font-size: 0.65rem; line-height: 1; padding: 3px 5px; border-radius: 999px; }

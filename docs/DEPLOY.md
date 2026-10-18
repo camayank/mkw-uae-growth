@@ -11,6 +11,8 @@
 | `NODE_ENV` | unset | Set to `production` in production. Disables demo seeding and development sign-in. |
 | `DEV_LOGIN` | unset | `1` shows sign-in codes on screen and in API responses. Never set in production. |
 | `PAYMENT_WEBHOOK_SECRET` | unset | Secret for the payment webhook signature: `x-webhook-signature: sha256=HMAC_SHA256(secret, "<x-webhook-timestamp>.<raw body>")`, five-minute window. Unset rejects all webhooks. |
+| `TRUST_PROXY` | unset | Number of proxy hops in front of the API (`1` behind one load balancer). Unset, `X-Forwarded-For` is ignored and every visitor behind a proxy shares one rate-limit bucket; set it or the public intake page and sign-in throttle lock everyone out together. |
+| `AI` | `memory` | Model behind the AI draft queue. Only the deterministic in-memory double exists until an API key and a monthly cap are agreed (`AI=anthropic` is reserved for it). |
 | `PAYMENT` | `memory` | Card payment provider. Only `memory` exists until the merchant account is chosen; its links lead to an explanatory page. |
 | `STORAGE` | `local` | `s3` stores evidence files in an S3-compatible bucket (production); anything else uses local disk. |
 | `S3_BUCKET` | unset | Bucket name. Required when `STORAGE=s3`. |
@@ -97,8 +99,9 @@ the container (Container Apps), but Azure Blob Storage does not speak the S3 API
 store (for example Oracle Cloud Dubai object storage, or a MinIO gateway in front of Blob), unless your lawyer
 confirms another location is acceptable. Either way, keep the backup bucket in the same region as the database.
 
-Put it behind HTTPS (the host's load balancer or a reverse proxy). Session cookies are `Secure` when
-`DEV_LOGIN` is off, so plain HTTP sign-in will not work in production, by design.
+Put it behind HTTPS (the host's load balancer or a reverse proxy) and set `TRUST_PROXY` to the number of
+hops so rate limits see real client addresses. Session cookies are `Secure` when `DEV_LOGIN` is off, so
+plain HTTP sign-in will not work in production, by design.
 
 ## Timers
 

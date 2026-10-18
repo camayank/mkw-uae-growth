@@ -39,8 +39,12 @@ in a browser; everything listed here is not.
 
 ## Soon after
 
-7. **Lead page → platform.** The public Tasees lead page and the Sheet capture leads today; ops creates the
-   request here. Add a public intake endpoint with consent capture and spam protection.
+7. **Scoping rules and zone data are working estimates.** The advice engine, rule confidence, zone table,
+   ops approval, AI draft queue and public intake exist (O5). Every rule and zone starts UNCERTAIN and the
+   advice says so to the client until the founder records a named person's verification with a source. The
+   AI model is the deterministic in-memory double until an API key and spend cap exist; the Claude adapter is
+   written against the same interface. The pack's lead page (`03-lead-page`) should post to
+   `/api/public/intake` as `intake.html` does; WhatsApp capture waits for the Business number.
 8. **Fairness share by category.** The cap uses each partner's share of all jobs this month; the rule in the
    partner agreement is per category.
 9. **Partner scorecard.** Quality, on-time delivery and SLA strikes are stored on the partner profile but not
@@ -72,7 +76,7 @@ in a browser; everything listed here is not.
 
 ## Verified so far
 
-- 40 domain tests (`packages/core`) and 98 API tests (`apps/api`), all passing on PGlite and on PostgreSQL 16;
+- 40 domain tests (`packages/core`) and 128 API tests (`apps/api`), all passing on PGlite and on PostgreSQL 16;
   typecheck clean; `pnpm build` compiles and the compiled server runs in production mode from a fresh database.
 - O1: partner creation, invitations, role changes and deactivation (sessions revoked, codes refused) are tested as
   every role; PDPL export contains one person's data and no audit payloads (a test reproduces the leak that the
@@ -98,6 +102,13 @@ in a browser; everything listed here is not.
   statement balances; partner invoice must match the payout and only its partner may upload; payout run total
   equals the bank file total, one line per partner, marking paid releases and sends remittances without the
   name Tasees; ops locked out of runs, files and refunds (`docs/evidence/O3/`, 43 smoke checks).
+- O5: 20 founder cases give the expected structure, places, licences and obligations, each exactly as confident
+  as its rule; advice is held for ops review and the client sees nothing until approval, then sees confidence
+  labels; recomputing after a rule is verified puts it back under review; founder-only verification with name
+  and source; AI drafts change nothing until approved and never after pricing; public intake refuses without
+  consent, swallows bots, records consent with version and timestamp, is rate-limited; search is staff-only
+  a repeat email is held for ops rather than attached; the client role cannot read unapproved advice at the
+  database; changing the structure at approval ranks places again (`docs/evidence/O5/`, 56 smoke checks).
 - `pricing.test.ts` reproduces the Google Sheet Offer Builder example exactly.
 - `security.test.ts` shows Postgres refusing margin and partner-cost columns to clients, client price to partners,
   and other organisations' rows; sign-in throttling; security headers.

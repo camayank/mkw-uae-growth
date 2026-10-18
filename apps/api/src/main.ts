@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { migrate, openDatabase } from "./lib/db.ts";
 import { notifierFromEnv } from "./lib/notify.ts";
 import { providerFromEnv } from "./lib/payments.ts";
+import { modelFromEnv } from "./lib/ai.ts";
 import { storageFromEnv } from "./lib/storage.ts";
 import { runJobs } from "./jobs/run.ts";
 import { buildApp } from "./server.ts";
@@ -32,7 +33,9 @@ const app = await buildApp({
   notify,
   storage,
   provider: providerFromEnv(),
+  model: modelFromEnv(),
   devLogin,
+  trustProxy: Number(process.env.TRUST_PROXY ?? 0) || 0,
   webhookSecret: process.env.PAYMENT_WEBHOOK_SECRET,
   webDir: process.env.WEB_DIR ?? join(here, "../../web/public"),
   logger: process.env.LOG !== "0",

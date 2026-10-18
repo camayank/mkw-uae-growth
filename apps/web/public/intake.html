@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tasees: get your UAE setup offers</title>
+  <meta name="description" content="Tell us about your business and get up to three clear offers from vetted partner firms, managed by MKW Advisors." />
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    .intake { max-width: 760px; margin: 24px auto; padding: 0 16px; }
+    .hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+  </style>
+</head>
+<body>
+  <header class="top"><a class="brand" href="/intake.html"><span class="mark">T</span><span class="brand-text">Tasees <small>by MKW Advisors</small></span></a></header>
+  <main class="intake">
+    <h1>Your UAE company, priced clearly</h1>
+    <p class="muted">Answer a few questions. We turn them into a scope, collect sealed prices from vetted partner firms and send you up to three offers at one clear price each. Where a rule is not certain for your case, a person checks it before you see it.</p>
+    <form class="card" id="intake" novalidate>
+      <div class="grid cols-3">
+        <div class="field"><label for="company">Company or working name</label><input id="company" name="company" required minlength="2" /></div>
+        <div class="field"><label for="name">Your name</label><input id="name" name="name" required minlength="2" /></div>
+        <div class="field"><label for="email">Work email</label><input id="email" name="email" type="email" required /></div>
+        <div class="field"><label for="phone">Phone (optional)</label><input id="phone" name="phone" /></div>
+        <div class="field"><label for="emirate">Emirate</label><select id="emirate" name="emirate"><option>Dubai</option><option>Abu Dhabi</option><option>Sharjah</option><option>Ajman</option><option>Ras Al Khaimah</option><option>Umm Al Quwain</option><option>Fujairah</option></select></div>
+        <div class="field"><label for="jurisdiction">Licence type</label><select id="jurisdiction" name="jurisdiction"><option value="not_sure">Not sure yet; advise me</option><option value="free_zone">Free zone</option><option value="mainland">Mainland</option><option value="offshore">Offshore</option><option value="difc_adgm">DIFC or ADGM</option></select></div>
+        <div class="field"><label for="visas">Residence visas</label><input id="visas" name="visas" type="number" min="0" max="50" value="1" /></div>
+        <div class="field"><label for="activity">Main activity</label><select id="activity" name="activity"><option value="">Choose</option><option>consulting</option><option>trading</option><option>ecommerce</option><option>tech</option><option>holding</option><option>finance</option><option>health</option><option>education</option><option>food</option><option>construction</option><option>other</option></select></div>
+        <div class="field"><label for="customers">Your customers are</label><select id="customers" name="customers"><option value="">Choose</option><option value="international">Outside the UAE</option><option value="uae_mainland">Inside the UAE</option><option value="both">Both</option></select></div>
+        <div class="field"><label for="budgetAed">Setup budget, AED (optional)</label><input id="budgetAed" name="budgetAed" type="number" min="0" /></div>
+      </div>
+      <div class="field"><label for="description">What do you want to do? (optional)</label><textarea id="description" name="description" maxlength="2000"></textarea></div>
+      <label class="hp" aria-hidden="true">Leave this field empty <input name="website" tabindex="-1" autocomplete="off" /></label>
+      <label class="small"><input type="checkbox" name="consent" required /> I agree that MKW Advisors may process the details above to prepare my offers, store them in the UAE and contact me about this request (UAE Personal Data Protection Law). I can ask for a copy or deletion at any time.</label>
+      <input type="hidden" name="consentVersion" value="2026-10-privacy-v1" />
+      <div class="row" style="margin-top:12px"><button class="primary" type="submit">Get my offers</button><span class="small muted">No payment now. Offers come by email, usually within one working day.</span></div>
+      <p class="notice small" id="msg" hidden></p>
+    </form>
+    <p class="small muted">Tasees is a service of MKW Advisors. Partner firms deliver the work; MKW Advisors manages scope, price, quality and payment.</p>
+  </main>
+  <script type="module" src="intake.js"></script>
+</body>
+</html>

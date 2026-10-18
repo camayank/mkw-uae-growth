@@ -3,6 +3,7 @@ import { asPlatform } from "../lib/context.ts";
 import type { Database } from "../lib/db.ts";
 import { DELIVERABLES, DEMO, MARGIN_RULES } from "./seed-data.ts";
 import { CATALOGUE_EXTENSION, EXTENSION_MARGIN_RULES, STARTER_ROWS } from "./catalogue.ts";
+import { SCOPING_RULES, ZONES } from "./scoping-data.ts";
 
 /** Catalogue, margin rules and settings. Safe to run more than once. */
 export async function seedCatalogue(db: Database): Promise<void> {
@@ -37,6 +38,16 @@ export async function seedCatalogue(db: Database): Promise<void> {
       `insert into settings (key, value) values ('pricing', $1) on conflict (key) do nothing`,
       [JSON.stringify(DEFAULT_SETTINGS)],
     );
+    // Scoping rules and zones: inserted once; verification and edits made on the Scoping page are never reset.
+    for (const [key, kind, statement, parameters, source] of SCOPING_RULES) {
+      await tx.query("insert into scoping_rules (key, kind, statement, parameters, source_url) values ($1,$2,$3,$4,$5) on conflict (key) do nothing", [key, kind, statement, JSON.stringify(parameters), source]);
+    }
+    for (const [name, emirate, type, visas, min, max, days, activities] of ZONES) {
+      await tx.query(
+        "insert into zones (name, emirate, type, visa_quota, cost_min_fils, cost_max_fils, timeline_days, activities) values ($1,$2,$3,$4,$5,$6,$7,$8) on conflict (name) do nothing",
+        [name, emirate, type, visas, aed(min), aed(max), days, activities],
+      );
+    }
   });
 }
 

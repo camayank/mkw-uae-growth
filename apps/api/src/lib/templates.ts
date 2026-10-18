@@ -22,7 +22,9 @@ export type TemplateName =
   | "user_invited"
   | "ops_digest"
   | "invoice_issued"
-  | "payout_remittance";
+  | "payout_remittance"
+  | "intake_received"
+  | "intake_signin";
 
 export type Vars = Record<string, string | number | undefined>;
 
@@ -50,6 +52,8 @@ export const TEMPLATE_AUDIENCE: Record<TemplateName, Audience | "any"> = {
   ops_digest: "staff",
   invoice_issued: "client",
   payout_remittance: "partner",
+  intake_received: "client",
+  intake_signin: "client",
 };
 
 export const BRAND: Record<Audience, { name: string; signOff: string }> = {
@@ -152,6 +156,18 @@ export function renderTemplate(template: TemplateName, audience: Audience, vars:
         inApp: true,
         subject: `Remittance advice: ${aed(vars.amountFils)} paid to your firm`,
         body: `MKW Advisors has paid ${aed(vars.amountFils)} to your firm's account in payout run ${vars.runReference} (bank reference ${vars.bankReference}). It covers ${vars.count} payout(s); details are at ${link("/payouts")}.${sign}`,
+      };
+    case "intake_received":
+      return {
+        inApp: true,
+        subject: "We have your request",
+        body: `Thank you. We have received your request for ${vars.company} and are preparing your offers; where a rule is not certain for your case, a person checks it first.${vars.newAccount ? `\n\nAn account has been created for you. Sign in with this email address at ${link("/")}: we send a six-digit code each time, no password needed.` : `\n\nFollow progress at ${link("/")}.`}${sign}`,
+      };
+    case "intake_signin":
+      return {
+        inApp: false,
+        subject: "Continue with your request",
+        body: `Thank you for getting in touch. To continue, sign in with this email address at ${link("/")}: we send a six-digit code each time, no password needed. If you did not fill in our form, you can ignore this message.${sign}`,
       };
     case "ops_digest":
       return {

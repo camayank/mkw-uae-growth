@@ -4,7 +4,7 @@
 //   npm i -D playwright@1.49.1 && npx playwright install chromium && node scripts/smoke.mjs
 // It prints a log and checks that the client never sees partner cost, margin or masked contact details.
 import { chromium } from "playwright";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:8787";
 const OUT = process.env.OUT ?? "./smoke-shots";
@@ -602,6 +602,143 @@ await partnerPages[0].goto(BASE + "/#/performance"); await partnerPages[0].reloa
 await partnerPages[0].waitForSelector('main h1:text-is("Your performance")');
 check("partner performance page has no client or margin figures:", !/margin|client price/i.test(await partnerPages[0].locator("main").innerText()));
 await shot(partnerPages[0], "52-partner-performance");
+
+// Arabic and accessibility (O9): sign-off gate, Arabic client screens, axe-core on key screens, keyboard-only path
+const axeSource = readFileSync(new URL("../node_modules/axe-core/axe.min.js", import.meta.url), "utf8");
+const axeResults = [];
+async function axeCheck(page, name) {
+  await page.addScriptTag({ content: axeSource });
+  const r = await page.evaluate(async () => {
+    const res = await window.axe.run(document, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"] } });
+    return res.violations.map((v) => ({ id: v.id, impact: v.impact, help: v.help, nodes: v.nodes.slice(0, 3).map((n) => n.target.join(" ")) }));
+  });
+  axeResults.push({ screen: name, violations: r });
+  check(`axe: no WCAG 2.1 AA violations on ${name}:`, r.length === 0);
+  if (r.length) log.push(`axe ${name}: ${JSON.stringify(r)}`);
+}
+const a11y = await browser.newContext({ viewport: { width: 1280, height: 900 }, bypassCSP: true });
+const ap = await a11y.newPage();
+ap.on("pageerror", (e) => errors.push(`a11y: ${e.message}`));
+await ap.goto(BASE + "/");
+await ap.waitForSelector("form");
+await axeCheck(ap, "sign-in (en)");
+// Keyboard only: reach the email field, request a code, sign in, open the offer
+await ap.keyboard.press("Tab"); // skip link
+check("skip link is the first focus stop:", await ap.evaluate(() => document.activeElement?.classList.contains("skip")));
+await ap.keyboard.press("Enter");
+await ap.waitForTimeout(200);
+check("activating the skip link moves focus to the page without changing the route:", await ap.evaluate(() => document.activeElement?.id === "app" && location.hash !== "#app") && (await ap.locator("form").count()) >= 1);
+check("the document title follows the heading:", /Sign in/.test(await ap.title()));
+let focusedEmail = false;
+for (let i = 0; i < 6 && !focusedEmail; i++) { await ap.keyboard.press("Tab"); focusedEmail = await ap.evaluate(() => document.activeElement?.id === "email"); }
+check("keyboard reaches the email field:", focusedEmail);
+await ap.keyboard.type("founder@sample-client.test");
+await ap.keyboard.press("Enter");
+await ap.waitForSelector('form[data-form="verify"]');
+await ap.keyboard.press("Enter"); // the code is focused and filled in development mode
+await ap.waitForSelector("#nav a");
+let onOffer = false;
+for (let i = 0; i < 60 && !onOffer; i++) {
+  await ap.keyboard.press("Tab");
+  if (await ap.evaluate(() => (document.activeElement?.getAttribute("href") ?? "").includes("#/engagement/"))) { await ap.keyboard.press("Enter"); onOffer = true; }
+}
+await ap.waitForSelector('main h1:has-text("Engagement")');
+check("keyboard-only path opens the engagement:", onOffer);
+await ap.goto(BASE + "/" + standard[1]); await ap.waitForSelector('main h1:text-is("Your offer")');
+await axeCheck(ap, "client offer (en)");
+await ap.goto(BASE + "/#/"); await ap.waitForSelector("main h1");
+await axeCheck(ap, "client home (en)");
+await ap.goto(engagementUrl); await ap.waitForSelector("main h1");
+await axeCheck(ap, "client engagement (en)");
+await ap.goto(BASE + "/#/compliance"); await ap.waitForSelector("main h1");
+await axeCheck(ap, "client compliance (en)");
+await ap.goto(BASE + "/#/new"); await ap.waitForSelector('form[data-form="intake"]');
+await axeCheck(ap, "client intake (en)");
+// Partner and public pages
+const ap2 = await (await browser.newContext({ viewport: { width: 1280, height: 900 }, bypassCSP: true })).newPage();
+ap2.on("pageerror", (e) => errors.push(`a11y partner: ${e.message}`));
+await ap2.goto(BASE + "/");
+await ap2.locator('button[data-email="admin@setup-partner.test"]').click();
+await ap2.locator('form[data-form="verify"] button[type="submit"]').click();
+await ap2.waitForSelector("#nav a");
+await axeCheck(ap2, "partner home (en)");
+await ap2.goto(BASE + "/#/firm"); await ap2.waitForSelector("main h1");
+await axeCheck(ap2, "partner firm (en)");
+await ap2.goto(BASE + "/intake.html"); await ap2.waitForSelector("#intake");
+await axeCheck(ap2, "public intake (en)");
+// Before the sign-off a client cannot switch to Arabic; the founder records it on Settings
+await client.goto(BASE + "/#/"); await client.reload();
+await client.waitForSelector("main h1");
+check("no Arabic switch for clients before the sign-off:", (await client.locator('button[data-act="lang"]').count()) === 0);
+await founder.goto(BASE + "/#/settings"); await founder.reload();
+await founder.waitForSelector('form[data-form="arabic-review"]');
+await founder.fill('form[data-form="arabic-review"] input[name="reviewedBy"]', "Huda Al Marri, legal translator");
+await founder.fill('form[data-form="arabic-review"] input[name="note"]', "Dictionary v1 and client templates");
+await founder.locator('form[data-form="arabic-review"] button[value="1"]').click();
+await founder.waitForTimeout(800);
+check("Arabic sign-off recorded:", /sign-off recorded/.test(await toastText(founder)));
+// The client switches to Arabic: right-to-left, Arabic headings, numbers left-to-right
+await client.reload();
+await client.waitForSelector('button[data-act="lang"]');
+await client.locator('button[data-act="lang"]').click();
+await client.waitForSelector('html[dir="rtl"]');
+await client.waitForTimeout(600);
+check("client home renders in Arabic, right-to-left:", (await client.getAttribute("html", "lang")) === "ar" && /شركتك مع تأسيس/.test(await client.locator("main").innerText()));
+await shot(client, "55-client-home-ar");
+await client.goto(BASE + "/" + standard[1]); await client.waitForSelector("main h1");
+await client.waitForTimeout(500);
+const offerAr = await client.locator("main").innerText();
+check("offer in Arabic keeps amounts and the accept wording:", /عرضك/.test(offerAr) && /AED [\d,]+/.test(offerAr));
+await shot(client, "56-client-offer-ar");
+await client.goto(engagementUrl); await client.waitForSelector("main h1");
+await client.waitForTimeout(500);
+check("engagement in Arabic:", /الخطوات/.test(await client.locator("main").innerText()));
+await shot(client, "57-client-engagement-ar");
+await client.goto(BASE + "/#/compliance"); await client.waitForSelector("main h1");
+await client.waitForTimeout(500);
+check("compliance in Arabic:", /تقويم التزاماتك/.test(await client.locator("main").innerText()));
+await shot(client, "58-client-compliance-ar");
+await pp.goto(BASE + "/intake.html?lang=ar"); await pp.waitForSelector('html[dir="rtl"]');
+await pp.waitForTimeout(400);
+check("public intake in Arabic:", /شركتك في الإمارات/.test(await pp.locator("main").innerText()));
+await shot(pp, "59-public-intake-ar");
+// axe on the Arabic screens (same account, new context that bypasses CSP for the axe script only)
+const ap3 = await (await browser.newContext({ viewport: { width: 1280, height: 900 }, bypassCSP: true })).newPage();
+ap3.on("pageerror", (e) => errors.push(`a11y ar: ${e.message}`));
+await ap3.goto(BASE + "/");
+await ap3.locator('button[data-email="founder@sample-client.test"]').click();
+await ap3.locator('form[data-form="verify"] button[type="submit"]').click();
+await ap3.waitForSelector("#nav a");
+await ap3.waitForSelector('html[dir="rtl"]');
+await axeCheck(ap3, "client home (ar)");
+await ap3.goto(BASE + "/" + standard[1]); await ap3.waitForSelector("main h1");
+await axeCheck(ap3, "client offer (ar)");
+await ap3.goto(engagementUrl); await ap3.waitForSelector("main h1");
+await axeCheck(ap3, "client engagement (ar)");
+await ap3.goto(BASE + "/#/compliance"); await ap3.waitForSelector("main h1");
+await axeCheck(ap3, "client compliance (ar)");
+await ap3.goto(BASE + "/#/new"); await ap3.waitForSelector('form[data-form="intake"]');
+await axeCheck(ap3, "client intake (ar)");
+check("the Arabic document title follows the heading:", /تأسيس/.test(await ap3.title()));
+// A message a partner wrote is never rewritten by the dictionary, even when it equals a dictionary key.
+await ap3.goto(engagementUrl); await ap3.reload(); await ap3.waitForSelector(".msg");
+const msgs = await ap3.locator(".msg div[data-no-i18n]").allInnerTexts();
+check("people's own words are left untranslated:", msgs.length >= 1 && msgs.every((m) => !/[\u0600-\u06FF]/.test(m)));
+await ap3.goto(BASE + "/intake.html?lang=ar"); await ap3.waitForSelector('html[dir="rtl"]');
+await axeCheck(ap3, "public intake (ar)");
+writeFileSync(`${OUT}/axe.json`, JSON.stringify(axeResults, null, 2));
+// Back to English for the mobile shots that follow, after one Arabic phone shot
+const mar = await (await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 })).newPage();
+await mar.goto(BASE + "/");
+await mar.locator('button[data-email="founder@sample-client.test"]').click();
+await mar.locator('form[data-form="verify"] button[type="submit"]').click();
+await mar.waitForSelector("#nav a");
+await mar.waitForSelector('html[dir="rtl"]');
+await mar.waitForTimeout(600);
+check("Arabic home at 390 px has no horizontal overflow:", !(await mar.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
+await mar.screenshot({ path: `${OUT}/60-mobile-home-ar.png`, fullPage: false });
+await client.locator('button[data-act="lang"]').click();
+await client.waitForSelector('html[dir="ltr"]');
 
 // Mobile views of the new screens
 const mf = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });

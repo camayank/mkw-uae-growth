@@ -21,7 +21,7 @@ Needs Node 22 and pnpm 10.
 pnpm install
 pnpm seed          # catalogue, margin rules and demo parties (invented firm names) into ./apps/api/data/pglite
 pnpm dev           # http://localhost:8787 with development sign-in (codes shown on screen)
-pnpm test          # 196 tests: pricing, allocation, rules, full HTTP flow, database security, admin, PDPL, storage
+pnpm test          # 199 tests: pricing, allocation, rules, full HTTP flow, database security, admin, PDPL, storage
 pnpm typecheck
 pnpm build         # compiles to dist/; `pnpm start` then runs the compiled build (what production and the Dockerfile run)
 npx playwright install chromium && pnpm smoke   # browser smoke test against a running demo; screenshots in ./smoke-shots
@@ -86,6 +86,7 @@ apps/api          Fastify 5 + zod + Postgres (pg in production, PGlite in dev an
   src/services/delivery.ts  client document requests, delay watch and guarantee, ratings, manual allocation, offer PDF (O6)
   src/services/reporting.ts founder and partner dashboards, accounting export (O8)
   src/services/compliance.ts client obligations with confirmation, evidence, reminders (O8)
+  src/services/locale.ts    language per person, Arabic gated on the reviewer's sign-off (O9); src/lib/templates-ar.ts Arabic client emails
   src/db/catalogue.ts    the 62 catalogue codes added to the 20 starter codes (83 Service Catalogue rows)
   src/scripts/      seed, run-jobs, import-sheet (rate cards from the operating Google Sheet), verify-audit
   test/             end-to-end HTTP flow, exceptions, database security, admin, PDPL, storage adapters

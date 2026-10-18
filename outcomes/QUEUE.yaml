@@ -50,7 +50,8 @@ outcomes:
     needs_from_owner: [service guarantee figure]
   - id: O7
     title: Launch gate (pilot with 3 partners and 5 clients, legal and tax sign-off, security review)
-    status: queued
+    status: prepared
+    contract: outcomes/O7-launch-gate.md
     depends_on: [O3, O5, O6]
     needs_from_owner: [pilot partners and clients, lawyer, tax adviser]
   - id: O8
@@ -61,6 +62,7 @@ outcomes:
     needs_from_owner: [accounting system name]
   - id: O9
     title: Arabic and accessibility (Arabic client screens, right-to-left, WCAG 2.1 AA)
-    status: queued
+    status: verified-pending-merge
+    contract: outcomes/O9-arabic-and-accessibility.md
     depends_on: [O7]
     needs_from_owner: [Arabic reviewer]

@@ -1,4 +1,17 @@
 // Public intake page (O5): posts the lead to the platform. Served with the same content-security policy as the app.
+import { translateTree } from "./i18n-ar.js";
+// Arabic (O9): ?lang=ar once the reviewer's sign-off is recorded (the health endpoint says so).
+(async () => {
+  const want = new URLSearchParams(location.search).get("lang") === "ar";
+  if (!want) return;
+  try {
+    const h = await (await fetch("/api/health")).json();
+    if (!h.arabic) return;
+    document.documentElement.lang = "ar";
+    document.documentElement.dir = "rtl";
+    translateTree(document.body);
+  } catch {}
+})();
     const form = document.getElementById("intake");
     const msg = document.getElementById("msg");
     const params = new URLSearchParams(location.search);

@@ -26,6 +26,8 @@ export interface SessionUser {
   role: Role;
   email: string;
   name: string;
+  /** Screen and email language: "en" or "ar". */
+  locale?: "en" | "ar";
 }
 
 const DB_ROLE: Record<OrgType, string> = {

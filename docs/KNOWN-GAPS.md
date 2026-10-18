@@ -51,7 +51,10 @@ in a browser; everything listed here is not.
 9. **Guarantee settlement after the balance is paid.** When the balance was already paid, an approved credit
    is `approved` for finance to refund by card or transfer and record the reference; a partial card refund
    through the provider waits for the provider.
-10. **Arabic and right-to-left layout** for client screens.
+10. **Arabic beyond the client screens.** Client screens, the public intake page and client emails are
+    translated (O9) and gated on the reviewer's sign-off. Service names from the catalogue, dates and the
+    invoice and offer PDFs stay English (an Arabic-capable PDF font and `deliverables.name_ar` are the next
+    step); partner and staff screens are English by design.
 13. **Accounting system mapping.** Exports use a generic column layout; the Zoho Books / Xero / QuickBooks
     import mapping waits for the owner to name the system. Obligation rules (visa term, VAT periods, CT
     year end, ESR scope) are working assumptions marked UNCERTAIN until ops confirms each date.
@@ -81,7 +84,7 @@ in a browser; everything listed here is not.
 
 ## Verified so far
 
-- 51 domain tests (`packages/core`) and 145 API tests (`apps/api`), all passing on PGlite and on PostgreSQL 16;
+- 51 domain tests (`packages/core`) and 148 API tests (`apps/api`), all passing on PGlite and on PostgreSQL 16;
   typecheck clean; `pnpm build` compiles and the compiled server runs in production mode from a fresh database.
 - O1: partner creation, invitations, role changes and deactivation (sessions revoked, codes refused) are tested as
   every role; PDPL export contains one person's data and no audit payloads (a test reproduces the leak that the
@@ -131,6 +134,12 @@ in a browser; everything listed here is not.
   database, confirmed with a note, waived with a reason, met only with checked evidence, rolled forward,
   reminded at 30 and 7 days and once overdue from Tasees with the "we do not file" line
   (`docs/evidence/O8/`, 79 smoke checks).
+- O9: every client-facing template has an Arabic version carrying the same links and references with no
+  English placeholders; clients are refused Arabic (409) until the founder records the reviewer, staff may
+  preview; Arabic emails go to an Arabic-speaking client after sign-off and partner emails stay English;
+  withdrawing the sign-off resets clients to English. Smoke: axe-core zero violations on 15 screens in both
+  languages (`docs/evidence/O9/axe.json`), keyboard-only sign-in and navigation, Arabic screenshots
+  (`docs/evidence/O9/`, 109 smoke checks).
 - `pricing.test.ts` reproduces the Google Sheet Offer Builder example exactly.
 - `security.test.ts` shows Postgres refusing margin and partner-cost columns to clients, client price to partners,
   and other organisations' rows; sign-in throttling; security headers.

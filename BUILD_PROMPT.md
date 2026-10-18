@@ -117,6 +117,7 @@ mergeable whatever else it adds.
 Do not write code until these documents exist and the owner has read them. Each is short, in plain English, and
 names what is still uncertain.
 
+- **`docs/VISION.md`**: where the product is going and why; the roadmap after O9.
 - **`docs/PRODUCT_SPEC.md`**: what the product does (diagrams in `docs/img/`). One paragraph per actor (client,
   partner firm, MKW ops, MKW finance, founder) stating what they need to see and do. The service catalogue by
   category (company setup across mainland and the free zones; visas and immigration; VAT and corporate tax
@@ -202,9 +203,10 @@ stacks on the last and ships with its own tests, smoke checks, review and docume
 | O8 | Reporting and compliance | The founder sees the business in numbers that match the books; every client has a compliance calendar that never files anything by itself | founder and partner dashboards by period, accounting CSV export, obligations with UNCERTAIN dates until confirmed, reminders, evidence and MKW check |
 | O9 | Arabic and accessibility | Clients can use Tasees in Arabic once a reviewer signs it off; every screen passes WCAG 2.1 AA machine checks and works by keyboard | locale on the user, Arabic dictionary and templates, reviewer sign-off gate, preview accounts, RTL layout, axe-core in smoke, keyboard path |
 
-After O9 the queue is open. Candidates the owner may release next: a real payment provider adapter; WhatsApp
-notifications behind an adapter; accounting system integration once the system is named; Arabic PDFs; partner
-and staff screens in Arabic; a client mobile layout review with real users.
+After O9 the queue follows `docs/VISION.md` (18 Oct 2026): O10 Ops command centre and event outbox, O11 Client
+experience, O12 Observability and hardening before the pilot; then O7; then O13 Real payments and WhatsApp, O14
+Books and Arabic completeness, O15 Agents round two. They sit in `outcomes/QUEUE.yaml` as `planned` until the owner
+releases one. The vision's "Where the build stands" section lists what each one adds to the code as it is.
 
 ## How to work one outcome
 
@@ -381,8 +383,8 @@ O6, O8, O9 on 18 October 2026; the merged `outcome/*` and `tasees-base` branches
 
 ```
 You are continuing the Tasees platform (MKW Advisors). Repository: camayank/mkw-uae-growth, branch main.
-Read CLAUDE.md, BUILD_PROMPT.md, docs/DECISIONS.md, docs/KNOWN-GAPS.md and outcomes/QUEUE.yaml first.
-Work only the first released outcome in the queue. Contract first, one branch per outcome, build → run →
+Read CLAUDE.md, BUILD_PROMPT.md, docs/VISION.md, docs/DECISIONS.md, docs/KNOWN-GAPS.md and
+outcomes/QUEUE.yaml first. Work only the first released outcome in the queue. Contract first, one branch per outcome, build → run →
 test → smoke → sceptical review in a fresh worktree → docs → verified-pending-merge, then a 25-line report
 and stop. The rules that never bend apply to every line: privacy of money in RLS, visibility map and
 tests; one margin rule; integer fils and basis points; evidence before done; UNCERTAIN until a person

@@ -66,3 +66,56 @@ outcomes:
     contract: outcomes/O9-arabic-and-accessibility.md
     depends_on: [O7]
     needs_from_owner: [Arabic reviewer]
+
+# Roadmap from docs/VISION.md (18 Oct 2026). Order of work: O10, O11, O12 before the pilot; then O7 (launch gate);
+# then O13, O14, O15. All are `planned`: the owner releases one at a time ("Release O10 ..."), and its contract
+# file is written from the vision's scope at that point, before any code.
+roadmap:
+  - id: O10
+    title: Ops command centre and event outbox
+    status: planned
+    business_result: Ops runs the day from one risk-ordered queue; side effects become exactly-once and replayable.
+    scope: [triage queue with a "why it is here" line and one-click actions, event outbox and dispatcher with retries,
+            document checker as the first outbox subscriber (drafts only), risk ranking that orders the queue and never decides,
+            queue timings for ops minutes per engagement]
+    depends_on: [O9]
+    needs_from_owner: []
+  - id: O11
+    title: Client experience
+    status: planned
+    business_result: A client always knows the next action, and the offer reads as a proposal.
+    scope: [engagement timeline with the next action pinned, proposal-style offer, conversational intake with the plan building on screen,
+            checklist uploads with validation before upload, design tokens, web app split into modules with no build step]
+    depends_on: [O10]
+    needs_from_owner: [wording review of the proposal and intake questions]
+  - id: O12
+    title: Observability and hardening
+    status: planned
+    business_result: Nothing fails silently, and a retry never double-creates.
+    scope: [structured logs with user, org and request id, job metrics and an alert when a job did not run, idempotency keys on mutating routes and jobs,
+            state machines as data with one transition(), route modules and an OpenAPI contract, real Postgres in CI beside PGlite,
+            load test on allocation and payouts, validated config at boot, verify:audit nightly]
+    depends_on: [O10]
+    needs_from_owner: [alerting destination]
+  - id: O13
+    title: Real payments and WhatsApp
+    status: planned
+    business_result: Clients pay by card through the chosen provider; reminders reach them where they read.
+    scope: [payment provider adapter against its sandbox, WhatsApp adapter with opt-in, delivery log]
+    depends_on: [O7]
+    needs_from_owner: [payment provider and merchant account, WhatsApp Business number]
+  - id: O14
+    title: Books and Arabic completeness
+    status: planned
+    business_result: Finance imports without re-keying; Arabic covers PDFs and partners.
+    scope: [accounting integration for the named system, Arabic invoice and offer PDFs, partner and staff screens in Arabic]
+    depends_on: [O7]
+    needs_from_owner: [accounting system name, Arabic reviewer]
+  - id: O15
+    title: Agents round two
+    status: planned
+    business_result: Ops time per engagement halves with no loss of control.
+    scope: [fee and rule watcher, compliance calendar agent, partner vetting assistant, founder analyst over snapshot tables,
+            learning-loop metrics (edit and acceptance rate per agent)]
+    depends_on: [O10, O12, O7]
+    needs_from_owner: [AI API key and monthly spend cap]

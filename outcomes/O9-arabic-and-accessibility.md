@@ -1,6 +1,6 @@
 # O9 Arabic and accessibility
 
-Status: verified-pending-merge (branch `outcome/O9-arabic-and-accessibility`, stacked on O8, 17 Oct 2026)
+Status: merged (pull request camayank/mkw-uae-growth#8 into `main`, 18 Oct 2026; was: branch `outcome/O9-arabic-and-accessibility`, stacked on O8, 17 Oct 2026)
 
 ## Business result
 

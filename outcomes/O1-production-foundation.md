@@ -1,6 +1,6 @@
 # O1 Production foundation
 
-Status: verified-pending-merge (branch `outcome/O1-production-foundation`, 16 Oct 2026)
+Status: merged (pull request camayank/mkw-uae-growth#1 into `main`, 18 Oct 2026; was: branch `outcome/O1-production-foundation`, 16 Oct 2026)
 
 ## Business result
 

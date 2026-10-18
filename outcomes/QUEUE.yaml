@@ -1,5 +1,5 @@
 # Build queue for the base product. Execute only the first outcome whose status is `released`.
-# Statuses: released → in-progress → verified-pending-merge → verified (set by the owner after merge).
+# Statuses: planned → released → in-progress → verified-pending-merge → merged (set after the pull request lands on main).
 # Later outcomes are `queued`; the owner releases each one after merging the previous pull request.
 # Scope of each outcome = the features listed against it in docs/PRODUCT_SPEC.md, "Build plan".
 
@@ -14,37 +14,37 @@ baseline:
 outcomes:
   - id: O1
     title: Production foundation
-    status: verified-pending-merge
+    status: merged
     depends_on: [O0]
     contract: outcomes/O1-production-foundation.md
     needs_from_owner: [cloud account in a UAE region, domain name]
   - id: O2
     title: Notifications (email adapter, templates, in-app bell, ops digest)
-    status: verified-pending-merge
+    status: merged
     contract: outcomes/O2-notifications.md
     depends_on: [O1]
     needs_from_owner: [email provider account, DNS access for SPF and DKIM]
   - id: O3
     title: Payments and invoices (card links, signed webhook, tax invoices, payout runs, bank file)
-    status: verified-pending-merge
+    status: merged
     contract: outcomes/O3-payments-and-invoices.md
     depends_on: [O1, O2]
     needs_from_owner: [merchant account and keys, MKW TRN, sample bank bulk-transfer file]
   - id: O4
     title: Catalogue and fees (83 services, government fee table with sources, rules admin)
-    status: verified-pending-merge
+    status: merged
     contract: outcomes/O4-catalogue-and-fees.md
     depends_on: [O1]
     needs_from_owner: [named person who verifies fees and rules]
   - id: O5
     title: Scoping intelligence (structure, zone, licences, obligations with confidence; public intake; AI draft queue)
-    status: verified-pending-merge
+    status: merged
     contract: outcomes/O5-scoping-intelligence.md
     depends_on: [O4]
     needs_from_owner: [rule sign-off, AI API key and monthly spend cap]
   - id: O6
     title: Partners and delivery (onboarding, licence watch, scorecard, document requests, delay watch, ratings)
-    status: verified-pending-merge
+    status: merged
     contract: outcomes/O6-partners-and-delivery.md
     depends_on: [O1, O2]
     needs_from_owner: [service guarantee figure]
@@ -56,13 +56,13 @@ outcomes:
     needs_from_owner: [pilot partners and clients, lawyer, tax adviser]
   - id: O8
     title: Reporting and compliance calendar (dashboards, accounting export, client obligations)
-    status: verified-pending-merge
+    status: merged
     contract: outcomes/O8-reporting-and-compliance.md
     depends_on: [O7]
     needs_from_owner: [accounting system name]
   - id: O9
     title: Arabic and accessibility (Arabic client screens, right-to-left, WCAG 2.1 AA)
-    status: verified-pending-merge
+    status: merged
     contract: outcomes/O9-arabic-and-accessibility.md
     depends_on: [O7]
     needs_from_owner: [Arabic reviewer]

@@ -88,7 +88,7 @@ export interface CostQuote {
   validTo?: string;
 }
 
-export type PartnerStatus = "prospect" | "contacted" | "pilot" | "signed" | "paused";
+export type PartnerStatus = "prospect" | "contacted" | "applied" | "under_review" | "pilot" | "signed" | "paused";
 
 export interface PartnerProfile {
   id: string;

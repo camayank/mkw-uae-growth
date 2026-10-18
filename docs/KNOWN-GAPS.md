@@ -45,10 +45,12 @@ in a browser; everything listed here is not.
    AI model is the deterministic in-memory double until an API key and spend cap exist; the Claude adapter is
    written against the same interface. The pack's lead page (`03-lead-page`) should post to
    `/api/public/intake` as `intake.html` does; WhatsApp capture waits for the Business number.
-8. **Fairness share by category.** The cap uses each partner's share of all jobs this month; the rule in the
-   partner agreement is per category.
-9. **Partner scorecard.** Quality, on-time delivery and SLA strikes are stored on the partner profile but not
-   yet recomputed from delivery history.
+8. **E-signature and public holidays.** The Partner Network Agreement is uploaded signed and verified by MKW
+   (O6); e-signature waits for the provider. The UAE working-time clock has no public holidays until the owner
+   supplies the year's list (`UAE_CALENDAR.holidays`), so a delay noticed over a holiday counts those days.
+9. **Guarantee settlement after the balance is paid.** When the balance was already paid, an approved credit
+   is `approved` for finance to refund by card or transfer and record the reference; a partial card refund
+   through the provider waits for the provider.
 10. **Arabic and right-to-left layout** for client screens.
 11. **WhatsApp notifications** (via the WhatsApp Business API) alongside email. The notifier records a
     `whatsapp` channel as `skipped` today.
@@ -76,7 +78,7 @@ in a browser; everything listed here is not.
 
 ## Verified so far
 
-- 40 domain tests (`packages/core`) and 128 API tests (`apps/api`), all passing on PGlite and on PostgreSQL 16;
+- 45 domain tests (`packages/core`) and 141 API tests (`apps/api`), all passing on PGlite and on PostgreSQL 16;
   typecheck clean; `pnpm build` compiles and the compiled server runs in production mode from a fresh database.
 - O1: partner creation, invitations, role changes and deactivation (sessions revoked, codes refused) are tested as
   every role; PDPL export contains one person's data and no audit payloads (a test reproduces the leak that the
@@ -109,6 +111,16 @@ in a browser; everything listed here is not.
   consent, swallows bots, records consent with version and timestamp, is rate-limited; search is staff-only
   a repeat email is held for ops rather than attached; the client role cannot read unapproved advice at the
   database; changing the structure at approval ranks places again (`docs/evidence/O5/`, 56 smoke checks).
+- O6: onboarding gates (pilot needs a verified unexpired licence; signed needs the agreement and insurance);
+  documents and scorecards invisible to other firms and to clients at the API and the database; licence
+  warning once at 30 days, pause on expiry, pause lifted by a verified renewal; staff scoped to the firm;
+  client document checklist on acceptance, partner extras, received/ask-again with masked notes, files to the
+  parties only; delay noticed once with both sides told, ops attribution hidden from the parties; credit by
+  rule after five working days at the step's share of the fee, finance-only decision, balance reduced and
+  partner-borne delay reduces the completion payout, all audited; rating once by the owner, masked for the
+  partner, feeding the scorecard; month share per category; manual allocation refused for ineligible or
+  over-cost partners and audited with the engine's own choice; offer PDF names no partner
+  (`docs/evidence/O6/`, 68 smoke checks).
 - `pricing.test.ts` reproduces the Google Sheet Offer Builder example exactly.
 - `security.test.ts` shows Postgres refusing margin and partner-cost columns to clients, client price to partners,
   and other organisations' rows; sign-in throttling; security headers.

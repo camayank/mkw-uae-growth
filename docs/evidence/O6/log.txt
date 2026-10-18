@@ -1,0 +1,138 @@
+01-sign-in
+02-client-intake
+request: Request received. We will send your offers shortly.
+build: Offers built
+03-ops-pipeline
+04-ops-queue
+05-ops-offer-no-margin
+publish: Published to the client
+06-finance-offer-with-margin
+07-client-offer
+08-client-engagement-awaiting-payment
+client sees a card payment link for the deposit: OK
+deposit: Payment recorded
+09-finance-engagement-allocated
+admin@setup-partner.test accepted 0
+10-partner-offered-work
+shot-partner
+admin@corporate-services.test accepted 1
+admin@tax-accounts.test accepted 1
+submit: Sent to MKW Advisors for checking
+partner page shows no client price or margin: OK
+11-partner-engagement
+qa: Passed to the client for approval
+12-ops-engagement
+approve: Approved. Thank you.
+client page hides the partner's phone and email: OK
+client page shows no partner cost or margin: OK
+13-client-engagement-approved
+client bell shows unread notices after the flow: OK
+client notifications mention the offers and the deposit: OK
+client notifications carry no partner cost or margin: OK
+22-client-notifications
+mark all as read clears the bell: OK
+partner notifications come from MKW Advisors and never say Tasees: OK
+partner notifications carry no client price: OK
+23-partner-notifications
+client page at 390 px has no horizontal overflow: OK
+notifications at 390 px have no horizontal overflow: OK
+statement at 390 px has no horizontal overflow: OK
+audit chain intact on the audit screen: OK
+15-audit
+16-people
+partner created: Partner firm created; its admin can sign in now
+new partner admin signed in, sees: MKW Advisors Partner Network
+invite: Invited
+role change: Role changed
+deactivate: Account deactivated
+deactivated user shows the badge and a reactivate button: OK
+export downloaded: person-6f8ea28f-25d9-4ccf-8adf-b1e6761abe45.json
+erase: Personal data erased and recorded
+erased person shown as a tombstone: OK
+17-people-after-changes
+ops cannot invite MKW staff or erase anyone: OK
+finance sees no admin forms or deactivate buttons: OK
+retention UNCERTAIN badges before: 5
+18-settings-retention
+retention: Retention periods confirmed
+no UNCERTAIN retention badge after the founder confirms: OK
+19-settings-retention-confirmed
+finance cannot confirm retention periods: OK
+delivery log lists sent messages for client and partner audiences: OK
+invoice held while TRN missing: OK
+company: Company details saved
+issue held: Issued 1 invoice(s): TI-2026-000001
+held invoice issued with a sequential number: OK
+29-settings-company
+client statement shows the paid deposit and the tax invoice: OK
+client statement carries no partner cost or margin: OK
+client downloads the tax invoice PDF: OK
+30-client-statement
+bank: Bank details saved
+partner invoice: Invoice uploaded; MKW Advisors pays it in the next run
+partner payouts page shows the invoice number and no client price: OK
+31-partner-payouts
+one payout is ready for the run: OK
+run: Run PR-2026-0001 created: 1 payout(s), AED 3,200
+finance downloads the bank bulk-transfer file: OK
+run paid: Run paid; payouts released
+payout run marked paid: OK
+32-finance-payout-runs
+partner sees the payout released: OK
+ops has no payout run controls: OK
+pipeline flags advice to review: OK
+ops sees the structure advice with UNCERTAIN labels: OK
+35-ops-scoping-review
+advice: Advice approved; the client can see it now
+client sees the approved advice with confidence labels and no money internals: OK
+36-client-advice
+AI queue shows the draft as UNCERTAIN with its lines: OK
+37-ai-queue
+draft: Draft discarded
+rule: Recorded
+verified rule shows the verifier: OK
+38-scoping-rules
+39-public-intake
+public intake accepted the lead: OK
+lead from the public page appears in the pipeline: OK
+search finds the new client: OK
+repeat lead gets the same answer: OK
+repeat lead is held for ops, not attached: OK
+42-held-leads
+held lead marked handled: OK
+catalogue lists 82 services: OK
+25-catalogue
+fee: Fee added as UNCERTAIN
+new fee shows as UNCERTAIN: OK
+verify: Fee marked verified
+verified fee shows the verifier and no stale badge: OK
+rule: Rule scheduled
+scheduled rule change is listed with its date: OK
+26-rules
+ops sees the fee table but no margin rates, floors or settings: OK
+ops catalogue hides the rule column values: OK
+partners page links to onboarding: OK
+43-ops-partner-onboarding
+partner moved to contacted: OK
+application submitted: OK
+trade licence uploaded, awaiting MKW check: OK
+44-partner-firm
+licence verified: OK
+partner moved to pilot with a verified licence: OK
+client is asked for documents per step: OK
+client document uploaded: OK
+45-client-documents
+offer PDF downloads for the client: OK
+partner marked the client document received: OK
+46-ops-delays
+people at 390 px has no horizontal overflow: OK
+settings at 390 px has no horizontal overflow: OK
+catalogue at 390 px has no horizontal overflow: OK
+rules at 390 px has no horizontal overflow: OK
+partners at 390 px has no horizontal overflow: OK
+scoping at 390 px has no horizontal overflow: OK
+agent at 390 px has no horizontal overflow: OK
+delays at 390 px has no horizontal overflow: OK
+firm page at 390 px has no horizontal overflow: OK
+ERRORS:
+SMOKE TEST PASSED

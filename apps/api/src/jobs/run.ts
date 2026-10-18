@@ -1,3 +1,5 @@
+import { recomputeScorecards, sweepLicences } from "../services/partners.ts";
+import { sweepDelays } from "../services/delivery.ts";
 import { asPlatform, audit, type SessionUser } from "../lib/context.ts";
 import type { Database } from "../lib/db.ts";
 import { sweepAllocationTimeouts, sweepAutoApprovals, type Deps } from "../services/engagements.ts";
@@ -10,7 +12,7 @@ import { refreshCurrentRules } from "../services/rules.ts";
  * transaction so one failure does not block the others.
  */
 export async function runJobs(db: Database, deps: Deps, actor: SessionUser | null = null) {
-  const result = { allocationTimeouts: 0, autoApprovals: 0, offersExpired: 0, opsDigests: 0, rulesRefreshed: 0, errors: [] as string[] };
+  const result = { allocationTimeouts: 0, autoApprovals: 0, offersExpired: 0, opsDigests: 0, rulesRefreshed: 0, licences: 0, delays: 0, credits: 0, scorecards: 0, errors: [] as string[] };
   const step = async (name: keyof Omit<typeof result, "errors">, fn: () => Promise<number>) => {
     try {
       result[name] = await fn();
@@ -23,6 +25,22 @@ export async function runJobs(db: Database, deps: Deps, actor: SessionUser | nul
   await step("offersExpired", () => asPlatform(db, actor, (tx) => expireOffers(tx)));
   await step("opsDigests", () => asPlatform(db, actor, (tx) => sendOpsDigest(tx, deps)));
   await step("rulesRefreshed", () => asPlatform(db, actor, (tx) => refreshCurrentRules(tx)));
+  // O6: licence watch daily, delay watch daily, scorecards weekly (Monday) or when none exists yet.
+  await step("licences", () => asPlatform(db, actor, (tx) => sweepLicences(tx, deps.notify)));
+  await step("delays", () =>
+    asPlatform(db, actor, async (tx) => {
+      const r = await sweepDelays(tx, deps);
+      result.credits = r.credits;
+      return r.delays;
+    }),
+  );
+  await step("scorecards", () =>
+    asPlatform(db, actor, async (tx) => {
+      // Monday in Gulf time, or seven days since the last card (a missed Monday does not skip the week).
+      const due = (await tx.query<{ due: boolean }>("select (extract(dow from (app_now() at time zone 'Asia/Dubai')) = 1 or not exists (select 1 from scorecards where computed_at > app_now() - interval '7 days')) and not exists (select 1 from scorecards where computed_at > app_now() - interval '6 days') as due")).rows[0]!.due;
+      return due ? recomputeScorecards(tx, actor) : 0;
+    }),
+  );
   await asPlatform(db, actor, (tx) => audit(tx, actor, "jobs.ran", "system", null, result));
   await deps.notify.flush();
   return result;

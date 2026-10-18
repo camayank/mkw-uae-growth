@@ -6,6 +6,7 @@ import {
   assertEngagement,
   assertMilestone,
   ceilTo,
+  clientDocumentsFor,
   maskContacts,
   milestonesFor,
   payoutStagesEligible,
@@ -85,8 +86,8 @@ export async function acceptOffer(tx: Queryable, user: SessionUser, offerId: str
   await tx.query("insert into engagement_parties (engagement_id, org_id, party) values ($1,$2,'client')", [eng.id, o.client_org_id]);
   await tx.query(
     `insert into engagement_lines (engagement_id, code, qty, quoting_partner_org_id, fallback_partner_org_id,
-       partner_unit_fils, gov_unit_fils, client_unit_fils)
-     select $1, code, qty, partner_org_id, fallback_partner_org_id, partner_unit_fils, gov_unit_fils, client_unit_fils + mkw_fee_unit_fils
+       partner_unit_fils, gov_unit_fils, client_unit_fils, mkw_fee_unit_fils)
+     select $1, code, qty, partner_org_id, fallback_partner_org_id, partner_unit_fils, gov_unit_fils, client_unit_fils + mkw_fee_unit_fils, mkw_fee_unit_fils
      from offer_lines where offer_id = $2`,
     [eng.id, offerId],
   );
@@ -180,7 +181,6 @@ export async function runAllocation(
       [engagementId],
     )
   ).rows;
-  const shares = await monthShares(tx);
   const sourced = (
     await tx.query<{ sourced_by_partner_id: string | null }>("select sourced_by_partner_id from requests where id = $1", [e.request_id])
   ).rows[0]?.sourced_by_partner_id;
@@ -194,6 +194,8 @@ export async function runAllocation(
   const results = [];
   for (const [quoting, group] of groups) {
     const codes = group.map((l) => String(l.code));
+    // Fairness is measured within the service category of the lines being allocated (partner agreement).
+    const shares = await monthShares(tx, categoryOf(codes, deliverables));
     const excluded = tried.filter((t) => t.codes.some((c) => codes.includes(c))).map((t) => t.partner_org_id);
     const fallback = group.map((l) => l.fallback_partner_org_id as string | null).find(Boolean) ?? null;
     const others = [...partners.values()]
@@ -277,9 +279,26 @@ async function payoutLinesFor(tx: Queryable, partnerId: string, group: Array<Rec
   });
 }
 
-async function monthShares(tx: Queryable): Promise<Map<string, number>> {
+/** The category most of the codes belong to (the first code's category breaks ties). */
+export function categoryOf(codes: string[], deliverables: Map<string, { category: string }>): string {
+  const counts = new Map<string, number>();
+  for (const c of codes) {
+    const cat = deliverables.get(c)?.category ?? "other";
+    counts.set(cat, (counts.get(cat) ?? 0) + 1);
+  }
+  let best = deliverables.get(codes[0] ?? "")?.category ?? "other";
+  for (const [cat, n] of counts) if (n > (counts.get(best) ?? 0)) best = cat;
+  return best;
+}
+
+/** Each partner's share of this month's allocations in one service category (0–1). */
+export async function monthShares(tx: Queryable, category: string): Promise<Map<string, number>> {
   const r = await tx.query<{ partner_org_id: string; n: number }>(
-    "select partner_org_id, count(*)::int as n from allocations where offered_at >= date_trunc('month', app_now()) group by 1",
+    `select a.partner_org_id, count(*)::int as n from allocations a
+     where a.offered_at >= date_trunc('month', app_now())
+       and exists (select 1 from deliverables d where d.code = any(a.codes) and d.category = $1)
+     group by 1`,
+    [category],
   );
   const total = r.rows.reduce((a, b) => a + num(b.n), 0);
   return new Map(r.rows.map((x) => [x.partner_org_id, total === 0 ? 0 : num(x.n) / total]));
@@ -325,13 +344,28 @@ export async function respondToAllocation(
       "update engagement_lines set partner_org_id = $3, partner_unit_fils = $4 where engagement_id = $1 and code = $2",
       [engagementId, pl.code, user.orgId, pl.unitFils],
     );
+    const firstSeq = seq + 1;
     for (const m of milestonesFor(pl.code, pl.qty)) {
       seq += 1;
-      await tx.query(
-        `insert into milestones (engagement_id, partner_org_id, code, seq, name, is_key, due_date, evidence_required)
-         values ($1,$2,$3,$4,$5,$6,$7,$8)`,
-        [engagementId, user.orgId, pl.code, seq, m.name, m.isKey, addWorkingDays(start, m.dueOffsetDays).toISOString().slice(0, 10), m.evidence],
-      );
+      const ms = (
+        await tx.query<{ id: string }>(
+          `insert into milestones (engagement_id, partner_org_id, code, seq, name, is_key, due_date, evidence_required)
+           values ($1,$2,$3,$4,$5,$6,$7,$8) returning id`,
+          [engagementId, user.orgId, pl.code, seq, m.name, m.isKey, addWorkingDays(start, m.dueOffsetDays).toISOString().slice(0, 10), m.evidence],
+        )
+      ).rows[0]!;
+      // The client's document checklist for the first step of each line (O6).
+      const kinds = clientDocumentsFor(pl.code, seq, firstSeq);
+      const clientOrg = kinds.length ? await clientOrgOf(tx, engagementId) : "";
+      for (const kind of kinds) {
+        await tx.query(
+          "insert into document_requests (engagement_id, milestone_id, client_org_id, partner_org_id, kind) values ($1,$2,$3,$4,$5)",
+          [engagementId, ms.id, clientOrg, user.orgId, kind],
+        );
+      }
+      if (kinds.length) {
+        await notifyOrg(tx, deps, clientOrg, "documents_requested", { engagementId, step: m.name, count: kinds.length, kinds: kinds.map((k) => k.replace(/_/g, " ")).join(", ") });
+      }
     }
   }
   const total = payoutLines.reduce((s, l) => s + l.unitFils * l.qty, 0);
@@ -348,6 +382,10 @@ export async function respondToAllocation(
     await tx.query<{ n: number }>("select count(*)::int as n from engagement_lines where engagement_id = $1 and partner_org_id is null", [engagementId])
   ).rows[0];
   if (num(open?.n) === 0) await setEngagementStatus(tx, engagementId, "in_delivery", "partner");
+}
+
+async function clientOrgOf(tx: Queryable, engagementId: string): Promise<string> {
+  return String((await tx.query<{ client_org_id: string }>("select client_org_id from engagements where id = $1", [engagementId])).rows[0]!.client_org_id);
 }
 
 async function timeOut(tx: Queryable, allocationId: string, engagementId: string, deps: Deps) {
@@ -703,7 +741,7 @@ export async function submitQuote(tx: Queryable, user: SessionUser, quoteRequest
 
 // Helpers -------------------------------------------------------------------------
 
-async function notifyOrg(
+export async function notifyOrg(
   tx: Queryable,
   deps: Deps,
   orgId: string,

@@ -89,6 +89,45 @@ export const FIELDS = {
     email: "client",
     phone: "client",
   },
+  /** A delay on a step: the client sees that it is late and the new date, never who bears it or the money. */
+  delay: {
+    id: "public",
+    milestoneId: "public",
+    engagementId: "public",
+    dueDate: "public",
+    noticedAt: "public",
+    expectedDate: "public",
+    cause: "internal",
+    causeNote: "internal",
+    attributedAt: "internal",
+    creditId: "internal",
+  },
+  /** A service-guarantee credit: the client sees its own credit; the partner sees only a payout reduction. */
+  guaranteeCredit: {
+    id: "client",
+    engagementId: "client",
+    milestoneId: "client",
+    amount: "client",
+    status: "client",
+    settledReference: "client",
+    base: "internal",
+    guaranteeBp: "internal",
+    cause: "internal",
+    borneByPartner: "internal",
+    payoutReduction: "internal",
+    decidedBy: "internal",
+    waiveReason: "internal",
+  },
+  /** A client's rating: the partner sees the stars and the masked comment, never who wrote it. */
+  rating: {
+    engagementId: "public",
+    stars: "public",
+    comment: "public",
+    createdAt: "public",
+    authorName: "internal",
+    authorUserId: "internal",
+    commentOriginal: "internal",
+  },
 } satisfies Record<string, FieldMap>;
 
 export type EntityKind = keyof typeof FIELDS;

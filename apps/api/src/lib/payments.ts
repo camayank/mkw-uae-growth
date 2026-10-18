@@ -71,14 +71,14 @@ export function verifySignedWebhook(secret: string, rawBody: string, headers: Re
 }
 
 /** Links point at a local page; webhooks follow the generic contract. The secret doubles as the "provider" key. */
-export function memoryProvider(secret: string, appUrl = "http://localhost:8787", now?: () => Date): PaymentProvider & { links: PaymentLink[] } {
-  const links: PaymentLink[] = [];
+export function memoryProvider(secret: string, appUrl = "http://localhost:8787", now?: () => Date): PaymentProvider & { links: Array<PaymentLink & { amountFils: number }> } {
+  const links: Array<PaymentLink & { amountFils: number }> = [];
   return {
     kind: "memory",
     links,
     async createLink(req) {
       const link = { url: `${appUrl.replace(/\/$/, "")}/#/pay/${req.paymentId}`, providerRef: `link_${randomUUID().slice(0, 8)}` };
-      links.push(link);
+      links.push({ ...link, amountFils: req.amountFils });
       return link;
     },
     verifyWebhook(rawBody, headers) {

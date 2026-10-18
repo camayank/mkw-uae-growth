@@ -1,5 +1,6 @@
+import { mkdirSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
 import pg from "pg";
@@ -23,6 +24,8 @@ export interface Database {
 
 /** Embedded Postgres for development and tests. `dataDir` undefined means in memory. */
 export async function openPglite(dataDir?: string): Promise<Database> {
+  // PGlite creates only the last folder of its data directory; a fresh checkout has no `data/` at all.
+  if (dataDir) mkdirSync(dirname(resolve(dataDir)), { recursive: true });
   // int8 (bigint) as JS numbers: every amount here is a safe integer of fils.
   const db = new PGlite(dataDir, { parsers: { 20: (v: string) => Number(v) } });
   await db.waitReady;

@@ -1,5 +1,6 @@
+import { mkdirSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
 import pg from "pg";
@@ -23,9 +24,12 @@ export interface Database {
 
 /** Embedded Postgres for development and tests. `dataDir` undefined means in memory. */
 export async function openPglite(dataDir?: string): Promise<Database> {
+  // PGlite creates only the last folder of its data directory; a fresh checkout has no `data/` at all.
+  if (dataDir) mkdirSync(dirname(resolve(dataDir)), { recursive: true });
   // int8 (bigint) as JS numbers: every amount here is a safe integer of fils.
   const db = new PGlite(dataDir, { parsers: { 20: (v: string) => Number(v) } });
   await db.waitReady;
+  await db.exec("set timezone to 'UTC'");
   return {
     kind: "pglite",
     transaction: (fn) => db.transaction(async (tx) => fn({ query: (s, p) => tx.query(s, p as unknown[]) as never })),
@@ -41,6 +45,11 @@ export async function openPostgres(connectionString: string): Promise<Database> 
   const pool = new pg.Pool({ connectionString, max: 10 });
   // Postgres returns bigint as text; amounts here fit safely in JS numbers (under 2^53 fils).
   pg.types.setTypeParser(20, (v) => Number(v));
+  // The audit functions pin their own time zone and date style (migration 002); this keeps every other
+  // timestamp the application reads in UTC as well. A failure here is logged, never hidden.
+  pool.on("connect", (client) => {
+    client.query("set timezone to 'UTC'").catch((e) => console.error("could not set the session time zone to UTC", e));
+  });
   return {
     kind: "postgres",
     async transaction(fn) {

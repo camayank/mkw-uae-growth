@@ -42,6 +42,18 @@ import {
 import { runJobs } from "./jobs/run.ts";
 import { buildOffers, overrideLinePrice, publishOffer } from "./services/pricing.ts";
 import { createRequest, IntakeSchema } from "./services/requests.ts";
+import {
+  changeRole,
+  confirmRetention,
+  createPartner,
+  deactivateUser,
+  erasePerson,
+  exportPerson,
+  getRetention,
+  inviteUser,
+  listOrganisations,
+  reactivateUser,
+} from "./services/admin.ts";
 import { auditTrail, clientHome, clientOffer, opsEngagement, opsOffer, opsOverview, partnerHome, partyEngagement } from "./services/views.ts";
 
 export interface AppOptions {
@@ -424,6 +436,82 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   app.post("/api/ops/jobs/run", async (req) => {
     const user = requireRole(req, "ops", "founder");
     return runJobs(db, deps, user);
+  });
+
+  // Administration: organisations, people, PDPL data requests, retention --------------------------
+  // Route guards admit platform staff; services/admin.ts decides who may change which organisation.
+  const RoleSchema = z.enum(["client_owner", "client_member", "partner_admin", "partner_staff", "ops", "finance", "founder", "agent"]);
+
+  app.get("/api/admin/orgs", async (req) => {
+    const user = requireRole(req, ...PLATFORM_ROLES);
+    return asPlatform(db, user, (tx) => listOrganisations(tx));
+  });
+
+  app.post("/api/admin/partners", async (req) => {
+    const user = requireRole(req, "ops", "founder");
+    const body = z
+      .object({
+        name: z.string().min(2).max(200),
+        adminName: z.string().min(2).max(120),
+        adminEmail: z.string().email(),
+        emirates: z.array(z.string().max(40)).max(7).optional(),
+        codes: z.array(z.string().max(20)).max(100).optional(),
+        capacity: z.number().int().min(0).max(500).optional(),
+      })
+      .parse(req.body);
+    const { notification, ...result } = await asPlatform(db, user, (tx) => createPartner(tx, user, body));
+    await opts.notify.send(notification); // after commit: the account exists before the invitation goes out
+    return result;
+  });
+
+  app.post<{ Params: { id: string } }>("/api/admin/orgs/:id/users", async (req) => {
+    const user = requireRole(req, "ops", "founder");
+    const body = z.object({ email: z.string().email(), name: z.string().min(2).max(120), role: RoleSchema }).parse(req.body);
+    const { notification, ...result } = await asPlatform(db, user, (tx) => inviteUser(tx, user, req.params.id, body));
+    await opts.notify.send(notification);
+    return result;
+  });
+
+  app.post<{ Params: { id: string } }>("/api/admin/users/:id/role", async (req) => {
+    const user = requireRole(req, "ops", "founder");
+    const { role } = z.object({ role: RoleSchema }).parse(req.body);
+    return asPlatform(db, user, (tx) => changeRole(tx, user, req.params.id, role));
+  });
+
+  app.post<{ Params: { id: string } }>("/api/admin/users/:id/deactivate", async (req) => {
+    const user = requireRole(req, "ops", "founder");
+    return asPlatform(db, user, (tx) => deactivateUser(tx, user, req.params.id));
+  });
+
+  app.post<{ Params: { id: string } }>("/api/admin/users/:id/reactivate", async (req) => {
+    const user = requireRole(req, "ops", "founder");
+    return asPlatform(db, user, (tx) => reactivateUser(tx, user, req.params.id));
+  });
+
+  app.post<{ Params: { id: string } }>("/api/admin/users/:id/export", async (req, reply) => {
+    const user = requireRole(req, "ops", "founder");
+    const data = await asPlatform(db, user, (tx) => exportPerson(tx, user, req.params.id));
+    reply.header("content-disposition", `attachment; filename="person-${req.params.id}.json"`);
+    return data;
+  });
+
+  app.post<{ Params: { id: string } }>("/api/admin/users/:id/erase", async (req) => {
+    const user = requireRole(req, "founder");
+    const { confirm } = z.object({ confirm: z.literal("ERASE") }).parse(req.body);
+    void confirm;
+    return asPlatform(db, user, (tx) => erasePerson(tx, user, req.params.id));
+  });
+
+  app.get("/api/admin/settings/retention", async (req) => {
+    const user = requireRole(req, ...PLATFORM_ROLES);
+    return asPlatform(db, user, (tx) => getRetention(tx));
+  });
+
+  app.put("/api/admin/settings/retention", async (req) => {
+    const user = requireRole(req, "founder");
+    const Period = z.object({ years: z.number().int().min(0).max(100).nullable().optional(), days: z.number().int().min(0).max(36500).nullable().optional() });
+    const body = z.object({ periods: z.record(Period).default({}), note: z.string().min(3).max(500) }).parse(req.body);
+    return asPlatform(db, user, (tx) => confirmRetention(tx, user, body.periods, body.note));
   });
 
   // Payment provider webhook ------------------------------------------------------

@@ -1,6 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import { createSession } from "../src/lib/auth.ts";
-import { migrate, openPglite, type Database } from "../src/lib/db.ts";
+import { randomBytes } from "node:crypto";
+import pg from "pg";
+import { migrate, openPglite, openPostgres, type Database } from "../src/lib/db.ts";
 import { consoleNotifier, type Notifier } from "../src/lib/notify.ts";
 import { memoryStorage } from "../src/lib/storage.ts";
 import { seedCatalogue, seedDemo, type DemoIds } from "../src/db/seed.ts";
@@ -29,8 +31,35 @@ export const EMAILS = {
   clientMember: DEMO.client.member,
 } as const;
 
+/**
+ * Tests run on PGlite in memory by default. Set TEST_DATABASE_URL to a Postgres server (a role with CREATEDB and
+ * CREATEROLE) to run the same suites on real Postgres: each environment gets its own database, dropped on close.
+ */
+async function openTestDatabase(): Promise<Database> {
+  const url = process.env.TEST_DATABASE_URL;
+  if (!url) return openPglite();
+  const admin = new pg.Client({ connectionString: url });
+  await admin.connect();
+  const name = `tasees_test_${randomBytes(6).toString("hex")}`;
+  await admin.query(`create database ${name}`);
+  await admin.end();
+  const dbUrl = new URL(url);
+  dbUrl.pathname = `/${name}`;
+  const db = await openPostgres(dbUrl.toString());
+  return {
+    ...db,
+    async close() {
+      await db.close();
+      const drop = new pg.Client({ connectionString: url });
+      await drop.connect();
+      await drop.query(`drop database ${name} with (force)`);
+      await drop.end();
+    },
+  };
+}
+
 export async function makeEnv(start = new Date("2026-10-19T06:00:00Z")): Promise<TestEnv> {
-  const db = await openPglite();
+  const db = await openTestDatabase();
   await migrate(db);
   await seedCatalogue(db);
   const ids = await seedDemo(db);

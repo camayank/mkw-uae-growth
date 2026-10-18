@@ -19,7 +19,8 @@ export async function issueLoginCode(db: Database, email: string): Promise<{ cod
   const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
   let limited = false;
   const known = await asPlatform(db, null, async (tx) => {
-    const u = await tx.query("select 1 from users where email = $1", [normalised]);
+    // Deactivated and erased people get no code; the response to the caller is the same either way.
+    const u = await tx.query("select 1 from users where email = $1 and status = 'active'", [normalised]);
     if (u.rows.length === 0) return false;
     const recent = await tx.query<{ n: number }>(
       "select count(*)::int as n from login_codes where email = $1 and expires_at > now() - interval '50 minutes'",
@@ -82,7 +83,7 @@ export async function createSession(db: Database, email: string): Promise<string
 type Tx = Parameters<Parameters<typeof asPlatform>[2]>[0];
 
 async function loadUserByEmail(tx: Tx, email: string): Promise<SessionUser> {
-  const r = await tx.query<UserRow>(USER_SQL + " where u.email = $1", [email]);
+  const r = await tx.query<UserRow>(USER_SQL + " where u.email = $1 and u.status = 'active'", [email]);
   if (!r.rows[0]) throw unauthorised("No account for that email");
   return toSessionUser(r.rows[0]);
 }
@@ -113,7 +114,7 @@ const toSessionUser = (r: UserRow): SessionUser => ({
 export async function userFromToken(db: Database, token: string): Promise<SessionUser | null> {
   return asPlatform(db, null, async (tx) => {
     const r = await tx.query<UserRow>(
-      USER_SQL + " join sessions s on s.user_id = u.id where s.token_hash = $1 and s.expires_at > now()",
+      USER_SQL + " join sessions s on s.user_id = u.id where s.token_hash = $1 and s.expires_at > now() and u.status = 'active'",
       [sha256(token)],
     );
     return r.rows[0] ? toSessionUser(r.rows[0]) : null;

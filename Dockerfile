@@ -1,4 +1,5 @@
-FROM node:22-slim
+# Build stage: install everything, compile TypeScript to JavaScript.
+FROM node:22-slim AS build
 RUN corepack enable
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
@@ -7,9 +8,25 @@ COPY apps/api/package.json apps/api/
 RUN pnpm install --frozen-lockfile
 COPY packages packages
 COPY apps apps
-ENV NODE_ENV=production HOST=0.0.0.0 PORT=8787 UPLOAD_DIR=/app/data/uploads WEB_DIR=/app/apps/web/public
-RUN mkdir -p /app/data/uploads && chown -R node:node /app/data
+RUN pnpm build
+
+# Runtime stage: production dependencies only, compiled output only, no TypeScript loader.
+FROM node:22-slim
+RUN corepack enable
+WORKDIR /app
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages/core/package.json packages/core/
+COPY apps/api/package.json apps/api/
+RUN pnpm install --frozen-lockfile --prod
+COPY --from=build /app/packages/core/dist packages/core/dist
+COPY --from=build /app/apps/api/dist apps/api/dist
+COPY apps/api/migrations apps/api/migrations
+COPY apps/web/public apps/web/public
+# Without DATABASE_URL the image falls back to embedded PGlite under /app/data, the only directory the node user may write.
+ENV NODE_ENV=production HOST=0.0.0.0 PORT=8787 UPLOAD_DIR=/app/data/uploads PGLITE_DIR=/app/data/pglite WEB_DIR=/app/apps/web/public
+RUN mkdir -p /app/data/uploads /app/data/pglite && chown -R node:node /app/data
 EXPOSE 8787
 USER node
 WORKDIR /app/apps/api
-CMD ["node_modules/.bin/tsx", "src/main.ts"]
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD node -e "fetch('http://127.0.0.1:'+process.env.PORT+'/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+CMD ["node", "--conditions=production", "dist/main.js"]

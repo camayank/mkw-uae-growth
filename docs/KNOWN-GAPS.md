@@ -18,10 +18,14 @@ in a browser; everything listed here is not.
 4. **Verified fee and rule data.** Government fees and market mids in `seed-data.ts` are working estimates
    from the Service Catalogue. Scope rules in `packages/core/src/scope.ts` are simplified. A qualified person
    must verify both; uncertain results must be shown as uncertain to ops, never as fact.
-5. **Admin screens for partners and users.** Ops can pause or resume partners and edit profile fields through
-   `PUT /api/ops/partners/:id`, but creating partner organisations, users and licence checks is by SQL.
-6. **Object storage.** Evidence files go to local disk. Implement the `Storage` interface for S3-compatible
-   storage in a UAE region, with server-side encryption, before running more than one instance.
+5. **Partner onboarding beyond creation.** The People page creates a partner firm and its first admin, and the
+   Partners page pauses, resumes and edits profile fields, but the licence and agreement checks are still boxes
+   ops ticks by hand; the onboarding flow with documents and licence expiry watch is O6.
+6. **Object storage in a real bucket.** The S3 adapter is tested against AWS's published signature vectors and a
+   loopback fake bucket; it has not yet touched a real bucket in a UAE region. Do that in staging, with one
+   upload and one download of a real evidence file, before the first client file.
+6a. **Staging deployment.** The compiled build, image and CI exist; nothing is deployed because no cloud account
+   exists yet. The container image build is exercised only by CI (`image` job), not yet by a run of that job.
 
 ## Soon after
 
@@ -36,11 +40,31 @@ in a browser; everything listed here is not.
 12. **Accounting export** of payments, payouts and VAT to the accounting system.
 13. **Shared rate limiting.** Sign-in limits are per process; use the proxy or a shared store with more than
     one instance.
-14. **Compiled production build** instead of running TypeScript with `tsx`.
+14. **Erasure residue.** A PDPL erasure tombstones the person's name, email and messages and ends their access,
+    but free text they typed into fields without an author column stays (milestone dispute reasons, allocation
+    decline reasons, change-order descriptions, evidence file names), and audit payloads keep what was recorded
+    at the time (a name in `partner.created`, a reason in a decline). Backups taken before the erasure keep the
+    pre-erasure copy until they age out (35 days locally; the bucket's lifecycle rule in the cloud). Decide with
+    the lawyer whether those fields need tombstoning too; if so, add author columns first.
+15. **Automatic deletion at the end of a retention period.** Periods are recorded and confirmable on the
+    Settings page; nothing is deleted on their basis yet. Needs confirmed periods and a rule for what counts as
+    the start of each period.
+16. **Invitation email wording.** Inviting a person records a `user_invited` notification through the console
+    notifier; the email itself, its wording and the partner-facing sender name are O2.
+17. **Row-level security tests run on PGlite in CI.** They also pass on PostgreSQL 16 locally
+    (`TEST_DATABASE_URL`); CI should add a Postgres service so that run is repeated on every pull request.
 
 ## Verified so far
 
-- 40 domain tests (`packages/core`) and 28 API tests (`apps/api`), all passing; typecheck clean.
+- 40 domain tests (`packages/core`) and 59 API tests (`apps/api`), all passing on PGlite and on PostgreSQL 16;
+  typecheck clean; `pnpm build` compiles and the compiled server runs in production mode from a fresh database.
+- O1: partner creation, invitations, role changes and deactivation (sessions revoked, codes refused) are tested as
+  every role; PDPL export contains one person's data and no audit payloads (a test reproduces the leak that the
+  review found and shows it closed); erasure keeps payments, payouts and every audit row byte-for-byte and the
+  recomputed chain verifies; a tampered audit row is detected; the S3 adapter reproduces both AWS SigV4 test
+  vectors and round-trips through a loopback fake bucket; the restore drill passed on Postgres 16
+  (`docs/RESTORE-DRILL.md`); the browser smoke test drives the new People and Settings screens and now fails
+  the run on any of its 13 role-separation and layout checks (`docs/evidence/O1/`).
 - `pricing.test.ts` reproduces the Google Sheet Offer Builder example exactly.
 - `security.test.ts` shows Postgres refusing margin and partner-cost columns to clients, client price to partners,
   and other organisations' rows; sign-in throttling; security headers.

@@ -2,7 +2,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { migrate, openDatabase } from "./lib/db.ts";
 import { consoleNotifier } from "./lib/notify.ts";
-import { localStorage } from "./lib/storage.ts";
+import { storageFromEnv } from "./lib/storage.ts";
 import { runJobs } from "./jobs/run.ts";
 import { buildApp } from "./server.ts";
 import { seedCatalogue } from "./db/seed.ts";
@@ -15,12 +15,17 @@ if (applied.length) console.log(`Applied migrations: ${applied.join(", ")}`);
 await seedCatalogue(db);
 
 const notify = consoleNotifier();
+// Evidence files: S3-compatible object storage in a UAE region in production (STORAGE=s3), local disk otherwise.
+const { storage, kind: storageKind } = storageFromEnv();
+if (process.env.NODE_ENV === "production" && storageKind !== "s3") {
+  console.warn("WARNING: STORAGE is not s3; evidence files are on local disk. Fine for one instance; set STORAGE=s3 before running more.");
+}
 // Development sign-in shows the code on screen. Opt-in only, and never in production.
 const devLogin = process.env.DEV_LOGIN === "1" && process.env.NODE_ENV !== "production";
 const app = await buildApp({
   db,
   notify,
-  storage: localStorage(),
+  storage,
   devLogin,
   webhookSecret: process.env.PAYMENT_WEBHOOK_SECRET,
   webDir: process.env.WEB_DIR ?? join(here, "../../web/public"),
@@ -29,11 +34,34 @@ const app = await buildApp({
 
 const port = Number(process.env.PORT ?? 8787);
 await app.listen({ port, host: process.env.HOST ?? "127.0.0.1" });
-console.log(`Tasees platform on http://localhost:${port}${devLogin ? " (development sign-in codes shown on screen)" : ""}`);
+console.log(`Tasees platform on http://localhost:${port} · db ${db.kind} · files ${storageKind}${devLogin ? " · development sign-in codes shown on screen" : ""}`);
 
 // In-process sweeps every 15 minutes. In production prefer an external cron calling `pnpm jobs`.
 if (process.env.IN_PROCESS_JOBS !== "0") {
   setInterval(() => {
     runJobs(db, { notify }).catch((e) => console.error("jobs failed", e));
   }, 15 * 60 * 1000).unref();
+}
+
+// Graceful shutdown: finish in-flight requests, then close the database. PGlite in particular cannot reopen a
+// data directory that was not closed cleanly, and a container runtime sends SIGTERM before it kills the process.
+let shuttingDown = false;
+for (const signal of ["SIGTERM", "SIGINT"] as const) {
+  process.on(signal, () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`${signal} received, shutting down`);
+    const deadline = setTimeout(() => process.exit(1), 10_000).unref();
+    app
+      .close()
+      .then(() => db.close())
+      .then(() => {
+        clearTimeout(deadline);
+        process.exit(0);
+      })
+      .catch((e) => {
+        console.error("shutdown failed", e);
+        process.exit(1);
+      });
+  });
 }

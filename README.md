@@ -21,9 +21,11 @@ Needs Node 22 and pnpm 10.
 pnpm install
 pnpm seed          # catalogue, margin rules and demo parties (invented firm names) into ./apps/api/data/pglite
 pnpm dev           # http://localhost:8787 with development sign-in (codes shown on screen)
-pnpm test          # 68 tests: pricing, allocation, rules, full HTTP flow, database security
-# browser smoke test (needs Playwright): see scripts/smoke.mjs
+pnpm test          # 99 tests: pricing, allocation, rules, full HTTP flow, database security, admin, PDPL, storage
 pnpm typecheck
+pnpm build         # compiles to dist/; `pnpm start` then runs the compiled build (what production and the Dockerfile run)
+npx playwright install chromium && pnpm smoke   # browser smoke test against a running demo; screenshots in ./smoke-shots
+TEST_DATABASE_URL=postgres://... pnpm test       # the same suites on a real Postgres server
 ```
 
 No database server is needed for development: the API runs an embedded Postgres (PGlite) on disk.
@@ -45,6 +47,8 @@ Set `DATABASE_URL` to use a real Postgres.
 A full walk-through: sign in as the client → **New request** → as ops, **Pipeline → Price it → Open → Publish**
 → as the client, accept → as finance, **Mark received** on the deposit → as each partner, **Accept** →
 as the partner, upload evidence and **Submit** → as ops, **Evidence is right** → as the client, **Approve**.
+As the founder: **People** creates partner firms and users, changes roles, deactivates, exports or erases a
+person's data (UAE PDPL); **Settings** confirms retention periods.
 
 ## Layout
 
@@ -64,8 +68,12 @@ apps/api          Fastify 5 + zod + Postgres (pg in production, PGlite in dev an
   migrations/       schema, roles, row-level security, column grants, hash-chained audit function
   src/services/     pricing, engagements (allocation, milestones, payouts, change orders, RFQs), views
   src/jobs/         timers: partner reply deadlines, client auto-approval, offer expiry
-  src/scripts/      seed, run-jobs, import-sheet (rate cards from the operating Google Sheet)
-  test/             end-to-end HTTP flow, exceptions, database security
+  src/services/admin.ts  organisations, people, PDPL export and erasure, retention settings
+  src/lib/storage.ts     evidence files: memory (tests), local disk (development), S3-compatible bucket (production)
+  src/scripts/      seed, run-jobs, import-sheet (rate cards from the operating Google Sheet), verify-audit
+  test/             end-to-end HTTP flow, exceptions, database security, admin, PDPL, storage adapters
+scripts/          smoke.mjs (browser smoke test), backup.sh, restore-drill.sh
+.github/workflows CI: typecheck, tests, compiled build, smoke test against the compiled build, container image
 apps/web/public   The web app: plain HTML, CSS and ES modules, no build step. Served by the API.
 docs/             DEPLOY.md, DECISIONS.md, KNOWN-GAPS.md
 ```
@@ -104,7 +112,8 @@ They match the **Deliverable Codes**, **Rate Cards** and **Offer Builder** tabs 
 - [`outcomes/QUEUE.yaml`](outcomes/QUEUE.yaml): the build queue; work only on the released outcome
 - [`CLAUDE.md`](CLAUDE.md): rules for contributors and coding agents
 
-- [`docs/DEPLOY.md`](docs/DEPLOY.md): environment variables, Postgres, hosting in the UAE, jobs, backups
+- [`docs/DEPLOY.md`](docs/DEPLOY.md): environment variables, Postgres, object storage, hosting in the UAE, jobs, backups
+- [`docs/RESTORE-DRILL.md`](docs/RESTORE-DRILL.md): how backups are proven restorable, and the drill log
 - [`docs/DECISIONS.md`](docs/DECISIONS.md): why it is built this way, and the decisions still open for the owner
 - [`docs/KNOWN-GAPS.md`](docs/KNOWN-GAPS.md): what is not built yet, in priority order
 

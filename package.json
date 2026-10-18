@@ -9,11 +9,17 @@
   },
   "scripts": {
     "dev": "pnpm --filter @tasees/api dev",
+    "build": "pnpm -r build",
     "start": "pnpm --filter @tasees/api start",
     "seed": "pnpm --filter @tasees/api seed",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
     "jobs": "pnpm --filter @tasees/api jobs",
-    "import:sheet": "pnpm --filter @tasees/api import:sheet"
+    "import:sheet": "pnpm --filter @tasees/api import:sheet",
+    "verify:audit": "pnpm --filter @tasees/api verify:audit",
+    "smoke": "node scripts/smoke.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.49.1"
   }
 }

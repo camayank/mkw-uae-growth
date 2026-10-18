@@ -1,0 +1,60 @@
+# Build queue for the base product. Execute only the first outcome whose status is `released`.
+# Statuses: released → in-progress → verified-pending-merge → verified (set by the owner after merge).
+# Later outcomes are `queued`; the owner releases each one after merging the previous pull request.
+# Scope of each outcome = the features listed against it in docs/PRODUCT_SPEC.md, "Build plan".
+
+baseline:
+  id: O0
+  title: Starter (core loop, security model, web app)
+  status: verified
+  evidence:
+    - "pnpm test: 40 core + 28 API tests passing (16 Oct 2026)"
+    - "scripts/smoke.mjs: full engagement in Chromium, no page errors, no money leaks"
+
+outcomes:
+  - id: O1
+    title: Production foundation
+    status: released
+    depends_on: [O0]
+    contract: outcomes/O1-production-foundation.md
+    needs_from_owner: [cloud account in a UAE region, domain name]
+  - id: O2
+    title: Notifications (email adapter, templates, in-app bell, ops digest)
+    status: queued
+    depends_on: [O1]
+    needs_from_owner: [email provider account, DNS access for SPF and DKIM]
+  - id: O3
+    title: Payments and invoices (card links, signed webhook, tax invoices, payout runs, bank file)
+    status: queued
+    depends_on: [O1, O2]
+    needs_from_owner: [merchant account and keys, MKW TRN, sample bank bulk-transfer file]
+  - id: O4
+    title: Catalogue and fees (83 services, government fee table with sources, rules admin)
+    status: queued
+    depends_on: [O1]
+    needs_from_owner: [named person who verifies fees and rules]
+  - id: O5
+    title: Scoping intelligence (structure, zone, licences, obligations with confidence; public intake; AI draft queue)
+    status: queued
+    depends_on: [O4]
+    needs_from_owner: [rule sign-off, AI API key and monthly spend cap]
+  - id: O6
+    title: Partners and delivery (onboarding, licence watch, scorecard, document requests, delay watch, ratings)
+    status: queued
+    depends_on: [O1, O2]
+    needs_from_owner: [service guarantee figure]
+  - id: O7
+    title: Launch gate (pilot with 3 partners and 5 clients, legal and tax sign-off, security review)
+    status: queued
+    depends_on: [O3, O5, O6]
+    needs_from_owner: [pilot partners and clients, lawyer, tax adviser]
+  - id: O8
+    title: Reporting and compliance calendar (dashboards, accounting export, client obligations)
+    status: queued
+    depends_on: [O7]
+    needs_from_owner: [accounting system name]
+  - id: O9
+    title: Arabic and accessibility (Arabic client screens, right-to-left, WCAG 2.1 AA)
+    status: queued
+    depends_on: [O7]
+    needs_from_owner: [Arabic reviewer]

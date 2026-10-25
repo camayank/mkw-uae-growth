@@ -520,3 +520,23 @@ is not the one its handler parses. It is served to MKW staff only (it maps the a
 described as zod treats them: unknown keys are dropped, not refused, unless the schema is strict. Refresh with
 `pnpm --filter @tasees/api contract` and review the diff. Routes live in `src/routes/` by area; `server.ts` keeps the
 hooks. Responses are not described yet (gap 40).
+
+**D70. The dependency audit before the pilot: patch what ships, cap what cannot be patched yet.** (O7.) `pnpm audit` on
+25 Oct 2026 found 38 advisories. In what ships in the image:
+- **Fastify** 5.2.0 → 5.12.7 (MIT, the same major; actively maintained by the OpenJS Foundation). This fixes thirteen
+  advisories, among them validation bypasses through content-type and schema handling and an authentication bypass
+  through malformed URLs. Fastify 5.12 no longer honours a hop count for `trustProxy`, because a direct caller could
+  spoof it. `TRUST_PROXY` is now the load balancer's address range, and the staging and demo stacks pass their VPC
+  range. A number other than 0 is refused at start, rather than silently putting every visitor in one rate-limit
+  bucket.
+- **csv-parse** 5.6.0 → 7.0.3 (MIT; used only by the owner-run import scripts). Prototype replacement through column
+  names. The import tests pass unchanged.
+- **fast-uri** (through Fastify's validator). Pinned to the patched 3.1.9 and 4.2.3 with an override in
+  `pnpm-workspace.yaml`. Remove the override once Fastify requires those versions itself.
+- **zod** 3.23.8. The memory-exhaustion fix exists only in zod 4, a migration across every schema. Request bodies are
+  now capped at 1 MB, and at 25 MB only for routes whose schema carries a file (`contentBase64`), which bounds what one
+  request can make the validator do (gap 43).
+
+The development tools' advisories (vitest, vite, tinypool, esbuild, playwright) are not exposed: nothing listens and
+nothing ships. They wait for the next tooling change (gap 44). `pnpm audit --prod` now reports only the zod finding.
+The reviewer's brief is `docs/SECURITY-BRIEF.md`.

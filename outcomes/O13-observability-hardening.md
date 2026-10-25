@@ -1,7 +1,7 @@
 # O13 Observability and hardening
 
-Status: verified-pending-merge (branch `outcome/O13-observability-hardening` from `main` after O12 merged as
-camayank/mkw-uae-growth#13; released by the owner 25 Oct 2026)
+Status: merged (pull request camayank/mkw-uae-growth#14 into `main`, 25 Oct 2026; was: branch
+`outcome/O13-observability-hardening`)
 
 ## Business result
 

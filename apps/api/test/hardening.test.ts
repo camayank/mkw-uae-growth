@@ -21,7 +21,7 @@ describe("configuration at boot", () => {
   it("accepts a sound production set and the development defaults", () => {
     expect(configProblems({})).toEqual([]);
     expect(
-      configProblems({ ...prod, PORT: "8787", TRUST_PROXY: "1", APP_URL: "https://app.tasees.ae", EMAIL: "ses", SES_REGION: "me-central-1", EMAIL_FROM_CLIENT: "tasees@mkwadvisors.com", EMAIL_FROM_PARTNER: "partners@mkwadvisors.com", STORAGE: "s3", S3_BUCKET: "b", S3_REGION: "me-central-1", PAYMENT_WEBHOOK_SECRET: "a-long-enough-secret", ALERT_EMAIL: "alerts@mkwadvisors.com" }),
+      configProblems({ ...prod, PORT: "8787", TRUST_PROXY: "10.0.0.0/16", APP_URL: "https://app.tasees.ae", EMAIL: "ses", SES_REGION: "me-central-1", EMAIL_FROM_CLIENT: "tasees@mkwadvisors.com", EMAIL_FROM_PARTNER: "partners@mkwadvisors.com", STORAGE: "s3", S3_BUCKET: "b", S3_REGION: "me-central-1", PAYMENT_WEBHOOK_SECRET: "a-long-enough-secret", ALERT_EMAIL: "alerts@mkwadvisors.com" }),
     ).toEqual([]);
   });
 
@@ -51,10 +51,15 @@ describe("configuration at boot", () => {
     ]);
   });
 
+  it("takes the proxy's addresses, not a hop count", () => {
+    for (const ok of ["0", "10.0.0.0/16", "10.0.0.0/16, 172.16.0.0/12", "127.0.0.1", "fd00::/8"]) expect(configProblems({ TRUST_PROXY: ok })).toEqual([]);
+    for (const bad of ["1", "2", "10.0.0.0/16,1", "anything"]) expect(configProblems({ TRUST_PROXY: bad })[0]).toMatch(/^TRUST_PROXY: must be 0 or the proxy's addresses/);
+  });
+
   it("allows outside production what production refuses", () => {
     expect(configProblems({ NODE_ENV: "development", DEV_LOGIN: "1", APP_URL: "http://localhost:8787", PAYMENT_WEBHOOK_SECRET: "dev" })).toEqual([]);
     // The demo stack's environment, as infra/lib/demo-stack.ts sets it.
-    expect(configProblems({ NODE_ENV: "demo", HOST: "0.0.0.0", PORT: "8787", TRUST_PROXY: "1", DEV_LOGIN: "1", PAYMENT_WEBHOOK_SECRET: "demo-only-not-a-secret", APP_URL: "https://demo.tasees.ae" })).toEqual([]);
+    expect(configProblems({ NODE_ENV: "demo", HOST: "0.0.0.0", PORT: "8787", TRUST_PROXY: "10.0.0.0/16", DEV_LOGIN: "1", PAYMENT_WEBHOOK_SECRET: "demo-only-not-a-secret", APP_URL: "https://demo.tasees.ae" })).toEqual([]);
   });
 });
 
@@ -103,6 +108,15 @@ describe("structured logs and request ids", () => {
     expect(text).not.toContain(env.tokens.client!);
     expect(text).not.toMatch(/authorization|cookie/i);
     expect(mine.find((l) => l.msg === "incoming request")).toMatchObject({ req: { method: "GET", path: "/api/ops/search" } });
+  });
+
+  it("caps bodies at 1 MB, except where a route carries a file", async () => {
+    const big = "x".repeat(2 * 1024 * 1024);
+    const plain = await env.send("client", "POST", "/api/requests", { answers: { mode: "services", emirate: "Dubai" }, filler: big });
+    expect(plain.status).toBe(413);
+    // A file upload of the same size reaches the route (which then finds no such request).
+    const upload = await env.send("client", "POST", "/api/document-requests/00000000-0000-0000-0000-000000000000/upload", { fileName: "big.pdf", contentBase64: big });
+    expect(upload.status).not.toBe(413);
   });
 
   it("answers a server error with its request id, and logs the error under it", async () => {

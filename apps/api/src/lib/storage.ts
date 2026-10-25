@@ -21,7 +21,11 @@ export interface Storage {
 }
 
 const MAX_BYTES = 15 * 1024 * 1024;
-const ALLOWED = /\.(pdf|png|jpe?g|webp|docx?|xlsx?|csv|txt)$/i;
+const EXTENSIONS = ["pdf", "png", "jpg", "jpeg", "webp", "doc", "docx", "xls", "xlsx", "csv", "txt"];
+const ALLOWED = new RegExp(`\\.(${EXTENSIONS.join("|")})$`, "i");
+
+/** What any upload must be, as the page reads it before sending (O12) and as `checkUpload` enforces it. */
+export const UPLOAD_RULES = { extensions: EXTENSIONS, maxBytes: MAX_BYTES } as const;
 
 /** The same rules for every adapter: size, type, and a key that cannot escape its engagement folder. */
 export function checkUpload(fileName: string, data: Buffer): void {

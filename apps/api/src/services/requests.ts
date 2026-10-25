@@ -25,6 +25,25 @@ export const IntakeSchema = z.object({
 });
 
 /**
+ * What a request would scope from these answers, with nothing written (O12's conversational intake). Only the
+ * services that follow from the client's own choices come back, with notes in the client's words; whether MKW will
+ * advise on structure and place is said, but the advice itself is shown only after a person reviews it (rule 5).
+ */
+export async function previewRequest(tx: Queryable, answers: z.infer<typeof IntakeSchema>) {
+  const known = await loadDeliverables(tx);
+  const scope = buildScope(answers as IntakeAnswers, new Set(known.keys()));
+  const notes: string[] = [];
+  if (answers.mode === "new_company" && answers.jurisdiction === "not_sure") notes.push("You are not sure about the licence type yet: we price a free zone licence for now, and MKW Advisors advises on the right choice before you accept.");
+  if (answers.jurisdiction === "difc_adgm") notes.push("DIFC and ADGM are priced on request: we ask partner firms for a quote.");
+  if (answers.jurisdiction === "offshore" && (answers.visas ?? 0) > 0) notes.push("An offshore company cannot sponsor residence visas, so visas are left out.");
+  return {
+    lines: scope.lines.map((l) => ({ code: l.code, name: known.get(l.code)?.name ?? l.code, qty: l.qty })),
+    notes,
+    adviceFollows: answers.mode === "new_company" && !!(answers.activity || answers.customers || answers.expectedTurnoverAed != null),
+  };
+}
+
+/**
  * Create a request and its scope sheet. Clients create their own; ops may create one for a client
  * (for example from a lead captured on the Tasees page) by passing `clientOrgId`.
  */

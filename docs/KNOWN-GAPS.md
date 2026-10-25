@@ -96,7 +96,8 @@ in a browser; everything listed here is not.
 ## O13: observability and hardening
 
 37. **No alert address yet.** Until the owner sets `ALERT_EMAIL` (and the staging `alarmEmail`), alerts are logged and
-    shown on the System page and in the ops queue only. Nobody is paged out of hours.
+    shown on the System page and in the ops queue only. Staging also runs `EMAIL=console` until SES is verified, so
+    there the app's alert emails are printed, not sent (the CloudWatch alarms still email). Nobody is paged out of hours.
 38. **A key left "running" waits 24 hours.** If the process stops between a change committing and its answer being
     recorded, repeats with that key get 409 until the key expires (D66). Rare, and safe: the person checks the screen.
 39. **Logs stay in the host's log store.** No metrics service, dashboards or tracing; the job durations are in
@@ -154,8 +155,9 @@ in a browser; everything listed here is not.
 
 ## Verified so far
 
-- O13: 57 domain tests and 254 API tests, all passing on PGlite and on PostgreSQL 16 (CI runs both); the race tests fail
-  without the row locks they prove; a 200-engagement load test holds every invariant (`docs/evidence/O13/`).
+- O13: 57 domain tests and the API suite, all passing on PGlite and on PostgreSQL 16, including a brand-new server
+  (CI runs both); the race tests fail without the locks they prove; a 200-engagement load test holds every invariant
+  (`docs/evidence/O13/`).
 - 57 domain tests (`packages/core`) and 212 API tests (`apps/api`), all passing on PGlite and on PostgreSQL 16;
   typecheck clean; `pnpm build` compiles and the compiled server runs in production mode from a fresh database.
 - O1: partner creation, invitations, role changes and deactivation (sessions revoked, codes refused) are tested as

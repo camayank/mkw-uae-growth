@@ -5,7 +5,8 @@ import { withClock } from "../src/lib/db.ts";
 import { checkConfig, ConfigError, configProblems } from "../src/lib/config.ts";
 import { requestId } from "../src/server.ts";
 import { nightlyAuditCheck, sweepAlerts } from "../src/services/system.ts";
-import { makeEnv, type TestEnv } from "./helpers.ts";
+import { cleanErrorText, errorForLog } from "../src/lib/errors.ts";
+import { EMAILS, makeEnv, type TestEnv } from "./helpers.ts";
 
 const ALERTS = "alerts@mkwadvisors.test";
 const rows = <T = any>(env: TestEnv, sql: string, params: unknown[] = []) =>
@@ -52,6 +53,22 @@ describe("configuration at boot", () => {
 
   it("allows outside production what production refuses", () => {
     expect(configProblems({ NODE_ENV: "development", DEV_LOGIN: "1", APP_URL: "http://localhost:8787", PAYMENT_WEBHOOK_SECRET: "dev" })).toEqual([]);
+    // The demo stack's environment, as infra/lib/demo-stack.ts sets it.
+    expect(configProblems({ NODE_ENV: "demo", HOST: "0.0.0.0", PORT: "8787", TRUST_PROXY: "1", DEV_LOGIN: "1", PAYMENT_WEBHOOK_SECRET: "demo-only-not-a-secret", APP_URL: "https://demo.tasees.ae" })).toEqual([]);
+  });
+});
+
+describe("error text", () => {
+  it("drops the values a database or provider error quotes", () => {
+    expect(cleanErrorText('duplicate key value violates unique constraint "users_email_key": Key (email)=(sara@example.ae) already exists')).toBe(
+      'duplicate key value violates unique constraint "users_email_key": Key (email)=([value]) already exists',
+    );
+    expect(cleanErrorText("SES refused <sara.k@example.ae>: mailbox full")).toBe("SES refused <[address]>: mailbox full");
+    const e = Object.assign(new Error("Key (email)=(a@b.ae) exists"), { code: "23505", detail: "Key (email)=(a@b.ae) already exists." });
+    const logged = errorForLog(e);
+    expect(JSON.stringify(logged)).not.toContain("a@b.ae");
+    expect(logged).toMatchObject({ type: "Error", code: "23505" });
+    expect(logged).not.toHaveProperty("detail");
   });
 });
 
@@ -136,14 +153,14 @@ describe("job runs, alerts and the nightly audit check", () => {
   });
 
   it("runs one at a time and closes a run that died", async () => {
-    await rows(env, "insert into job_runs (job, started_at) values ('sweeps', app_now() - interval '5 minutes')");
+    await rows(env, "insert into job_runs (job, started_at, heartbeat_at) values ('sweeps', app_now() - interval '5 minutes', app_now() - interval '5 minutes')");
     const skipped = (await env.call("ops", "POST", "/api/ops/jobs/run")).body;
     expect(skipped).toMatchObject({ skipped: true, runId: null });
     later(env, 30);
     const ran = (await env.call("ops", "POST", "/api/ops/jobs/run")).body;
     expect(ran.skipped).toBe(false);
     expect(await rows(env, "select status, error from job_runs where status = 'abandoned'")).toEqual([
-      { status: "abandoned", error: "did not finish within 30 minutes" },
+      { status: "abandoned", error: "no step finished for 30 minutes" },
     ]);
   });
 
@@ -256,13 +273,17 @@ describe("idempotency keys", () => {
     expect(stuck).toMatchObject({ status: 409, body: { error: "in_progress" } });
   });
 
-  it("keeps keys per person, refuses them on public routes and malformed ones", async () => {
+  it("keeps keys per person, ignores them without a signed-in person, and refuses malformed ones", async () => {
     // The same key from another person is that person's own first request.
     const theirs = await env.send("clientMember", "PUT", "/api/me/locale", { locale: "en" }, { "idempotency-key": "key-request-0001" });
     expect(theirs.status).toBe(200);
     expect(theirs.headers["idempotent-replay"]).toBeUndefined();
+    // Without a session the header is ignored: a public route answers as usual, anything else asks to sign in.
+    const before = (await rows(env, "select count(*)::int as n from idempotency_keys"))[0].n;
     const anon = await env.send("anon", "POST", "/api/auth/request-code", { email: "someone@example.test" }, { "idempotency-key": "key-anon-000001" });
-    expect(anon.status).toBe(400);
+    expect(anon.status).toBe(200);
+    expect((await env.send("anon", "PUT", "/api/me/locale", { locale: "en" }, { "idempotency-key": "key-anon-000002" })).status).toBe(401);
+    expect((await rows(env, "select count(*)::int as n from idempotency_keys"))[0].n).toBe(before);
     expect((await env.send("client", "PUT", "/api/me/locale", { locale: "en" }, { "idempotency-key": "short" })).status).toBe(400);
     // Reads ignore the header.
     expect((await env.send("client", "GET", "/api/me", undefined, { "idempotency-key": "short" })).status).toBe(200);
@@ -282,10 +303,23 @@ describe("idempotency keys", () => {
     expect(retried.headers["idempotent-replay"]).toBeUndefined();
   });
 
+  it("never stores a person's export, and erasure removes answers that quote the person", async () => {
+    const memberId = (await env.call("clientMember", "GET", "/api/me")).body.id;
+    const opsId = (await env.call("ops", "GET", "/api/me")).body.id;
+    const exp = await env.send("founder", "POST", `/api/admin/users/${memberId}/export`, undefined, { "idempotency-key": "key-export-0001" });
+    expect(exp.status).toBe(200);
+    expect(await rows(env, "select 1 from idempotency_keys where key = 'key-export-0001'")).toEqual([]);
+    // Another person's stored answer that names the member (an invitation, a reply).
+    await rows(env, "insert into idempotency_keys (user_id, key, method, path, body_hash, state, status_code, response) values ($1, 'key-quotes-0001', 'POST', '/x', 'h', 'done', 200, $2)", [opsId, `{"invited":"${EMAILS.clientMember}"}`]);
+    await rows(env, "insert into idempotency_keys (user_id, key, method, path, body_hash, state, status_code, response) values ($1, 'key-other-00001', 'POST', '/x', 'h', 'done', 200, '{}')", [opsId]);
+    expect((await env.call("founder", "POST", `/api/admin/users/${memberId}/erase`, { confirm: "ERASE" })).status).toBe(200);
+    expect((await rows(env, "select key from idempotency_keys where user_id = $1 order by key", [opsId])).map((r) => r.key)).not.toContain("key-quotes-0001");
+    expect((await rows(env, "select key from idempotency_keys where user_id = $1", [opsId])).map((r) => r.key)).toContain("key-other-00001");
+  });
+
   it("forgets keys after a day and when the person is erased", async () => {
     const memberId = (await env.call("clientMember", "GET", "/api/me")).body.id;
-    expect((await rows(env, "select count(*)::int as n from idempotency_keys where user_id = $1", [memberId]))[0].n).toBe(1);
-    expect((await env.call("founder", "POST", `/api/admin/users/${memberId}/erase`, { confirm: "ERASE" })).status).toBe(200);
+    // Erased in the test above: none of the member's keys are left.
     expect((await rows(env, "select count(*)::int as n from idempotency_keys where user_id = $1", [memberId]))[0].n).toBe(0);
     later(env, 24 * 60 + 1);
     const run = (await env.call("ops", "POST", "/api/ops/jobs/run")).body;

@@ -1,3 +1,4 @@
+import { PLATFORM_ROLES, requireRole } from "../lib/auth.ts";
 import { asPlatform } from "../lib/context.ts";
 import { API_VERSION, openApiDocument } from "../lib/openapi.ts";
 import { arabicStatus } from "../services/locale.ts";
@@ -16,7 +17,11 @@ export function registerSystemRoutes(ctx: RouteContext) {
   });
 
   // The API contract, built from the routes' own schemas (O13). docs/openapi.json is the committed copy.
-  app.get("/api/openapi.json", async () => openApiDocument(routeDocs, API_VERSION));
+  // MKW staff only: it maps the whole admin and finance surface, which is nobody else's business.
+  app.get("/api/openapi.json", async (req) => {
+    requireRole(req, ...PLATFORM_ROLES);
+    return openApiDocument(routeDocs, API_VERSION);
+  });
 
   // For an external monitor (O13): 503 when the scheduled jobs have not completed for 45 minutes. Times only.
   app.get("/api/health/jobs", async (_req, reply) => {

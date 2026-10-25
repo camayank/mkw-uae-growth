@@ -59,7 +59,8 @@ export function jsonSchema(schema: z.ZodTypeAny): Json {
         properties[k] = jsonSchema(v);
         if (!v.isOptional()) required.push(k);
       }
-      return { type: "object", properties, ...(required.length ? { required } : {}), additionalProperties: def.unknownKeys === "passthrough" };
+      // zod strips unknown keys by default (they are accepted and dropped); only a strict object refuses them.
+      return { type: "object", properties, ...(required.length ? { required } : {}), ...(def.unknownKeys === "strict" ? { additionalProperties: false } : {}) };
     }
     case "ZodString": {
       const out: Json = { type: "string" };
@@ -123,7 +124,7 @@ export function jsonSchema(schema: z.ZodTypeAny): Json {
 }
 
 /** Routes anyone may call without signing in. */
-const PUBLIC = [/^\/api\/auth\//, /^\/api\/public\//, /^\/api\/health/, /^\/api\/upload-rules$/, /^\/api\/webhooks\//, /^\/api\/openapi\.json$/];
+const PUBLIC = [/^\/api\/auth\//, /^\/api\/public\//, /^\/api\/health/, /^\/api\/upload-rules$/, /^\/api\/webhooks\//];
 
 export function openApiDocument(routes: RouteDoc[], version: string): Json {
   const paths: Record<string, Json> = {};

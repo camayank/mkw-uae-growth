@@ -10,7 +10,8 @@ import { sendOpsDigest } from "../services/digest.ts";
 import { refreshCurrentRules } from "../services/rules.ts";
 import { opsQueue, syncQueueTimings } from "../services/queue.ts";
 import { purgeIdempotencyKeys } from "../lib/idempotency.ts";
-import { finishRun, nightlyAuditCheck, startRun, sweepAlerts, type AlertSweep, type StepResult } from "../services/system.ts";
+import { cleanErrorText } from "../lib/errors.ts";
+import { finishRun, heartbeat, nightlyAuditCheck, startRun, sweepAlerts, type AlertSweep, type StepResult } from "../services/system.ts";
 
 export interface JobsOptions {
   /** One JSON-able line per step and per run (O13). */
@@ -41,10 +42,13 @@ export async function runJobs(db: Database, deps: Deps, actor: SessionUser | nul
       result[name] = await fn();
       steps[name] = { ms: Date.now() - t, count: result[name] };
     } catch (e) {
-      result.errors.push(`${name}: ${(e as Error).message}`);
-      steps[name] = { ms: Date.now() - t, count: 0, error: (e as Error).message };
+      // Cleaned before it is stored, logged or audited: an error can quote the value that caused it.
+      const error = cleanErrorText((e as Error).message);
+      result.errors.push(`${name}: ${error}`);
+      steps[name] = { ms: Date.now() - t, count: 0, error };
     }
     opts.log?.({ msg: "jobs step", step: name, ...steps[name] });
+    await asPlatform(db, actor, (tx) => heartbeat(tx, runId)).catch(() => undefined);
   };
   await step("allocationTimeouts", () => asPlatform(db, actor, (tx) => sweepAllocationTimeouts(tx, deps)));
   await step("autoApprovals", () => asPlatform(db, actor, (tx) => sweepAutoApprovals(tx, deps)));
@@ -85,8 +89,9 @@ export async function runJobs(db: Database, deps: Deps, actor: SessionUser | nul
     result.outbox = await deps.notify.dispatch();
     steps.outbox = { ms: Date.now() - t, count: result.outbox?.done ?? 0 };
   } catch (e) {
-    result.errors.push(`outbox: ${(e as Error).message}`);
-    steps.outbox = { ms: Date.now() - t, count: 0, error: (e as Error).message };
+    const error = cleanErrorText((e as Error).message);
+    result.errors.push(`outbox: ${error}`);
+    steps.outbox = { ms: Date.now() - t, count: 0, error };
   }
   await asPlatform(db, actor, async (tx) => {
     await finishRun(tx, runId, steps, startedMs, null);
@@ -96,7 +101,7 @@ export async function runJobs(db: Database, deps: Deps, actor: SessionUser | nul
   try {
     result.alerts = await asPlatform(db, actor, (tx) => sweepAlerts(tx, { notify: deps.notify, alertEmail: opts.alertEmail, log: opts.log }));
   } catch (e) {
-    result.errors.push(`alerts: ${(e as Error).message}`);
+    result.errors.push(`alerts: ${cleanErrorText((e as Error).message)}`);
   }
   opts.log?.({ msg: "jobs ran", runId, ms: Date.now() - startedMs, errors: result.errors.length });
   await deps.notify.flush();

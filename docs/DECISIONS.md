@@ -462,8 +462,10 @@ the check decides only whether the set makes sense, so nothing working was rewri
 **D64. Logs are one JSON line per event, with ids and no personal data.** (O13.) Fastify's own logger (pino, already a
 dependency of Fastify; nothing added). Each request keeps a well-formed `x-request-id` from the load balancer or gets a
 new one, and returns it; after sign-in every line carries the user, organisation and role ids. The request serializer
-logs the method, the path without its query (a search can carry a name or an email) and the address; headers and bodies
-are never logged. A server error answers with its request id, so a person can quote it and MKW can find the lines.
+logs the method and the path without its query (a search can carry a name or an email); headers, bodies and client
+addresses are never logged. Errors go through one serializer that keeps type, code, message and stack, with the values
+a database or provider error quotes ("Key (email)=(…)", an address) replaced; job step errors are cleaned the same way
+before they are stored, logged or audited. A server error answers with its request id, so a person can quote it.
 
 **D65. The platform raises its own alerts, by email, through the outbox.** (O13, `services/system.ts`.) Four conditions:
 the jobs have not completed for 45 minutes (three missed runs), a step failed in the last run, a message has been due
@@ -480,26 +482,36 @@ The key is claimed before the handler runs and the answer stored as it leaves; a
 back). A process that stops between commit and recording leaves the key "running": every repeat gets 409 until it
 expires after 24 hours, so the person checks the screen rather than the change happening twice. Keys are per person,
 refused on public routes (the public intake and sign-in have their own duplicate handling) and erased with the person.
+A request with no signed-in person ignores the header (the route answers 401, or a public route its usual way), so an
+expired session still gets "sign in" and a provider's webhook is never refused for its headers. The PDPL export is
+marked `idempotency: false`: a person's data is never stored as an answer. Erasure deletes the person's keys and any
+stored answer that quotes their email or name.
 Stored answers are kept only 24 hours. The web app keys every change by method, path and body, keeps the key while
 the answer is unknown (a network failure, or "still running"), and retries a dropped request once with the same key.
 
 **D67. Milestones, offers and engagements move only through `transition()`.** (O13, `lib/transition.ts`.) The tables
 in `packages/core/src/states.ts` are the rule; `transition()` locks the row (`for update`), checks who may make the
 move, sets the status and its timestamp, updates only where the status is still the one it read, and writes the audit
-event with `from` and `to`. A refusal names what can happen next. A source test fails on any other status update for
-the three machines. The audit action names are unchanged.
+event with `from` and `to`: the caller's own event where it has one (the action names are unchanged), otherwise
+`<machine>.status_changed`, so every move is audited (rule 8). A refusal names what can happen next. A source test
+fails on any other status update for the three machines. Accepting an offer first locks every offer of its request in
+id order: two acceptances (of one tier or of two) queue instead of deadlocking.
 
 **D68. Rows that money and work hang on are locked before they are checked.** (O13.) The concurrency tests on
 PostgreSQL 16 found that two acceptances of one allocation could both pass (both created steps and payouts). Payments,
 allocations, payouts, change orders, refunds, guarantee credits, delays, document requests, AI drafts and obligations
-are now read `for update` before their state is checked, and allocation decisions take a transaction lock
-(`pg_advisory_xact_lock(777003)`) because partner capacity is counted from rows another transaction may be writing.
-Both cost milliseconds and are proven by tests that fail without them.
+are now read `for update` before their state is checked, and every allocation decision, automatic or manual, takes a
+transaction lock (`pg_advisory_xact_lock(777003)`) before it reads anything, because the open lines and partner
+capacity both come from rows another transaction may be writing. Both cost milliseconds and are proven by tests that
+fail without them (two reallocations at once offered the same line twice; two tiers accepted at once deadlocked).
+On PostgreSQL the test files run in parallel databases, so `test/global-setup.ts` creates the server-wide roles once.
 
 **D69. The API contract is generated from the schemas the handlers parse with.** (O13, `lib/openapi.ts`.) Each route
 declares `config: { body }` (or `body: null`), the same zod object its handler parses with, and `GET /api/openapi.json`
 builds an OpenAPI 3.1 document from them with a small converter (zod 3 has none built in; adding
 `zod-to-json-schema` was not worth a dependency for the features the routes use). `docs/openapi.json` is the committed
-copy; a test fails when they differ or when a route that changes something declares no body. Refresh with
+copy; a test fails when they differ, when a route that changes something declares no body, or when a declared schema
+is not the one its handler parses. It is served to MKW staff only (it maps the admin and finance surface). Objects are
+described as zod treats them: unknown keys are dropped, not refused, unless the schema is strict. Refresh with
 `pnpm --filter @tasees/api contract` and review the diff. Routes live in `src/routes/` by area; `server.ts` keeps the
 hooks. Responses are not described yet (gap 40).

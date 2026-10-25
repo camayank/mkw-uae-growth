@@ -291,6 +291,8 @@ export async function rateEngagement(tx: Queryable, actor: SessionUser, engageme
 export async function allocateManually(tx: Queryable, actor: SessionUser, engagementId: string, partnerId: string, codes: string[], reason: string, deps: Deps) {
   if (!isOps(actor)) throw forbidden("Only ops allocates by hand");
   if (reason.trim().length < 5) throw badRequest("Record why this partner, for the audit trail");
+  // The same lock as the allocation engine (O13), so a manual offer and an automatic one never take the same line.
+  await tx.query("select pg_advisory_xact_lock(777003)");
   const e = (await tx.query<Record<string, unknown>>("select * from engagements where id = $1", [engagementId])).rows[0];
   if (!e) throw notFound("Engagement not found");
   if (e.status !== "allocating") throw conflict("Lines can be allocated by hand only while the engagement is allocating");

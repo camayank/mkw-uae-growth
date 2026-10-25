@@ -56,6 +56,7 @@ console.log(`Tasees platform on http://localhost:${port} · db ${db.kind} · fil
 // In-process sweeps every 15 minutes. In production prefer an external cron calling `pnpm jobs`.
 const alertEmail = process.env.ALERT_EMAIL || undefined;
 if (!alertEmail) console.warn("ALERT_EMAIL is not set: platform alerts are logged and shown on the System page, not emailed.");
+else if (transport.kind !== "ses") console.warn("ALERT_EMAIL is set but EMAIL is not ses: alerts are recorded and printed, not emailed.");
 if (process.env.IN_PROCESS_JOBS !== "0") {
   setInterval(() => {
     runJobs(db, { notify, storage, provider: providerFromEnv() }, null, { alertEmail, log: (line) => app.log.info(line) }).catch((e) => app.log.error({ err: e }, "jobs failed"));

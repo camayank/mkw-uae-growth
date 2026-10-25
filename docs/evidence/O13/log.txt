@@ -77,7 +77,7 @@ invite: Invited
 role change: Role changed
 deactivate: Account deactivated
 deactivated user shows the badge and a reactivate button: OK
-export downloaded: person-c8b1147b-d567-43c6-bb10-70335d4fef3f.json
+export downloaded: person-844da80b-15d2-446f-af9b-82a3d121e4b2.json
 erase: Personal data erased and recorded
 erased person shown as a tombstone: OK
 17-people-after-changes
@@ -163,7 +163,7 @@ command centre at 390 px has no horizontal overflow: OK
 axe: no WCAG 2.1 AA violations on ops command centre at 390 px (O11): OK
 the jobs run from the System page: OK
 the run is listed with its steps and the audit chain as checked: OK
-every change the web app sends carries an idempotency key: OK
+every change the web app sent for ops carried an idempotency key (8 changes): OK
 79-system
 axe: no WCAG 2.1 AA violations on System page (O13): OK
 System page at 390 px has no horizontal overflow: OK

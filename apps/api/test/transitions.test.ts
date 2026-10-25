@@ -76,6 +76,12 @@ describe("transition()", () => {
     expect(events[0].data).toMatchObject({ from: MACHINES.milestone[0]!.from, to: MACHINES.milestone[0]!.to });
   });
 
+  it("audits every move, including the ones a caller does not describe", async () => {
+    // The deposit moved the engagement to allocating without the caller naming an audit event.
+    const moves = (await run((tx) => tx.query("select data from audit_events where action = 'engagement.status_changed' and entity_id = $1 order by id", [ids.engagement]))).rows;
+    expect(moves[0].data).toMatchObject({ from: "awaiting_payment", to: "allocating" });
+  });
+
   it("refuses an unlisted move and leaves the row as it was", async () => {
     await run((tx) => tx.query("update milestones set status = 'qa_passed' where id = $1", [ids.milestone]));
     await expect(run((tx) => transition(tx, "milestone", ids.milestone, "qa_rejected", "client"))).rejects.toThrow(/can move to client_approved or disputed/);
@@ -109,7 +115,7 @@ describe("the source", () => {
     const offenders: string[] = [];
     for (const f of files) {
       const text = readFileSync(f, "utf8");
-      for (const m of text.matchAll(/update\s+(milestones|offers|engagements)\s+set\s+([\s\S]*?)\swhere\s/gi)) {
+      for (const m of text.matchAll(/update\s+(?:only\s+)?(milestones|offers|engagements)(?:\s+(?:as\s+)?(?!set\b)\w+)?\s+set\s+([\s\S]*?)\swhere\s/gi)) {
         if (/(^|[\s,])status\s*=/.test(m[2]!)) offenders.push(`${f}: ${m[0].slice(0, 80)}`);
       }
     }

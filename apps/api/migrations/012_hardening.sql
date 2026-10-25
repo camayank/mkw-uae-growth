@@ -1,12 +1,15 @@
 -- O13 Observability and hardening.
 
 -- Each scheduled jobs run: when it started and ended, how each step went. One run at a time: a second run while one
--- is 'running' cannot insert its row (the unique index) and is skipped; a run that died is closed after 30 minutes.
+-- is 'running' cannot insert its row (the unique index) and is skipped; a run with no step finished for 30 minutes
+-- is taken to have died and is closed.
 create table job_runs (
   id bigserial primary key,
   job text not null default 'sweeps',
   status text not null default 'running' check (status in ('running', 'ok', 'failed', 'abandoned')),
   started_at timestamptz not null default app_now(),
+  -- Moved on after every step: a run is dead only when no step has finished for 30 minutes, however long it runs.
+  heartbeat_at timestamptz not null default app_now(),
   finished_at timestamptz,
   duration_ms int,
   -- { step: { ms, count, error? } }, in the order the steps ran.

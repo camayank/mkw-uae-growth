@@ -8,10 +8,11 @@ import { audit } from "../lib/context.ts";
 import type { Queryable } from "../lib/db.ts";
 import type { Notifier } from "../lib/notify.ts";
 import { verifyAuditChain } from "../lib/audit.ts";
+import { cleanErrorText } from "../lib/errors.ts";
 
 /** The jobs run every 15 minutes; three missed runs is late. */
 export const JOBS_LATE_MINUTES = 45;
-/** A run still "running" after this long died; it is closed so the next run can start. */
+/** A run with no step finished for this long died; it is closed so the next run can start. */
 export const RUN_LEASE_MINUTES = 30;
 /** A message due this long ago and still not handed to the provider is stuck. */
 export const OUTBOX_STUCK_MINUTES = 30;
@@ -28,13 +29,18 @@ export interface StepResult {
 /** Start a run, or return null when another run is in progress (only one at a time). */
 export async function startRun(tx: Queryable): Promise<number | null> {
   await tx.query(
-    `update job_runs set status = 'abandoned', finished_at = app_now(), error = 'did not finish within ${RUN_LEASE_MINUTES} minutes'
-      where job = 'sweeps' and status = 'running' and started_at < app_now() - interval '${RUN_LEASE_MINUTES} minutes'`,
+    `update job_runs set status = 'abandoned', finished_at = app_now(), error = 'no step finished for ${RUN_LEASE_MINUTES} minutes'
+      where job = 'sweeps' and status = 'running' and heartbeat_at < app_now() - interval '${RUN_LEASE_MINUTES} minutes'`,
   );
   const r = await tx.query<{ id: number | string }>(
     "insert into job_runs (job) values ('sweeps') on conflict (job) where status = 'running' do nothing returning id",
   );
   return r.rows[0] ? Number(r.rows[0].id) : null;
+}
+
+/** A step finished: the run is alive. */
+export async function heartbeat(tx: Queryable, id: number): Promise<void> {
+  await tx.query("update job_runs set heartbeat_at = app_now() where id = $1 and status = 'running'", [id]);
 }
 
 export async function finishRun(tx: Queryable, id: number, steps: Record<string, StepResult>, startedMs: number, error: string | null) {
@@ -123,10 +129,8 @@ export async function currentConditions(tx: Queryable, since: Date | null): Prom
   return out;
 }
 
-/** Error text from a step can quote anything; keep it short and drop anything that looks like an email address. */
-function scrub(error: string): string {
-  return error.replace(/[^\s@]+@[^\s@]+/g, "[address]").slice(0, 160);
-}
+/** Step error text is already cleaned when the run records it (jobs/run.ts); shorten it for an alert. */
+const scrub = (error: string) => cleanErrorText(error, 160);
 
 export interface AlertSweep {
   opened: number;

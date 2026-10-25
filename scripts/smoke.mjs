@@ -129,6 +129,11 @@ log.push("request: " + (await toastText(client)));
 
 // Ops: price and publish
 const ops = await session("ops@mkwadvisors.test");
+// O13: every change ops sends through the web app, from here to the System page check, should carry an idempotency key.
+const opsKeyed = [];
+ops.on("request", (r) => {
+  if (["POST", "PUT", "DELETE"].includes(r.method()) && r.url().includes("/api/") && !/\/api\/(auth|public)\//.test(r.url())) opsKeyed.push(!!r.headers()["idempotency-key"]);
+});
 await ops.goto(BASE + "/#/pipeline");
 await ops.locator('button[data-act="build"]').first().click();
 await ops.waitForTimeout(900);
@@ -655,11 +660,6 @@ await eventually("the check now shows as confirmed:", async () => /check confirm
 // O13 System page: runs and their steps, messages waiting, alerts, the nightly audit check. Every change the web app
 // sends carries an idempotency key.
 {
-  const keyed = [];
-  const onRequest = (r) => {
-    if (["POST", "PUT", "DELETE"].includes(r.method()) && r.url().includes("/api/") && !/\/api\/(auth|public)\//.test(r.url())) keyed.push(!!r.headers()["idempotency-key"]);
-  };
-  ops.on("request", onRequest);
   await ops.goto(BASE + "/#/system"); await ops.reload();
   await ops.waitForSelector("#runs-h");
   await ops.locator('button[data-act="run-jobs"]').click();
@@ -668,8 +668,7 @@ await eventually("the check now shows as confirmed:", async () => /check confirm
     const t = await ops.locator("main").innerText();
     return /\d+ steps/.test(t) && /intact/.test(t);
   });
-  check("every change the web app sends carries an idempotency key:", keyed.length > 0 && keyed.every(Boolean));
-  ops.off("request", onRequest);
+  check(`every change the web app sent for ops carried an idempotency key (${opsKeyed.length} changes):`, opsKeyed.length > 5 && opsKeyed.every(Boolean));
   await shot(ops, "79-system");
   await axeCheck(ops, "System page (O13)");
   // The same ops session at phone width: another sign-in would count against the per-address sign-in limit.

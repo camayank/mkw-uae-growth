@@ -28,7 +28,8 @@ const text: Rule = { test: (v) => v.trim().length > 0, rule: "must not be blank 
 
 /** The variables and their rules when set. Anything else in the environment is ignored. */
 export const CONFIG_RULES: Record<string, Rule> = {
-  NODE_ENV: oneOf("development", "production", "test"),
+  // "demo" is the throw-away demo stack (infra/lib/demo-stack.ts): not production, so development sign-in is allowed.
+  NODE_ENV: oneOf("development", "production", "test", "demo"),
   HOST: text,
   PORT: wholeNumber(1, 65535),
   TRUST_PROXY: wholeNumber(0, 10),

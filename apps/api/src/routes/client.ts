@@ -31,10 +31,10 @@ export function registerClientRoutes(ctx: RouteContext) {
 
   // What the intake would scope, without saving anything (O12): the services that follow from the answers. Structure
   // and place advice is not shown here: it reaches a client only after a person at MKW has reviewed it (rule 5).
-  const RequestsPreviewBody = z.object({ answers: IntakeSchema.partial().optional() });
+  const RequestsPreviewBody = z.object({ answers: IntakeSchema });
   app.post("/api/requests/preview", { config: { body: RequestsPreviewBody } }, async (req) => {
     const user = requireRole(req, ...CLIENT_ROLES, "ops", "founder");
-    const answers = IntakeSchema.parse((req.body as { answers?: unknown } | null)?.answers ?? {});
+    const { answers } = RequestsPreviewBody.parse(req.body);
     // Read under the person's own role: it only needs the catalogue, which every role may read.
     return asUser(db, user, (tx) => previewRequest(tx, answers));
   });

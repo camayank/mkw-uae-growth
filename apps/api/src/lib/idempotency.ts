@@ -2,7 +2,9 @@
  * Idempotency keys (O13). A change sent with `Idempotency-Key` runs once: a repeat with the same key, method, path and
  * body gets the first answer again (`idempotent-replay: true`); the same key on a different request is refused (422);
  * a repeat while the first is still running is told to wait (409). Keys belong to the signed-in person, are kept 24
- * hours and erased with the person; public routes do not take them (they have their own duplicate checks).
+ * hours and erased with the person. A request with no signed-in person ignores the header: the route answers it as it
+ * would anyway (401, or a public route's own duplicate checks), and webhooks keep the provider's event id. A route that
+ * hands out a person's data (the PDPL export) is marked `idempotency: false`: its answer is never stored.
  *
  * The key is claimed before the handler runs and its answer recorded as the response leaves. A server error (5xx)
  * rolled the change back, so its key is released for a retry. If the process stops between the change committing and
@@ -23,6 +25,10 @@ declare module "fastify" {
   interface FastifyRequest {
     idempotency?: { userId: string; key: string };
   }
+  interface FastifyContextConfig {
+    /** false: never store this route's answer (it carries a person's data); a repeat simply runs again. */
+    idempotency?: boolean;
+  }
 }
 
 const hash = (s: string) => createHash("sha256").update(s).digest("hex");
@@ -30,10 +36,9 @@ const hash = (s: string) => createHash("sha256").update(s).digest("hex");
 export function registerIdempotency(app: FastifyInstance, db: Database) {
   app.addHook("preHandler", async (req, reply) => {
     const raw = req.headers["idempotency-key"];
-    if (raw === undefined || !CHANGES.has(req.method)) return;
+    if (raw === undefined || !CHANGES.has(req.method) || !req.user || req.routeOptions.config?.idempotency === false) return;
     const key = Array.isArray(raw) ? raw[0]! : raw;
     if (!KEY_PATTERN.test(key)) throw new HttpError(400, "Idempotency-Key must be 8 to 100 letters, digits or . _ : -", "bad_request");
-    if (!req.user) throw new HttpError(400, "Idempotency keys are for signed-in requests only.", "bad_request");
     const userId = req.user.id;
     const bodyHash = hash(bodyText(req));
     const result = await asPlatform(db, null, async (tx) => {

@@ -32,7 +32,7 @@
 | `WEB_DIR` | `apps/web/public` | Static web app served at `/`. |
 | `IN_PROCESS_JOBS` | on | `0` turns off the 15-minute in-process timers; then run `pnpm jobs` from cron. |
 | `LOG` | on | `0` turns off request logging. |
-| `ALERT_EMAIL` | unset | Where platform alerts go (jobs late, a step failed, messages stuck, audit chain broken). Unset, alerts are logged and shown on Setup → System and in the ops queue only. |
+| `ALERT_EMAIL` | unset | Where platform alerts go (jobs late, a step failed, messages stuck, audit chain broken). Needs `EMAIL=ses` to actually send (the server warns at start otherwise). Unset, alerts are logged and shown on Setup → System and in the ops queue only. |
 
 Copy `.env.example` and fill it in. Nothing reads `.env` automatically; export the variables or use your host's
 secret store.
@@ -59,7 +59,7 @@ are never printed. Fix the variable named and start again.
   time (no other data). `GET /api/health` stays the load balancer's liveness check.
 - **The System page** (Setup → System; founder, ops, finance) shows recent runs with each step's count and duration,
   messages waiting, alerts and the nightly audit checks. "Run the jobs now" is safe: only one run happens at a time.
-- **The API contract** is served at `GET /api/openapi.json` (also `docs/openapi.json`).
+- **The API contract** is served to MKW staff at `GET /api/openapi.json` (also `docs/openapi.json`).
 - **Load test.** `TEST_DATABASE_URL=postgres://… pnpm --filter @tasees/api load 200 20 report.md` drives the
   allocation and payout paths on a fresh database it creates and drops, and exits 1 if an invariant fails. Never point
   it at a database with real data: it needs a role allowed to create databases.

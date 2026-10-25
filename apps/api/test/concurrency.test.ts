@@ -32,6 +32,19 @@ describe("at the same moment", () => {
     expect(await rows(env, "select count(*)::int as n from payments where engagement_id = $1 and kind = 'deposit'", [engagementId])).toEqual([{ n: 1 }]);
   });
 
+  it("two tiers of one request accepted at once: one engagement, the other refused, no deadlock", async () => {
+    // Several rounds: a deadlock depends on timing, and the review saw it in 3 of 8 tries without the offer lock.
+    for (let round = 0; round < 6; round++) {
+      const req = await env.call("client", "POST", "/api/requests", { answers: { mode: "new_company", jurisdiction: "free_zone", emirate: "Dubai", visas: round % 3 } });
+      const ids = (await env.call("ops", "POST", `/api/ops/requests/${req.body.id}/build-offers`, { tiers: ["standard", "essential"] })).body.offerIds;
+      for (const id of ids) await env.call("ops", "POST", `/api/ops/offers/${id}/publish`);
+      const order = round % 2 ? [ids[1], ids[0]] : ids;
+      const rs = await both(env.call("client", "POST", `/api/client/offers/${order[0]}/accept`), env.call("client", "POST", `/api/client/offers/${order[1]}/accept`));
+      expect(statuses(rs)).toEqual([200, 409]);
+      expect(await rows(env, "select count(*)::int as n from engagements where request_id = $1", [req.body.id])).toEqual([{ n: 1 }]);
+    }
+  });
+
   it("the deposit recorded twice at once is paid once: one invoice, one allocation run", async () => {
     const deposit = (await rows(env, "select id from payments where engagement_id = $1 and kind = 'deposit'", [engagementId]))[0].id;
     const rs = await both(
@@ -111,6 +124,23 @@ describe("at the same moment", () => {
     expect(over).toEqual([]);
     const allocated = await rows(env, "select count(distinct engagement_id)::int as n from allocations where engagement_id = any($1::uuid[])", [engagements]);
     expect(allocated).toEqual([{ n: 1 }]);
+  });
+
+  it("two allocation runs on one engagement offer each line once", async () => {
+    const req = await env.call("client", "POST", "/api/requests", { answers: { mode: "new_company", jurisdiction: "free_zone", emirate: "Dubai", visas: 1 } });
+    const offer = (await env.call("ops", "POST", `/api/ops/requests/${req.body.id}/build-offers`, { tiers: ["standard"] })).body.offerIds[0];
+    await env.call("ops", "POST", `/api/ops/offers/${offer}/publish`);
+    const id = (await env.call("client", "POST", `/api/client/offers/${offer}/accept`)).body.engagementId;
+    await rows(env, "update orgs set profile = jsonb_set(profile, '{capacity}', '100'::jsonb) where type = 'partner'");
+    const deposit = (await rows(env, "select id from payments where engagement_id = $1 and kind = 'deposit'", [id]))[0].id;
+    await env.call("finance", "POST", `/api/ops/payments/${deposit}/mark-paid`, { reference: "TT-REALLOC" });
+    // The first offers lapse (test set-up), so every line is open again; two ops people press "reallocate" together.
+    await rows(env, "update allocations set timed_out_at = app_now() where engagement_id = $1", [id]);
+    const rs = await both(env.call("ops", "POST", `/api/ops/engagements/${id}/reallocate`), env.call("ops", "POST", `/api/ops/engagements/${id}/reallocate`));
+    expect(statuses(rs)).toEqual([200, 200]);
+    const open = await rows(env, "select code, count(*)::int as n from allocations, unnest(codes) code where engagement_id = $1 and accepted_at is null and declined_at is null and timed_out_at is null group by code", [id]);
+    expect(open.length).toBeGreaterThan(0);
+    expect(open.filter((r) => r.n > 1)).toEqual([]);
   });
 
   it("the same idempotency key twice at once creates one request", async () => {

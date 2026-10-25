@@ -5,7 +5,7 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import { z } from "zod";
 import { userFromToken } from "./lib/auth.ts";
 import { withClock, type Database } from "./lib/db.ts";
-import { badRequest, HttpError } from "./lib/errors.ts";
+import { badRequest, errorForLog, HttpError } from "./lib/errors.ts";
 import type { Storage } from "./lib/storage.ts";
 import type { Notifier } from "./lib/notify.ts";
 import type { PaymentProvider } from "./lib/payments.ts";
@@ -173,14 +173,17 @@ export function requestId(req: { headers: Record<string, string | string[] | und
 
 /**
  * One JSON line per request: method, path without its query (a search can carry a name or an email), status, time,
- * request id, and after sign-in the user, organisation and role ids. Headers and bodies are never logged.
+ * request id, and after sign-in the user, organisation and role ids. Headers, bodies and addresses are never logged,
+ * and error text is cleaned of the values a database or provider error can quote.
  */
 function loggerOptions(stream?: { write(line: string): void }) {
   return {
     level: "info",
     ...(stream ? { stream } : {}),
     serializers: {
-      req: (r: { method: string; url: string; ip?: string }) => ({ method: r.method, path: r.url.split("?")[0], ip: r.ip }),
+      // No address: the request id and, after sign-in, the user id identify a request; an address is personal data.
+      req: (r: { method: string; url: string }) => ({ method: r.method, path: r.url.split("?")[0] }),
+      err: errorForLog,
       res: (r: { statusCode: number }) => ({ statusCode: r.statusCode }),
     },
   };

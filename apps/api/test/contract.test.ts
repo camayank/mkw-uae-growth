@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -16,7 +16,7 @@ describe("the API contract", () => {
   let doc: any;
   beforeAll(async () => {
     env = await makeEnv();
-    doc = (await env.call("anon", "GET", "/api/openapi.json")).body;
+    doc = (await env.call("ops", "GET", "/api/openapi.json")).body;
     if (process.env.UPDATE_CONTRACT === "1") writeFileSync(FILE, `${JSON.stringify(doc, null, 2)}\n`);
   });
   afterAll(() => env.db.close());
@@ -44,13 +44,29 @@ describe("the API contract", () => {
     expect(doc.paths["/api/ops/queue"].get.security).toBeUndefined();
   });
 
+  it("is for MKW staff only", async () => {
+    for (const who of ["anon", "client", "setup"]) expect((await env.call(who, "GET", "/api/openapi.json")).status).toBeGreaterThanOrEqual(401);
+  });
+
+  it("is built from the schema each handler parses with", () => {
+    // Every declared body schema is the one its handler parses: `config: { body: X }` with `X.parse(req.body`.
+    const dir = join(__dirname, "..", "src", "routes");
+    const unused: string[] = [];
+    for (const f of readdirSync(dir).filter((x) => x.endsWith(".ts"))) {
+      const text = readFileSync(join(dir, f), "utf8");
+      for (const m of text.matchAll(/config: \{ body: ([A-Za-z]+)(?:\.optional\(\))?[,} ]/g)) {
+        if (m[1] !== "null" && !new RegExp(`${m[1]}\\.parse\\(req\\.body`).test(text)) unused.push(`${f}: ${m[1]}`);
+      }
+    }
+    expect(unused).toEqual([]);
+  });
+
   it("describes the schemas the handlers parse with", () => {
     const body = doc.paths["/api/milestones/{id}/review"].post.requestBody.content["application/json"].schema;
     expect(body).toEqual({
       type: "object",
       properties: { approve: { type: "boolean" }, reason: { type: "string", maxLength: 2000 } },
       required: ["approve"],
-      additionalProperties: false,
     });
     expect(doc.paths["/api/client/offers/{id}/accept"].post.requestBody.required).toBe(false);
     expect(doc.paths["/api/ops/search"].get.parameters).toEqual([{ name: "q", in: "query", required: false, schema: { type: "string", maxLength: 100, default: "" } }]);
@@ -67,8 +83,8 @@ describe("the API contract", () => {
         e: { const: true },
       },
       required: ["b", "d", "e"],
-      additionalProperties: false,
     });
+    expect(jsonSchema(z.object({ a: z.string() }).strict())).toMatchObject({ additionalProperties: false });
     expect(() => jsonSchema(z.date())).toThrow(UnsupportedSchema);
   });
 });

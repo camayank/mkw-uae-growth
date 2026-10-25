@@ -63,7 +63,7 @@ export function registerAdminRoutes(ctx: RouteContext) {
     return asPlatform(db, user, (tx) => reactivateUser(tx, user, req.params.id));
   });
 
-  app.post<{ Params: { id: string } }>("/api/admin/users/:id/export", { config: { body: null } }, async (req, reply) => {
+  app.post<{ Params: { id: string } }>("/api/admin/users/:id/export", { config: { body: null, idempotency: false } }, async (req, reply) => {
     const user = requireRole(req, "ops", "founder");
     const data = await asPlatform(db, user, (tx) => exportPerson(tx, user, req.params.id));
     reply.header("content-disposition", `attachment; filename="person-${req.params.id}.json"`);

@@ -31,8 +31,10 @@ const EXTRA: Record<MachineName, string[]> = {
 };
 
 export interface TransitionOptions {
-  /** The audit event to write with the move; the move's from and to are added to its data. */
+  /** The audit event for the move; its from and to are added to the data. Default: `<machine>.status_changed`. */
   audit?: { actor: SessionUser | null; action: string; entity?: string; data?: Record<string, unknown> };
+  /** Who made the move, for the default audit event (null: the platform's own rule, such as a sweep). */
+  actor?: SessionUser | null;
   set?: Record<string, string | null>;
   /** When the row is already in `to`, do nothing instead of refusing (for sweeps that may meet a moved row). */
   idempotent?: boolean;
@@ -61,22 +63,27 @@ export async function transition(
   }
   params.push(row.status);
   await tx.query(`update ${table} set ${sets.join(", ")} where id = $1 and status = $${params.length}`, params);
-  if (opts.audit) {
-    const a = opts.audit;
-    await audit(tx, a.actor, a.action, a.entity ?? machine, id, { ...(a.data ?? {}), from: row.status, to });
-  }
+  // Every move is audited (rule 8): with the caller's own event, or a plain one naming the move.
+  const a = opts.audit ?? { actor: opts.actor ?? null, action: `${machine}.status_changed` };
+  await audit(tx, a.actor, a.action, a.entity ?? machine, id, { ...(a.data ?? {}), from: row.status, to });
   return { from: row.status, changed: true };
 }
 
 /**
- * Withdraw a request's open offers (all, or all but the accepted one), each through `transition()`. The rows are
- * locked in id order so two calls cannot deadlock.
+ * Withdraw a request's open offers (all, or all but the accepted one), each through `transition()`. Callers that
+ * already hold one of the offers must first lock all of them in id order (see `lockRequestOffers`), or two calls
+ * could each hold one offer and wait for the other's.
  */
-export async function withdrawOffers(tx: Queryable, requestId: string, except: string | null = null): Promise<number> {
+export async function withdrawOffers(tx: Queryable, requestId: string, except: string | null = null, actor: SessionUser | null = null): Promise<number> {
   const open = await tx.query<{ id: string }>(
     "select id from offers where request_id = $1 and ($2::uuid is null or id <> $2) and status in ('draft', 'ops_review', 'published') order by id for update",
     [requestId, except],
   );
-  for (const o of open.rows) await transition(tx, "offer", o.id, "withdrawn", "platform");
+  for (const o of open.rows) await transition(tx, "offer", o.id, "withdrawn", "platform", { actor });
   return open.rows.length;
+}
+
+/** Lock every offer of a request, in id order: the first thing a change to one of them does (no deadlock). */
+export async function lockRequestOffers(tx: Queryable, requestId: string): Promise<void> {
+  await tx.query("select id from offers where request_id = $1 order by id for update", [requestId]);
 }

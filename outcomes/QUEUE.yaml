@@ -86,7 +86,7 @@ outcomes:
     needs_from_owner: [wording review of the proposal and intake questions]
   - id: O13
     title: Observability and hardening
-    status: in-progress
+    status: verified-pending-merge
     contract: outcomes/O13-observability-hardening.md
     depends_on: [O11, O12]
     needs_from_owner: [alerting destination (ALERT_EMAIL and the staging alarm email)]

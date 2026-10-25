@@ -72,7 +72,7 @@ export async function buildOffers(
   }
 
   // Withdraw earlier unaccepted offers for this request so only one set is live.
-  await withdrawOffers(tx, requestId);
+  await withdrawOffers(tx, requestId, null, actor);
 
   const offerIds: string[] = [];
   const seen = new Set<string>();

@@ -17,7 +17,7 @@ import {
   type PayoutStage,
 } from "@tasees/core";
 import { audit, type SessionUser } from "../lib/context.ts";
-import { transition, withdrawOffers } from "../lib/transition.ts";
+import { lockRequestOffers, transition, withdrawOffers } from "../lib/transition.ts";
 import { num, type Queryable } from "../lib/db.ts";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.ts";
 import type { Notifier } from "../lib/notify.ts";
@@ -73,9 +73,11 @@ export async function acceptOffer(tx: Queryable, user: SessionUser, offerId: str
   // The client accepts the current client terms with the offer; the engagement keeps which version.
   const acceptedTerms = await requiredTermsVersion(tx, termsVersion);
 
-  // Locks the offer: a second acceptance waits here, then finds it accepted and is refused.
-  await transition(tx, "offer", offerId, "accepted", "client");
-  await withdrawOffers(tx, String(o.request_id), offerId);
+  // Lock the request's offers in id order first: two acceptances (of one tier or of two) queue here instead of each
+  // holding one offer and waiting for the other's. The second then finds its offer moved and is refused.
+  await lockRequestOffers(tx, String(o.request_id));
+  await transition(tx, "offer", offerId, "accepted", "client", { actor: user });
+  await withdrawOffers(tx, String(o.request_id), offerId, user);
   await tx.query("update requests set status = 'closed' where id = $1", [o.request_id]);
   const answers = (o.answers ?? {}) as { emirate?: string; freeZone?: string | null };
   const eng = (
@@ -160,6 +162,9 @@ export async function runAllocation(
   deps: Deps,
   retryReason?: "next_ranked_declined" | "next_ranked_sla_timeout",
 ): Promise<Array<{ allocationId: string | null; partnerId: string | null; reason: string; codes: string[] }>> {
+  // One allocation decision at a time (O13), taken before anything is read: the unassigned lines and partner capacity
+  // both come from rows another allocation may be writing. Allocation takes milliseconds, so queueing costs nothing.
+  await tx.query("select pg_advisory_xact_lock(777003)");
   const e = (await tx.query<Record<string, unknown>>("select * from engagements where id = $1", [engagementId])).rows[0];
   if (!e) throw notFound("Engagement not found");
   const lines = (
@@ -172,9 +177,6 @@ export async function runAllocation(
   ).rows;
   if (lines.length === 0) return [];
 
-  // One allocation decision at a time (O13): capacity is read from live work, which another transaction's offers would
-  // not show until they commit. Allocation takes milliseconds, so queueing here costs nothing that matters.
-  await tx.query("select pg_advisory_xact_lock(777003)");
   const [partners, deliverables] = await Promise.all([loadPartners(tx), loadDeliverables(tx)]);
   const tried = (
     await tx.query<{ partner_org_id: string; codes: string[] }>(
@@ -446,7 +448,7 @@ export async function addEvidence(
       [milestoneId, m.engagement_id, file.type, file.key, file.name, user.id],
     )
   ).rows[0]!;
-  if (m.status === "pending") await transition(tx, "milestone", milestoneId, "in_progress", "partner", { idempotent: true });
+  if (m.status === "pending") await transition(tx, "milestone", milestoneId, "in_progress", "partner", { idempotent: true, actor: user });
   await audit(tx, user, "evidence.added", "milestone", milestoneId, { type: file.type, name: file.name });
   return { id: row.id };
 }

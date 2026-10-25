@@ -25,6 +25,8 @@ export interface NextAction {
   engagementId: string | null;
   /** Pay links, approve buttons: the id the action works on. */
   ref: string;
+  /** A person's own words that go with it (why a document was sent back), shown as written, never translated. */
+  detail?: string | null;
 }
 
 export interface TimelineEntry {
@@ -36,6 +38,8 @@ export interface TimelineEntry {
   date: string | null;
   note: string | null;
   ref: string | null;
+  /** A person's own words (the issue the client raised), shown as written, never translated. */
+  detail?: string | null;
 }
 
 const dubaiDate = (d: Date) => new Date(d.getTime() + 4 * 3_600_000).toISOString().slice(0, 10);
@@ -127,12 +131,13 @@ export async function clientNextActions(tx: Queryable, now: Date, cal: WorkCalen
       kind: "documents",
       title: `Upload ${list.length} document${list.length > 1 ? "s" : ""}`,
       why: back.length
-        ? `${[...new Set(back.map((d) => d.kind.replace(/_/g, " ")))].join(", ")} ${back.length > 1 ? "were" : "was"} sent back${back[0]!.decision_note ? `: ${back[0]!.decision_note}` : ""}. ${waiting[0]!.toUpperCase()}${waiting.slice(1)}.`
+        ? `${[...new Set(back.map((d) => d.kind.replace(/_/g, " ")))].join(", ")} ${back.length > 1 ? "were" : "was"} sent back. ${waiting[0]!.toUpperCase()}${waiting.slice(1)}.`
         : `${kinds[0]![0]!.toUpperCase()}${kinds.join(", ").slice(1)}. ${waiting[0]!.toUpperCase()}${waiting.slice(1)}.`,
       link: `#/engagement/${eid}`,
       due: null,
       engagementId: eid,
       ref: eid,
+      detail: back[0]?.decision_note ?? null,
     });
   }
   const filings = await tx.query<{ id: string; title: string; due_date: string; engagement_id: string | null }>(
@@ -186,13 +191,13 @@ export async function clientTimeline(tx: Queryable, engagementId: string, cal: W
           : m.status === "evidence_submitted"
             ? "Evidence handed in: MKW Advisors is checking it"
             : m.status === "disputed"
-              ? `You raised an issue${m.dispute_reason ? `: ${m.dispute_reason}` : ""}; MKW Advisors is resolving it`
+              ? "You raised an issue; MKW Advisors is resolving it"
               : m.status === "qa_rejected"
                 ? "Being redone after MKW's check"
                 : m.status === "pending"
                   ? "Not started yet"
                   : "In progress";
-    out.push({ kind: "step", label: m.name, state, date: m.status === "client_approved" ? m.updated_at : m.due_date, note, ref: m.id });
+    out.push({ kind: "step", label: m.name, state, date: m.status === "client_approved" ? m.updated_at : m.due_date, note, ref: m.id, detail: m.status === "disputed" ? m.dispute_reason : null });
   }
   for (const p of payments.filter((x) => x.kind !== "deposit")) out.push(pay(p));
   out.push({ kind: "completed", label: "Completed", state: e.status === "completed" ? "done" : "upcoming", date: e.completed_at, note: e.status === "completed" ? "Your compliance calendar is on the Compliance page" : null, ref: null });

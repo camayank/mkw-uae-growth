@@ -63,8 +63,9 @@ export function translatePage() {
 export let reported = new Set();
 export function reportGaps() {
   if (!state.me || !isClient()) return;
-  // A sentence longer than the reviewer's list takes is skipped; the reviewer sees it on the screen itself.
-  const fresh = [...state.untranslated].filter((m) => !reported.has(m) && m.length <= 1000);
+  // Long sentences are not listed (they are built from templates the dictionary covers by pattern, and may quote
+  // names or dates); the list stays a list of short interface strings.
+  const fresh = [...state.untranslated].filter((m) => !reported.has(m) && m.length <= 200);
   if (!fresh.length) return;
   for (const m of fresh) reported.add(m);
   api("POST", "/api/me/i18n-gaps", { strings: fresh.slice(0, 200) }).catch(() => {});
@@ -322,6 +323,8 @@ const DOC_WORDS = [
   [/photo|selfie|picture/i, "photo"],
   [/bank|statement|iban/i, "bank"],
   [/tenancy|lease|ejari/i, "tenancy"],
+  [/address|utility|dewa|addc|sewa/i, "proof of address"],
+  [/medical|fitness/i, "medical"],
   [/invoice/i, "invoice"],
   [/moa|memorandum|articles/i, "memorandum"],
   [/noc\b|no[\s_-]*objection/i, "noc"],
@@ -359,26 +362,43 @@ export function showFileCheck(input, result) {
   }
 }
 
-/** A drop zone around a file input: dropping a file sets the input as if it had been chosen. */
+/**
+ * A drop zone around a file input: dropping a file sets the input as if it had been chosen. One file per item: with
+ * several, the first is used and the page says so. A file dropped anywhere else is ignored rather than opened by the
+ * browser in place of the app.
+ */
+const hasFiles = (ev) => [...(ev.dataTransfer?.types ?? [])].includes("Files");
 for (const type of ["dragenter", "dragover"])
   document.addEventListener(type, (ev) => {
-    const zone = ev.target.closest?.(".dropzone");
-    if (!zone) return;
+    if (!hasFiles(ev)) return;
     ev.preventDefault();
-    zone.classList.add("over");
-  });
-for (const type of ["dragleave", "drop"])
-  document.addEventListener(type, (ev) => {
     const zone = ev.target.closest?.(".dropzone");
-    if (!zone) return;
-    ev.preventDefault();
-    zone.classList.remove("over");
-    if (type !== "drop" || !ev.dataTransfer?.files?.length) return;
-    const input = zone.querySelector('input[type="file"]');
-    input.files = ev.dataTransfer.files;
-    input.dispatchEvent(new Event("change", { bubbles: true }));
+    if (ev.dataTransfer) ev.dataTransfer.dropEffect = zone ? "copy" : "none";
+    zone?.classList.add("over");
   });
+document.addEventListener("dragleave", (ev) => {
+  const zone = ev.target.closest?.(".dropzone");
+  // Moving between the zone's own children is not leaving it.
+  if (zone && !zone.contains(ev.relatedTarget)) zone.classList.remove("over");
+});
+document.addEventListener("drop", (ev) => {
+  if (!hasFiles(ev)) return;
+  ev.preventDefault();
+  const zone = ev.target.closest?.(".dropzone");
+  if (!zone) return;
+  zone.classList.remove("over");
+  const input = zone.querySelector('input[type="file"]');
+  const files = ev.dataTransfer.files;
+  const one = new DataTransfer();
+  one.items.add(files[0]);
+  input.files = one.files;
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+  if (files.length > 1) toast(`One file per document: ${files[0].name} is used; upload the others on their own items.`);
+});
 
+let dropSeq = 0;
 /** The markup for a checked upload: a drop zone with the file picker inside, and the line its check speaks on. */
-export const dropzone = (expect, label = "Drop the file here, or choose it") =>
-  `<label class="dropzone"><span class="small">${esc(label)}</span><input type="file" name="file" data-expect="${esc(expect)}" accept="${uploadRules.extensions.map((e) => `.${e}`).join(",")}" /></label><p class="field-msg small" aria-live="polite"></p>`;
+export const dropzone = (expect, label = "Drop the file here, or choose it") => {
+  const id = `drop-msg-${++dropSeq}`;
+  return `<label class="dropzone"><span class="small">${esc(label)}</span><input type="file" name="file" data-expect="${esc(expect)}" aria-describedby="${id}" accept="${uploadRules.extensions.map((e) => `.${e}`).join(",")}" /></label><p class="field-msg small" id="${id}" aria-live="polite"></p>`;
+};

@@ -239,8 +239,8 @@ ul.rules li { margin-bottom: var(--space-2); }
 .checklist-static li:last-child { border-bottom: 0; }
 
 /* The conversational intake with the plan building beside it. */
-.intake { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: var(--space-4); align-items: start; }
-@media (max-width: 860px) { .intake { grid-template-columns: minmax(0, 1fr); } }
+.intake-convo { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: var(--space-4); align-items: start; }
+@media (max-width: 860px) { .intake-convo { grid-template-columns: minmax(0, 1fr); } }
 .convo fieldset.q { border: 0; padding: 0; margin: 0 0 var(--space-3); }
 .convo legend { font-size: var(--text-lg); font-weight: 650; color: var(--text); padding: 0; margin-bottom: var(--space-3); }
 .convo legend:focus { outline: none; }

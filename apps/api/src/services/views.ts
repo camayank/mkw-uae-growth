@@ -1,4 +1,6 @@
 import { clientNextActions, clientTimeline, clientWhatsNext } from "./journey.ts";
+import { dbToday, loadDeliverables, loadGovernmentFees } from "./repo.ts";
+import { CLIENT_REVIEW_DAYS } from "./engagements.ts";
 import { opsQueue } from "./queue.ts";
 import { milestonesFor, paymentPlan, serialize, UAE_CALENDAR, type Role, type WorkCalendar } from "@tasees/core";
 import { asPlatform, asUser, type SessionUser } from "../lib/context.ts";
@@ -81,21 +83,26 @@ export function clientOffer(db: Database, user: SessionUser, offerId: string) {
  * government fee that is not confirmed. Read as the platform because the line reasons are internal; only the
  * client-safe sentence leaves this function, never the reason itself.
  */
-export function clientOfferProposal(db: Database, user: SessionUser, offer: { id: string; professional?: number; mkwFees?: number; vat?: number; government?: number; lines: Array<{ code: string; name: string; qty: number }> }) {
+export function clientOfferProposal(db: Database, user: SessionUser, offer: { id: string; professional?: number; mkwFees?: number; vat?: number; government?: number; lines: Array<{ code: string; name: string; qty: number; govUnitFee?: number }> }) {
   return asPlatform(db, user, async (tx) => {
-    const reasons = (await tx.query<{ code: string; reason: string | null }>("select code, reason from offer_lines where offer_id = $1", [offer.id])).rows;
+    // Each government fee's standing comes from MKW's fee table for the request's place, today: never from a line's
+    // free-text reason (an ops price override rewrites that). No row means the partner's own figure.
+    const place = (await tx.query<{ emirate: string | null; free_zone: string | null }>("select r.answers->>'emirate' as emirate, r.answers->>'freeZone' as free_zone from offers f join requests r on r.id = f.request_id where f.id = $1", [offer.id])).rows[0];
+    const fees = await loadGovernmentFees(tx, offer.lines.map((l) => l.code), place?.emirate ?? "", place?.free_zone ?? null, await dbToday(tx));
     const guaranteeBp = num((await tx.query<{ value: number }>("select value from settings where key = 'guarantee_bp'")).rows[0]?.value ?? 1000);
-    const feeNote = (reason: string | null) =>
-      !reason
-        ? null
-        : /Government fee UNCERTAIN|verified over 90 days ago/.test(reason)
-          ? "Estimate: MKW Advisors confirms this government fee with the authority before it is paid; you pay the actual fee, at cost."
-          : /as stated by the partner/.test(reason)
-            ? "As quoted by the partner firm; you pay the authority's actual fee, at cost."
-            : null;
+    const feeNotes: Record<string, string> = {};
+    for (const l of offer.lines) {
+      if (!(l.govUnitFee ?? 0)) continue;
+      const f = fees.get(l.code);
+      if (!f) feeNotes[l.code] = "As quoted by the partner firm; you pay the authority's actual fee, at cost.";
+      else if (f.confidence === "UNCERTAIN" || f.stale) feeNotes[l.code] = "Estimate: MKW Advisors confirms this government fee with the authority before it is paid; you pay the actual fee, at cost.";
+    }
+    const catalogue = await loadDeliverables(tx);
     const plan = offer.lines.map((l) => {
       const steps = milestonesFor(l.code, l.qty).map((m) => ({ name: m.name, afterWorkingDays: m.dueOffsetDays, isKey: m.isKey }));
-      return { code: l.code, name: l.name, qty: l.qty, steps, workingDays: Math.max(0, ...steps.map((s) => s.afterWorkingDays)) };
+      // A yearly or monthly service runs on; its first cycle is not part of how long the setup takes.
+      const recurring = (catalogue.get(l.code)?.billing ?? "one_off") !== "one_off";
+      return { code: l.code, name: l.name, qty: l.qty, steps, recurring, workingDays: Math.max(0, ...steps.map((s) => s.afterWorkingDays)) };
     });
     const payment = paymentPlan({
       professional: offer.professional ?? 0,
@@ -110,13 +117,14 @@ export function clientOfferProposal(db: Database, user: SessionUser, offer: { id
     });
     return {
       plan,
-      // Lines run side by side, so the longest line is the estimate.
-      estimateWorkingDays: Math.max(0, ...plan.map((p) => p.workingDays)),
-      feeNotes: Object.fromEntries(reasons.map((r) => [r.code, feeNote(r.reason)]).filter(([, n]) => n)),
+      // Lines run side by side, so the longest one-off line is the estimate; recurring services are left out.
+      estimateWorkingDays: Math.max(0, ...plan.filter((p) => !p.recurring).map((p) => p.workingDays)),
+      feeNotes,
       depositFils: payment.clientOnAcceptance,
       balanceFils: payment.clientOnCompletion,
+      // The guarantee rate is a promise made to the client, so it is stated here (D60).
       guaranteeBp,
-      reviewWorkingDays: 5,
+      reviewWorkingDays: CLIENT_REVIEW_DAYS,
     };
   });
 }

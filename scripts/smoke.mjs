@@ -246,7 +246,9 @@ await client.waitForSelector('button[data-act="ms-review"][data-approve="1"]');
 // O12: the step to approve is the pinned action, with the date it is approved on its own.
 await eventually("the step waiting for the client is pinned with its automatic approval date:", async () => /approved automatically on/i.test(await client.locator(".nextaction").innerText()) && (await client.locator('.nextaction button[data-act="ms-review"]').count()) === 2);
 await shot(client, "73-client-timeline-approve");
-await client.locator('button[data-act="ms-review"][data-approve="1"]').first().click();
+// The client approves from the pinned card, where the checked evidence is linked.
+check("the pinned card links the evidence MKW checked:", (await client.locator('.nextaction a[href^="/api/evidence/"]').count()) >= 1);
+await client.locator('.nextaction button[data-act="ms-review"][data-approve="1"]').click();
 await client.waitForTimeout(700);
 log.push("approve: " + (await toastText(client)));
 const pageText = await client.locator("main").innerText();
@@ -510,6 +512,8 @@ const pub = await browser.newContext({ viewport: { width: 1280, height: 900 } })
 const pp = await pub.newPage();
 pp.on("pageerror", (e) => errors.push(`intake page: ${e.message}`));
 await pp.goto(BASE + "/intake.html?utm_campaign=smoke");
+// The public page keeps its own single column: the app's styles must not reach it (O12 review).
+check("the public intake page keeps its single-column layout:", await pp.evaluate(() => { const m = document.querySelector("main.intake"); return !!m && getComputedStyle(m).display !== "grid" && m.getBoundingClientRect().width <= 780; }));
 await pp.fill("#company", "Smoke Lead Ventures");
 await pp.fill("#name", "Smoke Lead");
 await pp.fill("#email", `lead-${stamp}@smoke.test`);

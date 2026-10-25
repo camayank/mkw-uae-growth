@@ -201,7 +201,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   });
   app.post("/api/me/i18n-gaps", async (req) => {
     const user = requireRole(req, ...CLIENT_ROLES, ...PLATFORM_ROLES);
-    const { strings } = z.object({ strings: z.array(z.string().max(1000)).max(200) }).parse(req.body);
+    const { strings } = z.object({ strings: z.array(z.string().max(200)).max(200) }).parse(req.body);
     return asPlatform(db, user, (tx) => reportGaps(tx, user, strings));
   });
   app.post("/api/admin/arabic/review", async (req) => {
@@ -232,7 +232,8 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   app.post("/api/requests/preview", async (req) => {
     const user = requireRole(req, ...CLIENT_ROLES, "ops", "founder");
     const answers = IntakeSchema.parse((req.body as { answers?: unknown } | null)?.answers ?? {});
-    return asPlatform(db, user, (tx) => previewRequest(tx, answers));
+    // Read under the person's own role: it only needs the catalogue, which every role may read.
+    return asUser(db, user, (tx) => previewRequest(tx, answers));
   });
 
   // The page checks a file against these before sending it (O12); the storage adapter enforces the same rules.

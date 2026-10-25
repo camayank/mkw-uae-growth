@@ -16,7 +16,7 @@ export async function renderEngagement(id) {
     if (isPartner() && ["pending", "in_progress", "qa_rejected"].includes(m.status)) {
       const work = `<form class="row" data-form="evidence" data-id="${m.id}">
         <select name="type" style="width:auto">${(m.evidenceRequired ?? []).map((t) => `<option value="${esc(t)}">${esc(words(t))}</option>`).join("")}<option value="other">other</option></select>
-        <input type="file" name="file" required style="width:auto;max-width:100%" /><button class="sm" type="submit">Upload</button></form>
+        <input type="file" name="file" required style="width:auto;max-width:100%" /><button class="sm" type="submit">Upload</button><p class="field-msg small" aria-live="polite"></p></form>
         <div class="actions"><button class="sm primary" data-act="ms-submit" data-id="${m.id}">Submit for checking</button></div>`;
       // The step in hand shows its tools; later steps keep them folded away.
       if (m.status !== "pending" || m.id === nextOpenId) {
@@ -261,12 +261,13 @@ function renderClientEngagement(e, parts) {
     const evidence = t.kind === "step" && ["done", "now"].includes(t.state) ? parts.evidenceFor(t.ref) : [];
     const step = t.kind === "step" ? e.milestones.find((m) => m.id === t.ref) : null;
     return `<li class="tl ${t.state}"><span class="tl-dot" aria-hidden="true"></span><div class="tl-body">
-      <div class="row between"><b>${esc(t.label)}</b><span class="badge ${STATE_TONE[t.state]}">${STATE_LABEL[t.state]}</span></div>
+      <div class="row between"><b id="tl-${esc(t.ref ?? t.kind)}">${esc(t.label)}</b><span class="badge ${STATE_TONE[t.state]}">${STATE_LABEL[t.state]}</span></div>
       ${when ? `<div class="small muted">${esc(when)}</div>` : ""}
       ${t.note ? `<div class="small">${esc(t.note)}</div>` : ""}
+      ${t.detail ? `<div class="small">Your words: <span data-no-i18n>${esc(t.detail)}</span></div>` : ""}
       ${step ? parts.delayLine(step) : ""}
       ${evidence.length ? `<div class="small">Evidence: ${evidence.map((x) => `<a href="/api/evidence/${x.id}/file" target="_blank" rel="noopener">${esc(x.fileName)}</a>`).join(" · ")}</div>` : ""}
-      ${t.kind === "step" && t.state === "now" ? `<div class="actions"><button class="sm primary" data-act="ms-review" data-id="${t.ref}" data-approve="1">Approve</button><button class="sm danger" data-act="ms-review" data-id="${t.ref}" data-approve="0">Raise an issue</button></div>` : ""}
+      ${t.kind === "step" && t.state === "now" ? `<div class="actions"><button class="sm primary" data-act="ms-review" data-id="${t.ref}" data-approve="1" aria-describedby="tl-${esc(t.ref)}">Approve</button><button class="sm danger" data-act="ms-review" data-id="${t.ref}" data-approve="0" aria-describedby="tl-${esc(t.ref)}">Raise an issue</button></div>` : ""}
       ${pay && pay.status === "pending" && pay.payUrl ? `<div class="actions"><a class="btn sm primary" href="${esc(pay.payUrl)}">Pay by card</a></div>` : ""}
     </div></li>`;
   };
@@ -296,14 +297,14 @@ function renderClientEngagement(e, parts) {
     ? `<section class="card" id="docs" tabindex="-1" aria-labelledby="docs-h"><h2 id="docs-h">Documents we need from you ${missing ? badge("pending", `${missing} to upload`) : badge("ok", "complete")}</h2>
       <p class="small muted">Each file is checked here before it is sent: PDF, a photo, Word or Excel, up to ${Math.round(uploadRules.maxBytes / 1024 / 1024)} MB. Files are stored in the UAE and shared only with the firm doing the work.</p>
       ${[...new Set(docs.map((r) => r.milestoneId))]
-        .map((mid) => `<h3 class="checklist-step">For ${esc(e.milestones.find((m) => m.id === mid)?.name ?? "this step")}</h3><ul class="checklist">${docs.filter((r) => r.milestoneId === mid).map(docItem).join("")}</ul>`)
+        .map((mid) => `<h3 class="checklist-step">Needed for ${esc(e.milestones.find((m) => m.id === mid)?.name ?? "this step")}</h3><ul class="checklist">${docs.filter((r) => r.milestoneId === mid).map(docItem).join("")}</ul>`)
         .join("")}</section>`
     : "";
   $app.innerHTML = `
   <p><a href="#/">← Overview</a></p>
   <div class="row between"><h1>Your engagement · ${esc(e.engagement.emirate)}${e.engagement.freeZone ? ` · ${esc(e.engagement.freeZone)}` : ""}</h1>${badge(e.engagement.status)}</div>
   <p class="muted">${parts.done} of ${e.milestones.length} steps approved${parts.partnerNames.length ? ` · Delivered by ${esc(parts.partnerNames.join(", "))}, managed by MKW Advisors` : ""}</p>
-  ${nextActionCard(j.actions, j.whatsNext, { inline: true })}
+  ${nextActionCard(j.actions, j.whatsNext, { inline: true, evidenceFor: parts.evidenceFor })}
   <div class="grid cols-2 eng">
     <section class="card" aria-labelledby="steps-h"><h2 id="steps-h">Steps</h2>
       <ol class="timeline">${j.timeline.map(entry).join("")}</ol>

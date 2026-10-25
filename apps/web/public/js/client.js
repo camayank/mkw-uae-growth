@@ -10,13 +10,16 @@ export function nextActionCard(actions, whatsNext, opts = {}) {
   if (!actions.length)
     return `<section class="nextaction calm" aria-labelledby="next-h"><p class="eyebrow">Your next action</p><h2 id="next-h">Nothing needed from you right now</h2><p>${esc(whatsNext ?? "")}</p></section>`;
   const [a, ...more] = actions;
+  const evidence = opts.inline && a.kind === "approve" ? (opts.evidenceFor?.(a.ref) ?? []) : [];
   const button = a.kind === "payment" && /^https?:/.test(a.link) ? `<a class="btn primary" href="${esc(a.link)}">Pay by card</a>` : opts.inline && a.kind === "approve" ? "" : `<a class="btn primary" href="${esc(opts.inline && a.kind === "documents" ? "#docs" : a.link)}"${opts.inline && a.kind === "documents" ? ' data-act="jump" data-target="docs"' : ""}>${esc(ACTION_BUTTON[a.kind])}</a>`;
   const approve =
     opts.inline && a.kind === "approve"
-      ? `<div class="row"><button class="primary" data-act="ms-review" data-id="${esc(a.ref)}" data-approve="1">Approve this step</button><button data-act="ms-review" data-id="${esc(a.ref)}" data-approve="0">Raise an issue</button></div>`
+      ? `${evidence.length ? `<p class="small">Evidence checked by MKW Advisors: ${evidence.map((x) => `<a href="/api/evidence/${x.id}/file" target="_blank" rel="noopener">${esc(x.fileName)}</a>`).join(" · ")}</p>` : ""}
+         <div class="row"><button class="primary" data-act="ms-review" data-id="${esc(a.ref)}" data-approve="1" aria-describedby="next-h">Approve this step</button><button data-act="ms-review" data-id="${esc(a.ref)}" data-approve="0" aria-describedby="next-h">Raise an issue</button></div>`
       : "";
-  return `<section class="nextaction" aria-labelledby="next-h"><p class="eyebrow">Your next action${a.due ? ` · <span>${a.kind === "approve" ? "approved automatically on" : a.kind === "offer" ? "valid until" : "due"} ${date(a.due)}</span>` : ""}</p>
-    <h2 id="next-h">${esc(a.title)}</h2><p>${esc(a.why)}</p>${approve}${button ? `<div class="row">${button}</div>` : ""}
+  const dueLabel = a.kind === "approve" ? `approved automatically on ${date(a.due)}` : a.kind === "offer" ? `valid until ${date(a.due)}` : `due ${date(a.due)}`;
+  return `<section class="nextaction" aria-labelledby="next-h"><p class="eyebrow"><span>Your next action</span>${a.due ? ` · <span>${esc(dueLabel)}</span>` : ""}</p>
+    <h2 id="next-h">${esc(a.title)}</h2><p>${esc(a.why)}</p>${a.detail ? `<p class="small">Note: <span data-no-i18n>${esc(a.detail)}</span></p>` : ""}${approve}${button ? `<div class="row">${button}</div>` : ""}
     ${more.length ? `<details class="more"><summary>${more.length} more thing${more.length > 1 ? "s" : ""} to do</summary><ul class="plain">${more.map((m) => `<li><a href="${esc(m.link)}">${esc(m.title)}</a>${m.due ? ` <span class="small muted">· ${date(m.due)}</span>` : ""}</li>`).join("")}</ul></details>` : ""}</section>`;
 }
 
@@ -65,8 +68,6 @@ export async function renderClientHome() {
   }`;
 }
 
-const TIER_NOTE = { essential: "Lowest price", standard: "Best balance of price, speed and quality", priority: "Fastest delivery" };
-
 export async function renderClientOffer(id) {
   const o = await api("GET", `/api/client/offers/${id}`);
   const h = await api("GET", "/api/client/home");
@@ -85,7 +86,7 @@ export async function renderClientOffer(id) {
           .map(
             (s) => `<a class="tier ${s.id === o.id ? "best" : ""}" href="#/offer/${s.id}"${s.id === o.id ? ' aria-current="page"' : ""}>
               <span class="row between"><b style="text-transform:capitalize">${esc(s.tier)}</b>${s.id === o.id ? badge("ok", "shown") : ""}</span>
-              <span class="price">${aed(s.clientTotal)}</span><span class="small muted">${esc(TIER_NOTE[s.tier] ?? "")}</span></a>`,
+              <span class="price">${aed(s.clientTotal)}</span></a>`,
           )
           .join("")}</nav>`
       : ""
@@ -94,8 +95,8 @@ export async function renderClientOffer(id) {
     <section class="card"><h2>What we will do</h2>
       <ul class="plain checklist-static">${o.lines.map((l) => `<li><b>${esc(l.name)}</b>${l.qty > 1 ? ` ×${l.qty}` : ""}${l.model === "agent" ? `<br><span class="small muted">Billed by the licensed firm; MKW fee shown separately</span>` : ""}</li>`).join("")}</ul></section>
     <section class="card"><h2>How it will run</h2>
-      <p>About <b>${p.estimateWorkingDays} working days</b> from your deposit, with the services running side by side. Every step is checked by MKW Advisors before it comes to you.</p>
-      ${p.plan.map((l) => `<h3>${esc(l.name)}</h3><ol class="steps">${l.steps.map((s) => `<li><span>${esc(s.name)}</span><span class="small muted">by working day ${s.afterWorkingDays}</span></li>`).join("")}</ol>`).join("")}</section>
+      <p>About <b>${p.estimateWorkingDays} working days</b> once work starts, with the services running side by side. Every step is checked by MKW Advisors before it comes to you.</p>
+      ${p.plan.map((l) => `<h3>${esc(l.name)}${l.recurring ? ` <span class="small muted">(recurring: not counted in the estimate)</span>` : ""}</h3><ol class="steps">${l.steps.map((s) => `<li><span>${esc(s.name)}</span><span class="small muted">by working day ${s.afterWorkingDays}</span></li>`).join("")}</ol>`).join("")}</section>
     <section class="card"><h2>What it costs</h2>
       <table>
         <tr><td>Professional fees</td><td class="num">${aed(o.professional)}</td></tr>
@@ -109,7 +110,7 @@ export async function renderClientOffer(id) {
         <div><span class="small muted">When every step is approved</span><b>${aed(p.balanceFils)}</b><span class="small muted">the balance, with your tax invoice</span></div></div>
       <p><a class="btn sm" href="/api/client/offers/${o.id}/pdf" target="_blank" rel="noopener" data-offer-pdf>Download the offer (PDF)</a></p></section>
     <section class="card"><h2>Our guarantee</h2>
-      <p>If a step is still open five working days after its due date, you get a credit of ${guaranteePct}% of that step's share of the professional fee. You do not have to ask: the system notices the delay and MKW Advisors' finance team confirms the credit.</p></section>
+      <p>If a step is still not delivered five working days after its due date, a credit of ${guaranteePct}% of that step's share of the professional fee is raised for you automatically. MKW Advisors' finance team confirms it; a delay caused by something only you can provide, such as a missing document, may not qualify.</p></section>
     <section class="card"><h2>Before you accept</h2>
       <ul class="rules">
         <li>This offer is valid until <b>${date(o.validTo)}</b>.</li>
@@ -122,7 +123,7 @@ export async function renderClientOffer(id) {
             ? `${
                 terms?.version
                   ? `${legalBlock(terms, "Tasees client terms")}
-                     <label class="small accept-terms"><input type="checkbox" data-terms-version="${terms.version}" /> I have read and accept the Tasees client terms, version ${terms.version}${terms.draft ? " (draft, pending legal review)" : ""}</label>`
+                     <label class="small accept-terms"><input type="checkbox" data-terms-version="${esc(terms.version)}" /> I have read and accept the Tasees client terms, version ${esc(terms.version)}${terms.draft ? " (draft, pending legal review)" : ""}</label>`
                   : ""
               }<button class="primary big" data-act="accept-offer" data-id="${o.id}">Accept this offer</button>`
             : `<p class="notice small">Only the account owner can accept an offer.</p>`
@@ -188,7 +189,7 @@ export async function renderIntake() {
   $app.innerHTML = `
   <h1>What do you need?</h1>
   <p class="muted">A few questions, one at a time. Your plan builds as you answer; nothing is sent until you ask for your offers.</p>
-  <div class="intake">
+  <div class="intake-convo">
     <form class="card convo" data-form="intake" novalidate>
       <fieldset class="q" data-step="start"><legend tabindex="-1">Where are you starting from?</legend>
         <div class="choices one">${radio("mode", "new_company", "Set up a new company in the UAE", true)}${radio("mode", "services", "Services for a company I already have")}</div></fieldset>
@@ -226,7 +227,7 @@ export async function renderIntake() {
         <button type="submit" class="primary" data-intake-submit hidden>Get my offers</button>
       </div>
     </form>
-    <aside class="card plan" aria-labelledby="plan-h"><h2 id="plan-h">Your plan so far</h2><div id="intake-plan" aria-live="polite"><p class="small muted">Your services appear here as you answer.</p></div></aside>
+    <aside class="card plan" aria-labelledby="plan-h"><h2 id="plan-h">Your plan so far</h2><p class="small muted" id="intake-plan-status" role="status"></p><div id="intake-plan"><p class="small muted">Your services appear here as you answer.</p></div></aside>
   </div>`;
   intakeGo(0);
 }
@@ -283,6 +284,9 @@ function refreshPlan(form) {
     try {
       const p = await api("POST", "/api/requests/preview", { answers: intakeAnswers(new FormData(form)) });
       if (seq !== planSeq) return;
+      // Screen readers hear a one-line summary, not the whole panel again.
+      const status = document.getElementById("intake-plan-status");
+      if (status) status.textContent = `${p.lines.length} service${p.lines.length === 1 ? "" : "s"} in your plan`;
       box.innerHTML = `${p.lines.length ? `<ul class="plain planlist">${p.lines.map((l) => `<li><span>${esc(l.name)}</span>${l.qty > 1 ? `<span class="small muted">×${l.qty}</span>` : ""}</li>`).join("")}</ul>` : `<p class="small muted">No services yet.</p>`}
         ${p.notes.map((n) => `<p class="small notice">${esc(n)}</p>`).join("")}
         ${p.adviceFollows ? `<p class="small muted">Structure and place: MKW Advisors advises on them once a person has checked your answers. ${badge("UNCERTAIN", "we will verify this")}</p>` : ""}

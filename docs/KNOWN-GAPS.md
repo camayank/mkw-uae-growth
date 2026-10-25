@@ -83,13 +83,15 @@ in a browser; everything listed here is not.
 ## O12: client experience
 
 33. **Wording is a draft for the owner.** The proposal, the intake questions, the next-action sentences and their Arabic
-    drafts wait for the owner's wording review (and the Arabic reviewer). Long sentences that carry names, dates or
-    amounts are not in the Arabic dictionary; they appear on the reviewer's list of untranslated strings.
+    drafts wait for the owner's wording review (and the Arabic reviewer). The guarantee paragraph in particular states
+    the rate as a promise and says what may not qualify; the owner and the lawyer should confirm it matches the client
+    terms. Server sentences with a name, date or amount are translated by patterns in `i18n-ar.js`; a sentence the
+    patterns miss shows in English and appears on the reviewer's list of untranslated strings.
 34. **The same document can be asked for several steps.** The checklist groups requests by step and the next action
     names each kind once, but a passport copy asked for three steps is still three uploads.
 35. **Partner and staff screens are unchanged** apart from the module split; their journeys are later work.
-36. **The working-day estimate on the proposal is the longest line's milestone plan**, not a promise; recurring services
-    (a first VAT return) can make it long.
+36. **The working-day estimate on the proposal is the longest one-off line's milestone plan**, not a promise. Lines
+    run in parallel in the estimate; if one step truly waits on another, the real time is longer.
 
 ## Soon after
 

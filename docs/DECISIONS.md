@@ -385,17 +385,26 @@ expected. The order is a choice for the owner's wording review.
 answers, from `POST /api/requests/preview`, which runs the same scoping and writes nothing. It returns only the services
 that follow from the client's own choices and notes in the client's words. Advice on structure and place is UNCERTAIN
 until a person at MKW reviews it (rule 5), so the plan says that advice follows after a person has checked the answers,
-and shows none of it.
+and shows none of it. It runs under the person's own database role (it only reads the catalogue). Server-built
+sentences never contain people's own words (a partner's reason for sending a document back, the client's dispute):
+those travel in a separate `detail` field, shown as written and never sent to the Arabic reviewer's gap list, which
+keeps its 200-character limit.
 
-**D60. The proposal's fee notes are client-safe sentences.** (O12.) An offer line's internal reason can mention the margin
-floor or ops review, and clients have no grant on that column. The proposal reads the reasons as the platform and
-passes on only one of two fixed sentences (an estimate MKW confirms before paying, or a partner's quote paid at cost),
-never the reason itself. The deposit and balance on the proposal come from the same `paymentPlan` acceptance uses.
+**D60. The proposal's fee notes come from the fee table, as client-safe sentences.** (O12.) Each government fee on the
+proposal is looked up in MKW's fee table for the request's place: UNCERTAIN or stale gives "an estimate MKW confirms
+before paying"; no row gives "as quoted by the partner, paid at cost". It is never read from an offer line's free-text
+reason (internal, and rewritten when ops sets a price), and that reason never reaches the client. The deposit and
+balance come from the same `paymentPlan` acceptance uses. The guarantee rate (`guarantee_bp`, internal on credits) is
+stated on the proposal because it is a promise to the client; the wording says finance confirms each credit and that a
+delay caused by something only the client can provide may not qualify (for the owner's wording review). The working-day
+estimate is the longest one-off line from the start of work; recurring services are listed but not counted.
 
 **D61. Uploads are checked before they leave the page, by the server's rules.** (O12.) `GET /api/upload-rules` publishes
 the storage adapter's own extensions and size limit; the page checks type, size and emptiness when a file is chosen or
 dropped and again on submit, and asks for confirmation when the name reads like a different document. The server still
-refuses what it always refused.
+refuses what it always refused. The rules need no sign-in: they say nothing about anyone. A file dropped outside a drop
+zone is ignored (the browser would otherwise open it in place of the app); several dropped on one item use the first and
+say so.
 
 **D62. The web app is ES modules with design tokens, still with no build step.** (O12.) `app.js` loads `js/core.js`,
 `js/shell.js`, `js/events.js` and one module per area; `tokens.css` holds every colour, space, size, radius, shadow and

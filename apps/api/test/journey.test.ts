@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { asPlatform } from "../src/lib/context.ts";
 import { UPLOAD_RULES } from "../src/lib/storage.ts";
+import { createSession } from "../src/lib/auth.ts";
 import { makeEnv, type TestEnv } from "./helpers.ts";
 
 /** O12 client journey: the next action, the timeline, the proposal, the intake preview and the upload rules. */
@@ -131,6 +132,61 @@ describe("client journey", () => {
   });
 });
 
+describe("journey edges", () => {
+  let env: TestEnv;
+  beforeAll(async () => {
+    env = await makeEnv();
+  });
+  afterAll(async () => {
+    await env.db.close();
+  });
+
+  it("an unconfirmed government fee keeps its estimate note, even after ops overrides the line's price", async () => {
+    expect((await env.call("ops", "POST", "/api/admin/fees", { code: "SET-FZ-LIC", emirate: "Dubai", feeAed: 9_000, sourceUrl: "https://example.gov.ae/fees" })).body.confidence).toBe("UNCERTAIN");
+    const req = await env.call("client", "POST", "/api/requests", { answers: ANSWERS });
+    const offerId = (await env.call("ops", "POST", `/api/ops/requests/${req.body.id}/build-offers`, { tiers: ["standard"] })).body.offerIds[0];
+    // Ops sets the price on the flagged line, which rewrites the line's internal reason ("Price set by ops").
+    expect((await env.call("ops", "POST", `/api/ops/offers/${offerId}/lines/SET-FZ-LIC/price`, { clientUnitAed: 6_000 })).status).toBe(200);
+    expect((await env.call("ops", "POST", `/api/ops/offers/${offerId}/publish`, { acknowledgeReview: true })).status).toBe(200);
+    const p = (await env.call("client", "GET", `/api/client/offers/${offerId}`)).body.proposal;
+    expect(p.feeNotes["SET-FZ-LIC"]).toMatch(/^Estimate: MKW Advisors confirms this government fee/);
+    expect(Object.keys(p.feeNotes).length).toBeGreaterThan(0);
+  });
+
+  it("another client sees none of this client's actions, offers or engagements", async () => {
+    const other = await env.call("ops", "POST", "/api/ops/clients", { company: "Other Client LLC", ownerName: "Other Owner", ownerEmail: "owner@other-client.test" });
+    expect(other.status).toBe(200);
+    env.tokens.other = await createSession(env.db, "owner@other-client.test");
+    const mine = (await env.call("client", "GET", "/api/client/home")).body;
+    expect(mine.nextActions.length).toBeGreaterThan(0);
+    const theirs = (await env.call("other", "GET", "/api/client/home")).body;
+    expect(theirs.nextActions).toEqual([]);
+    expect(theirs.offers).toEqual([]);
+    expect(theirs.requests).toEqual([]);
+    expect((await env.call("other", "GET", `/api/client/offers/${mine.offers[0].id}`)).status).toBe(404);
+  });
+
+  it("people's own words travel beside the sentence, never inside it", async () => {
+    const req = await env.call("client", "POST", "/api/requests", { answers: ANSWERS });
+    const offerId = (await env.call("ops", "POST", `/api/ops/requests/${req.body.id}/build-offers`, { tiers: ["standard"] })).body.offerIds[0];
+    await env.call("ops", "POST", `/api/ops/offers/${offerId}/publish`, { acknowledgeReview: true });
+    const engagementId = (await env.call("client", "POST", `/api/client/offers/${offerId}/accept`)).body.engagementId;
+    const deposit = (await env.call("ops", "GET", `/api/engagements/${engagementId}`)).body.payments.find((p: any) => p.kind === "deposit");
+    await env.call("finance", "POST", `/api/ops/payments/${deposit.id}/mark-paid`, { reference: "BANK-TT-9" });
+    let e = (await env.call("ops", "GET", `/api/engagements/${engagementId}`)).body;
+    for (const a of e.allocations.filter((x: any) => !x.acceptedAt)) await env.call(partnerKey(a.partner), "POST", `/api/allocations/${a.id}/respond`, { decision: "accept" });
+    e = (await env.call("ops", "GET", `/api/engagements/${engagementId}`)).body;
+    const req0 = e.documentRequests[0];
+    const who = partnerKey(e.lines.find((l: any) => l.code === e.milestones.find((m: any) => m.id === req0.milestoneId).code).partner);
+    await env.call("client", "POST", `/api/document-requests/${req0.id}/upload`, { fileName: "scan.pdf", contentBase64: pdf });
+    expect((await env.call(who, "POST", `/api/document-requests/${req0.id}/decide`, { decision: "rejected", note: "Mr Khan's copy is blurred" })).status).toBe(200);
+    const docs = (await env.call("client", "GET", `/api/engagements/${engagementId}`)).body.journey.actions.find((a: any) => a.kind === "documents");
+    expect(docs.why).toMatch(/was sent back\./);
+    expect(docs.why).not.toMatch(/Khan/);
+    expect(docs.detail).toBe("Mr Khan's copy is blurred");
+  });
+});
+
 describe("intake preview and upload rules", () => {
   let env: TestEnv;
   beforeAll(async () => {
@@ -153,6 +209,10 @@ describe("intake preview and upload rules", () => {
     expect((await env.call("setup", "POST", "/api/requests/preview", { answers: { mode: "new_company", emirate: "Dubai" } })).status).toBe(403);
     expect((await env.call("anon", "POST", "/api/requests/preview", { answers: { mode: "new_company", emirate: "Dubai" } })).status).toBe(401);
     expect((await env.call("client", "POST", "/api/requests/preview", { answers: { mode: "nonsense" } })).status).toBe(400);
+    // A services-only request shows exactly the services chosen, and no advice is promised.
+    const services = await env.call("client", "POST", "/api/requests/preview", { answers: { mode: "services", emirate: "Dubai", services: ["VAT-RET", "ACC-BOOK"] } });
+    expect(services.body.lines.map((l: any) => l.code).sort()).toEqual(["ACC-BOOK", "VAT-RET"]);
+    expect(services.body.adviceFollows).toBe(false);
   });
 
   it("publishes the storage adapter's own upload rules", async () => {

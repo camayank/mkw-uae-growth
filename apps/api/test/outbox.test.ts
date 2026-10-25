@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { asPlatform } from "../src/lib/context.ts";
 import { memoryTransport, recordingNotifier } from "../src/lib/notify.ts";
+import { writeOutbox } from "../src/lib/outbox.ts";
 import { EMAILS, makeEnv, type TestEnv } from "./helpers.ts";
 
 /** O11 event outbox: written with the change, delivered once, retried on refusal, never re-sent on its own. */
@@ -81,7 +82,9 @@ describe("event outbox", () => {
 
   it("never re-sends a message whose delivery was not recorded: a person decides", async () => {
     // A process died after handing the email to the provider and before recording the answer.
-    await asPlatform(env.db, null, () => env.notify.send(offerReady("in-doubt")));
+    // Written straight to the outbox, as a process that then died would have left it: send() would also kick a
+    // background run, which on PostgreSQL can race the set-up below and settle the claim before the dispatch measured.
+    await asPlatform(env.db, null, (tx) => writeOutbox(tx, "notify", offerReady("in-doubt") as unknown as Record<string, unknown>));
     const [row] = await rows(env, "select id from outbox where payload->'vars'->>'offerId' = 'in-doubt'");
     await asPlatform(env.db, null, async (tx) => {
       await tx.query("update outbox set status = 'sending', attempts = 1, claimed_at = $2::timestamptz - interval '11 minutes' where id = $1", [row.id, env.clock.now.toISOString()]);
@@ -187,7 +190,8 @@ describe("event outbox", () => {
   });
 
   it("resends a message whose claim was abandoned before anything was handed over", async () => {
-    await asPlatform(env.db, null, () => env.notify.send(offerReady("never-handed")));
+    // Straight to the outbox (no background run to race the set-up), as in the test above.
+    await asPlatform(env.db, null, (tx) => writeOutbox(tx, "notify", offerReady("never-handed") as unknown as Record<string, unknown>));
     const [row] = await rows(env, "select id from outbox where payload->'vars'->>'offerId' = 'never-handed'");
     await asPlatform(env.db, null, (tx) => tx.query("update outbox set status = 'sending', attempts = 1, claimed_at = $2::timestamptz - interval '11 minutes' where id = $1", [row.id, env.clock.now.toISOString()]));
     const before = env.emails.length;

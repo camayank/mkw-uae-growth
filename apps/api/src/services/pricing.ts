@@ -11,6 +11,7 @@ import {
   type Tier,
 } from "@tasees/core";
 import { audit, type SessionUser } from "../lib/context.ts";
+import { transition, withdrawOffers } from "../lib/transition.ts";
 import { num, type Queryable } from "../lib/db.ts";
 import { badRequest, conflict, notFound } from "../lib/errors.ts";
 import { addDays, dbToday, loadDeliverables, loadGovernmentFees, loadPartners, loadRateCards, loadRfqQuotes, loadRules, loadSettings, type FeeLookup } from "./repo.ts";
@@ -71,10 +72,7 @@ export async function buildOffers(
   }
 
   // Withdraw earlier unaccepted offers for this request so only one set is live.
-  await tx.query(
-    "update offers set status = 'withdrawn' where request_id = $1 and status in ('draft', 'ops_review', 'published')",
-    [requestId],
-  );
+  await withdrawOffers(tx, requestId);
 
   const offerIds: string[] = [];
   const seen = new Set<string>();
@@ -190,7 +188,7 @@ function dedupeByPartner(quotes: CostQuote[]): CostQuote[] {
  * them, and the flagged lines with their reasons are written into the audit event so the approval is evidenced.
  */
 export async function publishOffer(tx: Queryable, actor: SessionUser, offerId: string, acknowledgeReview = false): Promise<void> {
-  const o = (await tx.query<{ status: OfferStatus }>("select status from offers where id = $1", [offerId])).rows[0];
+  const o = (await tx.query<{ status: OfferStatus }>("select status from offers where id = $1 for update", [offerId])).rows[0];
   if (!o) throw notFound("Offer not found");
   assertOffer(o.status, "published", "platform");
   const flagged = (
@@ -202,10 +200,14 @@ export async function publishOffer(tx: Queryable, actor: SessionUser, offerId: s
   if (flagged.length && !acknowledgeReview) {
     throw conflict(`${flagged.length} line(s) need a decision before this offer can go to the client: ${flagged.map((l) => `${l.code} (${l.reason ?? "review"})`).join("; ")}`);
   }
-  await tx.query("update offers set status = 'published', published_at = app_now() where id = $1", [offerId]);
-  await audit(tx, actor, "offer.published", "offer", offerId, {
-    from: o.status,
-    acknowledgedLines: flagged.map((l) => ({ code: l.code, reason: l.reason, govUnit: num(l.gov_unit_fils), clientUnit: num(l.client_unit_fils) })),
+  await transition(tx, "offer", offerId, "published", "platform", {
+    audit: {
+      actor,
+      action: "offer.published",
+      data: {
+        acknowledgedLines: flagged.map((l) => ({ code: l.code, reason: l.reason, govUnit: num(l.gov_unit_fils), clientUnit: num(l.client_unit_fils) })),
+      },
+    },
   });
 }
 
@@ -265,8 +267,7 @@ export async function recomputeOffer(tx: Queryable, offerId: string): Promise<vo
 }
 
 export async function expireOffers(tx: Queryable): Promise<number> {
-  const r = await tx.query<{ id: string }>(
-    "update offers set status = 'expired' where status = 'published' and valid_to < app_now()::date returning id",
-  );
+  const r = await tx.query<{ id: string }>("select id from offers where status = 'published' and valid_to < app_now()::date order by id for update");
+  for (const o of r.rows) await transition(tx, "offer", o.id, "expired", "system");
   return r.rows.length;
 }

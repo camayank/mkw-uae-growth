@@ -3,8 +3,6 @@ import {
   addWorkingHours,
   allocate,
   applyBp,
-  assertEngagement,
-  assertMilestone,
   ceilTo,
   clientDocumentsFor,
   maskContacts,
@@ -19,6 +17,7 @@ import {
   type PayoutStage,
 } from "@tasees/core";
 import { audit, type SessionUser } from "../lib/context.ts";
+import { transition, withdrawOffers } from "../lib/transition.ts";
 import { num, type Queryable } from "../lib/db.ts";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.ts";
 import type { Notifier } from "../lib/notify.ts";
@@ -74,11 +73,9 @@ export async function acceptOffer(tx: Queryable, user: SessionUser, offerId: str
   // The client accepts the current client terms with the offer; the engagement keeps which version.
   const acceptedTerms = await requiredTermsVersion(tx, termsVersion);
 
-  await tx.query("update offers set status = 'accepted', accepted_at = app_now() where id = $1", [offerId]);
-  await tx.query(
-    "update offers set status = 'withdrawn' where request_id = $1 and id <> $2 and status in ('draft','ops_review','published')",
-    [o.request_id, offerId],
-  );
+  // Locks the offer: a second acceptance waits here, then finds it accepted and is refused.
+  await transition(tx, "offer", offerId, "accepted", "client");
+  await withdrawOffers(tx, String(o.request_id), offerId);
   await tx.query("update requests set status = 'closed' where id = $1", [o.request_id]);
   const answers = (o.answers ?? {}) as { emirate?: string; freeZone?: string | null };
   const eng = (
@@ -147,11 +144,7 @@ export async function markPaymentPaid(tx: Queryable, actor: SessionUser | null, 
 }
 
 async function setEngagementStatus(tx: Queryable, id: string, to: EngagementStatus, by: "system" | "platform" | "client" | "partner") {
-  const e = (await tx.query<{ status: EngagementStatus }>("select status from engagements where id = $1", [id])).rows[0];
-  if (!e) throw notFound("Engagement not found");
-  if (e.status === to) return;
-  assertEngagement(e.status, to, by);
-  await tx.query(`update engagements set status = $2${to === "completed" ? ", completed_at = app_now()" : ""} where id = $1`, [id, to]);
+  await transition(tx, "engagement", id, to, by, { idempotent: true });
 }
 
 // Allocation -------------------------------------------------------------------
@@ -432,9 +425,7 @@ async function loadMilestone(tx: Queryable, id: string) {
 export async function startMilestone(tx: Queryable, user: SessionUser, id: string) {
   const m = await loadMilestone(tx, id);
   if (user.orgType === "partner" && m.partner_org_id !== user.orgId) throw notFound("Milestone not found");
-  assertMilestone(m.status, "in_progress", user.orgType === "partner" ? "partner" : "platform");
-  await tx.query("update milestones set status = 'in_progress', updated_at = app_now() where id = $1", [id]);
-  await audit(tx, user, "milestone.started", "milestone", id);
+  await transition(tx, "milestone", id, "in_progress", user.orgType === "partner" ? "partner" : "platform", { audit: { actor: user, action: "milestone.started" } });
 }
 
 export async function addEvidence(
@@ -452,7 +443,7 @@ export async function addEvidence(
       [milestoneId, m.engagement_id, file.type, file.key, file.name, user.id],
     )
   ).rows[0]!;
-  if (m.status === "pending") await tx.query("update milestones set status = 'in_progress' where id = $1", [milestoneId]);
+  if (m.status === "pending") await transition(tx, "milestone", milestoneId, "in_progress", "partner", { idempotent: true });
   await audit(tx, user, "evidence.added", "milestone", milestoneId, { type: file.type, name: file.name });
   return { id: row.id };
 }
@@ -466,21 +457,17 @@ export async function submitMilestone(tx: Queryable, user: SessionUser, mileston
   if (have.length === 0 || missing.length > 0) {
     throw badRequest(`Attach the evidence first: ${missing.join(", ") || "at least one file"}`);
   }
-  assertMilestone(m.status, "evidence_submitted", "partner");
-  await tx.query("update milestones set status = 'evidence_submitted', updated_at = app_now(), first_submitted_at = coalesce(first_submitted_at, app_now()) where id = $1", [milestoneId]);
-  await audit(tx, user, "milestone.submitted", "milestone", milestoneId);
+  await transition(tx, "milestone", milestoneId, "evidence_submitted", "partner", { audit: { actor: user, action: "milestone.submitted" } });
 }
 
 export async function qaMilestone(tx: Queryable, user: SessionUser, milestoneId: string, pass: boolean, note: string | undefined, deps: Deps) {
   const m = await loadMilestone(tx, milestoneId);
   const to: MilestoneStatus = pass ? "qa_passed" : "qa_rejected";
-  assertMilestone(m.status, to, "platform");
   if (!pass && !note?.trim()) throw badRequest("Say what needs fixing");
-  await tx.query(
-    `update milestones set status = $2, qa_note = $3, updated_at = app_now()${pass ? ", qa_passed_at = app_now()" : ""} where id = $1`,
-    [milestoneId, to, note ?? null],
-  );
-  await audit(tx, user, pass ? "milestone.qa_passed" : "milestone.qa_rejected", "milestone", milestoneId, { note });
+  await transition(tx, "milestone", milestoneId, to, "platform", {
+    set: { qa_note: note ?? null },
+    audit: { actor: user, action: pass ? "milestone.qa_passed" : "milestone.qa_rejected", data: { note } },
+  });
   if (pass) {
     const client = (await tx.query<{ client_org_id: string }>("select client_org_id from engagements where id = $1", [m.engagement_id])).rows[0];
     if (client) await notifyOrg(tx, deps, client.client_org_id, "milestone_ready_for_review", { milestoneId, engagementId: m.engagement_id });
@@ -504,17 +491,10 @@ export async function clientReviewMilestone(
     if (!e || e.client_org_id !== user.orgId) throw notFound("Milestone not found");
   }
   const by = user ? "client" : "system";
-  if (approve) {
-    assertMilestone(m.status, "client_approved", by);
-    await tx.query("update milestones set status = 'client_approved', updated_at = app_now() where id = $1", [milestoneId]);
-  } else {
-    if (!reason?.trim()) throw badRequest("Tell us what is wrong so we can fix it");
-    assertMilestone(m.status, "disputed", "client");
-    await tx.query("update milestones set status = 'disputed', dispute_reason = $2, updated_at = app_now() where id = $1", [milestoneId, reason]);
-  }
-  await audit(tx, user, approve ? "milestone.approved" : "milestone.disputed", "milestone", milestoneId, {
-    reason,
-    auto: user === null,
+  if (!approve && !reason?.trim()) throw badRequest("Tell us what is wrong so we can fix it");
+  await transition(tx, "milestone", milestoneId, approve ? "client_approved" : "disputed", by, {
+    ...(approve ? {} : { set: { dispute_reason: reason ?? null } }),
+    audit: { actor: user, action: approve ? "milestone.approved" : "milestone.disputed", data: { reason, auto: user === null } },
   });
   await refreshPayouts(tx, m.engagement_id, deps);
 }
@@ -522,12 +502,9 @@ export async function clientReviewMilestone(
 /** Resolve a disputed milestone: send it back to the partner, or approve it. */
 export async function resolveDispute(tx: Queryable, user: SessionUser, milestoneId: string, outcome: "rework" | "approve", deps: Deps) {
   const m = await loadMilestone(tx, milestoneId);
-  assertMilestone(m.status, outcome === "rework" ? "in_progress" : "client_approved", "platform");
-  await tx.query("update milestones set status = $2, updated_at = app_now() where id = $1", [
-    milestoneId,
-    outcome === "rework" ? "in_progress" : "client_approved",
-  ]);
-  await audit(tx, user, `milestone.dispute_${outcome}`, "milestone", milestoneId);
+  await transition(tx, "milestone", milestoneId, outcome === "rework" ? "in_progress" : "client_approved", "platform", {
+    audit: { actor: user, action: `milestone.dispute_${outcome}` },
+  });
   await refreshPayouts(tx, m.engagement_id, deps);
 }
 

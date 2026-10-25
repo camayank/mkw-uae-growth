@@ -41,7 +41,7 @@ describe("transition()", () => {
   let env: TestEnv;
   const ids: Record<MachineName, string> = { milestone: "", offer: "", engagement: "" };
   const table: Record<MachineName, string> = { milestone: "milestones", offer: "offers", engagement: "engagements" };
-  const run = <T>(fn: (tx: any) => Promise<T>) => asPlatform(env.db, null, fn);
+  const run = (fn: (tx: any) => Promise<any>): Promise<any> => asPlatform(env.db, null, fn);
   beforeAll(async () => {
     env = await makeEnv();
     const req = await env.call("client", "POST", "/api/requests", { answers: { mode: "new_company", jurisdiction: "free_zone", emirate: "Dubai", visas: 1 } });
@@ -73,7 +73,7 @@ describe("transition()", () => {
     expect(stamped).toEqual({ qa: true, sub: true });
     const events = (await run((tx) => tx.query("select data from audit_events where action = 'test.milestone' order by id"))).rows;
     expect(events).toHaveLength(MACHINES.milestone.length);
-    expect(events[0].data).toMatchObject({ from: MACHINES.milestone[0].from, to: MACHINES.milestone[0].to });
+    expect(events[0].data).toMatchObject({ from: MACHINES.milestone[0]!.from, to: MACHINES.milestone[0]!.to });
   });
 
   it("refuses an unlisted move and leaves the row as it was", async () => {

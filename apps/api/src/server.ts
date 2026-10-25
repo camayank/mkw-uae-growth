@@ -28,6 +28,7 @@ import { registerDocumentChecker, supersedeChecks } from "./services/doccheck.ts
 import { openQueueItem, opsQueue, syncQueueTimings } from "./services/queue.ts";
 import { resolveOutbox } from "./lib/outbox.ts";
 import { registerIdempotency } from "./lib/idempotency.ts";
+import { collectRoutes, openApiDocument } from "./lib/openapi.ts";
 import { publicIntake, PublicIntakeSchema, listLeads, handleLead } from "./services/intake.ts";
 import type { AiModel } from "./lib/ai.ts";
 import { DOCUMENT_KINDS, invitePartnerStaff, movePartner, partnerOnboarding, recomputeScorecards, reviewDocument, setPartnerStaffActive, submitApplication, uploadDocument as uploadPartnerDocument, scorecardHistory } from "./services/partners.ts";
@@ -98,6 +99,8 @@ export interface AppOptions {
 }
 
 const COOKIE = "tasees_session";
+/** The contract's version: raise it with any change a caller would notice. */
+export const API_VERSION = "1.0.0";
 
 export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   // trustProxy: only when told how many proxy hops sit in front (TRUST_PROXY=1 behind one load balancer), so
@@ -108,6 +111,8 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     bodyLimit: 25 * 1024 * 1024,
     trustProxy: opts.trustProxy ?? false,
   });
+  // Every route as it is registered, for the contract (O13). Must come before the first route.
+  const routeDocs = collectRoutes(app);
   const db = withClock(opts.db, opts.now);
   const deps: Deps = { notify: opts.notify, now: opts.now, provider: opts.provider, storage: opts.storage };
   // Agents subscribed to the outbox (O11). The scheduled jobs process registers the same ones.
@@ -179,9 +184,10 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   });
 
   // Auth ---------------------------------------------------------------------
-  app.post("/api/auth/request-code", async (req) => {
+  const AuthRequestCodeBody = z.object({ email: z.string().email() });
+  app.post("/api/auth/request-code", { config: { body: AuthRequestCodeBody } }, async (req) => {
     throttle(req, "request-code", 20);
-    const { email } = z.object({ email: z.string().email() }).parse(req.body);
+    const { email } = AuthRequestCodeBody.parse(req.body);
     const { code, known, limited } = await issueLoginCode(db, email);
     const issued = known && !limited;
     if (issued) await opts.notify.send({ to: email.toLowerCase(), channel: "email", template: "login_code", vars: { code } });
@@ -189,16 +195,17 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     return { ok: true, ...(opts.devLogin && issued ? { devCode: code } : {}) };
   });
 
-  app.post("/api/auth/verify", async (req, reply) => {
+  const AuthVerifyBody = z.object({ email: z.string().email(), code: z.string().min(4).max(10) });
+  app.post("/api/auth/verify", { config: { body: AuthVerifyBody } }, async (req, reply) => {
     throttle(req, "verify", 30);
-    const body = z.object({ email: z.string().email(), code: z.string().min(4).max(10) }).parse(req.body);
+    const body = AuthVerifyBody.parse(req.body);
     const { token, user } = await verifyLoginCode(db, body.email, body.code);
     reply.header("set-cookie", `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${14 * 86400}${opts.devLogin ? "" : "; Secure"}`);
     const arabic = await asPlatform(db, user, (tx) => arabicAvailable(tx, user));
     return { token, user: { ...publicUser(user), locale: user.locale ?? "en", arabic } };
   });
 
-  app.post("/api/auth/logout", async (req, reply) => {
+  app.post("/api/auth/logout", { config: { body: null } }, async (req, reply) => {
     const token = bearer(req) ?? cookie(req, COOKIE);
     if (token) await revokeSession(db, token);
     reply.header("set-cookie", `${COOKIE}=; Path=/; Max-Age=0`);
@@ -210,23 +217,26 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     const arabic = await asPlatform(db, user, (tx) => arabicAvailable(tx, user));
     return { ...publicUser(user), locale: user.locale ?? "en", arabic };
   });
-  app.put("/api/me/locale", async (req) => {
+  const MeLocaleBody = z.object({ locale: z.enum(["en", "ar"]) });
+  app.put("/api/me/locale", { config: { body: MeLocaleBody } }, async (req) => {
     const user = requireUser(req);
-    const { locale } = z.object({ locale: z.enum(["en", "ar"]) }).parse(req.body);
+    const { locale } = MeLocaleBody.parse(req.body);
     return asPlatform(db, user, (tx) => setLocale(tx, user, locale));
   });
   app.get("/api/admin/arabic", async (req) => {
     const user = requireRole(req, ...PLATFORM_ROLES);
     return asPlatform(db, user, async (tx) => ({ ...(await arabicStatus(tx)), gaps: await arabicGaps(tx) }));
   });
-  app.post("/api/me/i18n-gaps", async (req) => {
+  const MeI18nGapsBody = z.object({ strings: z.array(z.string().max(200)).max(200) });
+  app.post("/api/me/i18n-gaps", { config: { body: MeI18nGapsBody } }, async (req) => {
     const user = requireRole(req, ...CLIENT_ROLES, ...PLATFORM_ROLES);
-    const { strings } = z.object({ strings: z.array(z.string().max(200)).max(200) }).parse(req.body);
+    const { strings } = MeI18nGapsBody.parse(req.body);
     return asPlatform(db, user, (tx) => reportGaps(tx, user, strings));
   });
-  app.post("/api/admin/arabic/review", async (req) => {
+  const AdminArabicReviewBody = z.object({ reviewed: z.boolean(), reviewedBy: z.string().max(120).optional(), note: z.string().max(500).optional(), previewEmails: z.array(z.string().email()).max(10).optional() });
+  app.post("/api/admin/arabic/review", { config: { body: AdminArabicReviewBody } }, async (req) => {
     const user = requireRole(req, "founder");
-    const body = z.object({ reviewed: z.boolean(), reviewedBy: z.string().max(120).optional(), note: z.string().max(500).optional(), previewEmails: z.array(z.string().email()).max(10).optional() }).parse(req.body);
+    const body = AdminArabicReviewBody.parse(req.body);
     const result = await asPlatform(db, user, (tx) => recordArabicReview(tx, user, body));
     arabicFlag = null; // the health endpoint reads the new state at once
     return result;
@@ -249,7 +259,8 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
 
   // What the intake would scope, without saving anything (O12): the services that follow from the answers. Structure
   // and place advice is not shown here: it reaches a client only after a person at MKW has reviewed it (rule 5).
-  app.post("/api/requests/preview", async (req) => {
+  const RequestsPreviewBody = z.object({ answers: IntakeSchema.partial().optional() });
+  app.post("/api/requests/preview", { config: { body: RequestsPreviewBody } }, async (req) => {
     const user = requireRole(req, ...CLIENT_ROLES, "ops", "founder");
     const answers = IntakeSchema.parse((req.body as { answers?: unknown } | null)?.answers ?? {});
     // Read under the person's own role: it only needs the catalogue, which every role may read.
@@ -259,11 +270,10 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   // The page checks a file against these before sending it (O12); the storage adapter enforces the same rules.
   app.get("/api/upload-rules", async () => UPLOAD_RULES);
 
-  app.post("/api/requests", async (req) => {
+  const RequestsBody = z.object({ answers: IntakeSchema, clientOrgId: z.string().uuid().optional(), sourcedByPartnerId: z.string().uuid().nullish() });
+  app.post("/api/requests", { config: { body: RequestsBody } }, async (req) => {
     const user = requireRole(req, ...CLIENT_ROLES, "ops", "founder");
-    const body = z
-      .object({ answers: IntakeSchema, clientOrgId: z.string().uuid().optional(), sourcedByPartnerId: z.string().uuid().nullish() })
-      .parse(req.body);
+    const body = RequestsBody.parse(req.body);
     return asPlatform(db, user, async (tx) => {
       const created = await createRequest(tx, user, body.answers, body.clientOrgId, body.sourcedByPartnerId);
       // A free-text description gets an AI draft into the review queue; nothing changes until ops approves it.
@@ -278,23 +288,26 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     return { ...offer, proposal: await clientOfferProposal(db, user, offer) };
   });
 
-  app.post<{ Params: { id: string } }>("/api/client/offers/:id/accept", async (req) => {
+  const ClientOffersAcceptBody = z.object({ termsVersion: z.number().int().positive().optional() });
+  app.post<{ Params: { id: string } }>("/api/client/offers/:id/accept", { config: { body: ClientOffersAcceptBody.optional() } }, async (req) => {
     const user = requireRole(req, "client_owner");
-    const body = z.object({ termsVersion: z.number().int().positive().optional() }).parse(req.body ?? {});
+    const body = ClientOffersAcceptBody.parse(req.body ?? {});
     const engagementId = await asPlatform(db, user, (tx) => acceptOffer(tx, user, req.params.id, deps, body.termsVersion));
     return { engagementId };
   });
 
-  app.post<{ Params: { id: string } }>("/api/milestones/:id/review", async (req) => {
+  const MilestonesReviewBody = z.object({ approve: z.boolean(), reason: z.string().max(2000).optional() });
+  app.post<{ Params: { id: string } }>("/api/milestones/:id/review", { config: { body: MilestonesReviewBody } }, async (req) => {
     const user = requireRole(req, ...CLIENT_ROLES);
-    const body = z.object({ approve: z.boolean(), reason: z.string().max(2000).optional() }).parse(req.body);
+    const body = MilestonesReviewBody.parse(req.body);
     await asPlatform(db, user, (tx) => clientReviewMilestone(tx, user, req.params.id, body.approve, body.reason, deps));
     return { ok: true };
   });
 
-  app.post<{ Params: { id: string } }>("/api/change-orders/:id/decide", async (req) => {
+  const ChangeOrdersDecideBody = z.object({ approve: z.boolean() });
+  app.post<{ Params: { id: string } }>("/api/change-orders/:id/decide", { config: { body: ChangeOrdersDecideBody } }, async (req) => {
     const user = requireRole(req, "client_owner");
-    const { approve } = z.object({ approve: z.boolean() }).parse(req.body);
+    const { approve } = ChangeOrdersDecideBody.parse(req.body);
     await asPlatform(db, user, (tx) => decideChangeOrder(tx, user, req.params.id, approve, deps));
     return { ok: true };
   });
@@ -307,9 +320,10 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     return partyEngagement(db, user, req.params.id, opts.now ? opts.now() : new Date(), cal);
   });
 
-  app.post<{ Params: { id: string } }>("/api/engagements/:id/messages", async (req) => {
+  const EngagementsMessagesBody = z.object({ body: z.string() });
+  app.post<{ Params: { id: string } }>("/api/engagements/:id/messages", { config: { body: EngagementsMessagesBody } }, async (req) => {
     const user = requireUser(req);
-    const { body } = z.object({ body: z.string() }).parse(req.body);
+    const { body } = EngagementsMessagesBody.parse(req.body);
     await asPlatform(db, user, (tx) => postMessage(tx, user, req.params.id, body));
     return { ok: true };
   });
@@ -331,24 +345,24 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   // Partner ------------------------------------------------------------------
   app.get("/api/partner/home", async (req) => partnerHome(db, requireRole(req, ...PARTNER_ROLES)));
 
-  app.post<{ Params: { id: string } }>("/api/allocations/:id/respond", async (req) => {
+  const AllocationsRespondBody = z.object({ decision: z.enum(["accept", "decline"]), reason: z.string().max(500).optional() });
+  app.post<{ Params: { id: string } }>("/api/allocations/:id/respond", { config: { body: AllocationsRespondBody } }, async (req) => {
     const user = requireRole(req, "partner_admin");
-    const body = z.object({ decision: z.enum(["accept", "decline"]), reason: z.string().max(500).optional() }).parse(req.body);
+    const body = AllocationsRespondBody.parse(req.body);
     await asPlatform(db, user, (tx) => respondToAllocation(tx, user, req.params.id, body.decision, body.reason, deps));
     return { ok: true };
   });
 
-  app.post<{ Params: { id: string } }>("/api/milestones/:id/start", async (req) => {
+  app.post<{ Params: { id: string } }>("/api/milestones/:id/start", { config: { body: null } }, async (req) => {
     const user = requireRole(req, ...PARTNER_ROLES);
     await asPlatform(db, user, (tx) => startMilestone(tx, user, req.params.id));
     return { ok: true };
   });
 
-  app.post<{ Params: { id: string } }>("/api/milestones/:id/evidence", async (req) => {
+  const MilestonesEvidenceBody = z.object({ type: z.string().min(2).max(60), fileName: z.string().min(1).max(200), contentBase64: z.string().min(1) });
+  app.post<{ Params: { id: string } }>("/api/milestones/:id/evidence", { config: { body: MilestonesEvidenceBody } }, async (req) => {
     const user = requireRole(req, ...PARTNER_ROLES);
-    const body = z
-      .object({ type: z.string().min(2).max(60), fileName: z.string().min(1).max(200), contentBase64: z.string().min(1) })
-      .parse(req.body);
+    const body = MilestonesEvidenceBody.parse(req.body);
     const m = await asUser(db, user, async (tx) =>
       (await tx.query<{ engagement_id: string }>("select engagement_id from milestones where id = $1", [req.params.id])).rows[0],
     );
@@ -367,31 +381,33 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     return { ok: true };
   });
 
-  app.post<{ Params: { id: string } }>("/api/milestones/:id/submit", async (req) => {
+  app.post<{ Params: { id: string } }>("/api/milestones/:id/submit", { config: { body: null } }, async (req) => {
     const user = requireRole(req, ...PARTNER_ROLES);
     await asPlatform(db, user, (tx) => submitMilestone(tx, user, req.params.id));
     return { ok: true };
   });
 
-  app.post<{ Params: { id: string } }>("/api/engagements/:id/change-orders", async (req) => {
+  const EngagementsChangeOrdersBody = z.object({ description: z.string().min(3).max(2000), partnerCostAed: z.number().positive().max(10_000_000) });
+  app.post<{ Params: { id: string } }>("/api/engagements/:id/change-orders", { config: { body: EngagementsChangeOrdersBody } }, async (req) => {
     const user = requireRole(req, "partner_admin");
-    const body = z.object({ description: z.string().min(3).max(2000), partnerCostAed: z.number().positive().max(10_000_000) }).parse(req.body);
+    const body = EngagementsChangeOrdersBody.parse(req.body);
     const id = await asPlatform(db, user, (tx) => proposeChangeOrder(tx, user, req.params.id, body.description, aed(body.partnerCostAed), deps));
     return { id };
   });
 
-  app.post<{ Params: { id: string } }>("/api/rfqs/:id/quote", async (req) => {
+  const Line = z.object({
+    code: z.string(),
+    professionalAed: z.number().min(0),
+    govStatedAed: z.number().min(0).default(0),
+    thirdPartyAed: z.number().min(0).default(0),
+    workingDays: z.number().int().min(1).max(365),
+    exclusions: z.array(z.string().max(200)).max(20).default([]),
+    assumptions: z.string().max(2000).default(""),
+  });
+  const RfqsQuoteBody = z.object({ lines: z.array(Line).min(1).max(30) });
+  app.post<{ Params: { id: string } }>("/api/rfqs/:id/quote", { config: { body: RfqsQuoteBody } }, async (req) => {
     const user = requireRole(req, "partner_admin");
-    const Line = z.object({
-      code: z.string(),
-      professionalAed: z.number().min(0),
-      govStatedAed: z.number().min(0).default(0),
-      thirdPartyAed: z.number().min(0).default(0),
-      workingDays: z.number().int().min(1).max(365),
-      exclusions: z.array(z.string().max(200)).max(20).default([]),
-      assumptions: z.string().max(2000).default(""),
-    });
-    const { lines } = z.object({ lines: z.array(Line).min(1).max(30) }).parse(req.body);
+    const { lines } = RfqsQuoteBody.parse(req.body);
     const id = await asPlatform(db, user, (tx) =>
       submitQuote(
         tx,
@@ -412,17 +428,18 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     return { id };
   });
 
-  app.put("/api/partner/rate-cards", async (req) => {
+  const Card = z.object({
+    code: z.string(),
+    professionalAed: z.number().min(0),
+    govStatedAed: z.number().min(0).default(0),
+    thirdPartyAed: z.number().min(0).default(0),
+    workingDays: z.number().int().min(1).max(365),
+    exclusions: z.array(z.string().max(200)).max(20).default([]),
+  });
+  const PartnerRateCardsBody = z.object({ cards: z.array(Card).min(1).max(40) });
+  app.put("/api/partner/rate-cards", { config: { body: PartnerRateCardsBody } }, async (req) => {
     const user = requireRole(req, "partner_admin");
-    const Card = z.object({
-      code: z.string(),
-      professionalAed: z.number().min(0),
-      govStatedAed: z.number().min(0).default(0),
-      thirdPartyAed: z.number().min(0).default(0),
-      workingDays: z.number().int().min(1).max(365),
-      exclusions: z.array(z.string().max(200)).max(20).default([]),
-    });
-    const { cards } = z.object({ cards: z.array(Card).min(1).max(40) }).parse(req.body);
+    const { cards } = PartnerRateCardsBody.parse(req.body);
     return asPlatform(db, user, async (tx) => {
       const known = new Set((await tx.query<{ code: string }>("select code from deliverables")).rows.map((r) => r.code));
       for (const c of cards) {
@@ -454,14 +471,16 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
       return { items };
     });
   });
-  app.post("/api/ops/queue/open", async (req) => {
+  const OpsQueueOpenBody = z.object({ id: z.string().min(3).max(120) });
+  app.post("/api/ops/queue/open", { config: { body: OpsQueueOpenBody } }, async (req) => {
     const user = requireRole(req, ...PLATFORM_ROLES);
-    const { id } = z.object({ id: z.string().min(3).max(120) }).parse(req.body);
+    const { id } = OpsQueueOpenBody.parse(req.body);
     return asPlatform(db, user, (tx) => openQueueItem(tx, user, id));
   });
-  app.post<{ Params: { id: string } }>("/api/ops/outbox/:id/resolve", async (req) => {
+  const OpsOutboxResolveBody = z.object({ action: z.enum(["retry", "mark_delivered", "cancel"]), note: z.string().max(500).default("") });
+  app.post<{ Params: { id: string } }>("/api/ops/outbox/:id/resolve", { config: { body: OpsOutboxResolveBody } }, async (req) => {
     const user = requireRole(req, "ops", "founder");
-    const body = z.object({ action: z.enum(["retry", "mark_delivered", "cancel"]), note: z.string().max(500).default("") }).parse(req.body);
+    const body = OpsOutboxResolveBody.parse(req.body);
     const id = Number(req.params.id);
     if (!Number.isSafeInteger(id) || id < 1) throw badRequest("Unknown message");
     if (body.action !== "retry" && !body.note.trim()) throw badRequest("Say why: it goes into the record");
@@ -474,9 +493,10 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     return asPlatform(db, user, async (tx) => (await tx.query("select id, name from orgs where type = 'client' order by name")).rows);
   });
 
-  app.post("/api/ops/clients", async (req) => {
+  const OpsClientsBody = z.object({ company: z.string().min(2).max(200), ownerName: z.string().min(2).max(120), ownerEmail: z.string().email() });
+  app.post("/api/ops/clients", { config: { body: OpsClientsBody } }, async (req) => {
     const user = requireRole(req, "ops", "founder");
-    const body = z.object({ company: z.string().min(2).max(200), ownerName: z.string().min(2).max(120), ownerEmail: z.string().email() }).parse(req.body);
+    const body = OpsClientsBody.parse(req.body);
     return asPlatform(db, user, async (tx) => {
       const org = (await tx.query<{ id: string }>("insert into orgs (type, name) values ('client', $1) returning id", [body.company])).rows[0]!;
       await tx.query("insert into users (org_id, email, name, role) values ($1, $2, $3, 'client_owner')", [org.id, body.ownerEmail.toLowerCase(), body.ownerName]);
@@ -485,21 +505,24 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     });
   });
 
-  app.post<{ Params: { id: string } }>("/api/ops/requests/:id/build-offers", async (req) => {
+  const OpsRequestsBuildOffersBody = z.object({ tiers: z.array(z.enum(["essential", "standard", "priority"])).min(1).optional() });
+  app.post<{ Params: { id: string } }>("/api/ops/requests/:id/build-offers", { config: { body: OpsRequestsBuildOffersBody.optional() } }, async (req) => {
     const user = requireRole(req, "ops", "founder");
-    const body = z.object({ tiers: z.array(z.enum(["essential", "standard", "priority"])).min(1).optional() }).parse(req.body ?? {});
+    const body = OpsRequestsBuildOffersBody.parse(req.body ?? {});
     return asPlatform(db, user, (tx) => buildOffers(tx, user, req.params.id, body.tiers as Tier[] | undefined));
   });
 
-  app.post<{ Params: { id: string } }>("/api/ops/requests/:id/rfq", async (req) => {
+  const OpsRequestsRfqBody = z.object({ codes: z.array(z.string()).min(1) });
+  app.post<{ Params: { id: string } }>("/api/ops/requests/:id/rfq", { config: { body: OpsRequestsRfqBody } }, async (req) => {
     const user = requireRole(req, "ops", "founder");
-    const { codes } = z.object({ codes: z.array(z.string()).min(1) }).parse(req.body);
+    const { codes } = OpsRequestsRfqBody.parse(req.body);
     return asPlatform(db, user, (tx) => openQuoteRequest(tx, user, req.params.id, codes, deps));
   });
 
-  app.post<{ Params: { id: string } }>("/api/ops/offers/:id/publish", async (req) => {
+  const OpsOffersPublishBody = z.object({ acknowledgeReview: z.boolean().default(false) });
+  app.post<{ Params: { id: string } }>("/api/ops/offers/:id/publish", { config: { body: OpsOffersPublishBody.optional() } }, async (req) => {
     const user = requireRole(req, "ops", "founder");
-    const { acknowledgeReview } = z.object({ acknowledgeReview: z.boolean().default(false) }).parse(req.body ?? {});
+    const { acknowledgeReview } = OpsOffersPublishBody.parse(req.body ?? {});
     await asPlatform(db, user, async (tx) => {
       await publishOffer(tx, user, req.params.id, acknowledgeReview);
       const o = (await tx.query<{ client_org_id: string; id: string }>("select client_org_id, id from offers where id = $1", [req.params.id])).rows[0]!;
@@ -509,63 +532,67 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     return { ok: true };
   });
 
-  app.post<{ Params: { id: string; code: string } }>("/api/ops/offers/:id/lines/:code/price", async (req) => {
+  const OpsOffersLinesPriceBody = z.object({ clientUnitAed: z.number().positive() });
+  app.post<{ Params: { id: string; code: string } }>("/api/ops/offers/:id/lines/:code/price", { config: { body: OpsOffersLinesPriceBody } }, async (req) => {
     const user = requireRole(req, "ops", "founder");
-    const { clientUnitAed } = z.object({ clientUnitAed: z.number().positive() }).parse(req.body);
+    const { clientUnitAed } = OpsOffersLinesPriceBody.parse(req.body);
     await asPlatform(db, user, (tx) => overrideLinePrice(tx, user, req.params.id, req.params.code, aed(clientUnitAed)));
     return { ok: true };
   });
 
-  app.post<{ Params: { id: string } }>("/api/ops/milestones/:id/qa", async (req) => {
+  const OpsMilestonesQaBody = z.object({ pass: z.boolean(), note: z.string().max(2000).optional() });
+  app.post<{ Params: { id: string } }>("/api/ops/milestones/:id/qa", { config: { body: OpsMilestonesQaBody } }, async (req) => {
     const user = requireRole(req, "ops", "founder");
-    const body = z.object({ pass: z.boolean(), note: z.string().max(2000).optional() }).parse(req.body);
+    const body = OpsMilestonesQaBody.parse(req.body);
     await asPlatform(db, user, (tx) => qaMilestone(tx, user, req.params.id, body.pass, body.note, deps));
     return { ok: true };
   });
 
-  app.post<{ Params: { id: string } }>("/api/ops/milestones/:id/resolve", async (req) => {
+  const OpsMilestonesResolveBody = z.object({ outcome: z.enum(["rework", "approve"]) });
+  app.post<{ Params: { id: string } }>("/api/ops/milestones/:id/resolve", { config: { body: OpsMilestonesResolveBody } }, async (req) => {
     const user = requireRole(req, "ops", "founder");
-    const { outcome } = z.object({ outcome: z.enum(["rework", "approve"]) }).parse(req.body);
+    const { outcome } = OpsMilestonesResolveBody.parse(req.body);
     await asPlatform(db, user, (tx) => resolveDispute(tx, user, req.params.id, outcome, deps));
     return { ok: true };
   });
 
-  app.post<{ Params: { id: string } }>("/api/ops/engagements/:id/reallocate", async (req) => {
+  app.post<{ Params: { id: string } }>("/api/ops/engagements/:id/reallocate", { config: { body: null } }, async (req) => {
     const user = requireRole(req, "ops", "founder");
     return asPlatform(db, user, (tx) => runAllocation(tx, user, req.params.id, deps));
   });
 
-  app.post<{ Params: { id: string } }>("/api/ops/payments/:id/mark-paid", async (req) => {
+  const OpsPaymentsMarkPaidBody = z.object({ reference: z.string().min(3).max(120) });
+  app.post<{ Params: { id: string } }>("/api/ops/payments/:id/mark-paid", { config: { body: OpsPaymentsMarkPaidBody } }, async (req) => {
     const user = requireRole(req, "finance", "founder");
-    const { reference } = z.object({ reference: z.string().min(3).max(120) }).parse(req.body);
+    const { reference } = OpsPaymentsMarkPaidBody.parse(req.body);
     await asPlatform(db, user, (tx) => markPaymentPaid(tx, user, req.params.id, reference, deps));
     return { ok: true };
   });
 
-  app.post<{ Params: { id: string } }>("/api/ops/payouts/:id/release", async (req) => {
+  app.post<{ Params: { id: string } }>("/api/ops/payouts/:id/release", { config: { body: null } }, async (req) => {
     const user = requireRole(req, "finance", "founder");
     await asPlatform(db, user, (tx) => releasePayout(tx, user, req.params.id, deps));
     return { ok: true };
   });
 
-  app.put<{ Params: { id: string } }>("/api/ops/partners/:id", async (req) => {
+  const Profile = z.object({
+    quality: z.number().min(0).max(100).optional(),
+    capacity: z.number().int().min(0).max(500).optional(),
+    licenceActive: z.boolean().optional(),
+    agreementSigned: z.boolean().optional(),
+    emirates: z.array(z.string()).optional(),
+    codes: z.array(z.string()).optional(),
+    ftaTaxAgent: z.boolean().optional(),
+    licensedLawFirm: z.boolean().optional(),
+    regulatoryAdviser: z.boolean().optional(),
+    approvedAuditorZones: z.array(z.string()).optional(),
+    registeredLiquidator: z.boolean().optional(),
+  });
+  app.put<{ Params: { id: string } }>("/api/ops/partners/:id", { config: { body: Profile } }, async (req) => {
     const user = requireRole(req, "ops", "founder");
     // Status moves go through POST /api/ops/partners/:id/status only: that route checks the licence and agreement
     // gates, records why, tells the firm and (O10) sends the held invitation when the firm reaches pilot.
     if (req.body && typeof req.body === "object" && "status" in (req.body as object)) throw badRequest("Move a partner through onboarding with the status move, not the profile edit");
-    const Profile = z.object({
-      quality: z.number().min(0).max(100).optional(),
-      capacity: z.number().int().min(0).max(500).optional(),
-      licenceActive: z.boolean().optional(),
-      agreementSigned: z.boolean().optional(),
-      emirates: z.array(z.string()).optional(),
-      codes: z.array(z.string()).optional(),
-      ftaTaxAgent: z.boolean().optional(),
-      licensedLawFirm: z.boolean().optional(),
-      regulatoryAdviser: z.boolean().optional(),
-      approvedAuditorZones: z.array(z.string()).optional(),
-      registeredLiquidator: z.boolean().optional(),
-    });
     const patch = Profile.parse(req.body);
     return asPlatform(db, user, async (tx) => {
       const r = await tx.query("update orgs set profile = profile || $2::jsonb where id = $1 and type = 'partner' returning id", [req.params.id, JSON.stringify(patch)]);
@@ -577,7 +604,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
 
   app.get("/api/ops/audit", async (req) => auditTrail(db, requireRole(req, "finance", "founder", "ops")));
 
-  app.post("/api/ops/jobs/run", async (req) => {
+  app.post("/api/ops/jobs/run", { config: { body: null } }, async (req) => {
     const user = requireRole(req, "ops", "founder");
     return runJobs(db, deps, user, { alertEmail: opts.alertEmail, log: (line) => req.log.info(line) });
   });
@@ -594,9 +621,10 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     return myNotifications(db, user);
   });
 
-  app.post("/api/notifications/read", async (req) => {
+  const NotificationsReadBody = z.object({ ids: z.array(z.string().uuid()).max(200).optional() });
+  app.post("/api/notifications/read", { config: { body: NotificationsReadBody.optional() } }, async (req) => {
     const user = requireUser(req);
-    const body = z.object({ ids: z.array(z.string().uuid()).max(200).optional() }).parse(req.body ?? {});
+    const body = NotificationsReadBody.parse(req.body ?? {});
     return asPlatform(db, user, async (tx) => {
       const r = await tx.query(
         body.ids?.length
@@ -622,57 +650,59 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     return asPlatform(db, user, (tx) => listOrganisations(tx, user.role !== "ops"));
   });
 
-  app.post("/api/admin/partners", async (req) => {
+  const AdminPartnersBody = z.object({
+      name: z.string().min(2).max(200),
+      adminName: z.string().min(2).max(120),
+      adminEmail: z.string().email(),
+      emirates: z.array(z.string().max(40)).max(7).optional(),
+      codes: z.array(z.string().max(20)).max(100).optional(),
+      capacity: z.number().int().min(0).max(500).optional(),
+    });
+  app.post("/api/admin/partners", { config: { body: AdminPartnersBody } }, async (req) => {
     const user = requireRole(req, "ops", "founder");
-    const body = z
-      .object({
-        name: z.string().min(2).max(200),
-        adminName: z.string().min(2).max(120),
-        adminEmail: z.string().email(),
-        emirates: z.array(z.string().max(40)).max(7).optional(),
-        codes: z.array(z.string().max(20)).max(100).optional(),
-        capacity: z.number().int().min(0).max(500).optional(),
-      })
-      .parse(req.body);
+    const body = AdminPartnersBody.parse(req.body);
     const { notification, ...result } = await asPlatform(db, user, (tx) => createPartner(tx, user, body));
     await opts.notify.send(notification); // after commit: the account exists before the invitation goes out
     return result;
   });
 
-  app.post<{ Params: { id: string } }>("/api/admin/orgs/:id/users", async (req) => {
+  const AdminOrgsUsersBody = z.object({ email: z.string().email(), name: z.string().min(2).max(120), role: RoleSchema });
+  app.post<{ Params: { id: string } }>("/api/admin/orgs/:id/users", { config: { body: AdminOrgsUsersBody } }, async (req) => {
     const user = requireRole(req, "ops", "founder");
-    const body = z.object({ email: z.string().email(), name: z.string().min(2).max(120), role: RoleSchema }).parse(req.body);
+    const body = AdminOrgsUsersBody.parse(req.body);
     const { notification, ...result } = await asPlatform(db, user, (tx) => inviteUser(tx, user, req.params.id, body));
     await opts.notify.send(notification);
     return result;
   });
 
-  app.post<{ Params: { id: string } }>("/api/admin/users/:id/role", async (req) => {
+  const AdminUsersRoleBody = z.object({ role: RoleSchema });
+  app.post<{ Params: { id: string } }>("/api/admin/users/:id/role", { config: { body: AdminUsersRoleBody } }, async (req) => {
     const user = requireRole(req, "ops", "founder");
-    const { role } = z.object({ role: RoleSchema }).parse(req.body);
+    const { role } = AdminUsersRoleBody.parse(req.body);
     return asPlatform(db, user, (tx) => changeRole(tx, user, req.params.id, role));
   });
 
-  app.post<{ Params: { id: string } }>("/api/admin/users/:id/deactivate", async (req) => {
+  app.post<{ Params: { id: string } }>("/api/admin/users/:id/deactivate", { config: { body: null } }, async (req) => {
     const user = requireRole(req, "ops", "founder");
     return asPlatform(db, user, (tx) => deactivateUser(tx, user, req.params.id));
   });
 
-  app.post<{ Params: { id: string } }>("/api/admin/users/:id/reactivate", async (req) => {
+  app.post<{ Params: { id: string } }>("/api/admin/users/:id/reactivate", { config: { body: null } }, async (req) => {
     const user = requireRole(req, "ops", "founder");
     return asPlatform(db, user, (tx) => reactivateUser(tx, user, req.params.id));
   });
 
-  app.post<{ Params: { id: string } }>("/api/admin/users/:id/export", async (req, reply) => {
+  app.post<{ Params: { id: string } }>("/api/admin/users/:id/export", { config: { body: null } }, async (req, reply) => {
     const user = requireRole(req, "ops", "founder");
     const data = await asPlatform(db, user, (tx) => exportPerson(tx, user, req.params.id));
     reply.header("content-disposition", `attachment; filename="person-${req.params.id}.json"`);
     return data;
   });
 
-  app.post<{ Params: { id: string } }>("/api/admin/users/:id/erase", async (req) => {
+  const AdminUsersEraseBody = z.object({ confirm: z.literal("ERASE") });
+  app.post<{ Params: { id: string } }>("/api/admin/users/:id/erase", { config: { body: AdminUsersEraseBody } }, async (req) => {
     const user = requireRole(req, "founder");
-    const { confirm } = z.object({ confirm: z.literal("ERASE") }).parse(req.body);
+    const { confirm } = AdminUsersEraseBody.parse(req.body);
     void confirm;
     return asPlatform(db, user, (tx) => erasePerson(tx, user, req.params.id));
   });
@@ -682,10 +712,11 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     return asPlatform(db, user, (tx) => getRetention(tx));
   });
 
-  app.put("/api/admin/settings/retention", async (req) => {
+  const Period = z.object({ years: z.number().int().min(0).max(100).nullable().optional(), days: z.number().int().min(0).max(36500).nullable().optional() });
+  const AdminSettingsRetentionBody = z.object({ periods: z.record(Period).default({}), note: z.string().min(3).max(500) });
+  app.put("/api/admin/settings/retention", { config: { body: AdminSettingsRetentionBody } }, async (req) => {
     const user = requireRole(req, "founder");
-    const Period = z.object({ years: z.number().int().min(0).max(100).nullable().optional(), days: z.number().int().min(0).max(36500).nullable().optional() });
-    const body = z.object({ periods: z.record(Period).default({}), note: z.string().min(3).max(500) }).parse(req.body);
+    const body = AdminSettingsRetentionBody.parse(req.body);
     return asPlatform(db, user, (tx) => confirmRetention(tx, user, body.periods, body.note));
   });
 
@@ -696,19 +727,21 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     assertMayRead(user, kind);
     return asPlatform(db, user, async (tx) => (await currentLegal(tx, kind)) ?? { kind, version: null });
   });
-  app.post("/api/partner/agreement/accept", async (req) => {
+  const PartnerAgreementAcceptBody = z.object({ version: z.number().int().positive() });
+  app.post("/api/partner/agreement/accept", { config: { body: PartnerAgreementAcceptBody } }, async (req) => {
     const user = requireRole(req, "partner_admin");
-    const body = z.object({ version: z.number().int().positive() }).parse(req.body);
+    const body = PartnerAgreementAcceptBody.parse(req.body);
     return asPlatform(db, user, (tx) => acceptPartnerAgreement(tx, user, body.version));
   });
   app.get("/api/admin/legal", async (req) => {
     const user = requireRole(req, ...PLATFORM_ROLES);
     return asPlatform(db, user, (tx) => legalOverview(tx));
   });
-  app.post<{ Params: { kind: string; version: string } }>("/api/admin/legal/:kind/:version/sign-off", async (req) => {
+  const AdminLegalSignOffBody = z.object({ lawyer: z.string().min(2).max(120), approvedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) });
+  app.post<{ Params: { kind: string; version: string } }>("/api/admin/legal/:kind/:version/sign-off", { config: { body: AdminLegalSignOffBody } }, async (req) => {
     const user = requireRole(req, "founder");
     const kind = z.enum(["client_terms", "partner_agreement"]).parse(req.params.kind);
-    const body = z.object({ lawyer: z.string().min(2).max(120), approvedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).parse(req.body);
+    const body = AdminLegalSignOffBody.parse(req.body);
     const version = z.coerce.number().int().positive().parse(req.params.version);
     return asPlatform(db, user, (tx) => recordLegalSignOff(tx, user, kind, version, body.lawyer, body.approvedOn));
   });
@@ -716,16 +749,16 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     const user = requireRole(req, ...PLATFORM_ROLES);
     return asPlatform(db, user, (tx) => listHolidays(tx));
   });
-  app.put("/api/admin/holidays", async (req) => {
+  const AdminHolidaysBody = z.object({ date: z.string(), name: z.string().max(120), status: z.enum(["expected", "confirmed"]), note: z.string().max(300).optional(), reason: z.string().min(3).max(300) });
+  app.put("/api/admin/holidays", { config: { body: AdminHolidaysBody } }, async (req) => {
     const user = requireRole(req, "founder");
-    const body = z
-      .object({ date: z.string(), name: z.string().max(120), status: z.enum(["expected", "confirmed"]), note: z.string().max(300).optional(), reason: z.string().min(3).max(300) })
-      .parse(req.body);
+    const body = AdminHolidaysBody.parse(req.body);
     return asPlatform(db, user, (tx) => setHoliday(tx, user, body, body.reason));
   });
-  app.delete<{ Params: { date: string } }>("/api/admin/holidays/:date", async (req) => {
+  const AdminHolidaysDeleteBody = z.object({ reason: z.string().min(3).max(300) });
+  app.delete<{ Params: { date: string } }>("/api/admin/holidays/:date", { config: { body: AdminHolidaysDeleteBody } }, async (req) => {
     const user = requireRole(req, "founder");
-    const body = z.object({ reason: z.string().min(3).max(300) }).parse(req.body);
+    const body = AdminHolidaysDeleteBody.parse(req.body);
     return asPlatform(db, user, (tx) => removeHoliday(tx, user, req.params.date, body.reason));
   });
 
@@ -746,47 +779,48 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     return asPlatform(db, user, (tx) => feesOverview(tx));
   });
 
-  app.put<{ Params: { category: string } }>("/api/admin/rules/:category", async (req) => {
+  const AdminRulesBody = z.object({ rateBp: z.number().int().min(0).max(10_000), floorAed: z.number().min(0).max(1_000_000), effectiveFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), note: z.string().min(3).max(500) });
+  app.put<{ Params: { category: string } }>("/api/admin/rules/:category", { config: { body: AdminRulesBody } }, async (req) => {
     const user = requireRole(req, "founder");
-    const body = z
-      .object({ rateBp: z.number().int().min(0).max(10_000), floorAed: z.number().min(0).max(1_000_000), effectiveFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), note: z.string().min(3).max(500) })
-      .parse(req.body);
+    const body = AdminRulesBody.parse(req.body);
     return asPlatform(db, user, (tx) => scheduleRule(tx, user, { category: req.params.category, rateBp: body.rateBp, floorFils: aed(body.floorAed), effectiveFrom: body.effectiveFrom, note: body.note }));
   });
 
-  app.put("/api/admin/pricing-settings", async (req) => {
+  const AdminPricingSettingsBody = z.object({ capFactorBp: z.number().int().optional(), roundToAed: z.number().optional(), note: z.string().min(3).max(500) });
+  app.put("/api/admin/pricing-settings", { config: { body: AdminPricingSettingsBody } }, async (req) => {
     const user = requireRole(req, "founder");
-    const body = z.object({ capFactorBp: z.number().int().optional(), roundToAed: z.number().optional(), note: z.string().min(3).max(500) }).parse(req.body);
+    const body = AdminPricingSettingsBody.parse(req.body);
     return asPlatform(db, user, (tx) =>
       updatePricingSettings(tx, user, { ...(body.capFactorBp !== undefined ? { capFactorBp: body.capFactorBp } : {}), ...(body.roundToAed !== undefined ? { roundTo: aed(body.roundToAed) } : {}) }, body.note),
     );
   });
 
-  app.post("/api/admin/fees", async (req) => {
+  const AdminFeesBody = z.object({
+      code: z.string().min(2).max(20),
+      emirate: z.string().min(2).max(40),
+      freeZone: z.string().max(60).nullish(),
+      feeAed: z.number().min(0).max(10_000_000),
+      sourceUrl: z.string().max(500).refine((u) => u === "" || /^https?:\/\/\S+$/i.test(u), "Source must be an http(s) link").default(""),
+      sourceNote: z.string().max(500).default(""),
+      effectiveFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    });
+  app.post("/api/admin/fees", { config: { body: AdminFeesBody } }, async (req) => {
     const user = requireRole(req, "ops", "founder");
-    const body = z
-      .object({
-        code: z.string().min(2).max(20),
-        emirate: z.string().min(2).max(40),
-        freeZone: z.string().max(60).nullish(),
-        feeAed: z.number().min(0).max(10_000_000),
-        sourceUrl: z.string().max(500).refine((u) => u === "" || /^https?:\/\/\S+$/i.test(u), "Source must be an http(s) link").default(""),
-        sourceNote: z.string().max(500).default(""),
-        effectiveFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-      })
-      .parse(req.body);
+    const body = AdminFeesBody.parse(req.body);
     return asPlatform(db, user, (tx) => addFee(tx, user, { ...body, feeFils: aed(body.feeAed) }));
   });
 
-  app.post<{ Params: { id: string } }>("/api/admin/fees/:id/verify", async (req) => {
+  const AdminFeesVerifyBody = z.object({ verifiedBy: z.string().min(2).max(120) });
+  app.post<{ Params: { id: string } }>("/api/admin/fees/:id/verify", { config: { body: AdminFeesVerifyBody } }, async (req) => {
     const user = requireRole(req, "founder");
-    const { verifiedBy } = z.object({ verifiedBy: z.string().min(2).max(120) }).parse(req.body);
+    const { verifiedBy } = AdminFeesVerifyBody.parse(req.body);
     return asPlatform(db, user, (tx) => verifyFee(tx, user, req.params.id, verifiedBy));
   });
 
-  app.post<{ Params: { id: string } }>("/api/admin/fees/:id/retire", async (req) => {
+  const AdminFeesRetireBody = z.object({ reason: z.string().min(3).max(300) });
+  app.post<{ Params: { id: string } }>("/api/admin/fees/:id/retire", { config: { body: AdminFeesRetireBody } }, async (req) => {
     const user = requireRole(req, "ops", "founder");
-    const { reason } = z.object({ reason: z.string().min(3).max(300) }).parse(req.body);
+    const { reason } = AdminFeesRetireBody.parse(req.body);
     return asPlatform(db, user, (tx) => retireFee(tx, user, req.params.id, reason));
   });
 
@@ -805,28 +839,28 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     const user = requireRole(req, ...PARTNER_ROLES, ...PLATFORM_ROLES);
     return asPlatform(db, user, (tx) => partnerOnboarding(tx, user, req.params.id));
   });
-  app.put("/api/partner/application", async (req) => {
+  const PartnerApplicationBody = z.object({
+      emirates: z.array(z.string().max(40)).max(8),
+      codes: z.array(z.string().max(20)).max(100),
+      capacity: z.number().int().min(0).max(500),
+      licenceNumber: z.string().min(2).max(60),
+      licenceExpiry: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      ftaTaxAgent: z.boolean().optional(),
+      licensedLawFirm: z.boolean().optional(),
+      regulatoryAdviser: z.boolean().optional(),
+      registeredLiquidator: z.boolean().optional(),
+      approvedAuditorZones: z.array(z.string().max(40)).max(20).optional(),
+      about: z.string().max(2000).optional(),
+    });
+  app.put("/api/partner/application", { config: { body: PartnerApplicationBody } }, async (req) => {
     const user = requireRole(req, "partner_admin");
-    const body = z
-      .object({
-        emirates: z.array(z.string().max(40)).max(8),
-        codes: z.array(z.string().max(20)).max(100),
-        capacity: z.number().int().min(0).max(500),
-        licenceNumber: z.string().min(2).max(60),
-        licenceExpiry: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-        ftaTaxAgent: z.boolean().optional(),
-        licensedLawFirm: z.boolean().optional(),
-        regulatoryAdviser: z.boolean().optional(),
-        registeredLiquidator: z.boolean().optional(),
-        approvedAuditorZones: z.array(z.string().max(40)).max(20).optional(),
-        about: z.string().max(2000).optional(),
-      })
-      .parse(req.body);
+    const body = PartnerApplicationBody.parse(req.body);
     return asPlatform(db, user, (tx) => submitApplication(tx, user, body));
   });
-  app.post<{ Params: { id: string } }>("/api/partners/:id/documents", async (req) => {
+  const PartnersDocumentsBody = fileBody.extend({ kind: z.enum(DOCUMENT_KINDS as [string, ...string[]]), reference: z.string().max(80).optional(), expiresOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() });
+  app.post<{ Params: { id: string } }>("/api/partners/:id/documents", { config: { body: PartnersDocumentsBody } }, async (req) => {
     const user = requireRole(req, "partner_admin", "ops", "founder");
-    const body = fileBody.extend({ kind: z.enum(DOCUMENT_KINDS as [string, ...string[]]), reference: z.string().max(80).optional(), expiresOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }).parse(req.body);
+    const body = PartnersDocumentsBody.parse(req.body);
     if (user.orgType === "partner" && user.orgId !== req.params.id) throw forbidden("Not your firm");
     const key = await putFile(req.params.id, body.fileName, body.contentBase64); // the firm's own folder
     return asPlatform(db, user, async (tx) => {
@@ -835,9 +869,10 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
       return doc;
     });
   });
-  app.post<{ Params: { id: string } }>("/api/ops/partner-documents/:id/review", async (req) => {
+  const OpsPartnerDocumentsReviewBody = z.object({ decision: z.enum(["verified", "rejected"]), note: z.string().max(500).default("") });
+  app.post<{ Params: { id: string } }>("/api/ops/partner-documents/:id/review", { config: { body: OpsPartnerDocumentsReviewBody } }, async (req) => {
     const user = requireRole(req, "ops", "founder");
-    const body = z.object({ decision: z.enum(["verified", "rejected"]), note: z.string().max(500).default("") }).parse(req.body);
+    const body = OpsPartnerDocumentsReviewBody.parse(req.body);
     return asPlatform(db, user, (tx) => reviewDocument(tx, user, req.params.id, body.decision, body.note, opts.notify));
   });
   app.get<{ Params: { id: string } }>("/api/partner-documents/:id/file", async (req, reply) => {
@@ -848,9 +883,10 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     reply.header("content-disposition", `attachment; filename="${row.file_name.replace(/"/g, "")}"`);
     return reply.type("application/octet-stream").send(data);
   });
-  app.post<{ Params: { id: string } }>("/api/ops/partners/:id/status", async (req) => {
+  const OpsPartnersStatusBody = z.object({ status: z.enum(["prospect", "contacted", "applied", "under_review", "pilot", "signed", "paused"]), note: z.string().max(500).default("") });
+  app.post<{ Params: { id: string } }>("/api/ops/partners/:id/status", { config: { body: OpsPartnersStatusBody } }, async (req) => {
     const user = requireRole(req, "ops", "founder");
-    const body = z.object({ status: z.enum(["prospect", "contacted", "applied", "under_review", "pilot", "signed", "paused"]), note: z.string().max(500).default("") }).parse(req.body);
+    const body = OpsPartnersStatusBody.parse(req.body);
     return asPlatform(db, user, (tx) => movePartner(tx, user, req.params.id, body.status, body.note, opts.notify));
   });
   app.get<{ Params: { id: string } }>("/api/partners/:id/scorecards", async (req) => {
@@ -858,32 +894,35 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     if (user.orgType === "partner" && user.orgId !== req.params.id) throw forbidden("Not your firm");
     return asPlatform(db, user, (tx) => scorecardHistory(tx, req.params.id));
   });
-  app.post("/api/ops/scorecards/recompute", async (req) => {
+  app.post("/api/ops/scorecards/recompute", { config: { body: null } }, async (req) => {
     const user = requireRole(req, "ops", "founder");
     return asPlatform(db, user, async (tx) => ({ partners: await recomputeScorecards(tx, user) }));
   });
 
   // Partner staff
-  app.post("/api/partner/staff", async (req) => {
+  const PartnerStaffBody = z.object({ email: z.string().email(), name: z.string().min(2).max(120) });
+  app.post("/api/partner/staff", { config: { body: PartnerStaffBody } }, async (req) => {
     const user = requireRole(req, "partner_admin");
-    const body = z.object({ email: z.string().email(), name: z.string().min(2).max(120) }).parse(req.body);
+    const body = PartnerStaffBody.parse(req.body);
     const { notification, ...result } = await asPlatform(db, user, (tx) => invitePartnerStaff(tx, user, body));
     await opts.notify.send(notification);
     return result;
   });
-  app.post<{ Params: { id: string } }>("/api/partner/staff/:id/active", async (req) => {
+  const PartnerStaffActiveBody = z.object({ active: z.boolean() });
+  app.post<{ Params: { id: string } }>("/api/partner/staff/:id/active", { config: { body: PartnerStaffActiveBody } }, async (req) => {
     const user = requireRole(req, "partner_admin");
-    const { active } = z.object({ active: z.boolean() }).parse(req.body);
+    const { active } = PartnerStaffActiveBody.parse(req.body);
     return asPlatform(db, user, (tx) => setPartnerStaffActive(tx, user, req.params.id, active));
   });
 
   // Client document requests
-  app.post<{ Params: { id: string } }>("/api/milestones/:id/document-requests", async (req) => {
+  const MilestonesDocumentRequestsBody = z.object({ kind: z.string().min(3).max(60), note: z.string().max(300).default("") });
+  app.post<{ Params: { id: string } }>("/api/milestones/:id/document-requests", { config: { body: MilestonesDocumentRequestsBody } }, async (req) => {
     const user = requireRole(req, ...PARTNER_ROLES);
-    const body = z.object({ kind: z.string().min(3).max(60), note: z.string().max(300).default("") }).parse(req.body);
+    const body = MilestonesDocumentRequestsBody.parse(req.body);
     return asPlatform(db, user, (tx) => addDocumentRequest(tx, user, req.params.id, body.kind, body.note, deps));
   });
-  app.post<{ Params: { id: string } }>("/api/document-requests/:id/upload", async (req) => {
+  app.post<{ Params: { id: string } }>("/api/document-requests/:id/upload", { config: { body: fileBody } }, async (req) => {
     const user = requireRole(req, ...CLIENT_ROLES);
     const body = fileBody.parse(req.body);
     const r = await asUser(db, user, async (tx) => (await tx.query<{ engagement_id: string }>("select engagement_id from document_requests where id = $1", [req.params.id])).rows[0]);
@@ -896,9 +935,10 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
       return r;
     });
   });
-  app.post<{ Params: { id: string } }>("/api/document-requests/:id/decide", async (req) => {
+  const DocumentRequestsDecideBody = z.object({ decision: z.enum(["received", "rejected"]), note: z.string().max(300).default("") });
+  app.post<{ Params: { id: string } }>("/api/document-requests/:id/decide", { config: { body: DocumentRequestsDecideBody } }, async (req) => {
     const user = requireRole(req, ...PARTNER_ROLES, "ops", "founder");
-    const body = z.object({ decision: z.enum(["received", "rejected"]), note: z.string().max(300).default("") }).parse(req.body);
+    const body = DocumentRequestsDecideBody.parse(req.body);
     return asPlatform(db, user, (tx) => decideDocument(tx, user, req.params.id, body.decision, body.note, deps));
   });
   app.get<{ Params: { id: string } }>("/api/document-requests/:id/file", async (req, reply) => {
@@ -914,33 +954,38 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     const user = requireRole(req, ...PLATFORM_ROLES);
     return asPlatform(db, user, (tx) => delayQueue(tx));
   });
-  app.post<{ Params: { id: string } }>("/api/ops/delays/:id/attribute", async (req) => {
+  const OpsDelaysAttributeBody = z.object({ cause: z.enum(["partner", "client", "government", "mkw"]), note: z.string().min(1).max(500) });
+  app.post<{ Params: { id: string } }>("/api/ops/delays/:id/attribute", { config: { body: OpsDelaysAttributeBody } }, async (req) => {
     const user = requireRole(req, "ops", "founder");
-    const body = z.object({ cause: z.enum(["partner", "client", "government", "mkw"]), note: z.string().min(1).max(500) }).parse(req.body);
+    const body = OpsDelaysAttributeBody.parse(req.body);
     return asPlatform(db, user, (tx) => attributeDelay(tx, user, req.params.id, body.cause, body.note));
   });
-  app.post<{ Params: { id: string } }>("/api/ops/credits/:id/decide", async (req) => {
+  const OpsCreditsDecideBody = z.object({ decision: z.enum(["approve", "waive"]), note: z.string().max(500).default("") });
+  app.post<{ Params: { id: string } }>("/api/ops/credits/:id/decide", { config: { body: OpsCreditsDecideBody } }, async (req) => {
     const user = requireRole(req, "finance", "founder");
-    const body = z.object({ decision: z.enum(["approve", "waive"]), note: z.string().max(500).default("") }).parse(req.body);
+    const body = OpsCreditsDecideBody.parse(req.body);
     return asPlatform(db, user, (tx) => decideCredit(tx, user, req.params.id, body.decision, body.note, deps));
   });
-  app.post<{ Params: { id: string } }>("/api/ops/credits/:id/settle", async (req) => {
+  const OpsCreditsSettleBody = z.object({ reference: z.string().min(3).max(120) });
+  app.post<{ Params: { id: string } }>("/api/ops/credits/:id/settle", { config: { body: OpsCreditsSettleBody } }, async (req) => {
     const user = requireRole(req, "finance", "founder");
-    const { reference } = z.object({ reference: z.string().min(3).max(120) }).parse(req.body);
+    const { reference } = OpsCreditsSettleBody.parse(req.body);
     return asPlatform(db, user, (tx) => settleCredit(tx, user, req.params.id, reference));
   });
 
   // Ratings
-  app.post<{ Params: { id: string } }>("/api/engagements/:id/rating", async (req) => {
+  const EngagementsRatingBody = z.object({ stars: z.number().int().min(1).max(5), comment: z.string().max(1000).default("") });
+  app.post<{ Params: { id: string } }>("/api/engagements/:id/rating", { config: { body: EngagementsRatingBody } }, async (req) => {
     const user = requireRole(req, "client_owner");
-    const body = z.object({ stars: z.number().int().min(1).max(5), comment: z.string().max(1000).default("") }).parse(req.body);
+    const body = EngagementsRatingBody.parse(req.body);
     return asPlatform(db, user, (tx) => rateEngagement(tx, user, req.params.id, body.stars, body.comment, deps));
   });
 
   // Manual allocation
-  app.post<{ Params: { id: string } }>("/api/ops/engagements/:id/allocate", async (req) => {
+  const OpsEngagementsAllocateBody = z.object({ partnerId: z.string().uuid(), codes: z.array(z.string().max(20)).min(1).max(50), reason: z.string().min(5).max(500) });
+  app.post<{ Params: { id: string } }>("/api/ops/engagements/:id/allocate", { config: { body: OpsEngagementsAllocateBody } }, async (req) => {
     const user = requireRole(req, "ops", "founder");
-    const body = z.object({ partnerId: z.string().uuid(), codes: z.array(z.string().max(20)).min(1).max(50), reason: z.string().min(5).max(500) }).parse(req.body);
+    const body = OpsEngagementsAllocateBody.parse(req.body);
     return asPlatform(db, user, (tx) => allocateManually(tx, user, req.params.id, body.partnerId, body.codes, body.reason, deps));
   });
 
@@ -962,9 +1007,10 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     const user = requireRole(req, ...PARTNER_ROLES);
     return asPlatform(db, user, (tx) => partnerDashboard(tx, user));
   });
-  app.get<{ Querystring: { set?: string; from?: string; to?: string } }>("/api/admin/accounting/export", async (req, reply) => {
+  const AdminAccountingExportQuery = z.object({ set: z.enum(["sales", "payments", "payouts", "margin"]), from: z.string(), to: z.string() });
+  app.get<{ Querystring: { set?: string; from?: string; to?: string } }>("/api/admin/accounting/export", { config: { query: AdminAccountingExportQuery } }, async (req, reply) => {
     const user = requireRole(req, "ops", "finance", "founder");
-    const q = z.object({ set: z.enum(["sales", "payments", "payouts", "margin"]), from: z.string(), to: z.string() }).parse(req.query);
+    const q = AdminAccountingExportQuery.parse(req.query);
     const { csv, fileName } = await asPlatform(db, user, (tx) => accountingExport(tx, user, q.set, q.from, q.to));
     reply.header("content-disposition", `attachment; filename="${fileName}"`);
     return reply.type("text/csv; charset=utf-8").send(csv);
@@ -983,36 +1029,38 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     const client = req.query.client && z.string().uuid().safeParse(req.query.client).success ? req.query.client : undefined;
     return asPlatform(db, user, (tx) => opsCalendar(tx, client));
   });
-  app.post<{ Params: { id: string } }>("/api/ops/clients/:id/obligations", async (req) => {
+  const OpsClientsObligationsBody = z.object({
+      kind: z.enum(["licence_renewal", "visa_expiry", "vat_return", "ct_return", "esr_notification", "ubo_update", "audit_filing", "custom"]),
+      title: z.string().min(3).max(200),
+      dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      recurrence: z.enum(["none", "monthly", "quarterly", "yearly"]).default("none"),
+      basis: z.string().max(500).optional(),
+      periodLabel: z.string().max(60).optional(),
+    });
+  app.post<{ Params: { id: string } }>("/api/ops/clients/:id/obligations", { config: { body: OpsClientsObligationsBody } }, async (req) => {
     const user = requireRole(req, "ops", "founder");
-    const body = z
-      .object({
-        kind: z.enum(["licence_renewal", "visa_expiry", "vat_return", "ct_return", "esr_notification", "ubo_update", "audit_filing", "custom"]),
-        title: z.string().min(3).max(200),
-        dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-        recurrence: z.enum(["none", "monthly", "quarterly", "yearly"]).default("none"),
-        basis: z.string().max(500).optional(),
-        periodLabel: z.string().max(60).optional(),
-      })
-      .parse(req.body);
+    const body = OpsClientsObligationsBody.parse(req.body);
     return asPlatform(db, user, (tx) => addObligation(tx, user, req.params.id, body));
   });
-  app.post<{ Params: { id: string } }>("/api/ops/obligations/:id/confirm", async (req) => {
+  const OpsObligationsConfirmBody = z.object({ dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), title: z.string().max(200).optional(), periodLabel: z.string().max(60).optional(), note: z.string().min(1).max(500), allowPast: z.boolean().optional() });
+  app.post<{ Params: { id: string } }>("/api/ops/obligations/:id/confirm", { config: { body: OpsObligationsConfirmBody } }, async (req) => {
     const user = requireRole(req, "ops", "founder");
-    const body = z.object({ dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), title: z.string().max(200).optional(), periodLabel: z.string().max(60).optional(), note: z.string().min(1).max(500), allowPast: z.boolean().optional() }).parse(req.body);
+    const body = OpsObligationsConfirmBody.parse(req.body);
     return asPlatform(db, user, (tx) => confirmObligation(tx, user, req.params.id, body));
   });
-  app.post<{ Params: { id: string } }>("/api/ops/obligations/:id/waive", async (req) => {
+  const OpsObligationsWaiveBody = z.object({ reason: z.string().min(3).max(500) });
+  app.post<{ Params: { id: string } }>("/api/ops/obligations/:id/waive", { config: { body: OpsObligationsWaiveBody } }, async (req) => {
     const user = requireRole(req, "ops", "founder");
-    const { reason } = z.object({ reason: z.string().min(3).max(500) }).parse(req.body);
+    const { reason } = OpsObligationsWaiveBody.parse(req.body);
     return asPlatform(db, user, (tx) => waiveObligation(tx, user, req.params.id, reason));
   });
-  app.post<{ Params: { id: string } }>("/api/ops/obligations/:id/met", async (req) => {
+  const OpsObligationsMetBody = z.object({ note: z.string().max(500).default("") });
+  app.post<{ Params: { id: string } }>("/api/ops/obligations/:id/met", { config: { body: OpsObligationsMetBody.optional() } }, async (req) => {
     const user = requireRole(req, "ops", "founder");
-    const { note } = z.object({ note: z.string().max(500).default("") }).parse(req.body ?? {});
+    const { note } = OpsObligationsMetBody.parse(req.body ?? {});
     return asPlatform(db, user, (tx) => markObligationMet(tx, user, req.params.id, note));
   });
-  app.post<{ Params: { id: string } }>("/api/obligations/:id/evidence", async (req) => {
+  app.post<{ Params: { id: string } }>("/api/obligations/:id/evidence", { config: { body: fileBody } }, async (req) => {
     const user = requireRole(req, ...CLIENT_ROLES, "ops", "founder");
     const body = fileBody.parse(req.body);
     const o = await asPlatform(db, user, async (tx) => (await tx.query<{ client_org_id: string; status: string }>("select client_org_id, status from obligations where id = $1", [req.params.id])).rows[0]);
@@ -1035,7 +1083,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   });
 
   // Public intake (O5): the Tasees lead page posts here. Rate-limited per IP; consent required; honeypot.
-  app.post("/api/public/intake", async (req) => {
+  app.post("/api/public/intake", { config: { body: PublicIntakeSchema } }, async (req) => {
     throttle(req, "public-intake", 10);
     const body = PublicIntakeSchema.parse(req.body);
     return asPlatform(db, null, (tx) => publicIntake(tx, body, req.ip, opts.notify, opts.model));
@@ -1044,9 +1092,10 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     const user = requireRole(req, "ops", "founder");
     return asPlatform(db, user, (tx) => listLeads(tx, user));
   });
-  app.post<{ Params: { id: string } }>("/api/ops/leads/:id/handle", async (req) => {
+  const OpsLeadsHandleBody = z.object({ note: z.string().max(300).default("") });
+  app.post<{ Params: { id: string } }>("/api/ops/leads/:id/handle", { config: { body: OpsLeadsHandleBody.optional() } }, async (req) => {
     const user = requireRole(req, "ops", "founder");
-    const { note } = z.object({ note: z.string().max(300).default("") }).parse(req.body ?? {});
+    const { note } = OpsLeadsHandleBody.parse(req.body ?? {});
     return asPlatform(db, user, (tx) => handleLead(tx, user, req.params.id, note));
   });
 
@@ -1056,26 +1105,26 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     return asPlatform(db, user, (tx) => scopingOverview(tx));
   });
 
-  app.put<{ Params: { key: string } }>("/api/admin/scoping/rules/:key", async (req) => {
+  const AdminScopingRulesBody = z.object({ confidence: z.enum(["verified", "rule_of_thumb", "UNCERTAIN"]), verifiedBy: z.string().max(120).optional(), sourceUrl: z.string().max(500).optional(), statement: z.string().max(1000).optional() });
+  app.put<{ Params: { key: string } }>("/api/admin/scoping/rules/:key", { config: { body: AdminScopingRulesBody } }, async (req) => {
     const user = requireRole(req, "founder");
-    const body = z.object({ confidence: z.enum(["verified", "rule_of_thumb", "UNCERTAIN"]), verifiedBy: z.string().max(120).optional(), sourceUrl: z.string().max(500).optional(), statement: z.string().max(1000).optional() }).parse(req.body);
+    const body = AdminScopingRulesBody.parse(req.body);
     return asPlatform(db, user, (tx) => verifyRule(tx, user, req.params.key, body));
   });
 
-  app.put<{ Params: { name: string } }>("/api/admin/scoping/zones/:name", async (req) => {
+  const AdminScopingZonesBody = z.object({
+      confidence: z.enum(["verified", "rule_of_thumb", "UNCERTAIN"]),
+      verifiedBy: z.string().max(120).optional(),
+      sourceUrl: z.string().max(500).optional(),
+      costMinAed: z.number().min(0).optional(),
+      costMaxAed: z.number().min(0).optional(),
+      visaQuota: z.number().int().min(0).max(100).optional(),
+      timelineDays: z.number().int().min(1).max(365).optional(),
+      active: z.boolean().optional(),
+    });
+  app.put<{ Params: { name: string } }>("/api/admin/scoping/zones/:name", { config: { body: AdminScopingZonesBody } }, async (req) => {
     const user = requireRole(req, "founder");
-    const body = z
-      .object({
-        confidence: z.enum(["verified", "rule_of_thumb", "UNCERTAIN"]),
-        verifiedBy: z.string().max(120).optional(),
-        sourceUrl: z.string().max(500).optional(),
-        costMinAed: z.number().min(0).optional(),
-        costMaxAed: z.number().min(0).optional(),
-        visaQuota: z.number().int().min(0).max(100).optional(),
-        timelineDays: z.number().int().min(1).max(365).optional(),
-        active: z.boolean().optional(),
-      })
-      .parse(req.body);
+    const body = AdminScopingZonesBody.parse(req.body);
     return asPlatform(db, user, (tx) =>
       verifyZone(tx, user, req.params.name, { ...body, costMinFils: body.costMinAed === undefined ? undefined : aed(body.costMinAed), costMaxFils: body.costMaxAed === undefined ? undefined : aed(body.costMaxAed) }),
     );
@@ -1086,44 +1135,46 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     return asPlatform(db, user, (tx) => requestScoping(tx, req.params.id));
   });
 
-  app.post<{ Params: { id: string } }>("/api/ops/requests/:id/scoping/recompute", async (req) => {
+  app.post<{ Params: { id: string } }>("/api/ops/requests/:id/scoping/recompute", { config: { body: null } }, async (req) => {
     const user = requireRole(req, "ops", "founder");
     return asPlatform(db, user, (tx) => recomputeAdvice(tx, user, req.params.id));
   });
 
-  app.post<{ Params: { id: string } }>("/api/ops/requests/:id/scoping/approve", async (req) => {
+  const OpsRequestsScopingApproveBody = z.object({
+      removeRuleKeys: z.array(z.string().max(80)).max(50).optional(),
+      structure: z.enum(["free_zone", "mainland", "offshore", "difc_adgm"]).optional(),
+      removePlaces: z.array(z.string().max(80)).max(20).optional(),
+      note: z.string().max(500).optional(),
+    });
+  app.post<{ Params: { id: string } }>("/api/ops/requests/:id/scoping/approve", { config: { body: OpsRequestsScopingApproveBody.optional() } }, async (req) => {
     const user = requireRole(req, "ops", "founder");
-    const body = z
-      .object({
-        removeRuleKeys: z.array(z.string().max(80)).max(50).optional(),
-        structure: z.enum(["free_zone", "mainland", "offshore", "difc_adgm"]).optional(),
-        removePlaces: z.array(z.string().max(80)).max(20).optional(),
-        note: z.string().max(500).optional(),
-      })
-      .parse(req.body ?? {});
+    const body = OpsRequestsScopingApproveBody.parse(req.body ?? {});
     return asPlatform(db, user, (tx) => approveAdvice(tx, user, req.params.id, body));
   });
 
-  app.get("/api/ops/drafts", async (req) => {
+  const OpsDraftsQuery = z.object({ status: z.enum(["pending", "approved", "discarded"]).default("pending") });
+  app.get("/api/ops/drafts", { config: { query: OpsDraftsQuery.optional() } }, async (req) => {
     const user = requireRole(req, ...PLATFORM_ROLES);
-    const { status } = z.object({ status: z.enum(["pending", "approved", "discarded"]).default("pending") }).parse(req.query ?? {});
+    const { status } = OpsDraftsQuery.parse(req.query ?? {});
     return asPlatform(db, user, (tx) => listDrafts(tx, status));
   });
 
-  app.post<{ Params: { id: string } }>("/api/ops/drafts/:id/review", async (req) => {
+  const OpsDraftsReviewBody = z.object({ decision: z.enum(["approve", "discard"]), note: z.string().max(500).default(""), keepCodes: z.array(z.string().max(20)).max(40).optional() });
+  app.post<{ Params: { id: string } }>("/api/ops/drafts/:id/review", { config: { body: OpsDraftsReviewBody } }, async (req) => {
     const user = requireRole(req, "ops", "founder");
-    const body = z.object({ decision: z.enum(["approve", "discard"]), note: z.string().max(500).default(""), keepCodes: z.array(z.string().max(20)).max(40).optional() }).parse(req.body);
+    const body = OpsDraftsReviewBody.parse(req.body);
     return asPlatform(db, user, (tx) => reviewDraft(tx, user, req.params.id, body.decision, body.note, body.keepCodes));
   });
 
-  app.get("/api/ops/search", async (req) => {
+  const OpsSearchQuery = z.object({ q: z.string().max(100).default("") });
+  app.get("/api/ops/search", { config: { query: OpsSearchQuery.optional() } }, async (req) => {
     const user = requireRole(req, ...PLATFORM_ROLES);
-    const { q } = z.object({ q: z.string().max(100).default("") }).parse(req.query ?? {});
+    const { q } = OpsSearchQuery.parse(req.query ?? {});
     return asPlatform(db, user, (tx) => search(tx, q));
   });
 
   // Payment provider webhook: a signed message from the provider is the one automated path that records money.
-  app.post("/api/webhooks/payments", async (req, reply) => {
+  app.post("/api/webhooks/payments", { config: { body: null } }, async (req, reply) => {
     let event;
     // Unauthenticated callers must not be able to grow the audit chain: refusals are logged and rate-limited, not audited.
     throttle(req, "webhook", 60);
@@ -1164,9 +1215,10 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     return reply.type("application/pdf").send(data);
   });
 
-  app.post<{ Params: { id: string } }>("/api/ops/payments/:id/refund", async (req) => {
+  const OpsPaymentsRefundBody = z.object({ reference: z.string().min(3).max(120), reason: z.string().min(3).max(500) });
+  app.post<{ Params: { id: string } }>("/api/ops/payments/:id/refund", { config: { body: OpsPaymentsRefundBody } }, async (req) => {
     const user = requireRole(req, "finance", "founder");
-    const body = z.object({ reference: z.string().min(3).max(120), reason: z.string().min(3).max(500) }).parse(req.body);
+    const body = OpsPaymentsRefundBody.parse(req.body);
     return asPlatform(db, user, (tx) => refundPayment(tx, user, req.params.id, body.reference, body.reason, opts.storage, opts.notify));
   });
 
@@ -1177,41 +1229,40 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     return { ...c, iban: user.role === "ops" ? (c.iban ? "set" : "") : c.iban, heldInvoices: held };
   });
 
-  app.put("/api/admin/company", async (req) => {
+  const AdminCompanyBody = z.object({
+      legalName: z.string().min(2).max(200).optional(),
+      trn: z.string().max(20).nullable().optional(),
+      address: z.string().max(500).optional(),
+      bankName: z.string().max(120).optional(),
+      iban: z.string().max(40).optional(),
+      swift: z.string().max(20).optional(),
+      govFeesConfirmed: z.boolean().optional(),
+      note: z.string().min(3).max(500),
+    });
+  app.put("/api/admin/company", { config: { body: AdminCompanyBody } }, async (req) => {
     const user = requireRole(req, "founder");
-    const body = z
-      .object({
-        legalName: z.string().min(2).max(200).optional(),
-        trn: z.string().max(20).nullable().optional(),
-        address: z.string().max(500).optional(),
-        bankName: z.string().max(120).optional(),
-        iban: z.string().max(40).optional(),
-        swift: z.string().max(20).optional(),
-        govFeesConfirmed: z.boolean().optional(),
-        note: z.string().min(3).max(500),
-      })
-      .parse(req.body);
+    const body = AdminCompanyBody.parse(req.body);
     const { note, ...patch } = body;
     return asPlatform(db, user, (tx) => updateCompany(tx, user, patch, note));
   });
 
-  app.post("/api/admin/invoices/issue-held", async (req) => {
+  app.post("/api/admin/invoices/issue-held", { config: { body: null } }, async (req) => {
     const user = requireRole(req, "founder");
     return asPlatform(db, user, (tx) => issueHeldInvoices(tx, user, opts.storage, opts.notify));
   });
 
   // Partner bank details and invoices; payout runs (O3) -------------------------------------------
-  app.put("/api/partner/bank", async (req) => {
+  const PartnerBankBody = z.object({ beneficiary: z.string().min(2).max(140), iban: z.string().min(10).max(40), bank: z.string().min(2).max(120) });
+  app.put("/api/partner/bank", { config: { body: PartnerBankBody } }, async (req) => {
     const user = requireRole(req, "partner_admin");
-    const body = z.object({ beneficiary: z.string().min(2).max(140), iban: z.string().min(10).max(40), bank: z.string().min(2).max(120) }).parse(req.body);
+    const body = PartnerBankBody.parse(req.body);
     return asPlatform(db, user, (tx) => setPartnerBank(tx, user, body));
   });
 
-  app.post<{ Params: { id: string } }>("/api/payouts/:id/invoice", async (req) => {
+  const PayoutsInvoiceBody = z.object({ number: z.string().min(1).max(60), amountAed: z.number().min(0), vatAed: z.number().min(0).default(0), fileName: z.string().min(1).max(200), contentBase64: z.string().min(1) });
+  app.post<{ Params: { id: string } }>("/api/payouts/:id/invoice", { config: { body: PayoutsInvoiceBody } }, async (req) => {
     const user = requireRole(req, "partner_admin");
-    const body = z
-      .object({ number: z.string().min(1).max(60), amountAed: z.number().min(0), vatAed: z.number().min(0).default(0), fileName: z.string().min(1).max(200), contentBase64: z.string().min(1) })
-      .parse(req.body);
+    const body = PayoutsInvoiceBody.parse(req.body);
     return asPlatform(db, user, (tx) =>
       uploadPartnerInvoice(tx, user, { payoutId: req.params.id, number: body.number, amountFils: aed(body.amountAed), vatFils: aed(body.vatAed), fileName: body.fileName, content: Buffer.from(body.contentBase64, "base64") }, opts.storage),
     );
@@ -1227,7 +1278,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     return asPlatform(db, user, (tx) => listPayoutRuns(tx));
   });
 
-  app.post("/api/ops/payout-runs", async (req) => {
+  app.post("/api/ops/payout-runs", { config: { body: null } }, async (req) => {
     const user = requireRole(req, "finance", "founder");
     return asPlatform(db, user, (tx) => createPayoutRun(tx, user));
   });
@@ -1239,15 +1290,17 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     return reply.type("text/csv; charset=utf-8").send(csv);
   });
 
-  app.post<{ Params: { id: string } }>("/api/ops/payout-runs/:id/paid", async (req) => {
+  const OpsPayoutRunsPaidBody = z.object({ bankReference: z.string().min(3).max(120) });
+  app.post<{ Params: { id: string } }>("/api/ops/payout-runs/:id/paid", { config: { body: OpsPayoutRunsPaidBody } }, async (req) => {
     const user = requireRole(req, "finance", "founder");
-    const { bankReference } = z.object({ bankReference: z.string().min(3).max(120) }).parse(req.body);
+    const { bankReference } = OpsPayoutRunsPaidBody.parse(req.body);
     return asPlatform(db, user, (tx) => markPayoutRunPaid(tx, user, req.params.id, bankReference, opts.notify));
   });
 
-  app.post<{ Params: { id: string } }>("/api/ops/payout-runs/:id/cancel", async (req) => {
+  const OpsPayoutRunsCancelBody = z.object({ reason: z.string().min(3).max(300), confirmNotSubmitted: z.boolean().default(false) });
+  app.post<{ Params: { id: string } }>("/api/ops/payout-runs/:id/cancel", { config: { body: OpsPayoutRunsCancelBody } }, async (req) => {
     const user = requireRole(req, "finance", "founder");
-    const body = z.object({ reason: z.string().min(3).max(300), confirmNotSubmitted: z.boolean().default(false) }).parse(req.body);
+    const body = OpsPayoutRunsCancelBody.parse(req.body);
     return asPlatform(db, user, (tx) => cancelPayoutRun(tx, user, req.params.id, body.reason, body.confirmNotSubmitted));
   });
 
@@ -1256,6 +1309,9 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     if (!arabicFlag || Date.now() - arabicFlag.at > 30_000) arabicFlag = { value: (await asPlatform(db, null, (tx) => arabicStatus(tx))).reviewed, at: Date.now() };
     return { ok: true, db: db.kind, devLogin: !!opts.devLogin, arabic: arabicFlag.value };
   });
+
+  // The API contract, built from the routes' own schemas (O13). docs/openapi.json is the committed copy.
+  app.get("/api/openapi.json", async () => openApiDocument(routeDocs, API_VERSION));
 
   // For an external monitor (O13): 503 when the scheduled jobs have not completed for 45 minutes. Times only.
   app.get("/api/health/jobs", async (_req, reply) => {

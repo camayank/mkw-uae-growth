@@ -540,3 +540,19 @@ hooks. Responses are not described yet (gap 40).
 The development tools' advisories (vitest, vite, tinypool, esbuild, playwright) are not exposed: nothing listens and
 nothing ships. They wait for the next tooling change (gap 44). `pnpm audit --prod` now reports only the zod finding.
 The reviewer's brief is `docs/SECURITY-BRIEF.md`.
+
+**D71. zod 4, and the contract from zod's own JSON Schema export.** (S1.) `zod` 3.23.8 → 4.6.7 (MIT; actively
+maintained; the same author and API family). This clears the last advisory in what ships: memory exhaustion while
+validating oversized constrained collections. `pnpm audit --prod` now reports no known vulnerabilities.
+- **Code changes.** The migration needed three: a record schema states its key type (`z.record(z.string(), …)`); the
+  file-body detector no longer looks for zod 3's effect wrapper; and the hand-written zod-to-JSON-Schema converter
+  (about 70 lines) is replaced by `z.toJSONSchema` in input form, with an unrepresentable schema still refused.
+- **Validation is stricter in three ways that match our data:**
+  - UUIDs must be RFC 9562 (ours come from `gen_random_uuid()`);
+  - emails follow zod 4's pattern;
+  - integers must be safe integers (amounts are fils, far below 2^53).
+- **No route changed.** Every route accepts and answers what it did: the whole API suite, the race tests and the
+  browser smoke test pass unchanged on PGlite and PostgreSQL 16.
+- **The contract.** `docs/openapi.json` keeps the same 140 operations and fields. It adds only what zod 4 now states:
+  the UUID and email patterns, safe-integer bounds, and the key type of the one record.
+- **Body caps.** The 1 MB cap (D70) stays as defence in depth.

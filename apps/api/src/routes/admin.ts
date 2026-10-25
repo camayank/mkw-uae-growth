@@ -84,7 +84,7 @@ export function registerAdminRoutes(ctx: RouteContext) {
   });
 
   const Period = z.object({ years: z.number().int().min(0).max(100).nullable().optional(), days: z.number().int().min(0).max(36500).nullable().optional() });
-  const AdminSettingsRetentionBody = z.object({ periods: z.record(Period).default({}), note: z.string().min(3).max(500) });
+  const AdminSettingsRetentionBody = z.object({ periods: z.record(z.string(), Period).default({}), note: z.string().min(3).max(500) });
   app.put("/api/admin/settings/retention", { config: { body: AdminSettingsRetentionBody } }, async (req) => {
     const user = requireRole(req, "founder");
     const body = AdminSettingsRetentionBody.parse(req.body);

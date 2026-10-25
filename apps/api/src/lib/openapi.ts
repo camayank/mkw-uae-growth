@@ -3,9 +3,6 @@
  * reads none) and, where it has one, its query; `GET /api/openapi.json` serves an OpenAPI 3.1 document built from those
  * declarations, and `docs/openapi.json` is the committed copy a test keeps equal. The zod schemas the handlers parse
  * with are the same objects the contract is built from, so the two cannot drift.
- *
- * The converter covers the zod features the routes use (objects, strings with their checks, numbers, booleans, enums,
- * literals, arrays, records, optional, nullable, defaults, refinements); anything else fails the contract test.
  */
 import type { FastifyInstance, RouteOptions } from "fastify";
 import { z } from "zod";
@@ -16,8 +13,8 @@ export const API_VERSION = "1.0.0";
 export interface RouteDoc {
   method: string;
   url: string;
-  body?: z.ZodTypeAny | null;
-  query?: z.ZodTypeAny;
+  body?: z.ZodType | null;
+  query?: z.ZodType;
 }
 
 declare module "fastify" {
@@ -34,7 +31,7 @@ export function collectRoutes(app: FastifyInstance): RouteDoc[] {
   const routes: RouteDoc[] = [];
   app.addHook("onRoute", (r: RouteOptions) => {
     const methods = Array.isArray(r.method) ? r.method : [r.method];
-    const config = (r.config ?? {}) as { body?: z.ZodTypeAny | null; query?: z.ZodTypeAny };
+    const config = (r.config ?? {}) as { body?: z.ZodType | null; query?: z.ZodType };
     for (const method of methods) {
       if (method === "HEAD" || r.url === "/*") continue;
       routes.push({ method, url: r.url, body: config.body, query: config.query });
@@ -47,79 +44,16 @@ type Json = { [k: string]: unknown };
 
 export class UnsupportedSchema extends Error {}
 
-/** zod 3 to JSON Schema (2020-12, as OpenAPI 3.1 uses). */
-export function jsonSchema(schema: z.ZodTypeAny): Json {
-  const def = schema._def as { typeName: string; [k: string]: any };
-  switch (def.typeName) {
-    case "ZodObject": {
-      const shape = (schema as z.AnyZodObject).shape as Record<string, z.ZodTypeAny>;
-      const properties: Json = {};
-      const required: string[] = [];
-      for (const [k, v] of Object.entries(shape)) {
-        properties[k] = jsonSchema(v);
-        if (!v.isOptional()) required.push(k);
-      }
-      // zod strips unknown keys by default (they are accepted and dropped); only a strict object refuses them.
-      return { type: "object", properties, ...(required.length ? { required } : {}), ...(def.unknownKeys === "strict" ? { additionalProperties: false } : {}) };
-    }
-    case "ZodString": {
-      const out: Json = { type: "string" };
-      for (const c of def.checks as Array<{ kind: string; value?: number; regex?: RegExp }>) {
-        if (c.kind === "min") out.minLength = c.value;
-        else if (c.kind === "max") out.maxLength = c.value;
-        else if (c.kind === "length") out.minLength = out.maxLength = c.value;
-        else if (c.kind === "email") out.format = "email";
-        else if (c.kind === "uuid") out.format = "uuid";
-        else if (c.kind === "url") out.format = "uri";
-        else if (c.kind === "regex") out.pattern = c.regex!.source;
-        else if (c.kind === "datetime") out.format = "date-time";
-        else if (c.kind === "date") out.format = "date";
-        else if (c.kind !== "trim" && c.kind !== "toLowerCase" && c.kind !== "toUpperCase") throw new UnsupportedSchema(`string check ${c.kind}`);
-      }
-      return out;
-    }
-    case "ZodNumber": {
-      const out: Json = { type: "number" };
-      for (const c of def.checks as Array<{ kind: string; value?: number; inclusive?: boolean }>) {
-        if (c.kind === "int") out.type = "integer";
-        else if (c.kind === "min") out[c.inclusive ? "minimum" : "exclusiveMinimum"] = c.value;
-        else if (c.kind === "max") out[c.inclusive ? "maximum" : "exclusiveMaximum"] = c.value;
-        else if (c.kind === "finite") continue;
-        else throw new UnsupportedSchema(`number check ${c.kind}`);
-      }
-      return out;
-    }
-    case "ZodBoolean":
-      return { type: "boolean" };
-    case "ZodEnum":
-      return { type: "string", enum: [...(def.values as string[])] };
-    case "ZodLiteral":
-      return { const: def.value };
-    case "ZodArray": {
-      const out: Json = { type: "array", items: jsonSchema(def.type) };
-      if (def.minLength) out.minItems = def.minLength.value;
-      if (def.maxLength) out.maxItems = def.maxLength.value;
-      return out;
-    }
-    case "ZodRecord":
-      return { type: "object", additionalProperties: jsonSchema(def.valueType) };
-    case "ZodOptional":
-      return jsonSchema(def.innerType);
-    case "ZodNullable": {
-      const inner = jsonSchema(def.innerType);
-      return { anyOf: [inner, { type: "null" }] };
-    }
-    case "ZodDefault":
-      return { ...jsonSchema(def.innerType), default: def.defaultValue() };
-    case "ZodEffects":
-      return jsonSchema(def.schema);
-    case "ZodUnion":
-      return { anyOf: (def.options as z.ZodTypeAny[]).map(jsonSchema) };
-    case "ZodUnknown":
-    case "ZodAny":
-      return {};
-    default:
-      throw new UnsupportedSchema(def.typeName);
+/**
+ * A zod schema as JSON Schema 2020-12 (what OpenAPI 3.1 uses), from zod 4's own export (S1). Input form: a field with
+ * a default is optional, as a caller sees it. A schema JSON cannot describe (a date, a transform) is refused.
+ */
+export function jsonSchema(schema: z.ZodType): Json {
+  try {
+    const { $schema: _drop, ...out } = z.toJSONSchema(schema, { target: "draft-2020-12", io: "input", unrepresentable: "throw" }) as Json;
+    return out;
+  } catch (e) {
+    throw new UnsupportedSchema((e as Error).message);
   }
 }
 

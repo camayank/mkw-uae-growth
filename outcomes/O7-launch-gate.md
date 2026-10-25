@@ -35,7 +35,7 @@ on-time rate, margin, issues found and fixed, and a go / no-go for launch.
 | Ops command centre and event outbox: nothing sent twice, nothing lost, doubtful deliveries go to a person | O11 |
 | Client experience: next action, timeline, proposal, conversational intake, checked uploads | O12 |
 | Nothing fails silently: configuration checked at start, structured logs, job runs and alerts, the System page, nightly audit check, idempotency keys, row locks with race tests on PostgreSQL, a load test, an OpenAPI contract | O13, `docs/evidence/O13/` |
-| Dependency audit: Fastify, csv-parse and fast-uri patched; zod bounded by body caps; development tools assessed | D70, `docs/SECURITY-BRIEF.md` |
+| Dependency audit: Fastify, csv-parse and fast-uri patched; zod migrated to 4 (S1); development tools assessed; `pnpm audit --prod` clean | D70, D71, `docs/SECURITY-BRIEF.md` |
 | A brief for the outside security reviewer: what the platform holds, its defences and where to look, what to try | `docs/SECURITY-BRIEF.md` |
 
 ## What is waiting on the owner, in order

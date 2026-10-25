@@ -111,9 +111,7 @@ in a browser; everything listed here is not.
 
 ## O7: launch-gate preparation
 
-43. **zod 3 has a memory-exhaustion advisory** (fixed only in zod 4). The 1 MB body cap bounds it (25 MB only on file
-    routes) (D70). Migrating every schema to zod 4 is its own change, before or soon after the pilot; zod 4 also has a
-    built-in JSON Schema export that would replace `lib/openapi.ts`'s converter.
+43. ~~zod 3 has a memory-exhaustion advisory.~~ Closed by S1: zod 4.6.7 (D71); the body caps stay as defence in depth.
 44. **Development tools carry advisories** (vitest, vite, tinypool, esbuild through tsx, playwright). None ships in
     the image or listens anywhere reachable; upgrade them with the next tooling change.
 45. **Uploads are not scanned.** Files are checked by extension and size, stored privately and only ever downloaded

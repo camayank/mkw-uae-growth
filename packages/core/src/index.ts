@@ -13,3 +13,4 @@ export * from "./advice.ts";
 export * from "./scorecard.ts";
 export * from "./reporting.ts";
 export * from "./obligations.ts";
+export * from "./triage.ts";

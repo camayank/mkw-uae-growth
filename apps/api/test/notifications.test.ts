@@ -262,6 +262,9 @@ describe("ops digest rule", () => {
     const rows = await digests();
     expect(rows.map((r) => r.to_email).sort()).toEqual([EMAILS.founder, EMAILS.ops].sort());
     expect(rows[0].body).toContain("Offers ready to publish: 1");
+    // O11: the digest reads the ranked queue: what waits, what is late, what came in since the last digest.
+    expect(rows[0].body).toMatch(/(\d+) item\(s\) wait for a person: 0 past their target, \1 new since the last digest/);
+    expect(rows[0].body).toContain("Everything else: ");
     expect(rows[0].body).not.toMatch(/tasees/i);
     env.clock.now = new Date("2026-10-19T05:30:00Z"); // 09:30 GST, same day
     expect((await env.call("founder", "POST", "/api/ops/jobs/run")).body.opsDigests).toBe(0);

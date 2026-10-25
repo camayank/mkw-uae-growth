@@ -142,7 +142,8 @@ describe("government fee table", () => {
   });
 
   it("a fee verified more than 90 days ago is stale and goes back to review", async () => {
-    await asPlatform(env.db, null, (tx) => tx.query("update government_fees set verified_at = (app_now()::date - 91) where free_zone = 'IFZA'"));
+    // 91 days before the application's clock, not the machine's: the app judges staleness on its own clock.
+    await asPlatform(env.db, null, (tx) => tx.query("update government_fees set verified_at = ($1::date - 91) where free_zone = 'IFZA'", [env.clock.now.toISOString().slice(0, 10)]));
     const { offer, line } = await build();
     expect(line.status).toBe("ops_review");
     expect(line.reason).toMatch(/over 90 days ago/);

@@ -23,6 +23,9 @@ import type { PaymentProvider } from "./lib/payments.ts";
 import { issueHeldInvoices, loadCompany, refundPayment, statement, updateCompany } from "./services/invoices.ts";
 import { approveAdvice, recomputeAdvice, requestScoping, scopingOverview, search, verifyRule, verifyZone } from "./services/scoping.ts";
 import { draftScopeForRequest, listDrafts, reviewDraft } from "./services/drafts.ts";
+import { registerDocumentChecker } from "./services/doccheck.ts";
+import { openQueueItem, opsQueue, syncQueueTimings } from "./services/queue.ts";
+import { resolveOutbox } from "./lib/outbox.ts";
 import { publicIntake, PublicIntakeSchema, listLeads, handleLead } from "./services/intake.ts";
 import type { AiModel } from "./lib/ai.ts";
 import { DOCUMENT_KINDS, invitePartnerStaff, movePartner, partnerOnboarding, recomputeScorecards, reviewDocument, setPartnerStaffActive, submitApplication, uploadDocument as uploadPartnerDocument, scorecardHistory } from "./services/partners.ts";
@@ -94,6 +97,8 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 25 * 1024 * 1024, trustProxy: opts.trustProxy ?? false });
   const db = withClock(opts.db, opts.now);
   const deps: Deps = { notify: opts.notify, now: opts.now, provider: opts.provider, storage: opts.storage };
+  // Agents subscribed to the outbox (O11). The scheduled jobs process registers the same ones.
+  registerDocumentChecker(opts.notify, db, opts.model);
   let arabicFlag: { value: boolean; at: number } | null = null;
 
   // Keep the raw JSON body: the payment webhook signature covers the bytes as sent, not a re-serialisation.
@@ -315,7 +320,11 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     } catch (e) {
       throw badRequest((e as Error).message);
     }
-    await asPlatform(db, user, (tx) => addEvidence(tx, user, req.params.id, { type: body.type, key, name: body.fileName }));
+    // The document checker's event commits with the upload (O11).
+    await asPlatform(db, user, async (tx) => {
+      const ev = await addEvidence(tx, user, req.params.id, { type: body.type, key, name: body.fileName });
+      await opts.notify.emit("document_check", { subject: "evidence", id: ev.id });
+    });
     return { ok: true };
   });
 
@@ -396,6 +405,29 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
 
   // Platform -----------------------------------------------------------------
   app.get("/api/ops/overview", async (req) => opsOverview(db, requireRole(req, ...PLATFORM_ROLES)));
+
+  // The ops command centre (O11): the ranked queue. Computing it also keeps the queue timings in step.
+  app.get("/api/ops/queue", async (req) => {
+    const user = requireRole(req, ...PLATFORM_ROLES);
+    return asPlatform(db, user, async (tx) => {
+      const items = await opsQueue(tx, user, opts.now ? opts.now() : new Date());
+      await syncQueueTimings(tx, items);
+      return { items };
+    });
+  });
+  app.post("/api/ops/queue/open", async (req) => {
+    const user = requireRole(req, ...PLATFORM_ROLES);
+    const { id } = z.object({ id: z.string().min(3).max(120) }).parse(req.body);
+    return asPlatform(db, user, (tx) => openQueueItem(tx, user, id));
+  });
+  app.post<{ Params: { id: string } }>("/api/ops/outbox/:id/resolve", async (req) => {
+    const user = requireRole(req, "ops", "founder");
+    const body = z.object({ action: z.enum(["retry", "mark_delivered", "cancel"]), note: z.string().max(500).default("") }).parse(req.body);
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id < 1) throw badRequest("Unknown message");
+    if (body.action !== "retry" && !body.note.trim()) throw badRequest("Say why: it goes into the record");
+    return asPlatform(db, user, (tx) => resolveOutbox(tx, user, id, body.action, body.note.trim()));
+  });
   app.get<{ Params: { id: string } }>("/api/ops/offers/:id", async (req) => opsOffer(db, requireRole(req, ...PLATFORM_ROLES), req.params.id));
 
   app.get("/api/ops/clients", async (req) => {
@@ -752,7 +784,11 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     const body = fileBody.extend({ kind: z.enum(DOCUMENT_KINDS as [string, ...string[]]), reference: z.string().max(80).optional(), expiresOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }).parse(req.body);
     if (user.orgType === "partner" && user.orgId !== req.params.id) throw forbidden("Not your firm");
     const key = await putFile(req.params.id, body.fileName, body.contentBase64); // the firm's own folder
-    return asPlatform(db, user, (tx) => uploadPartnerDocument(tx, user, req.params.id, { kind: body.kind as (typeof DOCUMENT_KINDS)[number], key, name: body.fileName, reference: body.reference, expiresOn: body.expiresOn }));
+    return asPlatform(db, user, async (tx) => {
+      const doc = await uploadPartnerDocument(tx, user, req.params.id, { kind: body.kind as (typeof DOCUMENT_KINDS)[number], key, name: body.fileName, reference: body.reference, expiresOn: body.expiresOn });
+      await opts.notify.emit("document_check", { subject: "partner_document", id: doc.id });
+      return doc;
+    });
   });
   app.post<{ Params: { id: string } }>("/api/ops/partner-documents/:id/review", async (req) => {
     const user = requireRole(req, "ops", "founder");
@@ -808,7 +844,11 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     const r = await asUser(db, user, async (tx) => (await tx.query<{ engagement_id: string }>("select engagement_id from document_requests where id = $1", [req.params.id])).rows[0]);
     if (!r) throw notFound("Document request not found");
     const key = await putFile(r.engagement_id, body.fileName, body.contentBase64);
-    return asPlatform(db, user, (tx) => uploadClientDocument(tx, user, req.params.id, { key, name: body.fileName }, deps));
+    return asPlatform(db, user, async (tx) => {
+      const r = await uploadClientDocument(tx, user, req.params.id, { key, name: body.fileName }, deps);
+      await opts.notify.emit("document_check", { subject: "document_request", id: req.params.id });
+      return r;
+    });
   });
   app.post<{ Params: { id: string } }>("/api/document-requests/:id/decide", async (req) => {
     const user = requireRole(req, ...PARTNER_ROLES, "ops", "founder");
@@ -933,7 +973,11 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     if (!o || (user.orgType === "client" && o.client_org_id !== user.orgId)) throw notFound("Obligation not found");
     if (!["open", "evidence_uploaded"].includes(o.status)) throw conflict(`Evidence can be attached to an open obligation only (this one is ${o.status})`);
     const key = await putFile(o.client_org_id, body.fileName, body.contentBase64);
-    return asPlatform(db, user, (tx) => uploadObligationEvidence(tx, user, req.params.id, { key, name: body.fileName }));
+    return asPlatform(db, user, async (tx) => {
+      const r = await uploadObligationEvidence(tx, user, req.params.id, { key, name: body.fileName });
+      await opts.notify.emit("document_check", { subject: "obligation", id: req.params.id });
+      return r;
+    });
   });
   app.get<{ Params: { id: string } }>("/api/obligations/:id/file", async (req, reply) => {
     const user = requireUser(req);

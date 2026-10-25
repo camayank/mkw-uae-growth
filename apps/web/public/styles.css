@@ -222,3 +222,18 @@ ul.plain li { padding: 6px 0; border-bottom: 1px solid var(--line); }
   th, td { padding: 8px; }
   th { font-size: 0.72rem; }
 }
+
+/* Ops command centre (O11) */
+.qfilters { flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.chip[aria-pressed="true"] { background: var(--brand); color: var(--brand-ink); border-color: var(--brand); }
+.qlist { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.qitem { background: var(--surface); border: 1px solid var(--line); border-inline-start: 4px solid var(--line); border-radius: var(--radius); padding: 12px 16px; }
+.qitem.overdue { border-inline-start-color: var(--bad); }
+.qitem.due_soon { border-inline-start-color: var(--warn); }
+.qitem.on_track { border-inline-start-color: var(--ok); }
+.qhead { flex-wrap: wrap; gap: 6px; }
+.qtitle { font-size: 1rem; margin: 6px 0 4px; }
+.qwhy { margin: 0 0 4px; }
+.qdraft { background: var(--surface-2); border-radius: 8px; padding: 8px 12px; margin: 8px 0; }
+.qdraft p, .qdraft ul { margin: 4px 0; }
+.qactions { flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }

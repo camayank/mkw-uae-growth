@@ -218,7 +218,7 @@ export async function scorecardInputs(tx: Queryable, partnerId: string, from: st
   const done = (
     await tx.query<{ n: number; on_time: number }>(
       `select count(*)::int as n,
-         count(*) filter (where (select min(a.at) from audit_events a where a.entity = 'milestone' and a.entity_id = m.id::text and a.action = 'milestone.submitted')::date <= m.due_date)::int as on_time
+         count(*) filter (where (m.first_submitted_at at time zone 'Asia/Dubai')::date <= m.due_date)::int as on_time
        from milestones m where m.partner_org_id = $1 and m.status = 'client_approved'
          and (select max(a.at) from audit_events a where a.entity = 'milestone' and a.entity_id = m.id::text and a.action in ('milestone.approved', 'milestone.dispute_approve'))::date between $2 and $3`,
       [partnerId, from, to],
@@ -274,7 +274,7 @@ export async function recomputeScorecards(tx: Queryable, actor: SessionUser | nu
     await tx.query("insert into scorecards (partner_org_id, window_from, window_to, inputs, score, parts, provisional) values ($1,$2,$3,$4,$5,$6,$7)", [p.id, from, to, JSON.stringify(inputs), card.score, JSON.stringify(card.parts), card.provisional]);
     const deliveredOnTime = (await tx.query<{ n: number }>(
       `select count(*)::int as n from milestones m where m.partner_org_id = $1 and m.status = 'client_approved'
-         and (select min(a.at) from audit_events a where a.entity = 'milestone' and a.entity_id = m.id::text and a.action = 'milestone.submitted')::date <= m.due_date`,
+         and (m.first_submitted_at at time zone 'Asia/Dubai')::date <= m.due_date`,
       [p.id],
     )).rows[0]!;
     await patchProfile(tx, p.id, { quality: card.score, changeOrderRate: inputs.changeOrderRate, deliveredOnTime: num(deliveredOnTime.n), scorecardAt: new Date().toISOString() });

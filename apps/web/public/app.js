@@ -1231,6 +1231,9 @@ async function renderDashboard(periodArg) {
       "No work accepted in this period.",
     )}<p class="small muted pad" style="padding-top:0">The 35% fairness cap is measured on this share, per category.</p></div>
     <div class="stack">
+      ${d.queue ? `<div class="card flush"><h2>Ops queue (${esc(c.period.label)})</h2>
+        <p class="small muted" style="padding:0 18px">${d.queue.resolved} item(s) resolved${d.queue.withinTargetRate === null ? "" : `, ${Math.round(d.queue.withinTargetRate * 100)}% within target`}; ${d.queue.opsMinutes} ops minute(s) handling them${d.queue.opsMinutesPerEngagement === null ? "" : `, ${d.queue.opsMinutesPerEngagement} per engagement`} (from opening an item to its leaving the queue, at most 30 minutes each).</p>
+        ${table(["Kind", "#Resolved", "#Median hours waiting", "#Within target"], d.queue.byKind.map((k) => `<tr><td>${esc(words(k.kind))}</td><td class="num">${k.resolved}</td><td class="num">${k.medianHoursInQueue}</td><td class="num">${k.withinTarget}</td></tr>`), "Nothing resolved in this period.")}</div>` : ""}
       <div class="card flush"><h2>Engagements by status</h2>${table(["Status", "#Count"], d.pipeline.map((r) => `<tr><td>${badge(r.status)}</td><td class="num">${r.n}</td></tr>`), "None yet.")}</div>
       <div class="card flush"><h2>Compliance calendar</h2>${table(["Status", "#Count"], d.obligations.map((r) => `<tr><td>${esc(words(r.status))}</td><td class="num">${r.n}</td></tr>`), "No obligations yet.")}</div>
       ${["ops", "finance", "founder"].includes(role()) ? `<div class="card"><h2>Accounting export</h2>
@@ -1345,45 +1348,68 @@ async function renderRateCards() {
 
 // MKW operations --------------------------------------------------------------------------
 
-const EXCEPTION_LABEL = {
-  offer_review: "Offer needs a price decision",
-  offer_ready: "Offer ready to publish",
-  needs_quote: "Needs a request for quote",
-  qa: "Evidence to check",
-  dispute: "Client raised an issue",
-  unallocated: "No partner for some lines",
-  payout: "Payout ready",
-  scoping: "Scoping advice to review",
-  ai_draft: "AI draft to decide",
-  lead: "Public lead for an existing account",
-  delay: "Late step to attribute",
-  obligation: "Compliance date to confirm",
-  obligation_evidence: "Filing evidence to check",
-  credit: "Guarantee credit for finance",
-  partner_document: "Partner document to verify",
-  partner_review: "Partner application to review",
-};
+
+// The ops command centre (O11): one list ranked by risk and target time. The ranking orders; a person decides.
+let queueItems = [];
+let queueFilter = "all";
+const LEVEL_LABEL = { overdue: "Overdue", due_soon: "Due soon", on_track: "On track" };
+const LEVEL_TONE = { overdue: "bad", due_soon: "warn", on_track: "ok" };
+
+function queueDraft(d) {
+  const c = d.check ?? {};
+  const issues = Array.isArray(c.issues) ? c.issues : [];
+  const state = d.status === "pending" ? badge("UNCERTAIN") : badge(d.status === "approved" ? "approved" : "rejected", d.status === "approved" ? "check confirmed" : "check disputed");
+  const buttons =
+    d.status === "pending" && ["ops", "founder"].includes(role())
+      ? `<div class="row"><span class="small muted">Is the check right?</span><button class="sm" data-act="draft-agree" data-id="${esc(d.id)}">Check is right</button><button class="sm" data-act="draft-disagree" data-id="${esc(d.id)}">Check is wrong</button></div>`
+      : "";
+  return `<div class="qdraft"><div class="row between"><span class="small"><b>Document check</b> · ${esc(c.basis ?? "")}</span>${state}</div>
+    <p class="small">${esc(c.summary ?? "")}</p>${issues.length ? `<ul class="small">${issues.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>` : ""}${buttons}</div>`;
+}
+
+function queueCard(x) {
+  const due = x.level === "overdue" ? `was due ${dateTime(x.dueAt)}` : `due ${dateTime(x.dueAt)}`;
+  const buttons = x.actions
+    .map((a, n) => `<button class="sm${a.primary ? " primary" : ""}" data-act="queue-act" data-item="${esc(x.id)}" data-n="${n}">${esc(a.label)}</button>`)
+    .join("");
+  return `<li class="qitem ${esc(x.level)}"><article aria-labelledby="q-${esc(x.id)}">
+    <div class="row between qhead"><div class="row"><span class="badge ${LEVEL_TONE[x.level]}">${LEVEL_LABEL[x.level]}</span><span class="small muted">${esc(x.label)}</span></div><span class="small muted">${esc(due)}</span></div>
+    <h2 id="q-${esc(x.id)}" class="qtitle">${esc(x.detail)}</h2>
+    <p class="qwhy">${esc(x.why)}</p>
+    <p class="small muted">Ranked here because ${esc(x.factors.join("; "))}.</p>
+    ${x.drafts.map(queueDraft).join("")}
+    <div class="row qactions">${buttons}<a href="${esc(x.link)}" data-act="queue-open" data-item="${esc(x.id)}">Open</a></div>
+  </article></li>`;
+}
+
+function drawQueue() {
+  const shown = queueFilter === "all" ? queueItems : queueItems.filter((x) => x.kind === queueFilter);
+  const kinds = [...new Set(queueItems.map((x) => x.kind))];
+  const count = (k) => queueItems.filter((x) => x.kind === k).length;
+  const label = (k) => queueItems.find((x) => x.kind === k)?.label ?? words(k);
+  const filters = `<div class="row qfilters" role="group" aria-label="Show">${[["all", `All (${queueItems.length})`], ...kinds.map((k) => [k, `${label(k)} (${count(k)})`])]
+    .map(([k, l]) => `<button class="sm chip" data-act="queue-filter" data-kind="${esc(k)}" aria-pressed="${queueFilter === k}">${esc(l)}</button>`)
+    .join("")}</div>`;
+  const list = document.getElementById("queue-list");
+  if (!list) return;
+  document.getElementById("queue-filters").innerHTML = queueItems.length ? filters : "";
+  list.innerHTML = shown.length ? shown.map(queueCard).join("") : `<li class="empty">The queue is empty.</li>`;
+}
 
 async function renderQueue() {
-  const o = await api("GET", "/api/ops/overview");
-  const linkFor = (x) =>
-    ["offer_review", "offer_ready"].includes(x.kind) ? `#/offer/${x.ref}` : x.kind === "needs_quote" ? `#/pipeline` : x.kind === "scoping" ? `#/request/${x.ref}` : x.kind === "ai_draft" || x.kind === "lead" ? `#/agent` : x.kind === "delay" || x.kind === "credit" ? `#/delays` : x.kind === "obligation" || x.kind === "obligation_evidence" ? `#/compliance` : x.kind === "partner_document" ? `#/partners` : x.kind === "partner_review" ? `#/partner/${x.ref}` : `#/engagement/${x.ref}`;
-  const counts = Object.fromEntries(Object.keys(EXCEPTION_LABEL).map((k) => [k, o.exceptions.filter((x) => x.kind === k).length]));
+  const o = await api("GET", "/api/ops/queue");
+  queueItems = o.items;
+  if (queueFilter !== "all" && !queueItems.some((x) => x.kind === queueFilter)) queueFilter = "all";
+  const overdue = queueItems.filter((x) => x.level === "overdue").length;
+  const soon = queueItems.filter((x) => x.level === "due_soon").length;
   $app.innerHTML = `
   <h1>What needs a person today</h1>
-  <p class="muted">Everything else runs on its own: pricing from rate cards, allocation, reminders, auto-approval after 5 working days.${o.seesMargin ? "" : " Margin figures are visible to finance and the founder only."}</p>
-  <div class="kpis">${Object.entries(EXCEPTION_LABEL)
-    .map(([k, l]) => `<div class="kpi"><b>${counts[k]}</b><span>${esc(l)}</span></div>`)
-    .join("")}</div>
-  <div class="card flush">${table(
-    ["Since", "Kind", "Detail", ""],
-    o.exceptions.map(
-      (x) => `<tr><td>${dateTime(x.at)}</td><td>${badge(x.kind === "dispute" ? "disputed" : x.kind === "payout" ? "eligible" : "pending", EXCEPTION_LABEL[x.kind] ?? x.kind)}</td>
-      <td>${esc(x.detail)}</td><td><a href="${linkFor(x)}">Open</a></td></tr>`,
-    ),
-    "The queue is empty.",
-  )}</div>
+  <p class="muted">Everything else runs on its own: pricing from rate cards, allocation, reminders, auto-approval after 5 working days. The list is ordered by risk and target time; the order never decides anything.</p>
+  <div class="kpis"><div class="kpi"><b>${queueItems.length}</b><span>Waiting</span></div><div class="kpi"><b>${overdue}</b><span>Past their target</span></div><div class="kpi"><b>${soon}</b><span>Due within 2 working hours</span></div></div>
+  <div id="queue-filters"></div>
+  <ol id="queue-list" class="qlist" aria-label="Queue, highest risk first"></ol>
   <div class="row" style="margin-top:12px"><button class="sm" data-act="run-jobs">Run timers now</button><span class="small muted">Checks partner reply deadlines, client auto-approvals and offer expiry. Runs every 15 minutes on its own.</span></div>`;
+  drawQueue();
 }
 
 async function renderPipeline() {
@@ -1738,10 +1764,10 @@ async function renderAgentQueue() {
   const canAct = ["ops", "founder"].includes(role());
   const leads = canAct ? (await api("GET", "/api/ops/leads")).filter((l) => l.status === "held") : [];
   $app.innerHTML = `<h1>AI review queue</h1>
-  <p class="muted">Drafts written by the model from what founders typed. Nothing here changes a request or reaches a client until a person approves it; discarded drafts are kept for the record.</p>
+  <p class="muted">Drafts written by the model: scopes from what founders typed, and first checks of uploaded documents. Nothing here changes a request, a document or what a client sees until a person approves it; discarded drafts are kept for the record.</p>
   <div class="stack">${
     drafts.length
-      ? drafts.map((d) => `<form class="card" data-form="draft" data-id="${d.id}"><div class="row between"><h2>${esc(words(d.kind))} draft for ${esc(d.client ?? "")} ${badge("UNCERTAIN")}</h2><span class="small muted">${dateTime(d.createdAt)} · model ${esc(d.model)}</span></div>
+      ? drafts.map((d) => d.kind === "document_check" ? `<div class="card"><div class="row between"><h2>Document check: ${esc(d.input?.fileName ?? "")}</h2><span class="small muted">${dateTime(d.createdAt)} · model ${esc(d.model)}</span></div>${queueDraft({ ...d, check: d.output })}</div>` : `<form class="card" data-form="draft" data-id="${d.id}"><div class="row between"><h2>${esc(words(d.kind))} draft for ${esc(d.client ?? "")} ${badge("UNCERTAIN")}</h2><span class="small muted">${dateTime(d.createdAt)} · model ${esc(d.model)}</span></div>
         <p class="small muted">In the founder's words: <span style="white-space:pre-wrap">${esc(d.input?.description ?? "")}</span></p>
         ${d.output?.lines?.length ? `<ul class="plain">${d.output.lines.map((l) => `<li><label><input type="checkbox" name="keep" value="${esc(l.code)}" checked /> ${esc(nameOf(l.code))}${l.qty > 1 ? ` ×${l.qty}` : ""} <span class="small muted">(${esc(l.why)})</span></label></li>`).join("")}</ul>` : `<p class="small">No lines suggested.</p>`}
         ${d.output?.flags?.length ? `<p class="small">Flags: ${esc(d.output.flags.join("; "))}</p>` : ""}
@@ -2067,6 +2093,37 @@ document.addEventListener("click", (ev) => {
       const flagged = Number(el.dataset.review || 0);
       if (flagged && !confirm(`${flagged} line(s) are flagged (margin below the floor or a government fee that is UNCERTAIN or stale). Publishing records that you checked them. Publish?`)) return;
       act(() => api("POST", `/api/ops/offers/${id}/publish`, { acknowledgeReview: flagged > 0 }), "Published to the client");
+    },
+    "queue-filter": () => {
+      queueFilter = el.dataset.kind;
+      drawQueue();
+      translatePage();
+    },
+    "queue-open": () => {
+      // Handling time starts when a person opens the item; the link still navigates as usual.
+      api("POST", "/api/ops/queue/open", { id: el.dataset.item }).catch(() => {});
+    },
+    "queue-act": () => {
+      const item = queueItems.find((x) => x.id === el.dataset.item);
+      const a = item?.actions[Number(el.dataset.n)];
+      if (!a) return;
+      let body = { ...a.body };
+      if (a.prompt) {
+        const note = prompt(a.prompt, "");
+        if (note === null) return;
+        if (!/optional/i.test(a.prompt) && !note.trim()) return toast("A note is needed for this one", true);
+        body = { ...body, note: note.trim() };
+      }
+      act(async () => {
+        await api("POST", "/api/ops/queue/open", { id: item.id }).catch(() => {});
+        await api(a.method, a.path, body);
+      }, `${a.label}: done`);
+    },
+    "draft-agree": () => act(() => api("POST", `/api/ops/drafts/${id}/review`, { decision: "approve" }), "Recorded: you agree with the check"),
+    "draft-disagree": () => {
+      const note = prompt("What is wrong with the check? (optional)", "");
+      if (note === null) return;
+      act(() => api("POST", `/api/ops/drafts/${id}/review`, { decision: "discard", note }), "Recorded: you disagree with the check");
     },
     "run-jobs": () =>
       act(async () => {

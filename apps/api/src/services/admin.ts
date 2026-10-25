@@ -269,6 +269,21 @@ export async function erasePerson(tx: Queryable, actor: SessionUser, userId: str
     "update notifications set to_email = $2, subject = $3, body = '', vars = '{}'::jsonb where user_id = $1 or to_email = $4 returning id",
     [userId, tombstoneEmail(userId), TOMBSTONE_TEXT, user.email],
   );
+  // Messages still in the outbox (O11): the address and the wording go; anything not yet sent is cancelled.
+  const outbox = await tx.query(
+    `update outbox set payload = jsonb_set(jsonb_set(payload, '{to}', to_jsonb($2::text)), '{vars}', '{}'::jsonb),
+       status = case when status in ('pending', 'failed', 'unknown') then 'cancelled' else status end,
+       resolution = case when status in ('pending', 'failed', 'unknown') then 'cancelled: recipient erased' else resolution end
+     where topic = 'notify' and payload->>'to' = $1 returning id`,
+    [user.email, tombstoneEmail(userId)],
+  );
+  // The document checker's drafts about their uploads quote the file name: it goes, the verdict stays.
+  await tx.query(
+    `update ai_drafts set input = jsonb_set(input, '{fileName}', to_jsonb($2::text)), output = jsonb_set(output, '{summary}', to_jsonb($2::text))
+     where kind = 'document_check' and ((subject_type = 'document_request' and subject_id in (select id from document_requests where uploaded_by = $1))
+       or (subject_type = 'obligation' and subject_id in (select id from obligations where evidence_uploaded_by = $1)))`,
+    [userId, TOMBSTONE_TEXT],
+  );
   const leads = await tx.query("update intake_leads set email = $2, name = $3, company = $3, answers = '{}'::jsonb, ip = null where email = $1 returning id", [user.email, tombstoneEmail(userId), TOMBSTONE_NAME]);
   // Their words in ratings go; the stars stay (the partner's scorecard already counted them).
   const ratings = await tx.query("update ratings set comment_original = '', comment_shown = '' where author_user_id = $1 returning id", [userId]);
@@ -290,6 +305,7 @@ export async function erasePerson(tx: Queryable, actor: SessionUser, userId: str
     signInCodesDeleted: codes.rows.length,
     messagesTombstoned: messages.rows.length,
     notificationsTombstoned: notices.rows.length,
+    outboxTombstoned: outbox.rows.length,
     leadsTombstoned: leads.rows.length,
     ratingCommentsCleared: ratings.rows.length,
     documentFilesDetached: docKeys.length,

@@ -1,3 +1,4 @@
+import { opsQueue } from "./queue.ts";
 import { serialize, type Role } from "@tasees/core";
 import { asPlatform, asUser, type SessionUser } from "../lib/context.ts";
 import { num, type Database, type Queryable } from "../lib/db.ts";
@@ -291,49 +292,14 @@ export function opsEngagement(db: Database, user: SessionUser, engagementId: str
   });
 }
 
+/**
+ * The ops queue as a flat list (kind, ref, detail, arrival), for the overview and the digest. Since O11 it is the
+ * ranked command-centre queue, so every consumer sees the same items in the same order.
+ */
 export async function exceptionQueue(tx: Queryable) {
-  const rows = await tx.query<{ kind: string; ref: string; detail: string; at: string }>(
-    `select 'offer_review' as kind, id::text as ref, 'Offer needs review: ' || lines_needing_review || ' line(s)' as detail, created_at::text as at
-       from offers where status = 'ops_review'
-     union all
-     select 'offer_ready', id::text, 'Draft offer ready to publish (' || tier || ')', created_at::text from offers where status = 'draft'
-     union all
-     select 'needs_quote', id::text, 'No rate card for part of this request: open a request for quote', created_at::text
-       from requests where status = 'quoting'
-     union all
-     select 'qa', m.engagement_id::text, 'Evidence to check: ' || m.name, m.updated_at::text from milestones m where m.status = 'evidence_submitted'
-     union all
-     select 'dispute', m.engagement_id::text, 'Client raised an issue: ' || coalesce(m.dispute_reason, ''), m.updated_at::text
-       from milestones m where m.status = 'disputed'
-     union all
-     select 'unallocated', e.id::text, 'Lines with no partner and no open offer', e.created_at::text from engagements e
-       where e.status = 'allocating' and exists (
-         select 1 from engagement_lines l where l.engagement_id = e.id and l.partner_org_id is null
-           and not exists (select 1 from allocations a where a.engagement_id = e.id and l.code = any(a.codes)
-                           and a.accepted_at is null and a.declined_at is null and a.timed_out_at is null))
-     union all
-     select 'payout', p.engagement_id::text, 'Payout ready to release: ' || p.stage, app_now()::text from payouts p where p.status = 'eligible'
-     union all
-     select 'scoping', r.id::text, 'Scoping advice to review before the client sees it', r.created_at::text from requests r where r.advice_status = 'pending_review'
-     union all
-     select 'ai_draft', d.id::text, 'AI draft waiting for a decision (' || d.kind || ')', d.created_at::text from ai_drafts d where d.status = 'pending'
-     union all
-     select 'lead', l.id::text, 'Public lead for an email that already has an account: ' || l.company, l.created_at::text from intake_leads l where l.status = 'held'
-     union all
-     select 'delay', d.id::text, 'Late step to attribute: ' || m.name, d.noticed_at::text from delays d join milestones m on m.id = d.milestone_id where d.cause is null and m.status <> 'client_approved'
-     union all
-     select 'credit', g.id::text, 'Service guarantee credit for finance to decide', g.created_at::text from guarantee_credits g where g.status = 'pending'
-     union all
-     select 'partner_document', pd.id::text, 'Partner document to verify: ' || pd.kind || ' (' || o.name || ')', pd.uploaded_at::text from partner_documents pd join orgs o on o.id = pd.partner_org_id where pd.status = 'uploaded'
-     union all
-     select 'obligation', ob.id::text, 'Compliance date to confirm: ' || ob.title || ' (' || c.name || ')', ob.created_at::text from obligations ob join orgs c on c.id = ob.client_org_id where ob.status = 'pending_review'
-     union all
-     select 'obligation_evidence', ob.id::text, 'Filing evidence to check: ' || ob.title || ' (' || c.name || ')', ob.evidence_uploaded_at::text from obligations ob join orgs c on c.id = ob.client_org_id where ob.status = 'evidence_uploaded'
-     union all
-     select 'partner_review', o.id::text, 'Partner application to review: ' || o.name, (o.profile->>'appliedAt')::timestamptz::text from orgs o where o.type = 'partner' and o.profile->>'status' = 'applied'
-     order by at`,
-  );
-  return rows.rows;
+  const now = (await tx.query<{ n: Date }>("select app_now() as n")).rows[0]!.n;
+  const items = await opsQueue(tx, null, new Date(now));
+  return items.map((i) => ({ kind: i.kind, ref: i.ref, detail: i.detail, at: i.at, level: i.level }));
 }
 
 export function auditTrail(db: Database, user: SessionUser, limit = 200) {

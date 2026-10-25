@@ -566,6 +566,40 @@ await newPartnerAdmin.locator('form[data-form="partner-doc"] button[type="submit
 await newPartnerAdmin.waitForTimeout(800);
 await eventually("trade licence uploaded, awaiting MKW check:", async () => /awaiting MKW check/.test(await newPartnerAdmin.locator("main").innerText()));
 await shot(newPartnerAdmin, "44-partner-firm");
+// O11 command centre: the licence waits in the ranked queue with why it is there and the document check beside it.
+await ops.goto(BASE + "/#/home"); await ops.reload();
+await ops.waitForSelector("#queue-list");
+await eventually("command centre says why the partner document is waiting:", async () => /a firm cannot move to pilot, or keep working, on an unverified document/.test(await ops.locator("#queue-list").innerText()));
+const licenceItem = ops.locator(".qitem", { hasText: "trade-licence.pdf" });
+await eventually("the document check sits beside it, UNCERTAIN, read from the name only:", async () => {
+  const t = await licenceItem.innerText();
+  return /trade-licence\.pdf looks like a trade licence/.test(t) && /UNCERTAIN/.test(t) && /file itself was not read/.test(t);
+});
+check("every queue item says why it is ranked where it is:", (await ops.locator(".qitem").count()) > 0 && (await ops.locator(".qitem").count()) === (await ops.locator(".qitem", { hasText: "Ranked here because" }).count()));
+check("the licence item offers Verify and Reject as one click:", (await licenceItem.locator('button[data-act="queue-act"]').allInnerTexts()).join(",") === "Verify,Reject");
+await shot(ops, "70-ops-command-centre");
+await axeCheck(ops, "ops command centre (O11)");
+await ops.locator('button[data-act="queue-filter"]', { hasText: "Partner document to verify" }).click();
+check("the filter shows one kind and says it is pressed:", (await ops.locator(".qitem").count()) === (await ops.locator(".qitem", { hasText: "Partner document to verify" }).count()) && (await ops.locator('button[data-act="queue-filter"][aria-pressed="true"]').innerText()).startsWith("Partner document to verify"));
+await licenceItem.locator('button[data-act="draft-agree"]').click();
+check("one click records that the check is right:", await toastHas(ops, /you agree with the check/));
+await eventually("the check now shows as confirmed:", async () => /check confirmed/.test(await ops.locator(".qitem", { hasText: "trade-licence.pdf" }).innerText()));
+{
+  const mctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+  const mops = await mctx.newPage();
+  mops.on("pageerror", (e) => errors.push(`O11 mobile: ${e.message}`));
+  await mops.goto(BASE + "/");
+  await mops.locator('button[data-email="ops@mkwadvisors.test"]').click();
+  await mops.locator('form[data-form="verify"] button[type="submit"]').click();
+  await mops.waitForSelector("#nav > :is(a, .navgroup)");
+  await mops.goto(BASE + "/#/home"); await mops.reload();
+  await mops.waitForSelector(".qitem");
+  check("command centre at 390 px has no horizontal overflow:", !(await mops.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
+  await mops.screenshot({ path: `${OUT}/71-mobile-command-centre.png`, fullPage: false });
+  log.push("71-mobile-command-centre");
+  await axeCheck(mops, "ops command centre at 390 px (O11)");
+  await mctx.close();
+}
 // Ops verifies the licence and moves the firm to pilot
 await founder.reload();
 await founder.waitForSelector('button[data-act="doc-review"][data-decision="verified"]');

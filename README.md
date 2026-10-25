@@ -21,7 +21,7 @@ Needs Node 22 and pnpm 10.
 pnpm install
 pnpm seed          # catalogue, margin rules and demo parties (invented firm names) into ./apps/api/data/pglite
 pnpm dev           # http://localhost:8787 with development sign-in (codes shown on screen)
-pnpm test          # 235 tests: pricing, allocation, rules, full HTTP flow, database security, admin, PDPL, storage
+pnpm test          # 254 tests: pricing, allocation, rules, full HTTP flow, database security, admin, PDPL, storage
 pnpm typecheck
 pnpm build         # compiles to dist/; `pnpm start` then runs the compiled build (what production and the Dockerfile run)
 npx playwright install chromium && pnpm smoke   # browser smoke test against a running demo; screenshots in ./smoke-shots
@@ -77,6 +77,9 @@ apps/api          Fastify 5 + zod + Postgres (pg in production, PGlite in dev an
   src/services/admin.ts  organisations, people, PDPL export and erasure, retention settings
   src/lib/storage.ts     evidence files: memory (tests), local disk (development), S3-compatible bucket (production)
   src/lib/notify.ts      notifications: recorded in the database, delivered by memory/console/Amazon SES transports
+  src/lib/outbox.ts      event outbox and dispatcher: side effects written with the change, retried, never sent twice (O11)
+  src/services/queue.ts  the ops command centre: ranked queue (packages/core triage.ts), one-click actions, timings (O11)
+  src/services/doccheck.ts  the document checker, the outbox's first agent subscriber (O11)
   src/lib/templates.ts   the eleven message templates, branded by audience
   src/services/rules.ts  margin rule versions with effective dates, pricing settings, government fee table
   src/services/invoices.ts  tax invoices, credit notes, statements; src/lib/pdf.ts writes the PDFs

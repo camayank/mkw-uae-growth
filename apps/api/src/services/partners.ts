@@ -163,6 +163,8 @@ export async function movePartner(tx: Queryable, actor: SessionUser, orgId: stri
   if (to === "paused") Object.assign(patch, { pausedFrom: from, pausedReason: "manual", pausedAt: new Date().toISOString() });
   else Object.assign(patch, { pausedFrom: null, pausedReason: null });
   if (to === "signed") patch.signedAt = new Date().toISOString();
+  // An application MKW records by hand arrives in the queue now (the partner's own submission sets it the same way).
+  if (to === "applied" && !p.profile.appliedAt) patch.appliedAt = (await tx.query<{ n: string }>("select app_now()::text as n")).rows[0]!.n;
   await patchProfile(tx, orgId, patch);
   await audit(tx, actor, "partner.status_changed", "org", orgId, { from, to, note });
   // An admin added by the import waits as `invite_pending` and cannot sign in; MKW moving the firm to pilot is

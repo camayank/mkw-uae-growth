@@ -1,4 +1,4 @@
-import { QUEUE_POLICY, rankQueue, workingHoursBetween, type QueueKind, type QueueSignals, type WorkCalendar } from "@tasees/core";
+import { addWorkingHours, QUEUE_POLICY, rankQueue, workingHoursBetween, type QueueKind, type QueueSignals, type WorkCalendar } from "@tasees/core";
 import type { SessionUser } from "../lib/context.ts";
 import type { Queryable } from "../lib/db.ts";
 import { badRequest } from "../lib/errors.ts";
@@ -37,8 +37,6 @@ export interface QueueAction {
   body: Record<string, unknown>;
   /** Ask the person for a note first; it goes into the body under `note`. */
   prompt?: string;
-  /** Only these roles see the button (others open the item instead). */
-  roles?: string[];
   primary?: boolean;
 }
 
@@ -105,7 +103,7 @@ select 'ai_draft', d.id::text, d.id::text, d.engagement_id::text, null, 'AI draf
   from ai_drafts d where d.status = 'pending' and d.kind <> 'document_check'
 union all
 select 'document_check', d.id::text, d.id::text, d.engagement_id::text, null, 'Document check to confirm: ' || coalesce(dr.kind, 'document'), d.created_at,
-       jsonb_build_object('file', d.input->>'fileName', 'kind', dr.kind, 'summary', d.output->>'summary'), false, true, false
+       jsonb_build_object('file', dr.file_name, 'kind', dr.kind, 'summary', d.output->>'summary'), false, true, false
   from ai_drafts d left join document_requests dr on dr.id = d.subject_id
  where d.status = 'pending' and d.kind = 'document_check' and d.subject_type = 'document_request'
 union all
@@ -133,7 +131,7 @@ select 'obligation_evidence', ob.id::text, ob.id::text, ob.engagement_id::text, 
        jsonb_build_object('title', ob.title, 'client', c.name), true, false, false
   from obligations ob join orgs c on c.id = ob.client_org_id where ob.status = 'evidence_uploaded'
 union all
-select 'partner_review', o.id::text, o.id::text, null, o.id::text, 'Partner application to review: ' || o.name, (o.profile->>'appliedAt')::timestamptz,
+select 'partner_review', o.id::text, o.id::text, null, o.id::text, 'Partner application to review: ' || o.name, coalesce((o.profile->>'appliedAt')::timestamptz, o.created_at),
        jsonb_build_object('firm', o.name), false, true, false
   from orgs o where o.type = 'partner' and o.profile->>'status' = 'applied'
 union all
@@ -170,7 +168,7 @@ function why(r: Row): string {
     case "unallocated":
       return `Some lines for ${str(i.client)} have no partner and no open offer to one, so delivery cannot start on them.`;
     case "payout":
-      return `The ${str(i.stage).replace("_", " ")} payout to ${str(i.partner)} is eligible; it is paid once finance releases it.`;
+      return `The ${str(i.stage).replace("_", " ")} payout to ${str(i.partner)} is eligible; it goes out in the weekly payout run once the partner's invoice is in and finance releases it.`;
     case "scoping":
       return `Rules produced scoping advice for the request from ${str(i.client)}; the client sees it only after a person reviews it.`;
     case "ai_draft":
@@ -248,15 +246,9 @@ function actionsFor(r: Row): QueueAction[] {
         { label: "Pass", method: "POST", path: `/api/ops/milestones/${id}/qa`, body: { pass: true }, primary: true },
         { label: "Send back", method: "POST", path: `/api/ops/milestones/${id}/qa`, body: { pass: false }, prompt: "What does the partner need to fix?" },
       ];
-    case "payout":
-      return [{ label: "Release", method: "POST", path: `/api/ops/payouts/${id}/release`, body: {}, roles: ["finance", "founder"], primary: true }];
-    case "scoping":
-      return [{ label: "Approve advice", method: "POST", path: `/api/ops/requests/${id}/scoping/approve`, body: {}, primary: true }];
-    case "ai_draft":
-      return [
-        { label: "Approve", method: "POST", path: `/api/ops/drafts/${id}/review`, body: { decision: "approve" }, primary: true },
-        { label: "Discard", method: "POST", path: `/api/ops/drafts/${id}/review`, body: { decision: "discard" }, prompt: "Why discard it? (optional)" },
-      ];
+    // Scoping advice, a scope draft and an obligation date are statutory or client-facing content the card does not
+    // show: they open their own page, where the person reads what they approve (rule 5). Payouts go out in the
+    // weekly run once the partner's invoice is in, from the payouts page.
     case "document_check":
       return review(id);
     case "lead":
@@ -275,8 +267,6 @@ function actionsFor(r: Row): QueueAction[] {
         { label: "Verify", method: "POST", path: `/api/ops/partner-documents/${id}/review`, body: { decision: "verified" }, primary: true },
         { label: "Reject", method: "POST", path: `/api/ops/partner-documents/${id}/review`, body: { decision: "rejected" }, prompt: "Why is it rejected?" },
       ];
-    case "obligation":
-      return [{ label: "Confirm date", method: "POST", path: `/api/ops/obligations/${id}/confirm`, body: {}, prompt: "How was the date checked?", primary: true }];
     case "obligation_evidence":
       return [{ label: "Mark met", method: "POST", path: `/api/ops/obligations/${id}/met`, body: {}, primary: true }];
     case "delivery_failed":
@@ -286,7 +276,7 @@ function actionsFor(r: Row): QueueAction[] {
       ];
     case "delivery_unknown":
       return [
-        { label: "Mark delivered", method: "POST", path: `/api/ops/outbox/${id}/resolve`, body: { action: "mark_delivered" }, prompt: "How did you confirm it arrived?", primary: true },
+        { label: "Mark delivered", method: "POST", path: `/api/ops/outbox/${id}/resolve`, body: { action: "mark_delivered" }, prompt: "How did you confirm it arrived? (kept in the audit trail: no personal details)", primary: true },
         { label: "Send again", method: "POST", path: `/api/ops/outbox/${id}/resolve`, body: { action: "retry" }, prompt: "Note for the record (optional)" },
         { label: "Cancel", method: "POST", path: `/api/ops/outbox/${id}/resolve`, body: { action: "cancel" }, prompt: "Why is it not sent?" },
       ];
@@ -317,8 +307,8 @@ async function overdueDocuments(tx: Queryable, now: Date, cal: WorkCalendar): Pr
     engagement_id: engagementId,
     partner_org_id: g.rows[0]!.partner_org_id,
     detail: `${g.rows.length} client document(s) overdue`,
-    // The item arrives when the documents become overdue, not when they were asked for.
-    at: g.first.toISOString(),
+    // The item arrives when the documents become overdue, not when they were asked for: its target runs from there.
+    at: addWorkingHours(g.first, DOCUMENTS_OVERDUE_HOURS, cal).toISOString(),
     info: { count: g.rows.length, client: g.rows[0]!.client, days: Math.floor(workingHoursBetween(g.first, now, cal) / 9) },
     client_waiting: false,
     partner_waiting: true,
@@ -369,15 +359,16 @@ export async function opsQueue(tx: Queryable, viewer: Pick<SessionUser, "role"> 
         moneyWaiting: r.money_waiting,
         weakPartner: !!r.partner_org_id && weak.has(r.partner_org_id),
       };
-      return { row: r, kind: r.kind, at: new Date(r.at), signals };
+      const at = new Date(r.at);
+      return { row: r, kind: r.kind, at: Number.isFinite(at.getTime()) ? at : now, signals };
     }),
     now,
     cal,
   );
   return ranked.map((t) => {
     const r = t.row;
-    const role = viewer?.role ?? "";
-    const actions = actionsFor(r).filter((a) => !a.roles || a.roles.includes(role));
+    // Only ops and the founder act from the queue; finance reads it and opens items.
+    const actions = ["ops", "founder"].includes(viewer?.role ?? "") ? actionsFor(r) : [];
     return {
       id: `${r.kind}:${r.subject_id}`,
       kind: r.kind,
@@ -394,7 +385,7 @@ export async function opsQueue(tx: Queryable, viewer: Pick<SessionUser, "role"> 
       risk: t.risk,
       factors: t.factors,
       link: linkFor(r),
-      actions: ["ops", "founder"].includes(role) ? actions : actions.filter((a) => a.roles?.includes(role)),
+      actions,
       drafts: draftsFor(r),
     };
   });

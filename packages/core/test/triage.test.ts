@@ -54,6 +54,11 @@ describe("triage", () => {
     expect(ranked[0]!.level).toBe("overdue");
   });
 
+  it("survives a missing or ancient arrival time instead of failing the whole queue", () => {
+    expect(triage({ kind: "partner_review", at: new Date(Number.NaN) }, monday10)).toMatchObject({ level: "on_track" });
+    expect(triage({ kind: "partner_review", at: new Date(0) }, monday10)).toMatchObject({ level: "overdue", risk: 55 });
+  });
+
   it("only orders: every item survives ranking unchanged apart from its triage", () => {
     const items = (Object.keys(QUEUE_POLICY) as QueueKind[]).map((kind, i) => ({ kind, at: hoursLater(monday10, -i), ref: `r${i}` }));
     const ranked = rankQueue(items, monday10);

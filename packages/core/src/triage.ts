@@ -98,9 +98,15 @@ const hours = (h: number) => {
   return `${r} working hour${r === 1 ? "" : "s"}`;
 };
 
+/** Arrival times older than this are counted from here: the result is the same (long overdue) and the clock stays fast. */
+export const OLDEST_ARRIVAL_DAYS = 730;
+
 export function triage(item: TriageItem, now: Date, cal: WorkCalendar = UAE_CALENDAR): Triage {
   const policy = QUEUE_POLICY[item.kind];
-  const dueAt = addWorkingHours(item.at, policy.targetHours, cal);
+  // One bad row (a missing or absurd arrival time) must never take the whole queue down.
+  const oldest = new Date(now.getTime() - OLDEST_ARRIVAL_DAYS * 86_400_000);
+  const at = !Number.isFinite(item.at.getTime()) ? now : item.at < oldest ? oldest : item.at;
+  const dueAt = addWorkingHours(at, policy.targetHours, cal);
   const hoursLeft = now <= dueAt ? workingHoursBetween(now, dueAt, cal) : -workingHoursBetween(dueAt, now, cal);
   const factors: string[] = [];
   let risk = policy.weight;

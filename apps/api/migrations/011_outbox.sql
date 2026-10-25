@@ -38,6 +38,8 @@ alter table ai_drafts add constraint ai_drafts_kind_check check (kind in ('scope
 alter table ai_drafts add column subject_type text check (subject_type in ('evidence', 'document_request', 'partner_document', 'obligation'));
 alter table ai_drafts add column subject_id uuid;
 create index ai_drafts_subject on ai_drafts (subject_type, subject_id);
+-- One check per outbox event, even if a slow run and a recovery both finish it.
+create unique index ai_drafts_check_once on ai_drafts ((input->>'outboxId')) where kind = 'document_check';
 
 -- Queue timings: when a person opened an item from the queue and when it left the queue.
 create table queue_timings (

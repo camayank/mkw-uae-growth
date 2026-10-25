@@ -107,8 +107,10 @@ describe("ops command centre", () => {
   it("shows each role only the buttons it may use, and nothing to clients or partners", async () => {
     expect((await env.call("client", "GET", "/api/ops/queue")).status).toBe(403);
     expect((await env.call("setup", "GET", "/api/ops/queue")).status).toBe(403);
+    // Finance reads the queue and opens items; only ops and the founder act from it.
     const finance = (await env.call("finance", "GET", "/api/ops/queue")).body.items;
-    expect(finance.flatMap((i: any) => i.actions)).toEqual(finance.filter((i: any) => i.kind === "payout").map(() => expect.objectContaining({ label: "Release" })));
+    expect(finance.length).toBeGreaterThan(0);
+    expect(finance.flatMap((i: any) => i.actions)).toEqual([]);
     const ops = (await env.call("ops", "GET", "/api/ops/queue")).body.items;
     expect(ops.flatMap((i: any) => i.actions).some((a: any) => a.label === "Release")).toBe(false);
   });
@@ -141,6 +143,8 @@ describe("ops command centre", () => {
     const q = (await env.call("ops", "GET", "/api/ops/queue")).body.items;
     const overdue = q.find((i: any) => i.id === `documents_overdue:${engagementId}`);
     expect(overdue.why).toMatch(/document\(s\) asked of Sample Trading FZ-LLC \d+ working day\(s\) ago are still missing/);
+    // It arrives when the documents become overdue (27 working hours after the request), and its target runs from there.
+    expect(overdue.hoursLeft).toBeGreaterThan(-1);
     const setup = (await env.call("setup", "GET", "/api/me")).body.orgId;
     const soon = new Date(env.clock.now.getTime() + 20 * 24 * HOUR).toISOString().slice(0, 10);
     await asPlatform(env.db, null, (tx) =>
@@ -149,6 +153,45 @@ describe("ops command centre", () => {
     const licence = (await env.call("ops", "GET", "/api/ops/queue")).body.items.find((i: any) => i.kind === "licence_expiring" && i.ref === setup);
     expect(licence.why).toContain(`trade licence expires on ${soon}; the firm is paused automatically if it lapses`);
     expect(licence.link).toBe(`#/partner/${setup}`);
+  });
+});
+
+describe("queue robustness", () => {
+  let env: TestEnv;
+  beforeAll(async () => {
+    env = await makeEnv();
+  });
+  afterAll(async () => {
+    await env.db.close();
+  });
+
+  it("a partner MKW marks as applied by hand arrives now, and one bad row never breaks the queue", async () => {
+    const created = await env.call("founder", "POST", "/api/admin/partners", { name: "Hand Applied LLC", adminName: "Admin", adminEmail: "admin@hand-applied.test" });
+    expect(created.status).toBe(200);
+    const id = created.body.orgId ?? created.body.id;
+    for (const status of ["contacted", "applied"]) expect((await env.call("ops", "POST", `/api/ops/partners/${id}/status`, { status, note: "by hand" })).status).toBe(200);
+    const q = await env.call("ops", "GET", "/api/ops/queue");
+    expect(q.status).toBe(200);
+    expect(q.body.items.find((i: any) => i.id === `partner_review:${id}`)).toMatchObject({ level: "on_track", at: env.clock.now.toISOString() });
+    // Even a row with no arrival time at all is listed rather than failing the page.
+    await asPlatform(env.db, null, (tx) => tx.query("update orgs set profile = profile - 'appliedAt', created_at = 'epoch' where id = $1", [id]));
+    expect((await env.call("ops", "GET", "/api/ops/queue")).status).toBe(200);
+    expect((await env.call("ops", "GET", "/api/ops/overview")).status).toBe(200);
+  });
+
+  it("a document check raised in a transaction that rolls back never runs", async () => {
+    await asPlatform(env.db, null, async () => {
+      await env.notify.emit("document_check", { subject: "evidence", id: "00000000-0000-0000-0000-000000000000" });
+      throw new Error("rollback");
+    }).catch(() => undefined);
+    await env.notify.dispatch();
+    expect(await rows(env, "select 1 from outbox where topic = 'document_check'")).toEqual([]);
+  });
+
+  it("names and ID numbers in a file name never reach the model", async () => {
+    const { redactFileName } = await import("../src/lib/ai.ts");
+    expect(redactFileName("Passport_Ahmed_Khan_784-1990-1234567-1.pdf")).toBe("Passport_x_x_#-#-#-#.pdf");
+    expect(redactFileName("tenancy contract 2026-03-01 Villa 12 Jumeirah.PDF", ["tenancy_contract"])).toBe("tenancy contract 2026-03-01 x # x.pdf");
   });
 });
 

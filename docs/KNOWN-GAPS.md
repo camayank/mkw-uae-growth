@@ -74,8 +74,11 @@ in a browser; everything listed here is not.
 30. **Agent work that keeps failing is only visible in the outbox table.** A message that fails reaches the ops queue;
     a document check that fails five times leaves no draft and no queue item (by design, D54). A screen for it comes with
     O13's job metrics and alerts.
-31. **One-click actions cover the actions that need no input.** Pricing an offer, resolving a dispute, allocating a
-    line, reviewing an application and deciding a credit still open their own page.
+31. **One-click actions cover only what the card shows in full.** Pricing an offer, resolving a dispute, allocating a
+    line, reviewing an application, deciding a credit, approving scoping advice or a scope draft, confirming an
+    obligation date and releasing a payout open their own page (D55).
+32. **A birth date in a file name reaches the model** (D54): dates are kept because expiry and issue dates are what the
+    check needs. Nothing leaves the platform until a real model is connected (O16).
 
 ## Soon after
 
@@ -123,7 +126,7 @@ in a browser; everything listed here is not.
 
 ## Verified so far
 
-- 56 domain tests (`packages/core`) and 198 API tests (`apps/api`), all passing on PGlite and on PostgreSQL 16;
+- 57 domain tests (`packages/core`) and 203 API tests (`apps/api`), all passing on PGlite and on PostgreSQL 16;
   typecheck clean; `pnpm build` compiles and the compiled server runs in production mode from a fresh database.
 - O1: partner creation, invitations, role changes and deactivation (sessions revoked, codes refused) are tested as
   every role; PDPL export contains one person's data and no audit payloads (a test reproduces the leak that the

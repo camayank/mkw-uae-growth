@@ -94,6 +94,32 @@ function datesIn(name: string): string[] {
   return [...out].sort();
 }
 
+/** Words a document's file name may keep when it is sent to a model: what kind of document it is, nothing about whom. */
+const DOCUMENT_VOCABULARY = new Set(
+  (
+    "passport emirates id eid visa residence entry permit establishment card trade licence license commercial certificate incorporation " +
+    "memorandum moa articles association ejari tenancy lease contract agreement signed trn vat tax registration corporate return " +
+    "acknowledgement acknowledgment ack filing receipt submission insurance policy bank letter account iban financial statements " +
+    "balance sheet audit report invoice approval initial copy scan front back page renewed renewal noc labour medical"
+  ).split(" "),
+);
+
+/**
+ * A file name reduced to what a document checker needs: words that name a kind of document (plus the words of the
+ * types the step asks for), dates, separators and the extension. Other words become "x" and other numbers "#", so a
+ * person's name or an ID number in the name never reaches a model. Dates stay: expiry and issue dates are the point
+ * of the check.
+ */
+export function redactFileName(name: string, typeNames: string[] = []): string {
+  const keep = new Set([...DOCUMENT_VOCABULARY, ...typeNames.flatMap((t) => t.toLowerCase().split(/[^a-z]+/)).filter((w) => w.length > 1)]);
+  const ext = /\.[a-z0-9]{1,5}$/i.exec(name)?.[0] ?? "";
+  const stem = ext ? name.slice(0, -ext.length) : name;
+  const kept = stem.replace(/(\d{4}[-_.]\d{2}[-_.]\d{2})|((?<!\d)\d{2}[-_.]\d{2}[-_.]\d{4}(?!\d))|(\p{L}+)|(\d+)/gu, (m, d1, d2, w) =>
+    d1 || d2 ? m : w ? (keep.has(String(w).toLowerCase()) ? m : "x") : "#",
+  );
+  return kept + ext.toLowerCase();
+}
+
 const words = (t: string) => t.replace(/_/g, " ");
 const daysBetween = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 86_400_000);
 
@@ -138,7 +164,7 @@ function memoryCheck(input: DocumentCheckInput): DocumentCheck {
   }
   if (input.subject === "partner_document" && input.declaredType === "trade_licence" && !input.reference) issues.push("No licence number was given; check it on the document.");
   const what = detectedType ? `looks like a ${words(detectedType)}` : "could not be identified from its name";
-  const summary = `${name} ${what}${matchesRequirement === true ? " and matches what the step asked for" : matchesRequirement === false ? ", which may not be what the step asked for" : ""}. ${issues.length ? `${issues.length} point(s) to check.` : "Nothing to flag from the name and the declared details."}`;
+  const summary = `The file ${what}${matchesRequirement === true ? " and matches what the step asked for" : matchesRequirement === false ? ", which may not be what the step asked for" : ""}. ${issues.length ? `${issues.length} point(s) to check.` : "Nothing to flag from the name and the declared details."}`;
   return { detectedType, matchesRequirement, dates, expiry, issues, summary, basis: "file name and the declared details only; the file itself was not read" };
 }
 

@@ -1,6 +1,6 @@
 import { asPlatform, audit } from "../lib/context.ts";
 import type { Database, Queryable } from "../lib/db.ts";
-import type { AiModel, DocumentCheckInput } from "../lib/ai.ts";
+import { redactFileName, type AiModel, type DocumentCheckInput } from "../lib/ai.ts";
 import type { Notifier } from "../lib/notify.ts";
 
 /**
@@ -53,17 +53,19 @@ export function registerDocumentChecker(notify: Notifier, db: Database, model: A
         return l ? { ...l, today } : null;
       });
       if (!loaded) return;
-      const input: DocumentCheckInput = { ...loaded.input, today: loaded.today };
+      // The model sees the file name reduced to document words, dates and the extension (no names, no ID numbers).
+      const input: DocumentCheckInput = { ...loaded.input, fileName: redactFileName(loaded.input.fileName, [loaded.input.declaredType, ...loaded.input.required]), today: loaded.today };
       const output = await model.checkDocument(input);
       await asPlatform(db, null, async (tx) => {
         const d = (
           await tx.query<{ id: string }>(
             `insert into ai_drafts (kind, engagement_id, subject_type, subject_id, model, input, output)
-             values ('document_check', $1, $2, $3, $4, $5, $6) returning id`,
-            [loaded.engagementId, subject, id, model.kind, JSON.stringify({ ...input, outboxId: row.id }), JSON.stringify(output)],
+             values ('document_check', $1, $2, $3, $4, $5, $6)
+             on conflict ((input->>'outboxId')) where kind = 'document_check' do nothing returning id`,
+            [loaded.engagementId, subject, id, model.kind, JSON.stringify({ ...input, outboxId: String(row.id) }), JSON.stringify(output)],
           )
-        ).rows[0]!;
-        await audit(tx, null, "ai.draft_created", "ai_draft", d.id, { kind: "document_check", subject, subjectId: id, model: model.kind, issues: output.issues.length });
+        ).rows[0];
+        if (d) await audit(tx, null, "ai.draft_created", "ai_draft", d.id, { kind: "document_check", subject, subjectId: id, model: model.kind, issues: output.issues.length });
       });
     },
     async check(row) {

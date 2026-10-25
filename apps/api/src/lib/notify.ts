@@ -1,7 +1,7 @@
 import { BRAND_AR, renderTemplateAr } from "./templates-ar.ts";
 import { asPlatform, txScope } from "./context.ts";
 import { withClock, type Database } from "./db.ts";
-import { createDispatcher, emit, type DispatchSummary, type Topic, type TopicHandler } from "./outbox.ts";
+import { createDispatcher, emit, InDoubtError, type DispatchSummary, type Topic, type TopicHandler } from "./outbox.ts";
 import { signedFetch, type AwsCredentials } from "./sigv4.ts";
 import { renderTemplate, TEMPLATE_AUDIENCE, BRAND, type Audience, type TemplateName, type Vars } from "./templates.ts";
 
@@ -54,12 +54,21 @@ export interface Transport {
   deliver(email: OutboundEmail): Promise<{ providerRef: string }>;
 }
 
-export function memoryTransport(): Transport & { delivered: OutboundEmail[]; failNext?: string } {
+/**
+ * The test transport. `failNext` makes the next delivery a refusal; `inDoubtNext` delivers the next message and then
+ * fails as a timeout would, so nobody can tell it went.
+ */
+export function memoryTransport(): Transport & { delivered: OutboundEmail[]; failNext?: string; inDoubtNext?: boolean } {
   const delivered: OutboundEmail[] = [];
-  const t: Transport & { delivered: OutboundEmail[]; failNext?: string } = {
+  const t: Transport & { delivered: OutboundEmail[]; failNext?: string; inDoubtNext?: boolean } = {
     kind: "memory",
     delivered,
     async deliver(email) {
+      if (t.inDoubtNext) {
+        t.inDoubtNext = false;
+        delivered.push(email);
+        throw new InDoubtError("The operation was aborted due to timeout");
+      }
       if (t.failNext) {
         const msg = t.failNext;
         t.failNext = undefined;
@@ -113,8 +122,17 @@ export function sesTransport(cfg: SesConfig): Transport {
           },
         },
       });
-      const res = await signedFetch({ ...cfg, service: "ses" }, url, { method: "POST", body, headers: { "content-type": "application/json" } });
-      const text = await res.text();
+      // Only a definite refusal (a 4xx answer) is retried. No answer, a dropped connection or a server error means SES
+      // may have taken the message: that is "in doubt", and a person decides rather than the email going twice.
+      let res: Response;
+      let text: string;
+      try {
+        res = await signedFetch({ ...cfg, service: "ses" }, url, { method: "POST", body, headers: { "content-type": "application/json" } });
+        text = await res.text();
+      } catch (e) {
+        throw new InDoubtError(`no answer from SES: ${(e as Error).message}`);
+      }
+      if (res.status >= 500) throw new InDoubtError(`SES answered ${res.status}; the message may have been accepted`);
       if (!res.ok) {
         let code = String(res.status);
         try {
@@ -216,8 +234,9 @@ export function recordingNotifier(opts: NotifierOptions): Notifier {
       await asPlatform(db, null, (tx) => tx.query("update notifications set status = 'sent', provider_ref = $2, sent_at = app_now() where id = $1", [id, providerRef]));
     } catch (e) {
       const msg = (e as Error).message.slice(0, 500);
-      log(`[notify] delivery failed for ${n.template}: ${msg}`);
-      await asPlatform(db, null, (tx) => tx.query("update notifications set status = 'failed', error = $2 where id = $1", [id, msg]));
+      log(`[notify] delivery ${(e as InDoubtError).inDoubt ? "in doubt" : "failed"} for ${n.template}: ${msg}`);
+      // In doubt, the record stays "queued" (handed over, no answer): the outbox marks the message for a person.
+      if (!(e as InDoubtError).inDoubt) await asPlatform(db, null, (tx) => tx.query("update notifications set status = 'failed', error = $2 where id = $1", [id, msg]));
       if (outboxId) throw e;
     }
   };

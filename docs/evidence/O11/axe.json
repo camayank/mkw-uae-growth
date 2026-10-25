@@ -1,0 +1,98 @@
+[
+  {
+    "screen": "client offer with the client terms (O10)",
+    "violations": []
+  },
+  {
+    "screen": "ops command centre (O11)",
+    "violations": []
+  },
+  {
+    "screen": "ops command centre at 390 px (O11)",
+    "violations": []
+  },
+  {
+    "screen": "sign-in (en)",
+    "violations": []
+  },
+  {
+    "screen": "client offer (en)",
+    "violations": []
+  },
+  {
+    "screen": "client home (en)",
+    "violations": []
+  },
+  {
+    "screen": "client engagement (en)",
+    "violations": []
+  },
+  {
+    "screen": "client compliance (en)",
+    "violations": []
+  },
+  {
+    "screen": "client intake (en)",
+    "violations": []
+  },
+  {
+    "screen": "partner home (en)",
+    "violations": []
+  },
+  {
+    "screen": "partner firm (en)",
+    "violations": []
+  },
+  {
+    "screen": "public intake (en)",
+    "violations": []
+  },
+  {
+    "screen": "client home (ar)",
+    "violations": []
+  },
+  {
+    "screen": "client offer (ar)",
+    "violations": []
+  },
+  {
+    "screen": "client engagement (ar)",
+    "violations": []
+  },
+  {
+    "screen": "client compliance (ar)",
+    "violations": []
+  },
+  {
+    "screen": "client intake (ar)",
+    "violations": []
+  },
+  {
+    "screen": "public intake (ar)",
+    "violations": []
+  },
+  {
+    "screen": "console with the Work menu open (O10)",
+    "violations": []
+  },
+  {
+    "screen": "settings: legal texts and holidays (O10)",
+    "violations": []
+  },
+  {
+    "screen": "partner firm: the agreement (O10)",
+    "violations": []
+  },
+  {
+    "screen": "console with the Setup menu open at 390 px (O10)",
+    "violations": []
+  },
+  {
+    "screen": "settings: legal texts and holidays at 390 px (O10)",
+    "violations": []
+  },
+  {
+    "screen": "partner firm: the agreement at 390 px (O10)",
+    "violations": []
+  }
+]

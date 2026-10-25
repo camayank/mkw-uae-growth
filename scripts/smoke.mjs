@@ -570,10 +570,10 @@ await shot(newPartnerAdmin, "44-partner-firm");
 await ops.goto(BASE + "/#/home"); await ops.reload();
 await ops.waitForSelector("#queue-list");
 await eventually("command centre says why the partner document is waiting:", async () => /a firm cannot move to pilot, or keep working, on an unverified document/.test(await ops.locator("#queue-list").innerText()));
-const licenceItem = ops.locator(".qitem", { hasText: "trade-licence.pdf" });
+const licenceItem = ops.locator(".qitem", { hasText: "Partner document to verify: trade licence" });
 await eventually("the document check sits beside it, UNCERTAIN, read from the name only:", async () => {
   const t = await licenceItem.innerText();
-  return /trade-licence\.pdf looks like a trade licence/.test(t) && /UNCERTAIN/.test(t) && /file itself was not read/.test(t);
+  return /The file looks like a trade licence/.test(t) && /UNCERTAIN/.test(t) && /file itself was not read/.test(t);
 });
 check("every queue item says why it is ranked where it is:", (await ops.locator(".qitem").count()) > 0 && (await ops.locator(".qitem").count()) === (await ops.locator(".qitem", { hasText: "Ranked here because" }).count()));
 check("the licence item offers Verify and Reject as one click:", (await licenceItem.locator('button[data-act="queue-act"]').allInnerTexts()).join(",") === "Verify,Reject");
@@ -583,7 +583,7 @@ await ops.locator('button[data-act="queue-filter"]', { hasText: "Partner documen
 check("the filter shows one kind and says it is pressed:", (await ops.locator(".qitem").count()) === (await ops.locator(".qitem", { hasText: "Partner document to verify" }).count()) && (await ops.locator('button[data-act="queue-filter"][aria-pressed="true"]').innerText()).startsWith("Partner document to verify"));
 await licenceItem.locator('button[data-act="draft-agree"]').click();
 check("one click records that the check is right:", await toastHas(ops, /you agree with the check/));
-await eventually("the check now shows as confirmed:", async () => /check confirmed/.test(await ops.locator(".qitem", { hasText: "trade-licence.pdf" }).innerText()));
+await eventually("the check now shows as confirmed:", async () => /check confirmed/.test(await licenceItem.innerText()));
 {
   const mctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
   const mops = await mctx.newPage();

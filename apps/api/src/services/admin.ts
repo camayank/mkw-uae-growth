@@ -272,8 +272,9 @@ export async function erasePerson(tx: Queryable, actor: SessionUser, userId: str
   // Messages still in the outbox (O11): the address and the wording go; anything not yet sent is cancelled.
   const outbox = await tx.query(
     `update outbox set payload = jsonb_set(jsonb_set(payload, '{to}', to_jsonb($2::text)), '{vars}', '{}'::jsonb),
+       last_error = null,
        status = case when status in ('pending', 'failed', 'unknown') then 'cancelled' else status end,
-       resolution = case when status in ('pending', 'failed', 'unknown') then 'cancelled: recipient erased' else resolution end
+       resolution = case when status in ('pending', 'failed', 'unknown') then 'cancelled: recipient erased' when resolution is null then null else 'recipient erased' end
      where topic = 'notify' and payload->>'to' = $1 returning id`,
     [user.email, tombstoneEmail(userId)],
   );

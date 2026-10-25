@@ -108,6 +108,60 @@ describe("event outbox", () => {
     expect((await env.call("ops", "POST", `/api/ops/outbox/${row.id}/resolve`, { action: "retry" })).status).toBe(409);
   });
 
+  it("never retries a delivery that timed out: the provider may have taken it", async () => {
+    env.transport.inDoubtNext = true;
+    const before = env.emails.length;
+    await asPlatform(env.db, null, () => env.notify.send(offerReady("timed-out")));
+    await env.notify.flush();
+    expect(env.emails.length).toBe(before + 1); // it went, but nobody was told
+    const [row] = await rows(env, "select id, status, attempts from outbox where payload->'vars'->>'offerId' = 'timed-out'");
+    expect(row).toMatchObject({ status: "unknown", attempts: 1 });
+    for (const wait of [1, 5, 15, 60]) {
+      minutes(env, wait);
+      await env.notify.dispatch();
+    }
+    expect(env.emails.length).toBe(before + 1);
+    expect(await rows(env, "select status from notifications where outbox_id = $1", [row.id])).toEqual([{ status: "queued" }]);
+    // Ops checks, then sends it again on purpose or cancels it: both audited with their reason.
+    expect((await env.call("ops", "POST", `/api/ops/outbox/${row.id}/resolve`, { action: "retry", note: "Client says it never arrived" })).status).toBe(200);
+    await env.notify.dispatch();
+    expect(env.emails.length).toBe(before + 2);
+    expect(await rows(env, "select status from notifications where outbox_id = $1", [row.id])).toEqual([{ status: "sent" }]);
+    env.transport.failNext = "SES: rejected";
+    await asPlatform(env.db, null, () => env.notify.send(offerReady("to-cancel")));
+    await env.notify.flush();
+    for (const wait of [1, 5, 15, 60]) {
+      minutes(env, wait);
+      env.transport.failNext = "SES: rejected";
+      await env.notify.dispatch();
+    }
+    const [failed] = await rows(env, "select id, status from outbox where payload->'vars'->>'offerId' = 'to-cancel'");
+    expect(failed.status).toBe("failed");
+    expect((await env.call("ops", "POST", `/api/ops/outbox/${failed.id}/resolve`, { action: "cancel" })).status).toBe(400);
+    expect((await env.call("ops", "POST", `/api/ops/outbox/${failed.id}/resolve`, { action: "cancel", note: "Offer withdrawn" })).status).toBe(200);
+    expect(await rows(env, "select action, data->>'note' as note from audit_events where entity = 'outbox' and entity_id = any($1) and action in ('outbox.retry', 'outbox.cancel') order by id", [[String(row.id), String(failed.id)]])).toEqual([
+      { action: "outbox.retry", note: "Client says it never arrived" },
+      { action: "outbox.cancel", note: "Offer withdrawn" },
+    ]);
+    expect(await rows(env, "select status from notifications where outbox_id = $1", [failed.id])).toEqual([{ status: "skipped" }]);
+  });
+
+  it("a run that outlived its claim changes nothing a recovery or a person decided since", async () => {
+    // The handler hangs past the 10-minute lease; meanwhile another process recovers the row and ops cancels it.
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const slow = recordingNotifier({ db: env.db, transport: memoryTransport(), appUrl: "https://app.test", fromClient: "a@b.test", fromPartner: "c@d.test", now: () => env.clock.now, log: () => undefined });
+    slow.on("document_check", { handle: () => gate, check: async () => "not_done" });
+    await asPlatform(env.db, null, () => slow.emit("document_check", { subject: "evidence", id: "00000000-0000-0000-0000-000000000000" }));
+    const [row] = await rows(env, "select id from outbox where topic = 'document_check' order by id desc limit 1");
+    const running = slow.dispatch();
+    for (let i = 0; i < 50 && (await rows(env, "select status from outbox where id = $1", [row.id]))[0].status !== "sending"; i++) await new Promise((r) => setTimeout(r, 10));
+    await asPlatform(env.db, null, (tx) => tx.query("update outbox set status = 'cancelled', resolution = 'cancelled: test' where id = $1", [row.id]));
+    release();
+    await running;
+    expect((await rows(env, "select status from outbox where id = $1", [row.id]))[0].status).toBe("cancelled");
+  });
+
   it("resends a message whose claim was abandoned before anything was handed over", async () => {
     await asPlatform(env.db, null, () => env.notify.send(offerReady("never-handed")));
     const [row] = await rows(env, "select id from outbox where payload->'vars'->>'offerId' = 'never-handed'");
@@ -135,6 +189,7 @@ describe("event outbox", () => {
     const [row] = await rows(env, "select status, payload from outbox where payload->'vars' = '{}'::jsonb and payload->>'template' = 'offer_ready' order by id desc limit 1");
     expect(row.status).toBe("cancelled");
     expect(JSON.stringify(row.payload)).not.toContain(EMAILS.clientMember);
+    expect(await rows(env, "select 1 from outbox where (last_error like $1 or resolution like $1)", [`%${EMAILS.clientMember}%`])).toEqual([]);
     expect(await rows(env, "select 1 from outbox where payload::text like $1", [`%${EMAILS.clientMember}%`])).toEqual([]);
   });
 });

@@ -1355,13 +1355,14 @@ let queueFilter = "all";
 const LEVEL_LABEL = { overdue: "Overdue", due_soon: "Due soon", on_track: "On track" };
 const LEVEL_TONE = { overdue: "bad", due_soon: "warn", on_track: "ok" };
 
-function queueDraft(d) {
+function queueDraft(d, describedBy = "") {
+  const desc = describedBy ? ` aria-describedby="${esc(describedBy)}"` : "";
   const c = d.check ?? {};
   const issues = Array.isArray(c.issues) ? c.issues : [];
   const state = d.status === "pending" ? badge("UNCERTAIN") : badge(d.status === "approved" ? "approved" : "rejected", d.status === "approved" ? "check confirmed" : "check disputed");
   const buttons =
     d.status === "pending" && ["ops", "founder"].includes(role())
-      ? `<div class="row"><span class="small muted">Is the check right?</span><button class="sm" data-act="draft-agree" data-id="${esc(d.id)}">Check is right</button><button class="sm" data-act="draft-disagree" data-id="${esc(d.id)}">Check is wrong</button></div>`
+      ? `<div class="row"><span class="small muted">Is the check right?</span><button class="sm" data-act="draft-agree" data-id="${esc(d.id)}"${desc}>Check is right</button><button class="sm" data-act="draft-disagree" data-id="${esc(d.id)}"${desc}>Check is wrong</button></div>`
       : "";
   return `<div class="qdraft"><div class="row between"><span class="small"><b>Document check</b> · ${esc(c.basis ?? "")}</span>${state}</div>
     <p class="small">${esc(c.summary ?? "")}</p>${issues.length ? `<ul class="small">${issues.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>` : ""}${buttons}</div>`;
@@ -1370,15 +1371,15 @@ function queueDraft(d) {
 function queueCard(x) {
   const due = x.level === "overdue" ? `was due ${dateTime(x.dueAt)}` : `due ${dateTime(x.dueAt)}`;
   const buttons = x.actions
-    .map((a, n) => `<button class="sm${a.primary ? " primary" : ""}" data-act="queue-act" data-item="${esc(x.id)}" data-n="${n}">${esc(a.label)}</button>`)
+    .map((a, n) => `<button class="sm${a.primary ? " primary" : ""}" data-act="queue-act" data-item="${esc(x.id)}" data-n="${n}" aria-describedby="q-${esc(x.id)}">${esc(a.label)}</button>`)
     .join("");
   return `<li class="qitem ${esc(x.level)}"><article aria-labelledby="q-${esc(x.id)}">
     <div class="row between qhead"><div class="row"><span class="badge ${LEVEL_TONE[x.level]}">${LEVEL_LABEL[x.level]}</span><span class="small muted">${esc(x.label)}</span></div><span class="small muted">${esc(due)}</span></div>
     <h2 id="q-${esc(x.id)}" class="qtitle">${esc(x.detail)}</h2>
     <p class="qwhy">${esc(x.why)}</p>
     <p class="small muted">Ranked here because ${esc(x.factors.join("; "))}.</p>
-    ${x.drafts.map(queueDraft).join("")}
-    <div class="row qactions">${buttons}<a href="${esc(x.link)}" data-act="queue-open" data-item="${esc(x.id)}">Open</a></div>
+    ${x.drafts.map((d) => queueDraft(d, `q-${x.id}`)).join("")}
+    <div class="row qactions">${buttons}<a href="${esc(x.link)}" data-act="queue-open" data-item="${esc(x.id)}" aria-describedby="q-${esc(x.id)}">Open</a></div>
   </article></li>`;
 }
 
@@ -1767,7 +1768,7 @@ async function renderAgentQueue() {
   <p class="muted">Drafts written by the model: scopes from what founders typed, and first checks of uploaded documents. Nothing here changes a request, a document or what a client sees until a person approves it; discarded drafts are kept for the record.</p>
   <div class="stack">${
     drafts.length
-      ? drafts.map((d) => d.kind === "document_check" ? `<div class="card"><div class="row between"><h2>Document check: ${esc(d.input?.fileName ?? "")}</h2><span class="small muted">${dateTime(d.createdAt)} · model ${esc(d.model)}</span></div>${queueDraft({ ...d, check: d.output })}</div>` : `<form class="card" data-form="draft" data-id="${d.id}"><div class="row between"><h2>${esc(words(d.kind))} draft for ${esc(d.client ?? "")} ${badge("UNCERTAIN")}</h2><span class="small muted">${dateTime(d.createdAt)} · model ${esc(d.model)}</span></div>
+      ? drafts.map((d) => d.kind === "document_check" ? `<div class="card"><div class="row between"><h2>Document check: ${esc(words(d.input?.declaredType ?? "document"))}</h2><span class="small muted">${dateTime(d.createdAt)} · model ${esc(d.model)}</span></div><p class="small muted">File name as the model saw it (names and numbers removed): <span class="mono">${esc(d.input?.fileName ?? "")}</span></p>${queueDraft({ ...d, check: d.output })}</div>` : `<form class="card" data-form="draft" data-id="${d.id}"><div class="row between"><h2>${esc(words(d.kind))} draft for ${esc(d.client ?? "")} ${badge("UNCERTAIN")}</h2><span class="small muted">${dateTime(d.createdAt)} · model ${esc(d.model)}</span></div>
         <p class="small muted">In the founder's words: <span style="white-space:pre-wrap">${esc(d.input?.description ?? "")}</span></p>
         ${d.output?.lines?.length ? `<ul class="plain">${d.output.lines.map((l) => `<li><label><input type="checkbox" name="keep" value="${esc(l.code)}" checked /> ${esc(nameOf(l.code))}${l.qty > 1 ? ` ×${l.qty}` : ""} <span class="small muted">(${esc(l.why)})</span></label></li>`).join("")}</ul>` : `<p class="small">No lines suggested.</p>`}
         ${d.output?.flags?.length ? `<p class="small">Flags: ${esc(d.output.flags.join("; "))}</p>` : ""}

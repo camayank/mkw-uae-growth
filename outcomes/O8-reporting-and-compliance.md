@@ -1,6 +1,6 @@
 # O8 Reporting and compliance calendar
 
-Status: verified-pending-merge (branch `outcome/O8-reporting-and-compliance`, stacked on O6, 17 Oct 2026)
+Status: merged (pull request camayank/mkw-uae-growth#7 into `main`, 18 Oct 2026; was: branch `outcome/O8-reporting-and-compliance`, stacked on O6, 17 Oct 2026)
 
 ## Business result
 

@@ -1,6 +1,6 @@
 # O5 Scoping intelligence
 
-Status: verified-pending-merge (branch `outcome/O5-scoping-intelligence`, stacked on O3, 17 Oct 2026)
+Status: merged (pull request camayank/mkw-uae-growth#5 into `main`, 18 Oct 2026; was: branch `outcome/O5-scoping-intelligence`, stacked on O3, 17 Oct 2026)
 
 ## Business result
 

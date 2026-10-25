@@ -1,6 +1,6 @@
 # O4 Catalogue and fees
 
-Status: verified-pending-merge (branch `outcome/O4-catalogue-and-fees`, stacked on O2, 17 Oct 2026)
+Status: merged (pull request camayank/mkw-uae-growth#3 into `main`, 18 Oct 2026; was: branch `outcome/O4-catalogue-and-fees`, stacked on O2, 17 Oct 2026)
 
 ## Business result
 

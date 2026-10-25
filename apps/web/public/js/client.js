@@ -3,7 +3,9 @@ import { STRUCTURE_LABEL } from "./ops.js";
 import { $app, aed, api, badge, date, deliverables, dropzone, esc, isPlatform, legalBlock, nameOf, obligationLabel, obligationTone, role, table, translatePage, words } from "./core.js";
 
 // What each kind of next action asks the client to do, as a button.
-const ACTION_BUTTON = { offer: "Review the offer", payment: "Pay now", approve: "Review and approve", documents: "Upload documents", filing: "Upload the confirmation" };
+const ACTION_BUTTON = { offer: "Review the offer", payment: "Pay now", change: "Review the change", approve: "Review and approve", documents: "Upload documents", filing: "Upload the confirmation" };
+// On the engagement page these actions jump to their card instead of reloading the page.
+const JUMP = { documents: "docs", change: "changes" };
 
 /** The one thing Tasees needs from the client, pinned at the top of a screen; or, with nothing to do, what is happening. */
 export function nextActionCard(actions, whatsNext, opts = {}) {
@@ -11,7 +13,7 @@ export function nextActionCard(actions, whatsNext, opts = {}) {
     return `<section class="nextaction calm" aria-labelledby="next-h"><p class="eyebrow">Your next action</p><h2 id="next-h">Nothing needed from you right now</h2><p>${esc(whatsNext ?? "")}</p></section>`;
   const [a, ...more] = actions;
   const evidence = opts.inline && a.kind === "approve" ? (opts.evidenceFor?.(a.ref) ?? []) : [];
-  const button = a.kind === "payment" && /^https?:/.test(a.link) ? `<a class="btn primary" href="${esc(a.link)}">Pay by card</a>` : opts.inline && a.kind === "approve" ? "" : `<a class="btn primary" href="${esc(opts.inline && a.kind === "documents" ? "#docs" : a.link)}"${opts.inline && a.kind === "documents" ? ' data-act="jump" data-target="docs"' : ""}>${esc(ACTION_BUTTON[a.kind])}</a>`;
+  const button = a.kind === "payment" && /^https?:/.test(a.link) ? `<a class="btn primary" href="${esc(a.link)}">Pay by card</a>` : opts.inline && a.kind === "approve" ? "" : `<a class="btn primary" href="${esc(opts.inline && JUMP[a.kind] ? `#${JUMP[a.kind]}` : a.link)}"${opts.inline && JUMP[a.kind] ? ` data-act="jump" data-target="${JUMP[a.kind]}"` : ""}>${esc(ACTION_BUTTON[a.kind])}</a>`;
   const approve =
     opts.inline && a.kind === "approve"
       ? `${evidence.length ? `<p class="small">Evidence checked by MKW Advisors: ${evidence.map((x) => `<a href="/api/evidence/${x.id}/file" target="_blank" rel="noopener">${esc(x.fileName)}</a>`).join(" · ")}</p>` : ""}

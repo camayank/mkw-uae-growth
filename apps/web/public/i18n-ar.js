@@ -5,6 +5,9 @@
 export const AR = {
   // O12 client experience (draft until the Arabic reviewer signs it off)
   "You approved a change to the scope; it is delivered once paid.": "وافقت على تغيير في النطاق؛ يُنفّذ بعد الدفع.",
+  "The partner firm proposed extra work and MKW Advisors priced it. Nothing extra is done or charged until your account owner approves it.":
+    "اقترحت شركة الشريك عملاً إضافياً وسعّرته MKW Advisors. لا يُنفّذ أي عمل إضافي ولا يُحتسب أي مبلغ حتى يوافق مالك الحساب.",
+  "Review the change": "راجع التغيير",
   "You raised an issue; MKW Advisors is resolving it": "أبلغت عن مشكلة؛ وتعالجها MKW Advisors",
   "Refunded": "مُسترد",
   "About": "نحو",
@@ -412,6 +415,7 @@ export const AR_PATTERNS = [
   // O12 next actions and timeline (draft)
   [/^Choose one of your (\d+) offers$/, (m) => `اختر أحد عروضك الـ${m[1]}`],
   [/^Pay the (deposit|balance|approved change): (AED [\d,.]+)$/, (m) => `${m[1] === "deposit" ? "ادفع الدفعة المقدمة" : m[1] === "balance" ? "ادفع الرصيد المتبقي" : "ادفع التغيير المعتمد"}: ${m[2]}`],
+  [/^Decide on a change to scope: (AED [\d,.]+)$/, (m) => `قرّر بشأن تغيير في النطاق: ${m[1]}`],
   [/^Approve: (.+)$/, (m) => `وافق: ${m[1]}`],
   [/^Needed for (.+)$/, (m) => `مطلوب لـ: ${m[1]}`],
   [/^Upload (\d+) documents?$/, (m) => `ارفع ${m[1]} مستند (مستندات)`],

@@ -182,7 +182,7 @@ export async function renderEngagement(id) {
            <p class="small muted pad" style="padding-top:0">MKW Advisors prices the change for the client. Start the extra work only after the client approves it here.</p>`
         : "";
     if (!rows.length && !form) return "";
-    return `<div class="card flush"><h2>Changes to scope</h2>${table(["Change", "#Amount", "Status", ""], rows, "No changes.")}${form}</div>`;
+    return `<div class="card flush" id="changes" tabindex="-1"><h2>Changes to scope</h2>${table(["Change", "#Amount", "Status", ""], rows, "No changes.")}${form}</div>`;
   };
 
   const messagesCard = () => `<div class="card"><h2>Messages</h2>

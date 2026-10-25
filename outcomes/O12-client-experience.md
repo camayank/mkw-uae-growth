@@ -15,7 +15,7 @@ tokens, still with no build step.
 ## Scope
 
 1. **Next action (server).** `services/journey.ts` works out a client's next actions from their own rows, in order:
-   an offer to decide (with its expiry), a payment due (with the link), a step to approve (with the date it is approved
+   an offer to decide (with its expiry), a payment due (with the link), a priced scope change to decide, a step to approve (with the date it is approved
    automatically), documents to upload, filing evidence due within 30 days. With nothing to do it says what is
    happening and when the next step is expected. `GET /api/client/home` returns `nextActions`; the client's engagement
    view returns `nextAction` and a `timeline` (offer accepted, deposit, each step, balance, completion), each entry with
@@ -88,8 +88,8 @@ No migration. Reverting the branch restores the previous screens; the new endpoi
 
 | Claim | Evidence |
 | --- | --- |
-| Tests | `pnpm test`: 57 core + 217 API = 274 (O11: 260), all passing on PGlite and on PostgreSQL 16; `pnpm typecheck` clean. New: `apps/api/test/journey.test.ts` (12); replacement uploads in `queue.test.ts`; delivered-but-not-recorded in `outbox.test.ts` |
-| Next actions | in order: offer (with expiry), deposit (with the payment link), approval (auto-approval date counted in working days across a holiday), documents (each kind once, how many steps wait), filing evidence due within 30 days; nothing to do says what happens next and when; only the client's own rows; no partner cost or margin in any field; people's own words (a partner's reason for sending a document back) only in `detail` |
+| Tests | `pnpm test`: 57 core + 218 API = 275 (O11: 260), all passing on PGlite and on PostgreSQL 16; `pnpm typecheck` clean. New: `apps/api/test/journey.test.ts` (13); replacement uploads in `queue.test.ts`; delivered-but-not-recorded in `outbox.test.ts` |
+| Next actions | in order: offer (with expiry), deposit (with the payment link), a priced scope change, approval (auto-approval date counted in working days across a holiday), documents (each kind once, how many steps wait), filing evidence due within 30 days; nothing to do says what happens next and when; only the client's own rows; no partner cost or margin in any field; people's own words (a partner's reason for sending a document back) only in `detail` |
 | Timeline | offer accepted, deposit, each step, balance, completion, each with its state and date; partners and staff keep their page |
 | Proposal | fee notes come from the fee table for the request's place (estimate, or partner's quote at cost), even after ops overrides a price; recurring lines are listed but not in the working-day estimate; deposit and balance from `paymentPlan` |
 | Intake preview | the same scoping as a real request under the person's own role; writes no row; refused to partners; no unreviewed advice reaches the client |
@@ -122,3 +122,8 @@ all fixed:
 Nits fixed: the plan panel is a polite live region; the terms version is escaped; partner evidence shows its file check
 beside the field; a stray drop no longer opens the file in place of the app; the file-name check knows more document
 words; "Emirates ID" is written properly in the next action and sentences about returned documents start with a capital.
+
+After the pull request opened, the Codex review found that a scope change MKW has priced was not a next action, so a
+client could read "nothing needed from you" while extra work waited for their decision. It is now the third action
+(after offers and payments), with the partner's description beside it and a button to the change on the engagement;
+tested in `journey.test.ts`.

@@ -10,6 +10,9 @@
 import type { FastifyInstance, RouteOptions } from "fastify";
 import { z } from "zod";
 
+/** The contract's version: raise it with any change a caller would notice. */
+export const API_VERSION = "1.0.0";
+
 export interface RouteDoc {
   method: string;
   url: string;

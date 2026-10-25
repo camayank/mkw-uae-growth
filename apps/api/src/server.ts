@@ -61,7 +61,8 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   // Every route as it is registered, for the contract (O13). Must come before the first route.
   const routeDocs = collectRoutes(app);
   // Bodies are capped at 1 MB; a route that carries a file (a `contentBase64` field) takes up to 25 MB. A small cap
-  // bounds how much any one request can make the validator do (O7 dependency audit, D70).
+  // bounds how much any one request can make the validator do: defence in depth since zod 4 fixed its own advisory
+  // (D70, D71).
   app.addHook("onRoute", (r) => {
     if (carriesFile((r.config as { body?: unknown } | undefined)?.body)) r.bodyLimit ??= FILE_BODY_LIMIT;
   });
@@ -177,7 +178,7 @@ const FILE_BODY_LIMIT = 25 * 1024 * 1024;
 
 function carriesFile(schema: unknown): boolean {
   let s = schema;
-  while (s instanceof z.ZodOptional || s instanceof z.ZodNullable || s instanceof z.ZodEffects) s = s instanceof z.ZodEffects ? s.innerType() : s.unwrap();
+  while (s instanceof z.ZodOptional || s instanceof z.ZodNullable) s = s.unwrap();
   return s instanceof z.ZodObject && "contentBase64" in s.shape;
 }
 

@@ -73,7 +73,9 @@ describe("the API contract", () => {
   });
 
   it("converts the zod features the routes use and refuses others", () => {
-    expect(jsonSchema(z.object({ a: z.string().uuid().nullish(), b: z.number().int().positive(), c: z.enum(["x", "y"]).default("x"), d: z.array(z.string().email()).min(1).max(3), e: z.literal(true) }))).toEqual({
+    // zod 4's own export (S1): the same shapes as before, plus the exact UUID and email patterns zod checks.
+    const out = jsonSchema(z.object({ a: z.string().uuid().nullish(), b: z.number().int().positive(), c: z.enum(["x", "y"]).default("x"), d: z.array(z.string().email()).min(1).max(3), e: z.literal(true) })) as any;
+    expect(out).toMatchObject({
       type: "object",
       properties: {
         a: { anyOf: [{ type: "string", format: "uuid" }, { type: "null" }] },
@@ -84,6 +86,8 @@ describe("the API contract", () => {
       },
       required: ["b", "d", "e"],
     });
+    expect(out).not.toHaveProperty("$schema");
+    expect(out).not.toHaveProperty("additionalProperties"); // unknown keys are dropped, not refused
     expect(jsonSchema(z.object({ a: z.string() }).strict())).toMatchObject({ additionalProperties: false });
     expect(() => jsonSchema(z.date())).toThrow(UnsupportedSchema);
   });

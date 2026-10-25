@@ -90,6 +90,12 @@ outcomes:
     contract: outcomes/O13-observability-hardening.md
     depends_on: [O11, O12]
     needs_from_owner: [alerting destination (ALERT_EMAIL and the staging alarm email)]
+  - id: S1
+    title: zod 4 migration (clears the last production advisory, gap 43)
+    status: verified-pending-merge
+    contract: outcomes/S1-zod-4.md
+    depends_on: [O13]
+    needs_from_owner: []
 
 # Roadmap from docs/VISION.md (18 Oct 2026). Order of work: O11, O12, O13 before the pilot; then O7 (launch gate);
 # then O14, O15, O16. Renumbered on 18 Oct 2026 when the owner released O10 as Real data and staging.

@@ -372,6 +372,34 @@ passed the test's due dates. Milestones now record `first_submitted_at` (resubmi
 the audit trail, and the comparison uses its Dubai date (it used the UTC date, which counted a submission between
 00:00 and 04:00 GST on the next day as on time). The audit trail itself keeps wall-clock time, as before.
 
+**D58. The client's next action is worked out on the server.** (O12, `services/journey.ts`.) From the client's own rows,
+under their own database role: an offer to decide (by its expiry), a payment due, a step to approve (with the date it is
+approved automatically, from the same calendar and five-working-day rule the sweep uses), documents to upload (each kind
+once, with how many steps wait), filing evidence due within 30 days. The first is pinned on the home and engagement
+screens; the rest fold under it. With nothing to do, the screen says what is happening and when the next step is
+expected. The order is a choice for the owner's wording review.
+
+**D59. The intake preview never shows unreviewed advice.** (O12.) The conversational intake builds a plan as the client
+answers, from `POST /api/requests/preview`, which runs the same scoping and writes nothing. It returns only the services
+that follow from the client's own choices and notes in the client's words. Advice on structure and place is UNCERTAIN
+until a person at MKW reviews it (rule 5), so the plan says that advice follows after a person has checked the answers,
+and shows none of it.
+
+**D60. The proposal's fee notes are client-safe sentences.** (O12.) An offer line's internal reason can mention the margin
+floor or ops review, and clients have no grant on that column. The proposal reads the reasons as the platform and
+passes on only one of two fixed sentences (an estimate MKW confirms before paying, or a partner's quote paid at cost),
+never the reason itself. The deposit and balance on the proposal come from the same `paymentPlan` acceptance uses.
+
+**D61. Uploads are checked before they leave the page, by the server's rules.** (O12.) `GET /api/upload-rules` publishes
+the storage adapter's own extensions and size limit; the page checks type, size and emptiness when a file is chosen or
+dropped and again on submit, and asks for confirmation when the name reads like a different document. The server still
+refuses what it always refused.
+
+**D62. The web app is ES modules with design tokens, still with no build step.** (O12.) `app.js` loads `js/core.js`,
+`js/shell.js`, `js/events.js` and one module per area; `tokens.css` holds every colour, space, size, radius, shadow and
+timing (`docs/DESIGN.md`). The split was made mechanically with no behaviour change and checked by the unchanged smoke
+test before any screen changed.
+
 ## Open for the owner
 
 1. **Margin rates and floors per category.** Seeded from the Sheet (setup 20% / AED 500 and so on). Confirm.

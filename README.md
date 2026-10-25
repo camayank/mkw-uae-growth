@@ -21,7 +21,7 @@ Needs Node 22 and pnpm 10.
 pnpm install
 pnpm seed          # catalogue, margin rules and demo parties (invented firm names) into ./apps/api/data/pglite
 pnpm dev           # http://localhost:8787 with development sign-in (codes shown on screen)
-pnpm test          # 260 tests: pricing, allocation, rules, full HTTP flow, database security, admin, PDPL, storage
+pnpm test          # 269 tests: pricing, allocation, rules, full HTTP flow, database security, admin, PDPL, storage
 pnpm typecheck
 pnpm build         # compiles to dist/; `pnpm start` then runs the compiled build (what production and the Dockerfile run)
 npx playwright install chromium && pnpm smoke   # browser smoke test against a running demo; screenshots in ./smoke-shots
@@ -97,7 +97,8 @@ apps/api          Fastify 5 + zod + Postgres (pg in production, PGlite in dev an
   test/             end-to-end HTTP flow, exceptions, database security, admin, PDPL, storage adapters
 scripts/          smoke.mjs (browser smoke test), backup.sh, restore-drill.sh
 .github/workflows CI: typecheck, tests, compiled build, smoke test against the compiled build, container image
-apps/web/public   The web app: plain HTML, CSS and ES modules, no build step. Served by the API.
+apps/web/public   The web app: plain HTML, CSS and ES modules, no build step. Served by the API. app.js loads js/ (core,
+                  shell, events, one module per area); tokens.css holds the design tokens (docs/DESIGN.md).
 docs/             DEPLOY.md, DECISIONS.md, KNOWN-GAPS.md
 ```
 

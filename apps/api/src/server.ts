@@ -201,7 +201,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   });
   app.post("/api/me/i18n-gaps", async (req) => {
     const user = requireRole(req, ...CLIENT_ROLES, ...PLATFORM_ROLES);
-    const { strings } = z.object({ strings: z.array(z.string().max(200)).max(200) }).parse(req.body);
+    const { strings } = z.object({ strings: z.array(z.string().max(1000)).max(200) }).parse(req.body);
     return asPlatform(db, user, (tx) => reportGaps(tx, user, strings));
   });
   app.post("/api/admin/arabic/review", async (req) => {

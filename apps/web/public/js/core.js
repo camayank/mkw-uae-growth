@@ -63,7 +63,8 @@ export function translatePage() {
 export let reported = new Set();
 export function reportGaps() {
   if (!state.me || !isClient()) return;
-  const fresh = [...state.untranslated].filter((m) => !reported.has(m));
+  // A sentence longer than the reviewer's list takes is skipped; the reviewer sees it on the screen itself.
+  const fresh = [...state.untranslated].filter((m) => !reported.has(m) && m.length <= 1000);
   if (!fresh.length) return;
   for (const m of fresh) reported.add(m);
   api("POST", "/api/me/i18n-gaps", { strings: fresh.slice(0, 200) }).catch(() => {});
@@ -303,3 +304,81 @@ export const route = () => {
 export const OBLIGATION_KINDS = ["licence_renewal", "visa_expiry", "vat_return", "ct_return", "esr_notification", "ubo_update", "audit_filing", "custom"];
 export const obligationTone = (o) => (o.status === "met" ? "ok" : o.status === "waived" ? "expired" : o.status === "evidence_uploaded" ? "info" : o.status === "pending_review" ? "UNCERTAIN" : new Date(o.dueDate) < new Date() ? "bad" : "pending");
 export const obligationLabel = (o) => (o.status === "open" && new Date(o.dueDate) < new Date() ? "overdue" : o.status === "evidence_uploaded" ? "evidence uploaded, MKW checking" : o.status === "pending_review" ? "date to confirm" : words(o.status));
+
+// Uploads (O12): every file is checked against the server's own rules before it leaves the page --------------------
+
+/** The storage adapter's rules (`GET /api/upload-rules`), read once; until they arrive, the same values as a fallback. */
+export const uploadRules = { extensions: ["pdf", "png", "jpg", "jpeg", "webp", "doc", "docx", "xls", "xlsx", "csv", "txt"], maxBytes: 15 * 1024 * 1024 };
+api("GET", "/api/upload-rules")
+  .then((r) => Object.assign(uploadRules, r))
+  .catch(() => {});
+
+// Words that name a kind of document in a file name, to notice a file that reads like something else.
+const DOC_WORDS = [
+  [/passport/i, "passport"],
+  [/emirates[\s_-]*id|\beid\b/i, "emirates id"],
+  [/visa/i, "visa"],
+  [/licen[cs]e/i, "licence"],
+  [/photo|selfie|picture/i, "photo"],
+  [/bank|statement|iban/i, "bank"],
+  [/tenancy|lease|ejari/i, "tenancy"],
+  [/invoice/i, "invoice"],
+  [/moa|memorandum|articles/i, "memorandum"],
+  [/noc\b|no[\s_-]*objection/i, "noc"],
+];
+const sizeMb = (n) => `${(n / 1024 / 1024).toFixed(1)} MB`;
+
+/**
+ * Check a file before upload. An error stops it (wrong type, too big, empty); a warning asks the person to confirm
+ * (the name reads like a different document from the one asked for).
+ */
+export function checkFile(file, expect = "") {
+  if (!file) return { error: "Choose a file first." };
+  const ext = /\.([a-z0-9]{1,5})$/i.exec(file.name)?.[1]?.toLowerCase() ?? "";
+  if (!file.size) return { error: "This file is empty. Choose the file again." };
+  if (!uploadRules.extensions.includes(ext))
+    return { error: `${ext ? `A .${ext} file` : "A file without an extension"} cannot be uploaded. Use PDF, a photo (JPG, PNG or WEBP), Word, Excel, CSV or text.` };
+  if (file.size > uploadRules.maxBytes) return { error: `This file is ${sizeMb(file.size)}; the limit is ${sizeMb(uploadRules.maxBytes)}. A scan at a lower resolution, or a PDF, is usually small enough.` };
+  const wanted = String(expect).replace(/_/g, " ");
+  if (wanted) {
+    const found = DOC_WORDS.find(([re]) => re.test(file.name));
+    const expected = DOC_WORDS.find(([re]) => re.test(wanted));
+    if (found && expected && found[1] !== expected[1]) return { warning: `The file name reads like a ${found[1]}, but this asks for ${wanted}. Upload it anyway?` };
+  }
+  return {};
+}
+
+/** Show a file check's result beside its input (announced to screen readers). */
+export function showFileCheck(input, result) {
+  const msg = input.closest("form")?.querySelector(".field-msg");
+  const text = result.error ?? result.warning ?? "";
+  input.setAttribute("aria-invalid", result.error ? "true" : "false");
+  if (msg) {
+    msg.textContent = text;
+    msg.className = `field-msg${result.error ? " bad" : result.warning ? " warn" : ""}`;
+  }
+}
+
+/** A drop zone around a file input: dropping a file sets the input as if it had been chosen. */
+for (const type of ["dragenter", "dragover"])
+  document.addEventListener(type, (ev) => {
+    const zone = ev.target.closest?.(".dropzone");
+    if (!zone) return;
+    ev.preventDefault();
+    zone.classList.add("over");
+  });
+for (const type of ["dragleave", "drop"])
+  document.addEventListener(type, (ev) => {
+    const zone = ev.target.closest?.(".dropzone");
+    if (!zone) return;
+    ev.preventDefault();
+    zone.classList.remove("over");
+    if (type !== "drop" || !ev.dataTransfer?.files?.length) return;
+    const input = zone.querySelector('input[type="file"]');
+    input.files = ev.dataTransfer.files;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+
+/** The markup for a checked upload: a drop zone with the file picker inside, and the line its check speaks on. */
+export const dropzone = (expect, label = "Drop the file here, or choose it") =>
+  `<label class="dropzone"><span class="small">${esc(label)}</span><input type="file" name="file" data-expect="${esc(expect)}" accept="${uploadRules.extensions.map((e) => `.${e}`).join(",")}" /></label><p class="field-msg small" aria-live="polite"></p>`;

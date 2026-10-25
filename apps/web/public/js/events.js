@@ -1,6 +1,7 @@
 // Tasees workspace: events module (split from app.js in O12; plain ES modules, no build step).
-import { act, aed, api, date, download, fileToBase64, isPlatform, lang, render, role, route, state, toast, translatePage, translateText } from "./core.js";
+import { act, aed, api, checkFile, showFileCheck, date, download, fileToBase64, isPlatform, lang, render, role, route, state, toast, translatePage, translateText } from "./core.js";
 import { queueItems, setQueueFilter } from "./ops.js";
+import { intakeAnswers, intakeGo } from "./client.js";
 import { closeNavMenus, renderSignIn, requestCode } from "./shell.js";
 
 document.addEventListener("click", (ev) => {
@@ -118,6 +119,15 @@ document.addEventListener("click", (ev) => {
       const flagged = Number(el.dataset.review || 0);
       if (flagged && !confirm(`${flagged} line(s) are flagged (margin below the floor or a government fee that is UNCERTAIN or stale). Publishing records that you checked them. Publish?`)) return;
       act(() => api("POST", `/api/ops/offers/${id}/publish`, { acknowledgeReview: flagged > 0 }), "Published to the client");
+    },
+    "intake-next": () => intakeGo(1),
+    "intake-back": () => intakeGo(-1),
+    // An in-page jump (to the documents checklist): scroll and move focus there.
+    jump: () => {
+      ev.preventDefault();
+      const target = document.getElementById(el.dataset.target);
+      target?.scrollIntoView({ behavior: "smooth", block: "start" });
+      target?.focus({ preventScroll: true });
     },
     "queue-filter": () => {
       setQueueFilter(el.dataset.kind);
@@ -267,6 +277,15 @@ document.addEventListener("submit", (ev) => {
   const fd = new FormData(form);
   const id = form.dataset.id;
   const kind = form.dataset.form;
+  // Every upload is checked before it is sent: an error stops it; a name that reads like another document asks first.
+  const fileInput = form.querySelector('input[type="file"]');
+  if (fileInput) {
+    const expect = fileInput.dataset.expect || form.querySelector('[name="type"], [name="kind"]')?.value || "";
+    const check = checkFile(fileInput.files?.[0], expect);
+    showFileCheck(fileInput, check);
+    if (check.error) return toast(check.error, true);
+    if (check.warning && !confirm(check.warning)) return;
+  }
   if (kind === "request-code") return requestCode(String(fd.get("email"))).catch((e) => toast(e.message, true));
   if (kind === "verify")
     return api("POST", "/api/auth/verify", { email: String(fd.get("email")), code: String(fd.get("code")) })
@@ -277,31 +296,16 @@ document.addEventListener("submit", (ev) => {
       })
       .catch((e) => toast(e.message, true));
   if (kind === "intake") {
-    const mode = String(fd.get("mode"));
+    // Enter in the conversation moves to the next question; only the last one sends the request.
+    if (form.classList.contains("convo") && form.querySelector("[data-intake-submit]").hidden) return intakeGo(1);
+    const answers = intakeAnswers(fd);
+    const mode = answers.mode;
     const extras = fd.getAll("extra").map(String);
-    const answers = {
-      mode,
-      emirate: String(fd.get("emirate")),
-      ...(mode === "new_company"
-        ? {
-            jurisdiction: String(fd.get("jurisdiction")),
-            freeZone: String(fd.get("freeZone") || "") || null,
-            visas: Number(fd.get("visas") || 0),
-            dependants: Number(fd.get("dependants") || 0),
-            addOns: extras,
-            ...(fd.get("activity") ? { activity: String(fd.get("activity")) } : {}),
-            ...(fd.get("customers") ? { customers: String(fd.get("customers")) } : {}),
-            ...(fd.get("officeNeeded") ? { officeNeeded: fd.get("officeNeeded") === "yes" } : {}),
-            ...(fd.get("budgetAed") ? { budgetAed: Number(fd.get("budgetAed")) } : {}),
-            ...(fd.get("expectedTurnoverAed") ? { expectedTurnoverAed: Number(fd.get("expectedTurnoverAed")) } : {}),
-          }
-        : { services: extras }),
-      ...(String(fd.get("description") || "").trim() ? { description: String(fd.get("description")).trim() } : {}),
-    };
     if (mode === "services" && !extras.length) return toast("Choose at least one service", true);
     return act(async () => {
       const r = await api("POST", "/api/requests", { answers, ...(isPlatform() ? { clientOrgId: String(fd.get("clientOrgId")) } : {}) });
-      if (r.notes?.length) toast(r.notes.join(". "));
+      // Scope notes are worded for MKW staff; clients saw their own notes in the plan as they answered.
+      if (isPlatform() && r.notes?.length) toast(r.notes.join(". "));
       location.hash = isPlatform() ? "#/pipeline" : "#/";
     }, "Request received. We will send your offers shortly.");
   }
@@ -493,3 +497,17 @@ document.addEventListener("submit", (ev) => {
 });
 
 // Start -------------------------------------------------------------------------------------
+
+// The conversational intake: any change re-checks the current question and refreshes the plan beside it (O12).
+document.addEventListener("change", (ev) => {
+  if (ev.target.closest?.('form[data-form="intake"].convo')) intakeGo(0);
+});
+
+// A file is checked the moment it is chosen (or dropped), not only when the form is sent (O12).
+document.addEventListener("change", (ev) => {
+  const input = ev.target;
+  if (!(input instanceof HTMLInputElement) || input.type !== "file") return;
+  const form = input.closest("form");
+  const expect = input.dataset.expect || form?.querySelector('[name="type"], [name="kind"]')?.value || "";
+  showFileCheck(input, checkFile(input.files?.[0], expect));
+});

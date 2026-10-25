@@ -1,5 +1,6 @@
 // Tasees workspace: engagement module (split from app.js in O12; plain ES modules, no build step).
-import { $app, MILESTONE_LABEL, act, aed, api, badge, byStage, date, dateTime, esc, isClient, isPartner, isPlatform, nameOf, role, seesMargin, table, words } from "./core.js";
+import { $app, MILESTONE_LABEL, aed, api, badge, byStage, date, dateTime, dropzone, esc, isClient, isPartner, isPlatform, nameOf, role, seesMargin, table, uploadRules, words } from "./core.js";
+import { nextActionCard } from "./client.js";
 
 export async function renderEngagement(id) {
   const e = await api("GET", `/api/engagements/${id}`);
@@ -184,6 +185,23 @@ export async function renderEngagement(id) {
     return `<div class="card flush"><h2>Changes to scope</h2>${table(["Change", "#Amount", "Status", ""], rows, "No changes.")}${form}</div>`;
   };
 
+  const messagesCard = () => `<div class="card"><h2>Messages</h2>
+        <div class="messages">${
+          e.messages.length
+            ? e.messages
+                .map(
+                  (m) => `<div class="msg"><div class="meta"><span data-no-i18n>${esc(m.authorName)}</span> · ${dateTime(m.createdAt)}${m.masked ? " · contact details hidden" : ""}</div>
+                  <div data-no-i18n>${esc(isPlatform() ? m.bodyOriginal : m.bodyShown)}</div>${isPlatform() && m.masked ? `<div class="small muted">Shown to parties: ${esc(m.bodyShown)}</div>` : ""}</div>`,
+                )
+                .join("")
+            : `<p class="muted small">No messages yet.</p>`
+        }</div>
+        <form data-form="message" data-id="${e.engagement.id}"><textarea name="body" required placeholder="Write a message. Phone numbers and emails are hidden from the other side; MKW Advisors sees everything."></textarea>
+        <div class="row" style="margin-top:8px"><button class="sm primary" type="submit">Send</button></div></form>
+      </div>`;
+
+  if (isClient()) return renderClientEngagement(e, { evidenceFor, delayLine, moneyCard, creditsCard, ratingCard, changeOrders, messagesCard, partnerNames, done });
+
   $app.innerHTML = `
   <p><a href="${back}">← Back</a></p>
   <div class="row between"><h1>Engagement · ${esc(e.engagement.emirate)}${e.engagement.freeZone ? ` · ${esc(e.engagement.freeZone)}` : ""}</h1>${badge(e.engagement.status)}</div>
@@ -215,20 +233,93 @@ export async function renderEngagement(id) {
       ${moneyCard()}
       ${creditsCard()}
       ${changeOrders()}
-      <div class="card"><h2>Messages</h2>
-        <div class="messages">${
-          e.messages.length
-            ? e.messages
-                .map(
-                  (m) => `<div class="msg"><div class="meta"><span data-no-i18n>${esc(m.authorName)}</span> · ${dateTime(m.createdAt)}${m.masked ? " · contact details hidden" : ""}</div>
-                  <div data-no-i18n>${esc(isPlatform() ? m.bodyOriginal : m.bodyShown)}</div>${isPlatform() && m.masked ? `<div class="small muted">Shown to parties: ${esc(m.bodyShown)}</div>` : ""}</div>`,
-                )
-                .join("")
-            : `<p class="muted small">No messages yet.</p>`
-        }</div>
-        <form data-form="message" data-id="${e.engagement.id}"><textarea name="body" required placeholder="Write a message. Phone numbers and emails are hidden from the other side; MKW Advisors sees everything."></textarea>
-        <div class="row" style="margin-top:8px"><button class="sm primary" type="submit">Send</button></div></form>
-      </div>
+      ${messagesCard()}
+    </div>
+  </div>`;
+}
+
+// The client's engagement (O12): the next action pinned above a timeline, the documents as a checklist ---------------
+
+const STATE_LABEL = { done: "Done", now: "Waiting for you", mkw: "MKW Advisors is checking", partner: "In progress", upcoming: "Coming up", issue: "Issue raised" };
+const STATE_TONE = { done: "ok", now: "warn", mkw: "info", partner: "info", upcoming: "", issue: "bad" };
+
+function renderClientEngagement(e, parts) {
+  const j = e.journey;
+  const payments = new Map((e.payments ?? []).map((p) => [p.id, p]));
+  const entry = (t) => {
+    const pay = t.kind === "payment" ? payments.get(t.ref) : null;
+    const when =
+      t.kind === "step"
+        ? t.state === "done"
+          ? `Approved ${date(t.date)}`
+          : t.date
+            ? `Expected by ${date(t.date)}`
+            : ""
+        : t.date
+          ? date(t.date)
+          : "";
+    const evidence = t.kind === "step" && ["done", "now"].includes(t.state) ? parts.evidenceFor(t.ref) : [];
+    const step = t.kind === "step" ? e.milestones.find((m) => m.id === t.ref) : null;
+    return `<li class="tl ${t.state}"><span class="tl-dot" aria-hidden="true"></span><div class="tl-body">
+      <div class="row between"><b>${esc(t.label)}</b><span class="badge ${STATE_TONE[t.state]}">${STATE_LABEL[t.state]}</span></div>
+      ${when ? `<div class="small muted">${esc(when)}</div>` : ""}
+      ${t.note ? `<div class="small">${esc(t.note)}</div>` : ""}
+      ${step ? parts.delayLine(step) : ""}
+      ${evidence.length ? `<div class="small">Evidence: ${evidence.map((x) => `<a href="/api/evidence/${x.id}/file" target="_blank" rel="noopener">${esc(x.fileName)}</a>`).join(" · ")}</div>` : ""}
+      ${t.kind === "step" && t.state === "now" ? `<div class="actions"><button class="sm primary" data-act="ms-review" data-id="${t.ref}" data-approve="1">Approve</button><button class="sm danger" data-act="ms-review" data-id="${t.ref}" data-approve="0">Raise an issue</button></div>` : ""}
+      ${pay && pay.status === "pending" && pay.payUrl ? `<div class="actions"><a class="btn sm primary" href="${esc(pay.payUrl)}">Pay by card</a></div>` : ""}
+    </div></li>`;
+  };
+  const docs = e.documentRequests ?? [];
+  const missing = docs.filter((r) => ["requested", "rejected"].includes(r.status)).length;
+  const docItem = (r) => {
+    const status =
+      r.status === "received"
+        ? badge("ok", "received")
+        : r.status === "uploaded"
+          ? badge("info", "uploaded: being checked")
+          : r.status === "rejected"
+            ? badge("bad", "sent back")
+            : badge("pending", "needed");
+    return `<li class="${esc(r.status)}"><div class="row between"><b>${esc(words(r.kind))}</b>${status}</div>
+      ${r.note ? `<div class="small muted" data-no-i18n>${esc(r.note)}</div>` : ""}
+      ${r.status === "rejected" && r.decisionNote ? `<div class="small">Why it was sent back: <span data-no-i18n>${esc(r.decisionNote)}</span></div>` : ""}
+      ${
+        ["requested", "rejected"].includes(r.status)
+          ? `<form class="upload-row" data-form="doc-upload" data-id="${r.id}">${dropzone(r.kind, "Drop the file here, or choose it")}<button class="sm primary" type="submit">Upload</button></form>`
+          : r.fileName
+            ? `<div class="small"><a href="/api/document-requests/${r.id}/file" target="_blank" rel="noopener">${esc(r.fileName)}</a></div>`
+            : ""
+      }</li>`;
+  };
+  const checklist = docs.length
+    ? `<section class="card" id="docs" tabindex="-1" aria-labelledby="docs-h"><h2 id="docs-h">Documents we need from you ${missing ? badge("pending", `${missing} to upload`) : badge("ok", "complete")}</h2>
+      <p class="small muted">Each file is checked here before it is sent: PDF, a photo, Word or Excel, up to ${Math.round(uploadRules.maxBytes / 1024 / 1024)} MB. Files are stored in the UAE and shared only with the firm doing the work.</p>
+      ${[...new Set(docs.map((r) => r.milestoneId))]
+        .map((mid) => `<h3 class="checklist-step">For ${esc(e.milestones.find((m) => m.id === mid)?.name ?? "this step")}</h3><ul class="checklist">${docs.filter((r) => r.milestoneId === mid).map(docItem).join("")}</ul>`)
+        .join("")}</section>`
+    : "";
+  $app.innerHTML = `
+  <p><a href="#/">← Overview</a></p>
+  <div class="row between"><h1>Your engagement · ${esc(e.engagement.emirate)}${e.engagement.freeZone ? ` · ${esc(e.engagement.freeZone)}` : ""}</h1>${badge(e.engagement.status)}</div>
+  <p class="muted">${parts.done} of ${e.milestones.length} steps approved${parts.partnerNames.length ? ` · Delivered by ${esc(parts.partnerNames.join(", "))}, managed by MKW Advisors` : ""}</p>
+  ${nextActionCard(j.actions, j.whatsNext, { inline: true })}
+  <div class="grid cols-2 eng">
+    <section class="card" aria-labelledby="steps-h"><h2 id="steps-h">Steps</h2>
+      <ol class="timeline">${j.timeline.map(entry).join("")}</ol>
+      <p class="small muted">Every step is checked by MKW Advisors before it comes to you. Approving it releases the partner's payment for that step; if you do nothing for five working days after our check, it is approved automatically.</p>
+    </section>
+    <div class="stack">
+      ${checklist}
+      ${parts.moneyCard()}
+      ${parts.creditsCard()}
+      ${parts.ratingCard()}
+      ${parts.changeOrders()}
+      ${parts.messagesCard()}
+      <details class="card"><summary><b>What you bought</b></summary>${table(
+        ["Service", "#Qty", "#Fee each", "#Govt fee each"],
+        e.lines.map((l) => `<tr><td>${esc(l.name)}</td><td class="num">${l.qty}</td><td class="num">${aed(l.clientUnitPrice)}</td><td class="num">${aed(l.govUnitFee)}</td></tr>`),
+      )}</details>
     </div>
   </div>`;
 }

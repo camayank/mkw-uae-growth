@@ -79,7 +79,10 @@ describe("client journey", () => {
     e = (await env.call("ops", "GET", `/api/engagements/${engagementId}`)).body;
     let h = await home();
     expect(h.nextActions.map((a: any) => a.kind)).toEqual(["documents"]);
-    expect(h.nextActions[0].why).toMatch(/^Needed for .+: .*passport copy/);
+    // Each kind of document once, and how many steps wait for them.
+    expect(h.nextActions[0].why).toMatch(/passport copy/i);
+    expect(h.nextActions[0].why.match(/passport copy/gi)).toHaveLength(1);
+    expect(h.nextActions[0].why).toMatch(/\d+ steps cannot finish without them\.$/);
     // Monday 26 October is declared a holiday: five working days from Monday 19th now end on Tuesday 27th.
     expect((await env.call("founder", "PUT", "/api/admin/holidays", { date: "2026-10-26", name: "Test holiday", status: "confirmed", reason: "test" })).status).toBe(200);
     const m = e.milestones[0];

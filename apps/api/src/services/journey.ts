@@ -119,12 +119,16 @@ export async function clientNextActions(tx: Queryable, now: Date, cal: WorkCalen
   for (const d of docs.rows) byEngagement.set(d.engagement_id, [...(byEngagement.get(d.engagement_id) ?? []), d]);
   for (const [eid, list] of byEngagement) {
     const back = list.filter((d) => d.status === "rejected");
+    // Each kind once (a passport copy asked for three steps is one thing to find), and how many steps wait.
+    const kinds = [...new Set(list.map((d) => d.kind.replace(/_/g, " ")))];
+    const steps = new Set(list.map((d) => d.step)).size;
+    const waiting = steps > 1 ? `${steps} steps cannot finish without them` : `${list[0]!.step} cannot finish without ${list.length > 1 ? "them" : "it"}`;
     actions.push({
       kind: "documents",
       title: `Upload ${list.length} document${list.length > 1 ? "s" : ""}`,
       why: back.length
-        ? `${back.map((d) => d.kind.replace(/_/g, " ")).join(", ")} ${back.length > 1 ? "were" : "was"} sent back${back[0]!.decision_note ? `: ${back[0]!.decision_note}` : ""}. The step cannot finish without ${list.length > 1 ? "them" : "it"}.`
-        : `Needed for ${list[0]!.step}: ${list.map((d) => d.kind.replace(/_/g, " ")).join(", ")}. The step cannot finish without ${list.length > 1 ? "them" : "it"}.`,
+        ? `${[...new Set(back.map((d) => d.kind.replace(/_/g, " ")))].join(", ")} ${back.length > 1 ? "were" : "was"} sent back${back[0]!.decision_note ? `: ${back[0]!.decision_note}` : ""}. ${waiting[0]!.toUpperCase()}${waiting.slice(1)}.`
+        : `${kinds[0]![0]!.toUpperCase()}${kinds.join(", ").slice(1)}. ${waiting[0]!.toUpperCase()}${waiting.slice(1)}.`,
       link: `#/engagement/${eid}`,
       due: null,
       engagementId: eid,

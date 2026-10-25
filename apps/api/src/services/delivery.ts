@@ -31,7 +31,7 @@ const isFinance = (u: SessionUser) => ["finance", "founder"].includes(u.role);
 // Client document requests ---------------------------------------------------------------------------------
 
 async function loadRequest(tx: Queryable, id: string) {
-  const r = (await tx.query<Record<string, unknown>>("select * from document_requests where id = $1", [id])).rows[0];
+  const r = (await tx.query<Record<string, unknown>>("select * from document_requests where id = $1 for update", [id])).rows[0];
   if (!r) throw notFound("Document request not found");
   return r;
 }
@@ -162,7 +162,7 @@ export async function sweepDelays(tx: Queryable, deps: Deps): Promise<{ delays: 
 export async function attributeDelay(tx: Queryable, actor: SessionUser, delayId: string, cause: DelayCause, note: string) {
   if (!isOps(actor)) throw forbidden("Only ops attributes a delay");
   if (!note.trim()) throw badRequest("Say why");
-  const d = (await tx.query<{ id: string; credit_id: string | null; cause: string | null }>("select id, credit_id, cause from delays where id = $1", [delayId])).rows[0];
+  const d = (await tx.query<{ id: string; credit_id: string | null; cause: string | null }>("select id, credit_id, cause from delays where id = $1 for update", [delayId])).rows[0];
   if (!d) throw notFound("Delay not found");
   if (d.credit_id) {
     const c = (await tx.query<{ status: string }>("select status from guarantee_credits where id = $1", [d.credit_id])).rows[0]!;
@@ -185,7 +185,7 @@ export async function attributeDelay(tx: Queryable, actor: SessionUser, delayId:
  */
 export async function decideCredit(tx: Queryable, actor: SessionUser, creditId: string, decision: "approve" | "waive", note: string, deps: Deps) {
   if (!isFinance(actor)) throw forbidden("Only finance decides guarantee credits");
-  const c = (await tx.query<Record<string, unknown>>("select * from guarantee_credits where id = $1", [creditId])).rows[0];
+  const c = (await tx.query<Record<string, unknown>>("select * from guarantee_credits where id = $1 for update", [creditId])).rows[0];
   if (!c) throw notFound("Credit not found");
   if (c.status !== "pending") throw conflict(`This credit is already ${String(c.status)}`);
   const amount = num(c.amount_fils);
@@ -228,7 +228,7 @@ export async function decideCredit(tx: Queryable, actor: SessionUser, creditId: 
 /** Finance records how an approved credit was paid back to the client. */
 export async function settleCredit(tx: Queryable, actor: SessionUser, creditId: string, reference: string) {
   if (!isFinance(actor)) throw forbidden("Only finance settles guarantee credits");
-  const c = (await tx.query<{ status: string }>("select status from guarantee_credits where id = $1", [creditId])).rows[0];
+  const c = (await tx.query<{ status: string }>("select status from guarantee_credits where id = $1 for update", [creditId])).rows[0];
   if (!c) throw notFound("Credit not found");
   if (c.status !== "approved") throw conflict("Only an approved credit awaiting settlement can be settled");
   if (reference.trim().length < 3) throw badRequest("Record the refund or transfer reference");

@@ -102,7 +102,7 @@ export async function uploadObligationEvidence(tx: Queryable, actor: SessionUser
 /** MKW checks the evidence: met, and the next occurrence is created for a recurring obligation. */
 export async function markObligationMet(tx: Queryable, actor: SessionUser, id: string, note: string) {
   if (!isOps(actor)) throw forbidden("Only ops marks an obligation met");
-  const o = (await tx.query<Record<string, unknown>>("select *, due_date::text as due_date from obligations where id = $1", [id])).rows[0];
+  const o = (await tx.query<Record<string, unknown>>("select *, due_date::text as due_date from obligations where id = $1 for update", [id])).rows[0];
   if (!o) throw notFound("Obligation not found");
   if (o.status !== "evidence_uploaded") throw conflict("An obligation is met only with filing evidence on file");
   await tx.query("update obligations set status = 'met', met_by = $2, met_at = app_now(), met_note = $3 where id = $1", [id, actor.id, note.trim() || null]);

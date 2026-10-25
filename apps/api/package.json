@@ -17,6 +17,7 @@
     "verify:audit": "node --conditions=production dist/scripts/verify-audit.js",
     "test": "vitest run",
     "contract": "UPDATE_CONTRACT=1 vitest run test/contract.test.ts",
+    "load": "tsx test/load.ts",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {

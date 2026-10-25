@@ -293,3 +293,23 @@ describe("idempotency keys", () => {
     expect((await rows(env, "select count(*)::int as n from idempotency_keys where created_at < app_now() - interval '24 hours'"))[0].n).toBe(0);
   });
 });
+
+describe.skipIf(!process.env.TEST_DATABASE_URL)("a lost database connection (PostgreSQL only)", () => {
+  it("is logged and replaced, and the process keeps serving", async () => {
+    const env = await makeEnv();
+    try {
+      // Warm the pool, then end every one of its connections from outside, as a failover would.
+      await Promise.all([1, 2, 3].map(() => env.call("client", "GET", "/api/me")));
+      const pg = (await import("pg")).default;
+      const admin = new pg.Client({ connectionString: process.env.TEST_DATABASE_URL });
+      await admin.connect();
+      const name = (await env.db.transaction(async (tx) => (await tx.query<{ d: string }>("select current_database() as d")).rows[0]!.d));
+      await admin.query("select pg_terminate_backend(pid) from pg_stat_activity where datname = $1 and pid <> pg_backend_pid()", [name]);
+      await admin.end();
+      await new Promise((r) => setTimeout(r, 200));
+      expect((await env.call("client", "GET", "/api/me")).status).toBe(200);
+    } finally {
+      await env.db.close();
+    }
+  }, 30_000);
+});

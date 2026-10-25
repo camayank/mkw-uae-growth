@@ -50,20 +50,27 @@ export async function openPostgres(connectionString: string): Promise<Database> 
   pool.on("connect", (client) => {
     client.query("set timezone to 'UTC'").catch((e) => console.error("could not set the session time zone to UTC", e));
   });
+  // An idle connection the server ends (a restart, a failover, an administrator) must not end the process: without
+  // this listener node-postgres re-throws the error and the app exits. The pool opens a new connection when needed.
+  pool.on("error", (e) => console.error(JSON.stringify({ level: "error", msg: "idle database connection lost", error: e.message })));
   return {
     kind: "postgres",
     async transaction(fn) {
       const client = await pool.connect();
+      // A connection that could not even roll back is broken: destroy it instead of returning it to the pool.
+      let broken: Error | undefined;
       try {
         await client.query("begin");
         const result = await fn({ query: (s, p) => client.query(s, p) as never });
         await client.query("commit");
         return result;
       } catch (err) {
-        await client.query("rollback").catch(() => undefined);
+        await client.query("rollback").catch((e: Error) => {
+          broken = e;
+        });
         throw err;
       } finally {
-        client.release();
+        client.release(broken);
       }
     },
     exec: async (sql) => {

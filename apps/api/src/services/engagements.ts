@@ -121,7 +121,7 @@ export async function acceptOffer(tx: Queryable, user: SessionUser, offerId: str
 
 /** Called by the payment provider webhook (or finance in development). */
 export async function markPaymentPaid(tx: Queryable, actor: SessionUser | null, paymentId: string, providerRef: string, deps: Deps, amountFils?: number) {
-  const p = (await tx.query<Record<string, unknown>>("select * from payments where id = $1", [paymentId])).rows[0];
+  const p = (await tx.query<Record<string, unknown>>("select * from payments where id = $1 for update", [paymentId])).rows[0];
   if (!p) throw notFound("Payment not found");
   if (p.status === "paid") return; // idempotent: webhooks may repeat
   if (p.status !== "pending") throw conflict(`Payment is ${String(p.status)}, not pending`);
@@ -172,6 +172,9 @@ export async function runAllocation(
   ).rows;
   if (lines.length === 0) return [];
 
+  // One allocation decision at a time (O13): capacity is read from live work, which another transaction's offers would
+  // not show until they commit. Allocation takes milliseconds, so queueing here costs nothing that matters.
+  await tx.query("select pg_advisory_xact_lock(777003)");
   const [partners, deliverables] = await Promise.all([loadPartners(tx), loadDeliverables(tx)]);
   const tried = (
     await tx.query<{ partner_org_id: string; codes: string[] }>(
@@ -310,7 +313,7 @@ export async function respondToAllocation(
   reason: string | undefined,
   deps: Deps,
 ) {
-  const a = (await tx.query<Record<string, unknown>>("select * from allocations where id = $1", [allocationId])).rows[0];
+  const a = (await tx.query<Record<string, unknown>>("select * from allocations where id = $1 for update", [allocationId])).rows[0];
   if (!a || a.partner_org_id !== user.orgId) throw notFound("Allocation not found");
   if (user.role !== "partner_admin") throw forbidden("Only a partner admin can accept or decline work");
   if (a.accepted_at || a.declined_at || a.timed_out_at) throw conflict("This allocation has already been answered or has lapsed");
@@ -566,7 +569,7 @@ async function refreshPayouts(tx: Queryable, engagementId: string, deps: Deps) {
 
 export async function releasePayout(tx: Queryable, user: SessionUser, payoutId: string, deps: Deps) {
   if (!["finance", "founder"].includes(user.role)) throw forbidden("Only finance can release payouts");
-  const p = (await tx.query<Record<string, unknown>>("select * from payouts where id = $1", [payoutId])).rows[0];
+  const p = (await tx.query<Record<string, unknown>>("select * from payouts where id = $1 for update", [payoutId])).rows[0];
   if (!p) throw notFound("Payout not found");
   if (p.status !== "eligible") throw conflict(`This payout is ${String(p.status)}; only eligible payouts can be released`);
   const invoice = await tx.query("select 1 from partner_invoices where payout_id = $1", [payoutId]);
@@ -610,7 +613,7 @@ export async function proposeChangeOrder(tx: Queryable, user: SessionUser, engag
 }
 
 export async function decideChangeOrder(tx: Queryable, user: SessionUser, changeOrderId: string, approve: boolean, deps: Deps) {
-  const co = (await tx.query<Record<string, unknown>>("select c.*, e.client_org_id from change_orders c join engagements e on e.id = c.engagement_id where c.id = $1", [changeOrderId])).rows[0];
+  const co = (await tx.query<Record<string, unknown>>("select c.*, e.client_org_id from change_orders c join engagements e on e.id = c.engagement_id where c.id = $1 for update of c", [changeOrderId])).rows[0];
   if (!co || co.client_org_id !== user.orgId) throw notFound("Change order not found");
   if (user.role !== "client_owner") throw forbidden("Only the account owner can approve extra costs");
   if (co.status !== "priced") throw conflict("This change order is not waiting for a decision");

@@ -1,7 +1,7 @@
 # O13 Observability and hardening
 
-Status: in-progress (branch `outcome/O13-observability-hardening`, stacked on O12 (camayank/mkw-uae-growth#13) until it
-merges; released by the owner 25 Oct 2026)
+Status: in-progress (branch `outcome/O13-observability-hardening` from `main` after O12 merged as
+camayank/mkw-uae-growth#13; released by the owner 25 Oct 2026)
 
 ## Business result
 

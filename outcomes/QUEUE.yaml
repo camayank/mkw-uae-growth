@@ -80,7 +80,7 @@ outcomes:
     needs_from_owner: []
   - id: O12
     title: Client experience
-    status: verified-pending-merge
+    status: merged
     contract: outcomes/O12-client-experience.md
     depends_on: [O11]
     needs_from_owner: [wording review of the proposal and intake questions]

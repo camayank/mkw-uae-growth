@@ -18,12 +18,12 @@ import { asPlatform, asUser, audit } from "./lib/context.ts";
 import { num, withClock, type Database } from "./lib/db.ts";
 import { badRequest, conflict, forbidden, HttpError, notFound } from "./lib/errors.ts";
 import type { Notifier } from "./lib/notify.ts";
-import type { Storage } from "./lib/storage.ts";
+import { UPLOAD_RULES, type Storage } from "./lib/storage.ts";
 import type { PaymentProvider } from "./lib/payments.ts";
 import { issueHeldInvoices, loadCompany, refundPayment, statement, updateCompany } from "./services/invoices.ts";
 import { approveAdvice, recomputeAdvice, requestScoping, scopingOverview, search, verifyRule, verifyZone } from "./services/scoping.ts";
 import { draftScopeForRequest, listDrafts, reviewDraft } from "./services/drafts.ts";
-import { registerDocumentChecker } from "./services/doccheck.ts";
+import { registerDocumentChecker, supersedeChecks } from "./services/doccheck.ts";
 import { openQueueItem, opsQueue, syncQueueTimings } from "./services/queue.ts";
 import { resolveOutbox } from "./lib/outbox.ts";
 import { publicIntake, PublicIntakeSchema, listLeads, handleLead } from "./services/intake.ts";
@@ -55,9 +55,9 @@ import {
 } from "./services/engagements.ts";
 import { runJobs } from "./jobs/run.ts";
 import { acceptPartnerAgreement, assertMayRead, currentLegal, legalOverview, recordLegalSignOff } from "./services/legal.ts";
-import { listHolidays, removeHoliday, setHoliday } from "./services/calendar.ts";
+import { listHolidays, loadCalendar, removeHoliday, setHoliday } from "./services/calendar.ts";
 import { buildOffers, overrideLinePrice, publishOffer } from "./services/pricing.ts";
-import { createRequest, IntakeSchema } from "./services/requests.ts";
+import { createRequest, IntakeSchema, previewRequest } from "./services/requests.ts";
 import { addFee, catalogue, feesOverview, retireFee, rulesOverview, scheduleRule, updatePricingSettings, verifyFee } from "./services/rules.ts";
 import {
   changeRole,
@@ -71,7 +71,7 @@ import {
   listOrganisations,
   reactivateUser,
 } from "./services/admin.ts";
-import { auditTrail, clientHome, clientOffer, deliveryLog, myNotifications, opsEngagement, opsOffer, opsOverview, partnerHome, partyEngagement } from "./services/views.ts";
+import { auditTrail, clientHome, clientOffer, clientOfferProposal, deliveryLog, myNotifications, opsEngagement, opsOffer, opsOverview, partnerHome, partyEngagement } from "./services/views.ts";
 
 export interface AppOptions {
   db: Database;
@@ -221,7 +221,23 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   });
 
   // Client -------------------------------------------------------------------
-  app.get("/api/client/home", async (req) => clientHome(db, requireRole(req, ...CLIENT_ROLES)));
+  app.get("/api/client/home", async (req) => {
+    const user = requireRole(req, ...CLIENT_ROLES);
+    const cal = await asPlatform(db, user, (tx) => loadCalendar(tx));
+    return clientHome(db, user, opts.now ? opts.now() : new Date(), cal);
+  });
+
+  // What the intake would scope, without saving anything (O12): the services that follow from the answers. Structure
+  // and place advice is not shown here: it reaches a client only after a person at MKW has reviewed it (rule 5).
+  app.post("/api/requests/preview", async (req) => {
+    const user = requireRole(req, ...CLIENT_ROLES, "ops", "founder");
+    const answers = IntakeSchema.parse((req.body as { answers?: unknown } | null)?.answers ?? {});
+    // Read under the person's own role: it only needs the catalogue, which every role may read.
+    return asUser(db, user, (tx) => previewRequest(tx, answers));
+  });
+
+  // The page checks a file against these before sending it (O12); the storage adapter enforces the same rules.
+  app.get("/api/upload-rules", async () => UPLOAD_RULES);
 
   app.post("/api/requests", async (req) => {
     const user = requireRole(req, ...CLIENT_ROLES, "ops", "founder");
@@ -236,9 +252,11 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     });
   });
 
-  app.get<{ Params: { id: string } }>("/api/client/offers/:id", async (req) =>
-    clientOffer(db, requireRole(req, ...CLIENT_ROLES), req.params.id),
-  );
+  app.get<{ Params: { id: string } }>("/api/client/offers/:id", async (req) => {
+    const user = requireRole(req, ...CLIENT_ROLES);
+    const offer = (await clientOffer(db, user, req.params.id)) as Parameters<typeof clientOfferProposal>[2];
+    return { ...offer, proposal: await clientOfferProposal(db, user, offer) };
+  });
 
   app.post<{ Params: { id: string } }>("/api/client/offers/:id/accept", async (req) => {
     const user = requireRole(req, "client_owner");
@@ -265,7 +283,8 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   app.get<{ Params: { id: string } }>("/api/engagements/:id", async (req) => {
     const user = requireUser(req);
     if (user.orgType === "platform") return opsEngagement(db, user, req.params.id);
-    return partyEngagement(db, user, req.params.id);
+    const cal = user.orgType === "client" ? await asPlatform(db, user, (tx) => loadCalendar(tx)) : undefined;
+    return partyEngagement(db, user, req.params.id, opts.now ? opts.now() : new Date(), cal);
   });
 
   app.post<{ Params: { id: string } }>("/api/engagements/:id/messages", async (req) => {
@@ -846,6 +865,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     const key = await putFile(r.engagement_id, body.fileName, body.contentBase64);
     return asPlatform(db, user, async (tx) => {
       const r = await uploadClientDocument(tx, user, req.params.id, { key, name: body.fileName }, deps);
+      await supersedeChecks(tx, "document_request", req.params.id);
       await opts.notify.emit("document_check", { subject: "document_request", id: req.params.id });
       return r;
     });
@@ -975,6 +995,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     const key = await putFile(o.client_org_id, body.fileName, body.contentBase64);
     return asPlatform(db, user, async (tx) => {
       const r = await uploadObligationEvidence(tx, user, req.params.id, { key, name: body.fileName });
+      await supersedeChecks(tx, "obligation", req.params.id);
       await opts.notify.emit("document_check", { subject: "obligation", id: req.params.id });
       return r;
     });

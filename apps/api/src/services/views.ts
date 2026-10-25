@@ -1,5 +1,8 @@
+import { clientNextActions, clientTimeline, clientWhatsNext } from "./journey.ts";
+import { dbToday, loadDeliverables, loadGovernmentFees } from "./repo.ts";
+import { CLIENT_REVIEW_DAYS } from "./engagements.ts";
 import { opsQueue } from "./queue.ts";
-import { serialize, type Role } from "@tasees/core";
+import { milestonesFor, paymentPlan, serialize, UAE_CALENDAR, type Role, type WorkCalendar } from "@tasees/core";
 import { asPlatform, asUser, type SessionUser } from "../lib/context.ts";
 import { num, type Database, type Queryable } from "../lib/db.ts";
 import { notFound } from "../lib/errors.ts";
@@ -27,7 +30,7 @@ const camel = (row: Record<string, unknown>) =>
 
 // Client ----------------------------------------------------------------------------
 
-export function clientHome(db: Database, user: SessionUser) {
+export function clientHome(db: Database, user: SessionUser, now: Date = new Date(), cal: WorkCalendar = UAE_CALENDAR) {
   return asUser(db, user, async (tx) => {
     // Advice reaches the client only once ops has approved it; it keeps its confidence labels.
     const requests = await tx.query(
@@ -44,7 +47,11 @@ export function clientHome(db: Database, user: SessionUser) {
          (select count(*)::int from milestones m where m.engagement_id = e.id and m.status = 'qa_passed') as to_review
        from engagements e order by e.created_at desc`,
     );
+    // O12: the one thing Tasees needs from the client (first), or what is happening when nothing is needed.
+    const nextActions = await clientNextActions(tx, now, cal);
     return {
+      nextActions,
+      whatsNext: nextActions.length ? null : await clientWhatsNext(tx),
       requests: requests.rows.map(camel),
       offers: offers.rows.map(camel),
       engagements: engagements.rows.map(camel),
@@ -71,9 +78,60 @@ export function clientOffer(db: Database, user: SessionUser, offerId: string) {
   });
 }
 
+/**
+ * The offer as a proposal (O12): how the work will run, what is paid when, the guarantee, and a plain sentence for any
+ * government fee that is not confirmed. Read as the platform because the line reasons are internal; only the
+ * client-safe sentence leaves this function, never the reason itself.
+ */
+export function clientOfferProposal(db: Database, user: SessionUser, offer: { id: string; professional?: number; mkwFees?: number; vat?: number; government?: number; lines: Array<{ code: string; name: string; qty: number; govUnitFee?: number }> }) {
+  return asPlatform(db, user, async (tx) => {
+    // Each government fee's standing comes from MKW's fee table for the request's place, today: never from a line's
+    // free-text reason (an ops price override rewrites that). No row means the partner's own figure.
+    const place = (await tx.query<{ emirate: string | null; free_zone: string | null }>("select r.answers->>'emirate' as emirate, r.answers->>'freeZone' as free_zone from offers f join requests r on r.id = f.request_id where f.id = $1", [offer.id])).rows[0];
+    const fees = await loadGovernmentFees(tx, offer.lines.map((l) => l.code), place?.emirate ?? "", place?.free_zone ?? null, await dbToday(tx));
+    const guaranteeBp = num((await tx.query<{ value: number }>("select value from settings where key = 'guarantee_bp'")).rows[0]?.value ?? 1000);
+    const feeNotes: Record<string, string> = {};
+    for (const l of offer.lines) {
+      if (!(l.govUnitFee ?? 0)) continue;
+      const f = fees.get(l.code);
+      if (!f) feeNotes[l.code] = "As quoted by the partner firm; you pay the authority's actual fee, at cost.";
+      else if (f.confidence === "UNCERTAIN" || f.stale) feeNotes[l.code] = "Estimate: MKW Advisors confirms this government fee with the authority before it is paid; you pay the actual fee, at cost.";
+    }
+    const catalogue = await loadDeliverables(tx);
+    const plan = offer.lines.map((l) => {
+      const steps = milestonesFor(l.code, l.qty).map((m) => ({ name: m.name, afterWorkingDays: m.dueOffsetDays, isKey: m.isKey }));
+      // A yearly or monthly service runs on; its first cycle is not part of how long the setup takes.
+      const recurring = (catalogue.get(l.code)?.billing ?? "one_off") !== "one_off";
+      return { code: l.code, name: l.name, qty: l.qty, steps, recurring, workingDays: Math.max(0, ...steps.map((s) => s.afterWorkingDays)) };
+    });
+    const payment = paymentPlan({
+      professional: offer.professional ?? 0,
+      mkwFees: offer.mkwFees ?? 0,
+      vat: offer.vat ?? 0,
+      government: offer.government ?? 0,
+      clientTotal: 0,
+      partnerPayout: 0,
+      margin: 0,
+      marginBp: 0,
+      linesNeedingReview: 0,
+    });
+    return {
+      plan,
+      // Lines run side by side, so the longest one-off line is the estimate; recurring services are left out.
+      estimateWorkingDays: Math.max(0, ...plan.filter((p) => !p.recurring).map((p) => p.workingDays)),
+      feeNotes,
+      depositFils: payment.clientOnAcceptance,
+      balanceFils: payment.clientOnCompletion,
+      // The guarantee rate is a promise made to the client, so it is stated here (D60).
+      guaranteeBp,
+      reviewWorkingDays: CLIENT_REVIEW_DAYS,
+    };
+  });
+}
+
 // Shared engagement view for clients and partners --------------------------------------
 
-export function partyEngagement(db: Database, user: SessionUser, engagementId: string) {
+export function partyEngagement(db: Database, user: SessionUser, engagementId: string, now: Date = new Date(), cal: WorkCalendar = UAE_CALENDAR) {
   return asUser(db, user, async (tx) => {
     const e = (await tx.query("select id, status, emirate, free_zone, created_at, completed_at from engagements where id = $1", [engagementId])).rows[0];
     if (!e) throw notFound("Engagement not found");
@@ -135,6 +193,13 @@ export function partyEngagement(db: Database, user: SessionUser, engagementId: s
       changeOrders: changes.rows.map(camel),
       [user.orgType === "client" ? "payments" : "payouts"]: money.rows.map(camel),
       ...(user.orgType === "client" ? { invoices } : {}),
+      // O12: the client's timeline with the next action pinned above it.
+      ...(user.orgType === "client"
+        ? await (async () => {
+            const actions = await clientNextActions(tx, now, cal, engagementId);
+            return { journey: { nextAction: actions[0] ?? null, actions, whatsNext: actions.length ? null : await clientWhatsNext(tx, engagementId), timeline: await clientTimeline(tx, engagementId, cal) } };
+          })()
+        : {}),
     };
   });
 }

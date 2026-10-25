@@ -80,6 +80,19 @@ in a browser; everything listed here is not.
 32. **A birth date in a file name reaches the model** (D54): dates are kept because expiry and issue dates are what the
     check needs. Nothing leaves the platform until a real model is connected (O16).
 
+## O12: client experience
+
+33. **Wording is a draft for the owner.** The proposal, the intake questions, the next-action sentences and their Arabic
+    drafts wait for the owner's wording review (and the Arabic reviewer). The guarantee paragraph in particular states
+    the rate as a promise and says what may not qualify; the owner and the lawyer should confirm it matches the client
+    terms. Server sentences with a name, date or amount are translated by patterns in `i18n-ar.js`; a sentence the
+    patterns miss shows in English and appears on the reviewer's list of untranslated strings.
+34. **The same document can be asked for several steps.** The checklist groups requests by step and the next action
+    names each kind once, but a passport copy asked for three steps is still three uploads.
+35. **Partner and staff screens are unchanged** apart from the module split; their journeys are later work.
+36. **The working-day estimate on the proposal is the longest one-off line's milestone plan**, not a promise. Lines
+    run in parallel in the estimate; if one step truly waits on another, the real time is longer.
+
 ## Soon after
 
 7. **Scoping rules and zone data are working estimates.** The advice engine, rule confidence, zone table,
@@ -126,7 +139,7 @@ in a browser; everything listed here is not.
 
 ## Verified so far
 
-- 57 domain tests (`packages/core`) and 203 API tests (`apps/api`), all passing on PGlite and on PostgreSQL 16;
+- 57 domain tests (`packages/core`) and 212 API tests (`apps/api`), all passing on PGlite and on PostgreSQL 16;
   typecheck clean; `pnpm build` compiles and the compiled server runs in production mode from a fresh database.
 - O1: partner creation, invitations, role changes and deactivation (sessions revoked, codes refused) are tested as
   every role; PDPL export contains one person's data and no audit payloads (a test reproduces the leak that the

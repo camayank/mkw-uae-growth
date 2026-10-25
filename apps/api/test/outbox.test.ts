@@ -146,6 +146,30 @@ describe("event outbox", () => {
     expect(await rows(env, "select status from notifications where outbox_id = $1", [failed.id])).toEqual([{ status: "skipped" }]);
   });
 
+  it("a message the provider took but that could not be recorded is in doubt, never resent", async () => {
+    // The provider accepts the email; recording "sent" then fails (here: a constraint added for the moment).
+    const transport = memoryTransport();
+    const real = transport.deliver.bind(transport);
+    transport.deliver = async (email) => {
+      const r = await real(email);
+      await env.db.exec("alter table notifications add constraint no_sent_now check (status <> 'sent') not valid");
+      return r;
+    };
+    const n = recordingNotifier({ db: env.db, transport, appUrl: "https://app.test", fromClient: "a@b.test", fromPartner: "c@d.test", now: () => env.clock.now, log: () => undefined });
+    await asPlatform(env.db, null, () => n.send(offerReady("unrecorded")));
+    await n.dispatch();
+    await env.db.exec("alter table notifications drop constraint no_sent_now");
+    expect(transport.delivered).toHaveLength(1);
+    const [row] = await rows(env, "select id, status from outbox where payload->'vars'->>'offerId' = 'unrecorded'");
+    expect(row.status).toBe("unknown");
+    expect(await rows(env, "select status from notifications where outbox_id = $1", [row.id])).toEqual([{ status: "queued" }]);
+    for (const wait of [1, 5, 15, 60]) {
+      minutes(env, wait);
+      await n.dispatch();
+    }
+    expect(transport.delivered).toHaveLength(1);
+  });
+
   it("a run that outlived its claim changes nothing a recovery or a person decided since", async () => {
     // The handler hangs past the 10-minute lease; meanwhile another process recovers the row and ops cancels it.
     let release!: () => void;

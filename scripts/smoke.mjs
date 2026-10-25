@@ -96,15 +96,33 @@ await (await import("node:fs/promises")).mkdir(OUT, { recursive: true });
 const client = await session("founder@sample-client.test");
 await client.goto(BASE + "/#/new");
 await client.waitForSelector('form[data-form="intake"]');
-await client.selectOption('select[name="jurisdiction"]', "free_zone");
-await client.fill('input[name="visas"]', "2");
-await client.check('input[name="extra"][value="BANK-ACC"]');
-await client.check('input[name="extra"][value="VAT-RET"]');
+// O12: a conversation, one question at a time, with the plan building beside it.
+const next = async () => {
+  await client.locator('button[data-act="intake-next"]').click();
+  await client.waitForTimeout(300);
+};
+check("the intake asks one question at a time:", (await client.locator("fieldset.q:visible").count()) === 1 && /Question 1 of 6/.test(await client.locator("#intake-count").innerText()));
+await next();
+check("focus moves to the next question:", await client.evaluate(() => document.activeElement?.tagName === "LEGEND"));
 await client.selectOption('select[name="activity"]', "tech");
 await client.selectOption('select[name="customers"]', "international");
-await client.fill('input[name="expectedTurnoverAed"]', "500000");
 await client.fill('textarea[name="description"]', "Three partners starting a software company, 2 visas, bank account and VAT registration");
+await next();
+await client.selectOption('select[name="jurisdiction"]', "free_zone");
+await next();
+await client.fill('input[name="visas"]', "2");
+await next();
+await client.check('input[name="extra"][value="BANK-ACC"]');
+await client.check('input[name="extra"][value="VAT-RET"]');
+await client.fill('input[name="expectedTurnoverAed"]', "500000");
+await eventually("the plan builds as the client answers, with no unreviewed advice:", async () => {
+  const plan = await client.locator("#intake-plan").innerText();
+  return /Free zone licence/.test(plan) && /×2/.test(plan) && /Corporate bank account/.test(plan) && /once a person has checked your answers/.test(plan) && !/recommend|mainland is|you need a/i.test(plan);
+});
 await shot(client, "02-client-intake");
+await next();
+check("the last question sums up the answers before anything is sent:", /Software or technology/.test(await client.locator("#intake-summary").innerText()) && (await client.locator('button[data-act="intake-next"]').isHidden()));
+await shot(client, "02b-client-intake-review");
 await client.locator('form[data-form="intake"] button[type="submit"]').click();
 await client.waitForTimeout(800);
 log.push("request: " + (await toastText(client)));
@@ -142,6 +160,15 @@ await client.waitForSelector('button[data-act="accept-offer"]');
 await axeCheck(client, "client offer with the client terms (O10)");
 check("client sees the client terms with their version before accepting:", (await client.locator("input[data-terms-version]").count()) === 1 && /version 1/.test(await client.locator(".accept-terms").innerText()));
 check("client terms show the draft note until the lawyer's review is recorded:", (await client.getByText("Draft, pending legal review").count()) >= 1);
+// O12: the offer reads as a proposal: what we do, how it runs, what it costs and when, the guarantee, the rules.
+{
+  const proposal = await client.locator("main").innerText();
+  check("the offer reads as a proposal with every section:", ["What we will do", "How it will run", "What it costs", "Our guarantee", "Before you accept"].every((h) => proposal.includes(h)));
+  check("the proposal states the working-day estimate, the deposit now and the balance later:", /About \d+ working days/.test(proposal) && /On acceptance/.test(proposal) && /When every step is approved/.test(proposal));
+  check("the proposal says the rules where the client acts:", /valid until/.test(proposal) && /approved automatically/.test(proposal) && /We do not file returns or notifications/.test(proposal));
+  check("the proposal shows no partner cost or margin:", !/partner cost|margin|payout/i.test(proposal));
+  await shot(client, "72-client-proposal");
+}
 await client.locator('button[data-act="accept-offer"]').click();
 await client.waitForTimeout(300);
 await eventually("acceptance without ticking the terms is stopped:", async () => (await toastHas(client, /accept the client terms/i)) && /#\/offer\//.test(client.url()));
@@ -153,6 +180,9 @@ const engagementUrl = client.url();
 await client.waitForTimeout(600);
 await shot(client, "08-client-engagement-awaiting-payment");
 check("client sees a card payment link for the deposit:", (await client.locator('a:text-is("Pay by card")').count()) >= 1);
+// O12: the next action is pinned above the timeline: the deposit, with why it matters.
+check("the deposit is the pinned next action:", /Pay the deposit: AED/.test(await client.locator(".nextaction").innerText()) && /Work starts when the deposit arrives/.test(await client.locator(".nextaction").innerText()));
+check("the timeline runs from acceptance to completion:", /Offer accepted/.test(await client.locator("ol.timeline").innerText()) && /Completed/.test(await client.locator("ol.timeline").innerText()));
 
 // Finance records the deposit
 await finance.goto(engagementUrl); await finance.reload();
@@ -213,7 +243,12 @@ await shot(ops, "12-ops-engagement");
 // Client approves and sees masked message
 await client.goto(engagementUrl); await client.reload();
 await client.waitForSelector('button[data-act="ms-review"][data-approve="1"]');
-await client.locator('button[data-act="ms-review"][data-approve="1"]').first().click();
+// O12: the step to approve is the pinned action, with the date it is approved on its own.
+await eventually("the step waiting for the client is pinned with its automatic approval date:", async () => /approved automatically on/i.test(await client.locator(".nextaction").innerText()) && (await client.locator('.nextaction button[data-act="ms-review"]').count()) === 2);
+await shot(client, "73-client-timeline-approve");
+// The client approves from the pinned card, where the checked evidence is linked.
+check("the pinned card links the evidence MKW checked:", (await client.locator('.nextaction a[href^="/api/evidence/"]').count()) >= 1);
+await client.locator('.nextaction button[data-act="ms-review"][data-approve="1"]').click();
 await client.waitForTimeout(700);
 log.push("approve: " + (await toastText(client)));
 const pageText = await client.locator("main").innerText();
@@ -261,6 +296,21 @@ await mp.waitForSelector('main h1:text-is("Notifications")');
 await mp.waitForTimeout(500);
 check("notifications at 390 px have no horizontal overflow:", !(await mp.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
 await mp.screenshot({ path: `${OUT}/24-mobile-notifications.png`, fullPage: false });
+// O12 at phone width: the home with its pinned action, the conversation, the timeline and the proposal.
+for (const [route, name, label, ready] of [
+  ["#/", "75-mobile-client-home", "client home with the next action (O12)", ".nextaction"],
+  ["#/new", "76-mobile-client-intake", "conversational intake (O12)", "fieldset.q"],
+  [engagementUrl.slice(engagementUrl.indexOf("#")), "77-mobile-client-timeline", "client timeline (O12)", "ol.timeline"],
+  [standard[1], "78-mobile-client-proposal", "client proposal (O12)", ".proposal"],
+]) {
+  await mp.goto(BASE + "/" + route); await mp.reload();
+  await mp.waitForSelector(ready);
+  await mp.waitForTimeout(400);
+  check(`${label} at 390 px has no horizontal overflow:`, !(await mp.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
+  await mp.screenshot({ path: `${OUT}/${name}.png`, fullPage: false });
+  log.push(name);
+  await axeCheck(mp, `${label} at 390 px`);
+}
 await mp.goto(BASE + "/#/statement"); await mp.reload();
 await mp.waitForSelector('main h1:text-is("Statement of account")');
 await mp.waitForTimeout(500);
@@ -462,6 +512,8 @@ const pub = await browser.newContext({ viewport: { width: 1280, height: 900 } })
 const pp = await pub.newPage();
 pp.on("pageerror", (e) => errors.push(`intake page: ${e.message}`));
 await pp.goto(BASE + "/intake.html?utm_campaign=smoke");
+// The public page keeps its own single column: the app's styles must not reach it (O12 review).
+check("the public intake page keeps its single-column layout:", await pp.evaluate(() => { const m = document.querySelector("main.intake"); return !!m && getComputedStyle(m).display !== "grid" && m.getBoundingClientRect().width <= 780; }));
 await pp.fill("#company", "Smoke Lead Ventures");
 await pp.fill("#name", "Smoke Lead");
 await pp.fill("#email", `lead-${stamp}@smoke.test`);
@@ -619,6 +671,11 @@ await eventually("partner moved to pilot with a verified licence:", async () => 
 await client.goto(engagementUrl); await client.reload();
 await client.waitForSelector('form[data-form="doc-upload"]');
 check("client is asked for documents per step:", (await client.locator('form[data-form="doc-upload"]').count()) >= 1);
+// O12: the checklist checks a file before it leaves the page: a wrong type is refused on the spot, nothing is sent.
+await client.setInputFiles('form[data-form="doc-upload"] input[name="file"] >> nth=0', { name: "scan.exe", mimeType: "application/octet-stream", buffer: Buffer.from("MZ") });
+await eventually("a wrong file type is refused before upload, beside the item:", async () => /cannot be uploaded/.test(await client.locator("ul.checklist .field-msg").first().innerText()));
+check("the refused file is marked invalid for screen readers:", (await client.locator('ul.checklist input[aria-invalid="true"]').count()) === 1);
+await shot(client, "74-client-checklist-refused");
 await client.setInputFiles('form[data-form="doc-upload"] input[name="file"] >> nth=0', { name: "passport.pdf", mimeType: "application/pdf", buffer: pdfBytes });
 await client.locator('form[data-form="doc-upload"] button[type="submit"]').first().click();
 await client.waitForTimeout(800);

@@ -1,6 +1,6 @@
 # O11 Ops command centre and event outbox
 
-Status: verified-pending-merge (branch `outcome/O11-ops-command-centre` from `main`, released by the owner 25 Oct 2026)
+Status: merged (pull request camayank/mkw-uae-growth#12 into `main`, 25 Oct 2026; was: branch `outcome/O11-ops-command-centre`)
 
 ## Business result
 

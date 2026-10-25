@@ -1,63 +1,23 @@
-:root {
-  --bg: #f6f5f1;
-  --surface: #ffffff;
-  --surface-2: #f0efe9;
-  --text: #1c1f1e;
-  --muted: #5f6662;
-  --line: #e1dfd7;
-  --brand: #0f5c4d;
-  --brand-ink: #ffffff;
-  --accent: #b8862b;
-  --ok: #15603c;
-  --warn: #874c0c;
-  --bad: #b23b3b;
-  --info: #2c5d8f;
-  --radius: 10px;
-  --shadow: 0 1px 2px rgba(20, 30, 25, 0.06), 0 4px 16px rgba(20, 30, 25, 0.05);
-  color-scheme: light;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #121514;
-    --surface: #1a1e1d;
-    --surface-2: #222827;
-    --text: #e8ebe9;
-    --muted: #9aa49f;
-    --line: #2e3533;
-    --brand: #3fae93;
-    --brand-ink: #0b1210;
-    --accent: #d9a74b;
-    --ok: #4cc28a;
-    --warn: #e09a4f;
-    --bad: #e57373;
-    --info: #74a7dd;
-    --shadow: none;
-    color-scheme: dark;
-  }
-}
-:root[data-theme="dark"] {
-  --bg: #121514; --surface: #1a1e1d; --surface-2: #222827; --text: #e8ebe9; --muted: #9aa49f; --line: #2e3533;
-  --brand: #3fae93; --brand-ink: #0b1210; --accent: #d9a74b; --ok: #4cc28a; --warn: #e09a4f; --bad: #e57373; --info: #74a7dd;
-  --shadow: none; color-scheme: dark;
-}
-
+/* Tasees screens. Values come from tokens.css (O12); this file is layout and components. */
 * { box-sizing: border-box; }
+/* Anything hidden stays hidden, whatever display a component sets. */
+[hidden] { display: none !important; }
 /* Accessibility (O9): a skip link, a visible focus ring everywhere, and no motion for those who asked for none. */
 .skip { position: absolute; inset-inline-start: 8px; top: -40px; background: var(--brand); color: var(--brand-ink); padding: 8px 12px; border-radius: 8px; z-index: 10; }
 .skip:focus { top: 8px; }
-:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+:focus-visible { outline: var(--focus-ring); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; } }
-[dir="rtl"] body { font-family: ui-sans-serif, system-ui, "Segoe UI", Tahoma, "Noto Sans Arabic", "Dubai", Arial, sans-serif; }
+[dir="rtl"] body { font-family: var(--font-arabic); }
 html, body { margin: 0; }
 body {
   background: var(--bg);
   color: var(--text);
-  font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font: 15px/var(--leading) var(--font-sans);
 }
 a { color: var(--brand); }
-h1, h2, h3 { line-height: 1.25; margin: 0 0 0.5em; }
-h1 { font-size: 1.5rem; }
-h2 { font-size: 1.1rem; }
+h1, h2, h3 { line-height: var(--leading-tight); margin: 0 0 0.5em; }
+h1 { font-size: var(--text-xl); }
+h2 { font-size: var(--text-lg); }
 h3 { font-size: 0.95rem; }
 
 .top {
@@ -132,10 +92,10 @@ tfoot td { font-weight: 650; }
   display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 0.78rem; font-weight: 600;
   background: var(--surface-2); color: var(--muted); white-space: nowrap;
 }
-.badge.ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
-.badge.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
-.badge.bad { color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, transparent); }
-.badge.info { color: var(--info); background: color-mix(in srgb, var(--info) 12%, transparent); }
+.badge.ok { color: var(--ok); background: var(--ok-soft); }
+.badge.warn { color: var(--warn); background: var(--warn-soft); }
+.badge.bad { color: var(--bad); background: var(--bad-soft); }
+.badge.info { color: var(--info); background: var(--info-soft); }
 
 button, .btn {
   font: inherit; border: 1px solid var(--line); background: var(--surface); color: var(--text);
@@ -237,3 +197,96 @@ ul.plain li { padding: 6px 0; border-bottom: 1px solid var(--line); }
 .qdraft { background: var(--surface-2); border-radius: 8px; padding: 8px 12px; margin: 8px 0; }
 .qdraft p, .qdraft ul { margin: 4px 0; }
 .qactions { flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+
+/* Client experience (O12). Built from tokens.css; see docs/DESIGN.md for the patterns. */
+.lead { font-size: 1.02rem; color: var(--muted); max-width: 70ch; margin: 0 0 var(--space-4); }
+.eyebrow { margin: 0 0 var(--space-1); font-size: var(--text-xs); font-weight: 650; text-transform: uppercase; letter-spacing: 0.06em; color: var(--brand); }
+h2.section { margin: var(--space-5) 0 var(--space-3); }
+.btn.big, button.big { padding: 11px 22px; font-size: 1rem; font-weight: 600; }
+details.more > summary { cursor: pointer; color: var(--brand); font-size: var(--text-sm); margin-top: var(--space-2); }
+
+/* The one next action, pinned at the top of a client screen. */
+.nextaction {
+  margin: 0 0 var(--space-5); padding: var(--space-4) var(--space-5); border-radius: var(--radius-lg);
+  background: var(--brand-soft); border: 1px solid color-mix(in srgb, var(--brand) 30%, var(--line)); border-inline-start: 6px solid var(--brand);
+}
+.nextaction h2 { font-size: var(--text-xl); margin-bottom: var(--space-2); }
+.nextaction p { margin: 0 0 var(--space-3); max-width: 75ch; }
+.nextaction.calm { background: var(--surface); border-inline-start-color: var(--ok); }
+.nextaction .row { gap: var(--space-2); }
+
+/* Progress and engagement cards. */
+.link-card { display: block; text-decoration: none; color: inherit; transition: border-color var(--motion-fast) var(--ease); }
+.link-card:hover { border-color: var(--brand); }
+.progress { height: 8px; border-radius: var(--radius-pill); background: var(--surface-2); overflow: hidden; margin: var(--space-3) 0 var(--space-2); }
+.progress > span { display: block; height: 100%; background: var(--brand); border-radius: inherit; }
+
+/* The offer as a proposal. */
+.proposal { display: grid; gap: var(--space-4); margin-top: var(--space-4); }
+.proposal h3 { margin-top: var(--space-4); }
+.tiers .tier { display: flex; flex-direction: column; gap: var(--space-1); text-decoration: none; color: inherit; }
+.tiers .tier:hover { border-color: var(--brand); }
+ol.steps { margin: var(--space-2) 0 0; padding-inline-start: 1.3em; }
+ol.steps li { display: flex; justify-content: space-between; gap: var(--space-3); padding: 3px 0; border-bottom: 1px dashed var(--line); }
+ol.steps li:last-child { border-bottom: 0; }
+ul.notes { margin: var(--space-2) 0; padding-inline-start: 1.2em; color: var(--muted); }
+.paysplit { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--space-3); margin: var(--space-4) 0; }
+.paysplit > div { display: flex; flex-direction: column; gap: 2px; padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--surface-2); }
+.paysplit b { font-size: var(--text-lg); direction: ltr; unicode-bidi: isolate; }
+ul.rules { margin: 0 0 var(--space-4); padding-inline-start: 1.2em; }
+ul.rules li { margin-bottom: var(--space-2); }
+.checklist-static li { border-bottom: 1px solid var(--line); padding: var(--space-2) 0; }
+.checklist-static li:last-child { border-bottom: 0; }
+
+/* The conversational intake with the plan building beside it. */
+.intake-convo { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: var(--space-4); align-items: start; }
+@media (max-width: 860px) { .intake-convo { grid-template-columns: minmax(0, 1fr); } }
+.convo fieldset.q { border: 0; padding: 0; margin: 0 0 var(--space-3); }
+.convo legend { font-size: var(--text-lg); font-weight: 650; color: var(--text); padding: 0; margin-bottom: var(--space-3); }
+.convo legend:focus { outline: none; }
+.convo legend:focus-visible { outline: var(--focus-ring); }
+.choices.one { grid-template-columns: minmax(0, 1fr); }
+label.choice { padding: var(--space-3) var(--space-4); border: 1px solid var(--line); border-radius: var(--radius-md); cursor: pointer; }
+label.choice:has(input:checked) { border-color: var(--brand); background: var(--brand-soft); }
+.convo-nav { margin-top: var(--space-4); }
+.plan { position: sticky; top: 76px; }
+@media (max-width: 860px) { .plan { position: static; } }
+.planlist li { display: flex; justify-content: space-between; gap: var(--space-2); border-bottom: 1px solid var(--line); padding: var(--space-2) 0; }
+dl.answers { display: grid; grid-template-columns: max-content 1fr; gap: var(--space-1) var(--space-4); margin: var(--space-3) 0 0; }
+dl.answers dt { color: var(--muted); }
+dl.answers dd { margin: 0; }
+.field-msg { min-height: 1.2em; margin: var(--space-1) 0; }
+.field-msg.bad { color: var(--bad); }
+.field-msg.warn { color: var(--warn); }
+
+/* The client's timeline. */
+ol.timeline { list-style: none; margin: 0; padding: 0; position: relative; }
+ol.timeline::before { content: ""; position: absolute; inset-inline-start: 9px; top: 6px; bottom: 6px; width: 2px; background: var(--line); }
+.tl { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: var(--space-3); padding: var(--space-2) 0 var(--space-3); position: relative; }
+.tl-dot { width: 20px; height: 20px; border-radius: 50%; background: var(--surface); border: 3px solid var(--line); position: relative; z-index: 1; margin-top: 2px; }
+.tl.done .tl-dot { background: var(--ok); border-color: var(--ok); }
+.tl.now .tl-dot { border-color: var(--warn); box-shadow: 0 0 0 4px var(--warn-soft); }
+.tl.mkw .tl-dot, .tl.partner .tl-dot { border-color: var(--info); }
+.tl.issue .tl-dot { border-color: var(--bad); }
+.tl.now .tl-body { background: var(--warn-soft); border-radius: var(--radius-md); padding: var(--space-2) var(--space-3); }
+
+/* Documents as a checklist, each with a drop zone. */
+ul.checklist { list-style: none; margin: 0; padding: 0; }
+ul.checklist > li { padding: var(--space-2) 0; border-bottom: 1px solid var(--line); }
+ul.checklist > li:last-child { border-bottom: 0; }
+ul.checklist form { margin-top: var(--space-2); }
+.dropzone {
+  display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); color: var(--text);
+  border: 2px dashed var(--line); border-radius: var(--radius-md); background: var(--surface-2); cursor: pointer;
+  transition: border-color var(--motion-fast) var(--ease), background var(--motion-fast) var(--ease);
+}
+.dropzone.over, .dropzone:focus-within { border-color: var(--brand); background: var(--brand-soft); }
+.dropzone input[type="file"] { width: 100%; }
+.checklist-step { font-size: var(--text-sm); color: var(--muted); margin: var(--space-4) 0 0; text-transform: uppercase; letter-spacing: 0.04em; }
+/* In the checklist each upload is one compact row: the drop zone, its message, and the button. */
+form.upload-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-1) var(--space-2); align-items: center; }
+form.upload-row .dropzone { flex-direction: row; flex-wrap: wrap; align-items: center; padding: var(--space-2); }
+form.upload-row .dropzone > span { flex: 1 1 160px; }
+form.upload-row .dropzone input[type="file"] { width: auto; max-width: 100%; }
+form.upload-row .field-msg { grid-column: 1 / -1; order: 3; margin: 0; }
+.row.between > h1 + .btn { margin-bottom: var(--space-3); }

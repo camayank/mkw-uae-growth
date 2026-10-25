@@ -75,6 +75,19 @@ export function registerDocumentChecker(notify: Notifier, db: Database, model: A
   });
 }
 
+/**
+ * A replacement upload (a client document sent back, filing evidence uploaded again) makes the earlier upload's
+ * pending checks obsolete: they are closed as superseded, so no one confirms a verdict against the wrong file.
+ */
+export async function supersedeChecks(tx: Queryable, subject: CheckSubject, id: string): Promise<void> {
+  const old = await tx.query<{ id: string }>(
+    `update ai_drafts set status = 'discarded', reviewed_at = app_now(), review_note = 'superseded by a newer upload'
+      where kind = 'document_check' and subject_type = $1 and subject_id = $2 and status = 'pending' returning id`,
+    [subject, id],
+  );
+  for (const d of old.rows) await audit(tx, null, "ai.draft_superseded", "ai_draft", d.id, { kind: "document_check", subject, subjectId: id });
+}
+
 /** The latest document check for each upload, keyed `subject:id`, for showing beside the upload. */
 export async function latestChecks(tx: Queryable, subjects: Array<{ type: CheckSubject; id: string }>) {
   if (!subjects.length) return new Map<string, Record<string, unknown>>();

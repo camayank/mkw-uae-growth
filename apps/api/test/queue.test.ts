@@ -195,6 +195,36 @@ describe("queue robustness", () => {
   });
 });
 
+describe("replacement uploads", () => {
+  let env: TestEnv;
+  beforeAll(async () => {
+    env = await makeEnv();
+  });
+  afterAll(async () => {
+    await env.db.close();
+  });
+
+  it("a document uploaded again closes the earlier upload's check, so no verdict is shown against the wrong file", async () => {
+    const { engagementId, who } = await inDelivery(env);
+    const req = (await env.call("client", "GET", `/api/engagements/${engagementId}`)).body.documentRequests[0];
+    expect((await env.call("client", "POST", `/api/document-requests/${req.id}/upload`, { fileName: "first.pdf", contentBase64: pdf })).status).toBe(200);
+    await env.notify.flush();
+    expect((await env.call(who, "POST", `/api/document-requests/${req.id}/decide`, { decision: "rejected", note: "Blurred" })).status).toBe(200);
+    expect((await env.call("client", "POST", `/api/document-requests/${req.id}/upload`, { fileName: "second.pdf", contentBase64: pdf })).status).toBe(200);
+    await env.notify.flush();
+    // (The model saw the names reduced to "x.pdf"; the queue shows staff the real one.)
+    const drafts = await rows(env, "select status, review_note from ai_drafts where kind = 'document_check' and subject_id = $1 order by created_at", [req.id]);
+    expect(drafts).toEqual([
+      { status: "discarded", review_note: "superseded by a newer upload" },
+      { status: "pending", review_note: null },
+    ]);
+    const cards = (await env.call("ops", "GET", "/api/ops/queue")).body.items.filter((i: any) => i.kind === "document_check");
+    expect(cards).toHaveLength(1);
+    expect(cards[0].why).toMatch(/second\.pdf/);
+    expect(await rows(env, "select count(*)::int as n from audit_events where action = 'ai.draft_superseded'")).toEqual([{ n: 1 }]);
+  });
+});
+
 describe("document checker failures", () => {
   let env: TestEnv;
   beforeAll(async () => {

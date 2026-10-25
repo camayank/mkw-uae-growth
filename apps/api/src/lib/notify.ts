@@ -229,15 +229,24 @@ export function recordingNotifier(opts: NotifierOptions): Notifier {
       await asPlatform(db, null, (tx) => tx.query("update notifications set status = 'skipped', error = 'channel not available yet' where id = $1", [id]));
       return;
     }
+    let providerRef: string;
     try {
-      const { providerRef } = await opts.transport.deliver({ to, from, fromName: locale === "ar" ? BRAND_AR.name : BRAND[audience].name, subject: rendered.subject, text: rendered.body });
-      await asPlatform(db, null, (tx) => tx.query("update notifications set status = 'sent', provider_ref = $2, sent_at = app_now() where id = $1", [id, providerRef]));
+      ({ providerRef } = await opts.transport.deliver({ to, from, fromName: locale === "ar" ? BRAND_AR.name : BRAND[audience].name, subject: rendered.subject, text: rendered.body }));
     } catch (e) {
       const msg = (e as Error).message.slice(0, 500);
       log(`[notify] delivery ${(e as InDoubtError).inDoubt ? "in doubt" : "failed"} for ${n.template}: ${msg}`);
       // In doubt, the record stays "queued" (handed over, no answer): the outbox marks the message for a person.
       if (!(e as InDoubtError).inDoubt) await asPlatform(db, null, (tx) => tx.query("update notifications set status = 'failed', error = $2 where id = $1", [id, msg]));
       if (outboxId) throw e;
+      return;
+    }
+    // The provider has the message. If recording that fails, it must never look like a refusal (which is retried):
+    // the record stays "queued" and the message is in doubt, for a person to settle.
+    try {
+      await asPlatform(db, null, (tx) => tx.query("update notifications set status = 'sent', provider_ref = $2, sent_at = app_now() where id = $1", [id, providerRef]));
+    } catch (e) {
+      log(`[notify] ${n.template} was handed to the provider but could not be recorded: ${(e as Error).message.slice(0, 300)}`);
+      if (outboxId) throw new InDoubtError(`delivered (${providerRef}) but not recorded`);
     }
   };
 

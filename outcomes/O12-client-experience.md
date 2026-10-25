@@ -1,7 +1,7 @@
 # O12 Client experience
 
-Status: in-progress (branch `outcome/O12-client-experience` from `main` after O11 merged as camayank/mkw-uae-growth#12;
-released by the owner 25 Oct 2026)
+Status: verified-pending-merge (branch `outcome/O12-client-experience` from `main` after O11 merged as
+camayank/mkw-uae-growth#12; released by the owner 25 Oct 2026)
 
 ## Business result
 
@@ -83,3 +83,42 @@ questions (shipped as drafts in plain English; the Arabic is a draft until the r
 ## Rollback
 
 No migration. Reverting the branch restores the previous screens; the new endpoints are read-only.
+
+## Evidence
+
+| Claim | Evidence |
+| --- | --- |
+| Tests | `pnpm test`: 57 core + 217 API = 274 (O11: 260), all passing on PGlite and on PostgreSQL 16; `pnpm typecheck` clean. New: `apps/api/test/journey.test.ts` (12); replacement uploads in `queue.test.ts`; delivered-but-not-recorded in `outbox.test.ts` |
+| Next actions | in order: offer (with expiry), deposit (with the payment link), approval (auto-approval date counted in working days across a holiday), documents (each kind once, how many steps wait), filing evidence due within 30 days; nothing to do says what happens next and when; only the client's own rows; no partner cost or margin in any field; people's own words (a partner's reason for sending a document back) only in `detail` |
+| Timeline | offer accepted, deposit, each step, balance, completion, each with its state and date; partners and staff keep their page |
+| Proposal | fee notes come from the fee table for the request's place (estimate, or partner's quote at cost), even after ops overrides a price; recurring lines are listed but not in the working-day estimate; deposit and balance from `paymentPlan` |
+| Intake preview | the same scoping as a real request under the person's own role; writes no row; refused to partners; no unreviewed advice reaches the client |
+| Upload rules | `GET /api/upload-rules` equals the storage adapter's rules; the page refuses a wrong type, an empty or oversized file before upload, beside the item, and marks it invalid for screen readers; the server still refuses |
+| Smoke | `docs/evidence/O12/log.txt` (168 checks OK on a fresh demo): the conversational intake with focus on each question and the plan building; the proposal's sections, estimate, deposit and rules, with no partner cost or margin; the pinned deposit and timeline; the pinned approval with its automatic approval date and the evidence MKW checked; a refused `.exe` in the checklist; the public intake page's layout unchanged |
+| Screens | 1280 px: `02-client-intake.png`, `02b-client-intake-review.png`, `72-client-proposal.png`, `07-client-offer.png`, `08-client-engagement-awaiting-payment.png`, `73-client-timeline-approve.png`, `13-client-engagement-approved.png`, `74-client-checklist-refused.png`, `45-client-documents.png`; 390 px: `75`–`78` (home, intake, timeline, proposal) |
+| Accessibility | axe-core zero WCAG 2.1 AA violations on 28 screens, including the four new client screens at 390 px and the client screens in Arabic (`docs/evidence/O12/axe.json`) |
+
+## Could not verify
+
+How clients find the conversation and the proposal: no client has used them yet (the pilot). The wording and its
+Arabic drafts wait for the owner and the Arabic reviewer. Screen readers themselves (axe checks the markup, not
+VoiceOver or TalkBack).
+
+## Review
+
+A reviewer who had not seen the build read the contract and the diff, ran the suites and walked the screens. Findings,
+all fixed:
+
+| Finding | Fix |
+| --- | --- |
+| The new `.intake` styles broke the public intake page's layout | Renamed `.intake-convo`; the smoke test checks the public page keeps its single column |
+| The pinned approve asked the client to approve a step without showing what MKW checked | The card links the evidence and the button is described by the step |
+| The guarantee paragraph promised more than the credit rule does | It says finance confirms each credit and that a delay only the client can cure may not qualify (D60; owner's wording review, gap 33) |
+| Fee notes were read from the offer line's reason, which ops rewrites when setting a price | Read from the fee table for the request's place (D60), tested after a price override |
+| Sentences with a name, date or amount stayed English in Arabic, and people's own words were sent to the reviewer's gap list (over its limit) | Patterns in `i18n-ar.js`; people's words travel in `detail`, shown as written and never reported; the limit stays 200 (D59) |
+| The intake preview ran as the platform | Runs under the person's own role (D59) |
+| Recurring services made the working-day estimate months long; tier copy claimed things the tiers do not differ on | Recurring lines are listed but not counted (D60); tier claims removed |
+
+Nits fixed: the plan panel is a polite live region; the terms version is escaped; partner evidence shows its file check
+beside the field; a stray drop no longer opens the file in place of the app; the file-name check knows more document
+words; "Emirates ID" is written properly in the next action and sentences about returned documents start with a capital.

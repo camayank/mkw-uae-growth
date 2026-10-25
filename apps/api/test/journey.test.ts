@@ -181,7 +181,7 @@ describe("journey edges", () => {
     await env.call("client", "POST", `/api/document-requests/${req0.id}/upload`, { fileName: "scan.pdf", contentBase64: pdf });
     expect((await env.call(who, "POST", `/api/document-requests/${req0.id}/decide`, { decision: "rejected", note: "Mr Khan's copy is blurred" })).status).toBe(200);
     const docs = (await env.call("client", "GET", `/api/engagements/${engagementId}`)).body.journey.actions.find((a: any) => a.kind === "documents");
-    expect(docs.why).toMatch(/was sent back\./);
+    expect(docs.why).toMatch(/^[A-Z].* was sent back\./);
     expect(docs.why).not.toMatch(/Khan/);
     expect(docs.detail).toBe("Mr Khan's copy is blurred");
   });

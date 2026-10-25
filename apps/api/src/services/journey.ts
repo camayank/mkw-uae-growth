@@ -45,6 +45,9 @@ export interface TimelineEntry {
 const dubaiDate = (d: Date) => new Date(d.getTime() + 4 * 3_600_000).toISOString().slice(0, 10);
 const fmt = (iso: string | null) =>
   iso ? new Date(`${iso.slice(0, 10)}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }) : "";
+const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+// A document kind in words: emirates_id reads "Emirates ID", passport_copy "passport copy".
+const docWords = (kind: string) => kind.replace(/_/g, " ").replace(/\bemirates id\b/, "Emirates ID");
 const aed = (fils: number) => `AED ${(fils / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 /** The date a step waiting for the client is approved automatically: five working days after MKW's check. */
@@ -124,15 +127,15 @@ export async function clientNextActions(tx: Queryable, now: Date, cal: WorkCalen
   for (const [eid, list] of byEngagement) {
     const back = list.filter((d) => d.status === "rejected");
     // Each kind once (a passport copy asked for three steps is one thing to find), and how many steps wait.
-    const kinds = [...new Set(list.map((d) => d.kind.replace(/_/g, " ")))];
+    const kinds = [...new Set(list.map((d) => docWords(d.kind)))];
     const steps = new Set(list.map((d) => d.step)).size;
     const waiting = steps > 1 ? `${steps} steps cannot finish without them` : `${list[0]!.step} cannot finish without ${list.length > 1 ? "them" : "it"}`;
     actions.push({
       kind: "documents",
       title: `Upload ${list.length} document${list.length > 1 ? "s" : ""}`,
       why: back.length
-        ? `${[...new Set(back.map((d) => d.kind.replace(/_/g, " ")))].join(", ")} ${back.length > 1 ? "were" : "was"} sent back. ${waiting[0]!.toUpperCase()}${waiting.slice(1)}.`
-        : `${kinds[0]![0]!.toUpperCase()}${kinds.join(", ").slice(1)}. ${waiting[0]!.toUpperCase()}${waiting.slice(1)}.`,
+        ? `${capital([...new Set(back.map((d) => docWords(d.kind)))].join(", "))} ${back.length > 1 ? "were" : "was"} sent back. ${capital(waiting)}.`
+        : `${capital(kinds.join(", "))}. ${capital(waiting)}.`,
       link: `#/engagement/${eid}`,
       due: null,
       engagementId: eid,

@@ -260,6 +260,8 @@ export async function erasePerson(tx: Queryable, actor: SessionUser, userId: str
   // "returning" so the counts are the same whichever driver runs the query.
   const sessions = await tx.query("delete from sessions where user_id = $1 returning token_hash", [userId]);
   const codes = await tx.query("delete from login_codes where email = $1 returning id", [user.email]);
+  // Stored answers to the person's own requests (O13) can carry their details.
+  await tx.query("delete from idempotency_keys where user_id = $1", [userId]);
   const messages = await tx.query("update messages set author_name = $2, body_original = $3, body_shown = $3 where author_user_id = $1 returning id", [
     userId,
     TOMBSTONE_NAME,

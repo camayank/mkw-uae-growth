@@ -9,6 +9,7 @@ import { expireOffers } from "../services/pricing.ts";
 import { sendOpsDigest } from "../services/digest.ts";
 import { refreshCurrentRules } from "../services/rules.ts";
 import { opsQueue, syncQueueTimings } from "../services/queue.ts";
+import { purgeIdempotencyKeys } from "../lib/idempotency.ts";
 import { finishRun, nightlyAuditCheck, startRun, sweepAlerts, type AlertSweep, type StepResult } from "../services/system.ts";
 
 export interface JobsOptions {
@@ -24,7 +25,7 @@ export interface JobsOptions {
  * run and every step is recorded in `job_runs` with its duration and count, for the System page and the alerts.
  */
 export async function runJobs(db: Database, deps: Deps, actor: SessionUser | null = null, opts: JobsOptions = {}) {
-  const result = { allocationTimeouts: 0, autoApprovals: 0, offersExpired: 0, opsDigests: 0, rulesRefreshed: 0, licences: 0, delays: 0, credits: 0, scorecards: 0, obligationReminders: 0, queueItems: 0, auditChecked: 0, alerts: null as AlertSweep | null, outbox: null as DispatchSummary | null, errors: [] as string[], skipped: false, runId: null as number | null };
+  const result = { allocationTimeouts: 0, autoApprovals: 0, offersExpired: 0, opsDigests: 0, rulesRefreshed: 0, licences: 0, delays: 0, credits: 0, scorecards: 0, obligationReminders: 0, queueItems: 0, idempotencyPurged: 0, auditChecked: 0, alerts: null as AlertSweep | null, outbox: null as DispatchSummary | null, errors: [] as string[], skipped: false, runId: null as number | null };
   const startedMs = Date.now();
   const runId = await asPlatform(db, actor, (tx) => startRun(tx));
   if (runId === null) {
@@ -75,6 +76,7 @@ export async function runJobs(db: Database, deps: Deps, actor: SessionUser | nul
       return due ? recomputeScorecards(tx, actor) : 0;
     }),
   );
+  await step("idempotencyPurged", () => asPlatform(db, actor, (tx) => purgeIdempotencyKeys(tx)));
   // The whole audit chain, once per Dubai day (O13); a break opens a critical alert below.
   await step("auditChecked", () => asPlatform(db, actor, (tx) => nightlyAuditCheck(tx)));
   // Deliver what the sweeps raised, and anything a stopped process left in the outbox (O11).

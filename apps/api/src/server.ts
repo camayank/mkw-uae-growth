@@ -27,6 +27,7 @@ import { draftScopeForRequest, listDrafts, reviewDraft } from "./services/drafts
 import { registerDocumentChecker, supersedeChecks } from "./services/doccheck.ts";
 import { openQueueItem, opsQueue, syncQueueTimings } from "./services/queue.ts";
 import { resolveOutbox } from "./lib/outbox.ts";
+import { registerIdempotency } from "./lib/idempotency.ts";
 import { publicIntake, PublicIntakeSchema, listLeads, handleLead } from "./services/intake.ts";
 import type { AiModel } from "./lib/ai.ts";
 import { DOCUMENT_KINDS, invitePartnerStaff, movePartner, partnerOnboarding, recomputeScorecards, reviewDocument, setPartnerStaffActive, submitApplication, uploadDocument as uploadPartnerDocument, scorecardHistory } from "./services/partners.ts";
@@ -134,6 +135,9 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     // Every later line of this request says whose it is: ids only, never the email or the name (O13).
     if (req.user) reply.log = req.log = req.log.child({ userId: req.user.id, orgId: req.user.orgId, role: req.user.role });
   });
+
+  // A repeated change with the same Idempotency-Key gets the first answer (O13).
+  registerIdempotency(app, db);
 
   // Per-IP limit on the sign-in endpoints, per 15 minutes. In-process; put a shared limiter at the proxy when running
   // more than one instance.

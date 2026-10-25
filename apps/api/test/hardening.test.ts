@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { asPlatform } from "../src/lib/context.ts";
 import { withClock } from "../src/lib/db.ts";
@@ -215,5 +216,80 @@ describe("job runs, alerts and the nightly audit check", () => {
     }
     for (const who of ["client", "setup"]) expect((await env.call(who, "GET", "/api/ops/system")).status).toBe(403);
     expect((await env.call("anon", "GET", "/api/health/jobs")).body).not.toHaveProperty("runs");
+  });
+});
+
+describe("idempotency keys", () => {
+  let env: TestEnv;
+  beforeAll(async () => {
+    env = await makeEnv();
+  });
+  afterAll(() => env.db.close());
+  const body = { answers: { mode: "new_company", jurisdiction: "free_zone", emirate: "Dubai", visas: 1 } };
+  const requests = async () => (await rows(env, "select count(*)::int as n from requests"))[0].n as number;
+
+  it("runs a change once and gives a repeat the first answer", async () => {
+    const before = await requests();
+    const first = await env.send("client", "POST", "/api/requests", body, { "idempotency-key": "key-request-0001" });
+    const again = await env.send("client", "POST", "/api/requests", body, { "idempotency-key": "key-request-0001" });
+    expect(first.status).toBe(200);
+    expect(again).toMatchObject({ status: 200, body: first.body });
+    expect(again.headers["idempotent-replay"]).toBe("true");
+    expect(first.headers["idempotent-replay"]).toBeUndefined();
+    expect(await requests()).toBe(before + 1);
+    // Without a key, or with a new one, it is a new change.
+    await env.send("client", "POST", "/api/requests", body, { "idempotency-key": "key-request-0002" });
+    expect(await requests()).toBe(before + 2);
+  });
+
+  it("refuses the same key on a different request, and a repeat while the first runs", async () => {
+    const other = await env.send("client", "POST", "/api/requests", { answers: { ...body.answers, visas: 2 } }, { "idempotency-key": "key-request-0001" });
+    expect(other).toMatchObject({ status: 422, body: { error: "idempotency_mismatch" } });
+    const elsewhere = await env.send("client", "PUT", "/api/me/locale", { locale: "en" }, { "idempotency-key": "key-request-0001" });
+    expect(elsewhere.status).toBe(422);
+    const me = (await env.call("client", "GET", "/api/me")).body;
+    await rows(env, "insert into idempotency_keys (user_id, key, method, path, body_hash) values ($1, 'key-stuck-00001', 'PUT', '/api/me/locale', $2)", [
+      me.id,
+      createHash("sha256").update(JSON.stringify({ locale: "en" })).digest("hex"),
+    ]);
+    const stuck = await env.send("client", "PUT", "/api/me/locale", { locale: "en" }, { "idempotency-key": "key-stuck-00001" });
+    expect(stuck).toMatchObject({ status: 409, body: { error: "in_progress" } });
+  });
+
+  it("keeps keys per person, refuses them on public routes and malformed ones", async () => {
+    // The same key from another person is that person's own first request.
+    const theirs = await env.send("clientMember", "PUT", "/api/me/locale", { locale: "en" }, { "idempotency-key": "key-request-0001" });
+    expect(theirs.status).toBe(200);
+    expect(theirs.headers["idempotent-replay"]).toBeUndefined();
+    const anon = await env.send("anon", "POST", "/api/auth/request-code", { email: "someone@example.test" }, { "idempotency-key": "key-anon-000001" });
+    expect(anon.status).toBe(400);
+    expect((await env.send("client", "PUT", "/api/me/locale", { locale: "en" }, { "idempotency-key": "short" })).status).toBe(400);
+    // Reads ignore the header.
+    expect((await env.send("client", "GET", "/api/me", undefined, { "idempotency-key": "short" })).status).toBe(200);
+  });
+
+  it("records refusals too, and releases the key when the server failed", async () => {
+    const refused = await env.send("client", "POST", "/api/requests", { answers: { mode: "nonsense" } }, { "idempotency-key": "key-refused-001" });
+    expect(refused.status).toBe(400);
+    expect((await env.send("client", "POST", "/api/requests", { answers: { mode: "nonsense" } }, { "idempotency-key": "key-refused-001" })).headers["idempotent-replay"]).toBe("true");
+    const owner = (sql: string) => env.db.transaction((tx) => tx.query(sql));
+    await owner("alter table requests rename to requests_gone");
+    const failed = await env.send("client", "POST", "/api/requests", body, { "idempotency-key": "key-failed-0001" });
+    await owner("alter table requests_gone rename to requests");
+    expect(failed.status).toBe(500);
+    const retried = await env.send("client", "POST", "/api/requests", body, { "idempotency-key": "key-failed-0001" });
+    expect(retried.status).toBe(200);
+    expect(retried.headers["idempotent-replay"]).toBeUndefined();
+  });
+
+  it("forgets keys after a day and when the person is erased", async () => {
+    const memberId = (await env.call("clientMember", "GET", "/api/me")).body.id;
+    expect((await rows(env, "select count(*)::int as n from idempotency_keys where user_id = $1", [memberId]))[0].n).toBe(1);
+    expect((await env.call("founder", "POST", `/api/admin/users/${memberId}/erase`, { confirm: "ERASE" })).status).toBe(200);
+    expect((await rows(env, "select count(*)::int as n from idempotency_keys where user_id = $1", [memberId]))[0].n).toBe(0);
+    later(env, 24 * 60 + 1);
+    const run = (await env.call("ops", "POST", "/api/ops/jobs/run")).body;
+    expect(run.idempotencyPurged).toBeGreaterThan(0);
+    expect((await rows(env, "select count(*)::int as n from idempotency_keys where created_at < app_now() - interval '24 hours'"))[0].n).toBe(0);
   });
 });

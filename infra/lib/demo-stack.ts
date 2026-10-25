@@ -54,7 +54,7 @@ export class DemoStack extends Stack {
           NODE_ENV: "demo",
           HOST: "0.0.0.0",
           PORT: "8787",
-          TRUST_PROXY: "1",
+          TRUST_PROXY: vpc.vpcCidrBlock,
           DEV_LOGIN: "1",
           PAYMENT_WEBHOOK_SECRET: "demo-only-not-a-secret",
           APP_URL: `https://${domainName}`,

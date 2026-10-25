@@ -32,7 +32,12 @@ export const CONFIG_RULES: Record<string, Rule> = {
   NODE_ENV: oneOf("development", "production", "test", "demo"),
   HOST: text,
   PORT: wholeNumber(1, 65535),
-  TRUST_PROXY: wholeNumber(0, 10),
+  // The load balancer's address range: X-Forwarded-For is believed only from these addresses (O7: Fastify 5.12 ignores
+  // a hop count, which a direct caller could spoof).
+  TRUST_PROXY: {
+    test: (v) => v === "0" || v.split(",").every((x) => /^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$|^[0-9a-fA-F:]+(\/\d{1,3})?$/.test(x.trim()) && x.includes(".") !== x.includes(":")),
+    rule: "must be 0 or the proxy's addresses as IPs or CIDR ranges, comma-separated (for example 10.0.0.0/16), not a hop count",
+  },
   LOG: oneOf("0", "1"),
   DEV_LOGIN: oneOf("0", "1"),
   IN_PROCESS_JOBS: oneOf("0", "1"),

@@ -277,7 +277,7 @@ describe("public intake", () => {
     let limited = 0;
     for (let i = 0; i < 12; i++) if ((await spoof(env.app, i)).statusCode === 429) limited += 1;
     expect(limited).toBeGreaterThan(0); // spoofed addresses share one bucket when no proxy is trusted
-    const trusting = await makeEnv(undefined, { trustProxy: 1 });
+    const trusting = await makeEnv(undefined, { trustProxy: "127.0.0.1" }); // the address inject() comes from
     try {
       let limited2 = 0;
       for (let i = 0; i < 12; i++) if ((await spoof(trusting.app, i)).statusCode === 429) limited2 += 1;

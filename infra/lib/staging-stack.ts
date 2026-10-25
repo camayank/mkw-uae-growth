@@ -32,7 +32,7 @@ export interface StagingProps extends StackProps {
  * - a private, encrypted, versioned S3 bucket for evidence files and the go-live import files, and one for backups;
  * - the Dockerfile's image on ECS Fargate in private subnets behind an HTTPS load balancer (HTTP redirects);
  * - secrets in AWS Secrets Manager, read by the task at start and never written to the template or the logs;
- * - TRUST_PROXY=1 (one load balancer hop), DEV_LOGIN unset, NODE_ENV=production;
+ * - TRUST_PROXY set to the VPC's range (the load balancer's addresses), DEV_LOGIN unset, NODE_ENV=production;
  * - the 15-minute jobs as a scheduled Fargate task (IN_PROCESS_JOBS=0), with an alarm when a run is missing.
  */
 export class StagingStack extends Stack {
@@ -101,7 +101,8 @@ export class StagingStack extends Stack {
       NODE_ENV: "production",
       HOST: "0.0.0.0",
       PORT: "8787",
-      TRUST_PROXY: "1",
+      // X-Forwarded-For is believed only from the load balancer, whose addresses are in the VPC.
+      TRUST_PROXY: vpc.vpcCidrBlock,
       APP_URL: `https://${domainName}`,
       IN_PROCESS_JOBS: "0",
       STORAGE: "s3",

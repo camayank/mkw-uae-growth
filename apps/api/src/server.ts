@@ -37,7 +37,7 @@ export interface AppOptions {
   /** Return one-time login codes in the response. Development only. */
   devLogin?: boolean;
   /** Number of trusted proxy hops in front of the API; 0/undefined ignores X-Forwarded-For. */
-  trustProxy?: number;
+  trustProxy?: string | false;
   webhookSecret?: string;
   webDir?: string;
   /** MKW's alert address (ALERT_EMAIL, O13). */
@@ -49,16 +49,22 @@ export interface AppOptions {
 }
 
 export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
-  // trustProxy: only when told how many proxy hops sit in front (TRUST_PROXY=1 behind one load balancer), so
-  // X-Forwarded-For cannot be spoofed by a direct caller and every visitor behind a proxy is not one address.
+  // trustProxy: the load balancer's address range (TRUST_PROXY=10.0.0.0/16). X-Forwarded-For is believed only when
+  // the request comes from there, so a direct caller cannot spoof it, and every visitor behind the proxy is not one
+  // address (which would put them all in one sign-in rate-limit bucket).
   const app = Fastify({
     logger: opts.logger ? loggerOptions(typeof opts.logger === "object" ? opts.logger.stream : undefined) : false,
     genReqId: requestId,
-    bodyLimit: 25 * 1024 * 1024,
+    bodyLimit: BODY_LIMIT,
     trustProxy: opts.trustProxy ?? false,
   });
   // Every route as it is registered, for the contract (O13). Must come before the first route.
   const routeDocs = collectRoutes(app);
+  // Bodies are capped at 1 MB; a route that carries a file (a `contentBase64` field) takes up to 25 MB. A small cap
+  // bounds how much any one request can make the validator do (O7 dependency audit, D70).
+  app.addHook("onRoute", (r) => {
+    if (carriesFile((r.config as { body?: unknown } | undefined)?.body)) r.bodyLimit ??= FILE_BODY_LIMIT;
+  });
   const db = withClock(opts.db, opts.now);
   const deps: Deps = { notify: opts.notify, now: opts.now, provider: opts.provider, storage: opts.storage };
   // Agents subscribed to the outbox (O11). The scheduled jobs process registers the same ones.
@@ -163,6 +169,16 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   if (opts.webDir) registerStatic(app, opts.webDir);
 
   return app;
+}
+
+const BODY_LIMIT = 1024 * 1024;
+/** A 15 MB file (UPLOAD_RULES) is about 20 MB as base64, plus the rest of the body. */
+const FILE_BODY_LIMIT = 25 * 1024 * 1024;
+
+function carriesFile(schema: unknown): boolean {
+  let s = schema;
+  while (s instanceof z.ZodOptional || s instanceof z.ZodNullable || s instanceof z.ZodEffects) s = s instanceof z.ZodEffects ? s.innerType() : s.unwrap();
+  return s instanceof z.ZodObject && "contentBase64" in s.shape;
 }
 
 /** A load balancer's request id is kept when it is well formed; otherwise one is made here. */

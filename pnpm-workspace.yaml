@@ -3,3 +3,8 @@ packages:
   - "apps/*"
 onlyBuiltDependencies:
   - esbuild
+# Security patches for transitive dependencies (O7 dependency audit; see docs/DECISIONS.md D70). Remove an entry once
+# the package that pulls it in requires the patched version itself.
+overrides:
+  "fast-uri@>=3.0.0 <3.1.9": "3.1.9"
+  "fast-uri@>=4.0.0 <4.2.3": "4.2.3"

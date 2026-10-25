@@ -1,7 +1,9 @@
 # O7 Launch gate
 
-Status: prepared (checklist; the pilot is human work and needs the owner's inputs). Branch
-`outcome/O9-arabic-and-accessibility` carries this file; nothing in O7 is code.
+Status: in-progress (released by the owner 25 Oct 2026, after O13). The build's part is done on branch
+`outcome/O7-launch-gate`: the dependency audit with its fixes, the reviewer's security brief, and this checklist
+brought up to date with O10–O13. The rest is the owner's and the MKW team's work, listed below; nothing more can be
+built or deployed without it.
 
 ## Business result
 
@@ -24,6 +26,31 @@ on-time rate, margin, issues found and fixed, and a go / no-go for launch.
 | Privacy and security | O1: RLS and column grants, hash-chained audit, PDPL export/erasure, sign-in throttles, security headers; `security.test.ts` | Security review report (see below); one export and one erasure exercised on a test person |
 | Accessibility and Arabic | O9: axe-core report, keyboard path, Arabic gated on the reviewer | `docs/evidence/O9/axe.json`; reviewer's sign-off recorded on Settings |
 
+## Added since this checklist was written (O10–O13 and the O7 preparation)
+
+| Gate item | Where it is |
+| --- | --- |
+| Staging as code in me-central-1 (VPC, RDS PostgreSQL 16, private encrypted buckets, Fargate behind HTTPS, scheduled jobs, alarms, secrets in Secrets Manager) and a demo stack | `infra/`, `docs/DEPLOY.md` (staging runbook) |
+| Go-live data importers (partners, rate cards, fees, holidays, owner decisions, company details, legal texts), dry run first | O10, `docs/DEPLOY.md` (Go-live data) |
+| Ops command centre and event outbox: nothing sent twice, nothing lost, doubtful deliveries go to a person | O11 |
+| Client experience: next action, timeline, proposal, conversational intake, checked uploads | O12 |
+| Nothing fails silently: configuration checked at start, structured logs, job runs and alerts, the System page, nightly audit check, idempotency keys, row locks with race tests on PostgreSQL, a load test, an OpenAPI contract | O13, `docs/evidence/O13/` |
+| Dependency audit: Fastify, csv-parse and fast-uri patched; zod bounded by body caps; development tools assessed | D70, `docs/SECURITY-BRIEF.md` |
+| A brief for the outside security reviewer: what the platform holds, its defences and where to look, what to try | `docs/SECURITY-BRIEF.md` |
+
+## What is waiting on the owner, in order
+
+1. **AWS account** in me-central-1 with credentials for the deployer, the **domain and DNS**, and an ACM certificate.
+   Then: `cdk deploy TaseesStaging` (the runbook in `docs/DEPLOY.md`), shown to the owner before anything runs.
+2. **SES**: verify the sender domain (SPF, DKIM), leave the sandbox, set `EMAIL=ses`.
+3. **Alert address** (`ALERT_EMAIL` and the stack's `alarmEmail`).
+4. **The go-live workbook and owner decisions** for the importers: dry run shown to the owner before `--apply`.
+5. **Lawyer**: client terms, Partner Network Agreement, privacy notice and consent text (recorded on Settings).
+6. **Tax adviser**: VAT on government fees, invoice and credit note layout; company TRN on Settings.
+7. **Merchant account** for card payments (the adapter is then built against its sandbox, O14) or bank transfer only.
+8. **Outside security reviewer**, with `docs/SECURITY-BRIEF.md`.
+9. **Pilot partners and clients**, and the Arabic reviewer if Arabic launches.
+
 ## Checklist (owner and MKW team)
 
 ### Before the pilot
@@ -42,7 +69,8 @@ on-time rate, margin, issues found and fixed, and a go / no-go for launch.
 - [ ] Tax adviser: VAT treatment of government fees as disbursements (`settings.company.govFeesAsDisbursements`
       is UNCERTAIN until confirmed), invoice and credit note layout, corporate tax obligations in the
       calendar rules.
-- [ ] Security review by someone outside the build: threat model, dependency audit (`pnpm audit`), the
+- [x] Dependency audit (`pnpm audit`): production dependencies patched or bounded (D70).
+- [ ] Security review by someone outside the build (brief: `docs/SECURITY-BRIEF.md`): threat model, the
       webhook signature and replay window, session and throttle settings, storage bucket policy, backup
       restore drill, RLS tests (`apps/api/test/security.test.ts`) read as a reviewer, secrets handling in
       the deployment.

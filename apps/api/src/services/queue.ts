@@ -61,7 +61,12 @@ export interface QueueItem {
 }
 
 const SOURCES = `
-select 'offer_review' as kind, f.id::text as ref, f.id::text as subject_id, null::text as engagement_id, null::text as partner_org_id,
+select 'system_alert' as kind, a.id::text as ref, a.id::text as subject_id, null::text as engagement_id, null::text as partner_org_id,
+       a.summary as detail, a.opened_at as at, jsonb_build_object('summary', a.summary, 'severity', a.severity) as info,
+       false as client_waiting, false as partner_waiting, false as money_waiting
+  from alerts a where a.closed_at is null
+union all
+select 'offer_review', f.id::text as ref, f.id::text as subject_id, null::text as engagement_id, null::text as partner_org_id,
        'Offer needs review: ' || f.lines_needing_review || ' line(s)' as detail, f.created_at as at,
        jsonb_build_object('client', c.name, 'lines', f.lines_needing_review, 'tier', f.tier) as info, true as client_waiting, false as partner_waiting, false as money_waiting
   from offers f join orgs c on c.id = f.client_org_id where f.status = 'ops_review'
@@ -155,6 +160,8 @@ const str = (v: unknown) => String(v ?? "");
 function why(r: Row): string {
   const i = r.info;
   switch (r.kind) {
+    case "system_alert":
+      return `${str(i.summary)} The platform raised this (${str(i.severity)}); it closes on its own when the cause clears.`;
     case "offer_review":
       return `${str(i.lines)} line(s) of the ${str(i.tier)} offer for ${str(i.client)} fall below the margin floor or lack a price; the client sees no offer until a person decides them.`;
     case "offer_ready":
@@ -226,6 +233,8 @@ function linkFor(r: Row): string {
     case "delivery_failed":
     case "delivery_unknown":
       return "#/settings";
+    case "system_alert":
+      return "#/system";
     default:
       return r.engagement_id ? `#/engagement/${r.engagement_id}` : "#/queue";
   }

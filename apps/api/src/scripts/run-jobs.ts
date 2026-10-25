@@ -7,13 +7,19 @@ import { storageFromEnv } from "../lib/storage.ts";
 import { runJobs } from "../jobs/run.ts";
 import { modelFromEnv } from "../lib/ai.ts";
 import { registerDocumentChecker } from "../services/doccheck.ts";
+import { checkConfigOrExit } from "../lib/config.ts";
+
+checkConfigOrExit();
 
 const db = await openDatabase();
 await migrate(db);
 const { notify } = notifierFromEnv(db);
 // The same outbox subscribers as the server, so work left by a stopped app task is finished here (O11).
 registerDocumentChecker(notify, db, modelFromEnv());
-const result = await runJobs(db, { notify, storage: storageFromEnv().storage, provider: providerFromEnv() });
+const result = await runJobs(db, { notify, storage: storageFromEnv().storage, provider: providerFromEnv() }, null, {
+  alertEmail: process.env.ALERT_EMAIL || undefined,
+  log: (line) => console.log(JSON.stringify({ time: new Date().toISOString(), ...line })),
+});
 console.log(JSON.stringify(result));
 await db.close();
 process.exit(result.errors.length ? 1 : 0);

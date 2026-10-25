@@ -21,6 +21,7 @@ export type TemplateName =
   | "payout_released"
   | "user_invited"
   | "ops_digest"
+  | "ops_alert"
   | "invoice_issued"
   | "payout_remittance"
   | "intake_received"
@@ -61,6 +62,7 @@ export const TEMPLATE_AUDIENCE: Record<TemplateName, Audience | "any"> = {
   payout_released: "partner",
   user_invited: "any",
   ops_digest: "staff",
+  ops_alert: "staff",
   invoice_issued: "client",
   payout_remittance: "partner",
   intake_received: "client",
@@ -273,5 +275,17 @@ export function renderTemplate(template: TemplateName, audience: Audience, vars:
           `  Everything else: ${Number(vars.total ?? 0) - ["offer_review", "offer_ready", "needs_quote", "qa", "dispute", "unallocated", "payout"].reduce((n, k) => n + Number(vars[k] ?? 0), 0)}\n\n` +
           `Open the queue at ${link("/home")}.${sign}`,
       };
+    // About the platform itself, to MKW's alert address (O13). Never names a client or a partner.
+    case "ops_alert": {
+      const state = vars.state === "resolved" ? "Resolved" : vars.state === "reminder" ? "Still open" : "Alert";
+      return {
+        inApp: false,
+        subject: `${state}: ${vars.summary ?? ""}`,
+        body:
+          `${state} (${vars.severity ?? "warning"}): ${vars.summary ?? ""}\n\nOpened ${when(vars.openedAt)}.` +
+          (vars.state === "resolved" ? ` Cleared ${when(vars.closedAt)}; nothing more to do.` : ` It closes on its own when the cause clears. The runbook is in docs/DEPLOY.md (Alerts).`) +
+          `\n\nSee the System page at ${link("/system")}.${sign}`,
+      };
+    }
   }
 }

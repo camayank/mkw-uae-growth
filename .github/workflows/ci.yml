@@ -81,7 +81,7 @@ jobs:
         run: docker build -t tasees-platform:ci .
       - name: Image starts and answers health checks
         run: |
-          docker run -d --name tasees -p 8787:8787 -e PAYMENT_WEBHOOK_SECRET=ci tasees-platform:ci
+          docker run -d --name tasees -p 8787:8787 -e PAYMENT_WEBHOOK_SECRET=ci-webhook-secret-0123 tasees-platform:ci
           for i in $(seq 1 30); do curl -sf http://localhost:8787/api/health && break; sleep 1; done
           curl -sf http://localhost:8787/api/health | grep '"ok":true'
           docker logs tasees

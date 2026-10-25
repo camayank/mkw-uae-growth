@@ -2,6 +2,9 @@ import { migrate, openDatabase } from "../lib/db.ts";
 import { seedCatalogue, seedDemo } from "../db/seed.ts";
 import { seedGoLiveDemo } from "../db/seed-golive.ts";
 import { DEMO } from "../db/seed-data.ts";
+import { checkConfigOrExit } from "../lib/config.ts";
+
+checkConfigOrExit();
 
 const db = await openDatabase();
 await migrate(db);

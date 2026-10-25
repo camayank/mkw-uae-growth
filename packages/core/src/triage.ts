@@ -6,6 +6,7 @@ import { addWorkingHours, UAE_CALENDAR, workingHoursBetween, type WorkCalendar }
  * can see why an item sits where it does.
  */
 export type QueueKind =
+  | "system_alert"
   | "dispute"
   | "delivery_failed"
   | "delivery_unknown"
@@ -37,6 +38,7 @@ export interface QueuePolicy {
 }
 
 export const QUEUE_POLICY: Record<QueueKind, QueuePolicy> = {
+  system_alert: { targetHours: 1, weight: 40, label: "Platform alert" },
   dispute: { targetHours: 4, weight: 35, label: "Client raised an issue" },
   delivery_failed: { targetHours: 2, weight: 25, label: "Message not delivered" },
   delivery_unknown: { targetHours: 2, weight: 25, label: "Delivery not confirmed" },

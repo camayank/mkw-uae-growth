@@ -140,7 +140,7 @@ export async function markPaymentPaid(tx: Queryable, actor: SessionUser | null, 
   }
   if (p.kind === "change_order") {
     await tx.query(
-      "update payouts set status = 'eligible' where engagement_id = $1 and stage = 'change_order' and status = 'pending'",
+      "update payouts set status = 'eligible', eligible_at = app_now() where engagement_id = $1 and stage = 'change_order' and status = 'pending'",
       [engagementId],
     );
   }
@@ -446,12 +446,15 @@ export async function addEvidence(
   const m = await loadMilestone(tx, milestoneId);
   if (user.orgType !== "partner" || m.partner_org_id !== user.orgId) throw notFound("Milestone not found");
   if (!["in_progress", "qa_rejected", "pending"].includes(m.status)) throw conflict("Evidence can only be added while work is in progress");
-  await tx.query(
-    "insert into evidence (milestone_id, engagement_id, type, file_key, file_name, uploaded_by) values ($1,$2,$3,$4,$5,$6)",
-    [milestoneId, m.engagement_id, file.type, file.key, file.name, user.id],
-  );
+  const row = (
+    await tx.query<{ id: string }>(
+      "insert into evidence (milestone_id, engagement_id, type, file_key, file_name, uploaded_by) values ($1,$2,$3,$4,$5,$6) returning id",
+      [milestoneId, m.engagement_id, file.type, file.key, file.name, user.id],
+    )
+  ).rows[0]!;
   if (m.status === "pending") await tx.query("update milestones set status = 'in_progress' where id = $1", [milestoneId]);
   await audit(tx, user, "evidence.added", "milestone", milestoneId, { type: file.type, name: file.name });
+  return { id: row.id };
 }
 
 export async function submitMilestone(tx: Queryable, user: SessionUser, milestoneId: string) {
@@ -464,7 +467,7 @@ export async function submitMilestone(tx: Queryable, user: SessionUser, mileston
     throw badRequest(`Attach the evidence first: ${missing.join(", ") || "at least one file"}`);
   }
   assertMilestone(m.status, "evidence_submitted", "partner");
-  await tx.query("update milestones set status = 'evidence_submitted', updated_at = app_now() where id = $1", [milestoneId]);
+  await tx.query("update milestones set status = 'evidence_submitted', updated_at = app_now(), first_submitted_at = coalesce(first_submitted_at, app_now()) where id = $1", [milestoneId]);
   await audit(tx, user, "milestone.submitted", "milestone", milestoneId);
 }
 
@@ -556,7 +559,7 @@ async function refreshPayouts(tx: Queryable, engagementId: string, deps: Deps) {
   for (const [partnerId, list] of byPartner) {
     for (const stage of payoutStagesEligible(true, list)) {
       await tx.query(
-        "update payouts set status = 'eligible' where engagement_id = $1 and partner_org_id = $2 and stage = $3 and status = 'pending'",
+        "update payouts set status = 'eligible', eligible_at = app_now() where engagement_id = $1 and partner_org_id = $2 and stage = $3 and status = 'pending'",
         [engagementId, partnerId, stage],
       );
     }

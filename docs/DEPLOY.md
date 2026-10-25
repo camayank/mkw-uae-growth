@@ -110,6 +110,14 @@ expiry (14 days), the licence watch, the delay watch, compliance reminders and t
 in-process; the daily and weekly sweeps do nothing when already done for the day or week. With more than one instance, set `IN_PROCESS_JOBS=0` and run
 `pnpm jobs` from one scheduler every 15 minutes. Each sweep is its own transaction and safe to repeat.
 
+**Outbox (O11).** Every email and every document check is a row in `outbox`, written with the change that caused it and
+delivered right after; each jobs run delivers anything left behind (for example by a task that was stopped mid-send),
+so the scheduled jobs task must keep running for nothing to wait longer than 15 minutes. A message the provider
+refuses five times, or whose delivery was interrupted, appears in the ops queue for a person to settle; nothing is
+re-sent on its own. To see what is waiting:
+`select status, topic, count(*) from outbox where status not in ('done', 'cancelled') group by 1, 2;`
+Before rolling back to a release without the outbox, deliver or cancel what is pending: the older code does not read it.
+
 ## First production setup
 
 1. Run with `NODE_ENV=production`. Migrations and the catalogue load on start; demo data does not.

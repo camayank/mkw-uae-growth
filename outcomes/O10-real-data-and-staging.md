@@ -1,6 +1,6 @@
 # O10 Real data and staging
 
-Status: verified-pending-merge (branch `outcome/O10-real-data-and-staging`, stacked on camayank/mkw-uae-growth#10, 18 Oct 2026)
+Status: merged (pull request camayank/mkw-uae-growth#11 into `main`, 25 Oct 2026; was: branch `outcome/O10-real-data-and-staging`, stacked on camayank/mkw-uae-growth#10, 18 Oct 2026)
 
 ## Business result
 

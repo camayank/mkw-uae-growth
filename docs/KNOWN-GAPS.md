@@ -61,6 +61,25 @@ in a browser; everything listed here is not.
     (D49); rotate it yearly until the storage adapter reads the task role's credentials.
 26. **Imports run from the command line** (a one-off ECS task on staging); there is no upload screen for them.
 
+## O11: ops command centre and event outbox
+
+27. **The document checker reads file names, not files.** Until an AI key and spend cap are supplied (O16), the
+    in-memory model checks the name, the declared type, reference and expiry against what the step asked for. It catches
+    a wrong or unusual file, a missing licence number and an expiry that has passed or is close; it cannot see a blurred
+    scan or a passport that belongs to someone else. Every check says so.
+28. **Queue targets and weights are defaults** (D55): MKW has not set them. Change them in `packages/core/src/triage.ts`
+    after a few weeks of queue timings.
+29. **Queue timings err low** (D56): work started outside the queue (from a client page or an email link) is not timed,
+    and resolution is noticed within 15 minutes rather than to the second.
+30. **Agent work that keeps failing is only visible in the outbox table.** A message that fails reaches the ops queue;
+    a document check that fails five times leaves no draft and no queue item (by design, D54). A screen for it comes with
+    O13's job metrics and alerts.
+31. **One-click actions cover only what the card shows in full.** Pricing an offer, resolving a dispute, allocating a
+    line, reviewing an application, deciding a credit, approving scoping advice or a scope draft, confirming an
+    obligation date and releasing a payout open their own page (D55).
+32. **A birth date in a file name reaches the model** (D54): dates are kept because expiry and issue dates are what the
+    check needs. Nothing leaves the platform until a real model is connected (O16).
+
 ## Soon after
 
 7. **Scoping rules and zone data are working estimates.** The advice engine, rule confidence, zone table,
@@ -107,7 +126,7 @@ in a browser; everything listed here is not.
 
 ## Verified so far
 
-- 51 domain tests (`packages/core`) and 184 API tests (`apps/api`), all passing on PGlite and on PostgreSQL 16;
+- 57 domain tests (`packages/core`) and 203 API tests (`apps/api`), all passing on PGlite and on PostgreSQL 16;
   typecheck clean; `pnpm build` compiles and the compiled server runs in production mode from a fresh database.
 - O1: partner creation, invitations, role changes and deactivation (sessions revoked, codes refused) are tested as
   every role; PDPL export contains one person's data and no audit payloads (a test reproduces the leak that the
@@ -163,6 +182,15 @@ in a browser; everything listed here is not.
   withdrawing the sign-off resets clients to English. Smoke: axe-core zero violations on 15 screens in both
   languages (`docs/evidence/O9/axe.json`), keyboard-only sign-in and navigation, Arabic screenshots
   (`docs/evidence/O9/`, 109 smoke checks).
+- O11: a message is written to the outbox in the change's own transaction, is delivered exactly once however many
+  dispatchers run, is retried after 1, 5, 15 and 60 minutes and then waits for a person, and is never re-sent on its
+  own when its delivery is in doubt (Mark delivered, Send again, Cancel: ops only, audited); sign-in codes never enter
+  the outbox; erasure cancels a person's unsent messages and removes their address. The document checker drafts a check
+  for every upload from metadata only, and a model failure blocks nothing. The ranked queue puts work past its target
+  first (working hours, weekends and holidays), says why each item is there and what raises it, shows each role only its
+  buttons, and times items from arrival and from opening. On-time rates use the first submission's Dubai date, which
+  removed three date-dependent test failures on `main`. Smoke: the ranked queue with the check beside the partner
+  document, a one-click "Check is right", the filter, at 1280 and 390 px, axe-core clean.
 - O10: each importer's dry run writes nothing, `--apply` is idempotent with one audit event per record and no
   notification rows, and re-imports keep what MKW changed in the console; hostile workbooks are refused; the five
   real files dry-run cleanly (redacted reports in `docs/evidence/O10/`); `invite_pending` users cannot sign in until

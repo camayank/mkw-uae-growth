@@ -21,7 +21,13 @@ export async function sendOpsDigest(tx: Queryable, deps: Deps): Promise<number> 
   const claimed = await tx.query("insert into digest_runs (day, recipients) values ($1::date, $2) on conflict (day) do nothing returning day", [date, staff.length]);
   if (!claimed.rows.length) return 0;
   const items = await exceptionQueue(tx);
-  const counts: Record<string, number> = { total: items.length };
+  // "Overnight" means since the last digest went out (or everything, before the first one).
+  const last = (await tx.query<{ at: string }>("select created_at::text as at from digest_runs where day < $1::date order by day desc limit 1", [date])).rows[0]?.at;
+  const counts: Record<string, number> = {
+    total: items.length,
+    overdue: items.filter((x) => x.level === "overdue").length,
+    sinceLast: last ? items.filter((x) => new Date(x.at) > new Date(last)).length : items.length,
+  };
   for (const x of items) counts[x.kind] = (counts[x.kind] ?? 0) + 1;
   for (const u of staff) await deps.notify.send({ to: u.email, channel: "email", template: "ops_digest", vars: counts });
   return staff.length;

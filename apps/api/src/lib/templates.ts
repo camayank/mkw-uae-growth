@@ -262,14 +262,15 @@ export function renderTemplate(template: TemplateName, audience: Audience, vars:
         inApp: true,
         subject: `Ops digest: ${vars.total ?? 0} item(s) need a person today`,
         body:
-          `Good morning. The exception queue this morning:\n\n` +
+          `Good morning. ${vars.total ?? 0} item(s) wait for a person: ${vars.overdue ?? 0} past their target, ${vars.sinceLast ?? 0} new since the last digest.\n\n` +
           `  Offers needing a price decision: ${vars.offer_review ?? 0}\n` +
           `  Offers ready to publish: ${vars.offer_ready ?? 0}\n` +
           `  Requests needing a quote: ${vars.needs_quote ?? 0}\n` +
           `  Evidence to check: ${vars.qa ?? 0}\n` +
           `  Client issues raised: ${vars.dispute ?? 0}\n` +
           `  Lines with no partner: ${vars.unallocated ?? 0}\n` +
-          `  Payouts ready to release: ${vars.payout ?? 0}\n\n` +
+          `  Payouts ready to release: ${vars.payout ?? 0}\n` +
+          `  Everything else: ${Number(vars.total ?? 0) - ["offer_review", "offer_ready", "needs_quote", "qa", "dispute", "unallocated", "payout"].reduce((n, k) => n + Number(vars[k] ?? 0), 0)}\n\n` +
           `Open the queue at ${link("/home")}.${sign}`,
       };
   }

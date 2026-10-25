@@ -3,18 +3,23 @@ import { ROLE_ORG, type OrgType, type Role } from "@tasees/core";
 import type { Database, Queryable } from "./db.ts";
 
 /**
- * Work deferred until the surrounding transaction has committed: notifications queue here while a transaction
- * is open and are released only after `db.transaction` returns, so a rolled-back change never sends anything.
+ * The transaction a piece of code is running in, and work deferred until it has committed: outbox rows are written
+ * with `tx` so they commit or roll back with the change (O11), and anything in `deferred` runs only after
+ * `db.transaction` returns, so a rolled-back change never sends anything.
  */
 export interface Deferred {
   run(): void;
 }
-export const txScope = new AsyncLocalStorage<Deferred[]>();
+export interface TxScope {
+  deferred: Deferred[];
+  tx?: Queryable;
+}
+export const txScope = new AsyncLocalStorage<TxScope>();
 
-async function inScope<T>(fn: () => Promise<T>): Promise<T> {
-  const deferred: Deferred[] = [];
-  const result = await txScope.run(deferred, fn);
-  for (const d of deferred) d.run(); // only reached after a successful commit
+async function inScope<T>(fn: (scope: TxScope) => Promise<T>): Promise<T> {
+  const scope: TxScope = { deferred: [] };
+  const result = await txScope.run(scope, () => fn(scope));
+  for (const d of scope.deferred) d.run(); // only reached after a successful commit
   return result;
 }
 
@@ -52,8 +57,9 @@ async function enter(tx: Queryable, orgType: OrgType, orgId: string | null, user
  */
 export function asUser<T>(db: Database, user: SessionUser, fn: (tx: Queryable) => Promise<T>): Promise<T> {
   if (ROLE_ORG[user.role] !== user.orgType) throw new Error("role does not match organisation type");
-  return inScope(() =>
+  return inScope((scope) =>
     db.transaction(async (tx) => {
+      scope.tx = tx;
       await enter(tx, user.orgType, user.orgId, user.id, user.role);
       return fn(tx);
     }),
@@ -62,8 +68,9 @@ export function asUser<T>(db: Database, user: SessionUser, fn: (tx: Queryable) =
 
 /** Run server-side commands with full access, after the caller has been authorised in code. */
 export function asPlatform<T>(db: Database, actor: SessionUser | null, fn: (tx: Queryable) => Promise<T>): Promise<T> {
-  return inScope(() =>
+  return inScope((scope) =>
     db.transaction(async (tx) => {
+      scope.tx = tx;
       await enter(tx, "platform", actor?.orgId ?? null, actor?.id ?? null, actor?.role ?? "system");
       return fn(tx);
     }),

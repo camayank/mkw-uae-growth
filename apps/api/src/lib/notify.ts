@@ -1,6 +1,7 @@
 import { BRAND_AR, renderTemplateAr } from "./templates-ar.ts";
 import { asPlatform, txScope } from "./context.ts";
 import { withClock, type Database } from "./db.ts";
+import { createDispatcher, emit, InDoubtError, type DispatchSummary, type Topic, type TopicHandler } from "./outbox.ts";
 import { signedFetch, type AwsCredentials } from "./sigv4.ts";
 import { renderTemplate, TEMPLATE_AUDIENCE, BRAND, type Audience, type TemplateName, type Vars } from "./templates.ts";
 
@@ -23,9 +24,19 @@ export interface Notification {
 }
 
 export interface Notifier {
+  /**
+   * Raise a message. Inside a transaction it is written to the outbox in that transaction (O11), so it exists
+   * exactly when the change does; it is delivered after the commit.
+   */
   send(n: Notification): Promise<void>;
-  /** Deliver everything queued so far. Tests call it; the server calls it after each request. */
+  /** Raise other outbox work (agent drafts) the same way. */
+  emit(topic: Exclude<Topic, "notify">, payload: Record<string, unknown>): Promise<void>;
+  /** Register the handler for an outbox topic (the document checker registers itself in buildApp). */
+  on(topic: Exclude<Topic, "notify">, handler: TopicHandler): void;
+  /** Deliver what this process raised so far. Tests call it; the server calls it after each response. */
   flush(): Promise<void>;
+  /** A full dispatcher run: recover abandoned claims, then deliver everything due. The jobs runner calls it. */
+  dispatch(): Promise<DispatchSummary>;
   /** Everything handed to send(), oldest first (last 500). */
   sent: Notification[];
 }
@@ -43,12 +54,21 @@ export interface Transport {
   deliver(email: OutboundEmail): Promise<{ providerRef: string }>;
 }
 
-export function memoryTransport(): Transport & { delivered: OutboundEmail[]; failNext?: string } {
+/**
+ * The test transport. `failNext` makes the next delivery a refusal; `inDoubtNext` delivers the next message and then
+ * fails as a timeout would, so nobody can tell it went.
+ */
+export function memoryTransport(): Transport & { delivered: OutboundEmail[]; failNext?: string; inDoubtNext?: boolean } {
   const delivered: OutboundEmail[] = [];
-  const t: Transport & { delivered: OutboundEmail[]; failNext?: string } = {
+  const t: Transport & { delivered: OutboundEmail[]; failNext?: string; inDoubtNext?: boolean } = {
     kind: "memory",
     delivered,
     async deliver(email) {
+      if (t.inDoubtNext) {
+        t.inDoubtNext = false;
+        delivered.push(email);
+        throw new InDoubtError("The operation was aborted due to timeout");
+      }
       if (t.failNext) {
         const msg = t.failNext;
         t.failNext = undefined;
@@ -102,8 +122,17 @@ export function sesTransport(cfg: SesConfig): Transport {
           },
         },
       });
-      const res = await signedFetch({ ...cfg, service: "ses" }, url, { method: "POST", body, headers: { "content-type": "application/json" } });
-      const text = await res.text();
+      // Only a definite refusal (a 4xx answer) is retried. No answer, a dropped connection or a server error means SES
+      // may have taken the message: that is "in doubt", and a person decides rather than the email going twice.
+      let res: Response;
+      let text: string;
+      try {
+        res = await signedFetch({ ...cfg, service: "ses" }, url, { method: "POST", body, headers: { "content-type": "application/json" } });
+        text = await res.text();
+      } catch (e) {
+        throw new InDoubtError(`no answer from SES: ${(e as Error).message}`);
+      }
+      if (res.status >= 500) throw new InDoubtError(`SES answered ${res.status}; the message may have been accepted`);
       if (!res.ok) {
         let code = String(res.status);
         try {
@@ -131,19 +160,29 @@ export interface NotifierOptions {
 }
 
 /**
- * Records every message and delivers it through the transport, after the calling transaction has finished.
- * The record is written in its own transaction: a delivery failure marks the row failed and never throws
- * into business code.
+ * Records every message and delivers it through the transport. Messages go through the outbox (O11): written in
+ * the caller's transaction, delivered by the dispatcher after the commit, retried on a refusal, and never sent twice
+ * on their own. Sign-in codes are the exception: the code is never written down, so they are held in memory until
+ * the commit and sent once; a lost one is replaced by asking for a new code.
  */
 export function recordingNotifier(opts: NotifierOptions): Notifier {
   const sent: Notification[] = [];
-  const queue: Notification[] = [];
-  let flushing: Promise<void> | null = null;
+  const codes: Notification[] = [];
+  let sendingCodes: Promise<void> | null = null;
   const log = opts.log ?? ((m) => console.error(m));
   const db = withClock(opts.db, opts.now);
+  const dispatcher = createDispatcher(db, log);
 
-  const deliverOne = async (n: Notification) => {
+  /**
+   * Record and deliver one message. With an outbox id the record is found again on a retry (one record per
+   * message) and a refusal is thrown to the dispatcher, which schedules the retry.
+   */
+  const deliverOne = async (n: Notification, outboxId: number | null) => {
     const to = n.to.trim().toLowerCase();
+    const existing = outboxId
+      ? (await asPlatform(db, null, (tx) => tx.query<{ id: string; status: string }>("select id, status from notifications where outbox_id = $1", [outboxId]))).rows[0]
+      : undefined;
+    if (existing && ["sent", "skipped"].includes(existing.status)) return;
     // Who is this? Decides the audience (branding) and whether the row is somebody's in-app notification.
     const user = await asPlatform(db, null, async (tx) =>
       (await tx.query<{ id: string; type: "client" | "partner" | "platform"; status: string; locale: string; arabic: boolean }>("select u.id, o.type, u.status, u.locale, coalesce((select (value->>'reviewed')::boolean from settings where key = 'arabic'), false) or coalesce((select value->'previewEmails' ? u.email from settings where key = 'arabic'), false) as arabic from users u join orgs o on o.id = u.org_id where u.email = $1", [to])).rows[0],
@@ -151,11 +190,13 @@ export function recordingNotifier(opts: NotifierOptions): Notifier {
     if (user && user.status !== "active") {
       // Deactivated or erased people receive nothing; the fact is recorded without the wording.
       await asPlatform(db, null, (tx) =>
-        tx.query(
-          `insert into notifications (user_id, to_email, channel, template, audience, subject, body, vars, in_app, status, error)
-           values ($1,$2,$3,$4,'staff','(recipient not active)','','{}',false,'skipped','recipient not active')`,
-          [user.id, to, n.channel, n.template],
-        ),
+        existing
+          ? tx.query("update notifications set status = 'skipped', error = 'recipient not active', subject = '(recipient not active)', body = '', vars = '{}' where id = $1", [existing.id])
+          : tx.query(
+              `insert into notifications (user_id, to_email, channel, template, audience, subject, body, vars, in_app, status, error, outbox_id)
+               values ($1,$2,$3,$4,'staff','(recipient not active)','','{}',false,'skipped','recipient not active',$5)`,
+              [user.id, to, n.channel, n.template, outboxId],
+            ),
       );
       return;
     }
@@ -173,15 +214,17 @@ export function recordingNotifier(opts: NotifierOptions): Notifier {
     const recordedSubject = rendered.secret ? "(sign-in code: not recorded)" : rendered.subject;
     const recordedBody = rendered.secret ? "" : rendered.body;
     const recordedVars = rendered.secret ? {} : n.vars;
-    const id = await asPlatform(db, null, async (tx) =>
-      (
-        await tx.query<{ id: string }>(
-          `insert into notifications (user_id, to_email, channel, template, audience, subject, body, vars, in_app, status, locale)
-           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,'queued',$10) returning id`,
-          [user?.id ?? null, to, n.channel, n.template, audience, recordedSubject, recordedBody, JSON.stringify(recordedVars), rendered.inApp && !!user, locale],
-        )
-      ).rows[0]!.id,
-    );
+    const id = existing
+      ? (await asPlatform(db, null, (tx) => tx.query("update notifications set status = 'queued', error = null where id = $1", [existing.id])), existing.id)
+      : await asPlatform(db, null, async (tx) =>
+          (
+            await tx.query<{ id: string }>(
+              `insert into notifications (user_id, to_email, channel, template, audience, subject, body, vars, in_app, status, locale, outbox_id)
+               values ($1,$2,$3,$4,$5,$6,$7,$8,$9,'queued',$10,$11) returning id`,
+              [user?.id ?? null, to, n.channel, n.template, audience, recordedSubject, recordedBody, JSON.stringify(recordedVars), rendered.inApp && !!user, locale, outboxId],
+            )
+          ).rows[0]!.id,
+        );
     if (n.channel !== "email") {
       await asPlatform(db, null, (tx) => tx.query("update notifications set status = 'skipped', error = 'channel not available yet' where id = $1", [id]));
       return;
@@ -191,52 +234,75 @@ export function recordingNotifier(opts: NotifierOptions): Notifier {
       await asPlatform(db, null, (tx) => tx.query("update notifications set status = 'sent', provider_ref = $2, sent_at = app_now() where id = $1", [id, providerRef]));
     } catch (e) {
       const msg = (e as Error).message.slice(0, 500);
-      log(`[notify] delivery failed for ${n.template} to ${to}: ${msg}`);
-      await asPlatform(db, null, (tx) => tx.query("update notifications set status = 'failed', error = $2 where id = $1", [id, msg]));
+      log(`[notify] delivery ${(e as InDoubtError).inDoubt ? "in doubt" : "failed"} for ${n.template}: ${msg}`);
+      // In doubt, the record stays "queued" (handed over, no answer): the outbox marks the message for a person.
+      if (!(e as InDoubtError).inDoubt) await asPlatform(db, null, (tx) => tx.query("update notifications set status = 'failed', error = $2 where id = $1", [id, msg]));
+      if (outboxId) throw e;
     }
   };
 
-  const drain = async () => {
-    while (queue.length) {
-      const n = queue.shift()!;
-      try {
-        await deliverOne(n);
-      } catch (e) {
-        log(`[notify] could not record ${n.template} to ${n.to}: ${(e as Error).message}`);
+  dispatcher.on("notify", {
+    handle: (row) => deliverOne(row.payload as unknown as Notification, row.id),
+    // An abandoned claim: the record says whether the provider took the message. "queued" means it was handed over
+    // with no answer recorded, so nobody can say whether it went: a person decides.
+    async check(row) {
+      const n = (await asPlatform(db, null, (tx) => tx.query<{ status: string }>("select status from notifications where outbox_id = $1", [row.id]))).rows[0];
+      if (!n || n.status === "failed") return "not_done";
+      if (n.status === "queued") return "unknown";
+      return "done";
+    },
+  });
+
+  const sendCodes = (): Promise<void> => {
+    if (sendingCodes) return sendingCodes;
+    const run = (async () => {
+      while (codes.length) {
+        const n = codes.shift()!;
+        await deliverOne(n, null).catch((e) => log(`[notify] could not record ${n.template}: ${(e as Error).message}`));
       }
-    }
-  };
-  const flush = (): Promise<void> => {
-    if (flushing) return flushing;
-    // Clear the marker only when the drain has finished, never before the assignment below completes.
-    const run = drain().finally(() => {
-      if (flushing === run) flushing = null;
+    })().finally(() => {
+      if (sendingCodes === run) sendingCodes = null;
     });
-    flushing = run;
+    sendingCodes = run;
     return run;
   };
 
-  const enqueue = (n: Notification) => {
+  const track = (n: Notification) => {
     sent.push(n);
     if (sent.length > 500) sent.shift();
-    if (queue.length >= 10_000) {
-      log(`[notify] queue full, dropping ${n.template} to ${n.to}`);
-      return;
-    }
-    queue.push(n);
-    // Deliver once the current request has finished; never inside the caller's transaction.
-    setImmediate(() => void flush());
   };
 
   return {
     sent,
     async send(n) {
-      // Inside a transaction: hold the message until that transaction has committed (see context.ts).
-      const scope = txScope.getStore();
-      if (scope) scope.push({ run: () => enqueue(n) });
-      else enqueue(n);
+      track(n);
+      if (n.template === "login_code") {
+        // Held until the commit (see context.ts), then sent once; never written to the outbox.
+        const hold = () => {
+          codes.push(n);
+          setImmediate(() => void sendCodes());
+        };
+        const scope = txScope.getStore();
+        if (scope) scope.deferred.push({ run: hold });
+        else hold();
+        return;
+      }
+      await emit(db, "notify", n as unknown as Record<string, unknown>, () => dispatcher.kick());
     },
-    flush,
+    async emit(topic, payload) {
+      await emit(db, topic, payload, () => dispatcher.kick());
+    },
+    on(topic, handler) {
+      dispatcher.on(topic, handler);
+    },
+    async flush() {
+      await sendCodes();
+      await dispatcher.runIfDirty();
+    },
+    async dispatch() {
+      await sendCodes();
+      return dispatcher.run();
+    },
   };
 }
 
@@ -250,7 +316,14 @@ export function consoleNotifier(log: (msg: string) => void = console.log): Notif
       if (sent.length > 500) sent.shift();
       log(`[notify] ${n.channel} ${n.template} -> ${n.to} ${JSON.stringify(n.vars)}`);
     },
+    async emit(topic) {
+      log(`[notify] ${topic} event (no dispatcher in this process)`);
+    },
+    on() {},
     async flush() {},
+    async dispatch() {
+      return { done: 0, retried: 0, failed: 0, unknown: 0, recovered: 0 };
+    },
   };
 }
 

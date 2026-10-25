@@ -1,3 +1,4 @@
+import { queueStats } from "./queue.ts";
 import { aedDecimal, csvLine, parsePeriod, previousPeriod, rate, shares, type Period } from "@tasees/core";
 import { audit, type SessionUser } from "../lib/context.ts";
 import { num, type Queryable } from "../lib/db.ts";
@@ -64,7 +65,7 @@ async function figures(tx: Queryable, p: Period, withMargin: boolean): Promise<F
   );
   const onTime = await one<{ done: number; on_time: number }>(
     `select count(*)::int as done,
-            count(*) filter (where (select min(a.at) from audit_events a where a.entity = 'milestone' and a.entity_id = m.id::text and a.action = 'milestone.submitted')::date <= m.due_date)::int as on_time
+            count(*) filter (where (m.first_submitted_at at time zone 'Asia/Dubai')::date <= m.due_date)::int as on_time
      from milestones m where m.status = 'client_approved'
        and gulf((select max(a.at) from audit_events a where a.entity = 'milestone' and a.entity_id = m.id::text and a.action in ('milestone.approved', 'milestone.dispute_approve'))) >= $1::date
        and gulf((select max(a.at) from audit_events a where a.entity = 'milestone' and a.entity_id = m.id::text and a.action in ('milestone.approved', 'milestone.dispute_approve'))) < $2::date`,
@@ -128,7 +129,9 @@ export async function dashboard(tx: Queryable, actor: SessionUser, periodInput: 
     await tx.query<{ status: string; n: number }>("select status, count(*)::int as n from engagements group by status order by status")
   ).rows;
   const openObligations = (await tx.query<{ status: string; n: number }>("select status, count(*)::int as n from obligations group by status")).rows;
-  return { current, previous, pipeline, obligations: openObligations, seesMargin: withMargin };
+  // How the ops queue ran in the period (O11): no money in it, so every staff role sees it.
+  const queue = await queueStats(tx, period.from, period.to);
+  return { current, previous, pipeline, obligations: openObligations, queue, seesMargin: withMargin };
 }
 
 export async function partnerDashboard(tx: Queryable, actor: SessionUser) {
@@ -144,7 +147,7 @@ export async function partnerDashboard(tx: Queryable, actor: SessionUser) {
   const onTime = (
     await tx.query<{ done: number; on_time: number; open: number; late: number }>(
       `select count(*) filter (where m.status = 'client_approved')::int as done,
-              count(*) filter (where m.status = 'client_approved' and (select min(a.at) from audit_events a where a.entity = 'milestone' and a.entity_id = m.id::text and a.action = 'milestone.submitted')::date <= m.due_date)::int as on_time,
+              count(*) filter (where m.status = 'client_approved' and (m.first_submitted_at at time zone 'Asia/Dubai')::date <= m.due_date)::int as on_time,
               count(*) filter (where m.status in ('pending', 'in_progress', 'qa_rejected'))::int as open,
               count(*) filter (where m.status in ('pending', 'in_progress', 'qa_rejected') and m.due_date < gulf(app_now()))::int as late
        from milestones m where m.partner_org_id = $1`,

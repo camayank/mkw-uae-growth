@@ -68,25 +68,23 @@ outcomes:
     needs_from_owner: [Arabic reviewer]
   - id: O10
     title: Real data and staging (importers for the go-live workbook, legal texts, holiday calendar, staging as code, console menu)
-    status: verified-pending-merge
+    status: merged
     contract: outcomes/O10-real-data-and-staging.md
     depends_on: [O9]
     needs_from_owner: [AWS account and credentials, domain and DNS, SES sender verification, named fee verifier, lawyer sign-off on client terms and partner agreement]
+  - id: O11
+    title: Ops command centre and event outbox
+    status: verified-pending-merge
+    contract: outcomes/O11-ops-command-centre.md
+    depends_on: [O10]
+    needs_from_owner: []
 
 # Roadmap from docs/VISION.md (18 Oct 2026). Order of work: O11, O12, O13 before the pilot; then O7 (launch gate);
 # then O14, O15, O16. Renumbered on 18 Oct 2026 when the owner released O10 as Real data and staging.
-# All are `planned`: the owner releases one at a time ("Release O11 ..."), and its contract
+# Released by the owner on 25 Oct 2026, in order: O11, O12, O13, then O7 ("do all work properly").
+# The rest are `planned`: the owner releases one at a time ("Release O11 ..."), and its contract
 # file is written from the vision's scope at that point, before any code.
 roadmap:
-  - id: O11
-    title: Ops command centre and event outbox
-    status: planned
-    business_result: Ops runs the day from one risk-ordered queue; side effects become exactly-once and replayable.
-    scope: [triage queue with a "why it is here" line and one-click actions, event outbox and dispatcher with retries,
-            document checker as the first outbox subscriber (drafts only), risk ranking that orders the queue and never decides,
-            queue timings for ops minutes per engagement]
-    depends_on: [O10]
-    needs_from_owner: []
   - id: O12
     title: Client experience
     status: planned

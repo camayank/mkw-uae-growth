@@ -305,6 +305,73 @@ creates an IAM user that may only put and get objects in the files bucket, with 
 Reading the ECS task role's temporary credentials instead would remove the long-lived key; that is a small change to
 `lib/storage.ts` for later (KNOWN-GAPS).
 
+**D51. Every side effect leaves through an outbox.** (O11.) A message (and agent work) is a row in `outbox`, written by
+`Notifier.send()` in the caller's transaction: it exists exactly when the change does, and a crash after the commit no
+longer loses it (the in-memory queue of O2 did). A dispatcher claims one row at a time with `for update skip locked`,
+so several app tasks and the jobs task can run it together; it runs after each commit, after each response, and on
+every jobs run, which also finishes anything a stopped process left. Templates, branding and the `notifications`
+record are unchanged; each record now carries its outbox id (unique), so a message is recorded once however often it
+is looked at. The topic list is closed in code (`notify`, `document_check`). Removing it means restoring the
+in-memory queue in `lib/notify.ts` (the old code is in O10's history).
+
+**D52. A message in doubt goes to a person; nothing is sent twice on its own.** (O11.) A refusal from the provider is
+retried after 1, 5, 15 and 60 minutes; the fifth refusal is final (`failed`) and shows in the ops queue with Retry and
+Cancel. A claim older than 10 minutes means the process stopped mid-delivery: if the record says the provider took it,
+it is done; if nothing was handed over, it is retried; if it was handed over with no answer recorded, it is `unknown`
+and ops decides (Mark delivered, Send again, Cancel), with a note that goes into the audit trail. The alternative,
+re-sending automatically, would sometimes send a client the same invoice twice. The same applies at the moment of
+sending: only a definite 4xx answer from SES is a refusal; a timeout, a dropped connection or a 5xx may mean SES took
+the message, so the row goes straight to `unknown`. Every update after a handler runs checks that its claim still
+stands, so a run that outlived its lease never overrides a recovery or a person's decision. Provider error text stays
+out of the audit trail (it can quote an address that a later erasure must be able to remove), and erasure clears it from
+the outbox.
+
+**D53. Sign-in codes stay out of the outbox.** (O11.) The code is never written down (D11), so it cannot sit in a
+table waiting for a retry; it is held in memory until the commit and sent once, as before. A lost code costs the person
+one more request, which the 5-per-hour limit allows.
+
+**D54. The document checker drafts from metadata and never acts.** (O11.) It is the first outbox subscriber: each
+upload of milestone evidence, a requested client document, a partner document or filing evidence raises a
+`document_check` event in the upload's transaction, and the dispatcher files the model's check as an `ai_drafts` row
+(UNCERTAIN, one per event, enforced by a unique index) beside the upload. Only the declared type, reference and expiry,
+what the step asked for and the file name reduced to document words, dates and the extension reach the model (other
+words become "x", other numbers "#", so `Passport_Ahmed_Khan_784-….pdf` is sent as `Passport_x_x_#-….pdf`): never the
+file, a person's name, an ID number, contact details or a price. A date in a file name is kept, because issue and
+expiry dates are what the check is for; it could be a birth date, which on its own identifies nobody. The draft changes nothing; ops says
+"Check is right" or "Check is wrong", which records the decision and the time taken (the start of the learning loop,
+O16). A model that keeps failing leaves no draft and blocks nothing; its events stay in the outbox and are not shown as
+messages to settle. The in-memory model reads the name only and says so on every check.
+
+**D55. The queue is ranked by explainable factors and decides nothing.** (O11, `packages/core/src/triage.ts`.) Each
+kind has a target in working hours on the UAE calendar with Settings' holidays (disputes, offers to price, scoping,
+unallocated lines and offers to publish 4; messages not delivered 2; evidence, quotes, drafts, delays, obligations,
+leads and overdue documents 9; payouts, credits, partner documents and expiring licences 18; partner applications 27)
+and a weight (a dispute 35 down to a lead 5). Past the target adds 30 plus 2 per working hour late (up to 20); within 2
+working hours adds 15; a waiting client adds 10, a waiting partner 5, money waiting 5, a partner below the quality bar
+10. Each factor is shown as a sentence. Client documents count as overdue three working days after they were asked for,
+and their target runs from that point; partner licences show 30 days before expiry. One-click buttons exist only where
+the card shows everything the click decides (publishing a priced offer, passing evidence, a document check, a lead, a
+delay's cause, a partner document, filing evidence, an undelivered message); scoping advice, scope drafts and
+obligation dates are statutory or client-facing content and open their own page; payouts go in the weekly run. Only ops
+and the founder act from the queue; finance reads it. The overview and the morning digest read the same ranked queue, and the
+digest now says how many items are late and how many arrived since the last digest. Targets and weights are defaults
+for the owner to change.
+
+**D56. Queue timings are measured from the queue's own view.** (O11.) Each item gets a `queue_timings` row while it
+waits; it is resolved when the queue is next computed without it (every view and every jobs run, so within 15
+minutes). Handling time runs from a person opening or acting on the item from the queue to its resolution, capped at 30
+minutes so a tab left open is not counted as work. "Ops minutes per engagement" is that handling time summed over
+items tied to an engagement, divided by those engagements. It is an approximation that errs low (work started outside
+the queue is not timed); the founder dashboard says how it is measured. Timings are measurements, not changes to
+anything a person decided, so they are not written to the audit trail (as with a notification being read).
+
+**D57. "On time" uses the first submission on the application clock.** (O11.) On-time rates (dashboard, partner
+dashboard, scorecards) compared the audit trail's wall-clock time with due dates set on the application clock; in
+production they agree, but in tests with a fixed clock three checks started failing on `main` once the real date
+passed the test's due dates. Milestones now record `first_submitted_at` (resubmissions keep the first), backfilled from
+the audit trail, and the comparison uses its Dubai date (it used the UTC date, which counted a submission between
+00:00 and 04:00 GST on the next day as on time). The audit trail itself keeps wall-clock time, as before.
+
 ## Open for the owner
 
 1. **Margin rates and floors per category.** Seeded from the Sheet (setup 20% / AED 500 and so on). Confirm.

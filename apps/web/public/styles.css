@@ -74,6 +74,25 @@ h3 { font-size: 0.95rem; }
 nav { display: flex; gap: 4px; flex-wrap: wrap; flex: 1; }
 nav a { padding: 6px 10px; border-radius: 8px; text-decoration: none; color: var(--muted); }
 nav a.on, nav a:hover { background: var(--surface-2); color: var(--text); }
+nav { align-items: center; }
+.navgroup { position: relative; }
+.navbtn {
+  display: inline-flex; align-items: center; gap: 4px; padding: 6px 10px; border-radius: 8px; border: 0;
+  background: none; color: var(--muted); font: inherit; cursor: pointer; box-shadow: none;
+}
+.navbtn.on, .navbtn:hover, .navbtn[aria-expanded="true"] { background: var(--surface-2); color: var(--text); }
+/* The page open inside a menu is named for screen readers; sighted users see the highlighted entry. */
+.navbtn .navcur { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.navmenu {
+  position: absolute; top: calc(100% + 4px); inset-inline-start: 0; z-index: 20; min-width: 190px;
+  display: flex; flex-direction: column; gap: 2px; padding: 6px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);
+}
+.navmenu[hidden] { display: none; }
+.navmenu a { white-space: nowrap; }
+.legal-text { max-height: 360px; overflow: auto; padding: 4px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); font-size: 0.9rem; }
+.legal-text h3, .legal-text h4, .legal-text h5, .legal-text h6 { margin: 12px 0 6px; }
+.accept-terms { display: flex; gap: 8px; align-items: flex-start; }
 .who { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 0.9rem; }
 
 main { max-width: 1180px; margin: 0 auto; padding: 24px 20px 64px; }
@@ -190,7 +209,10 @@ ul.plain li { padding: 6px 0; border-bottom: 1px solid var(--line); }
 @media (max-width: 640px) {
   .top { padding: 10px 16px; gap: 8px 12px; }
   /* The menu takes its own full row and wraps, so seven links do not stack into a tall column. */
-  nav#nav { order: 3; flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 2px 6px; }
+  nav#nav { order: 3; flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 2px 6px; position: relative; }
+  /* On a phone a menu opens as a full-width panel under the bar, so it never runs off the screen. */
+  .navgroup { position: static; }
+  .navmenu { inset-inline: 0; min-width: 0; }
   .brand { margin-inline-end: auto; }
   .who span { display: none; }
   main { padding: 16px 16px 48px; }

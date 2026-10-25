@@ -113,12 +113,12 @@ in-process; the daily and weekly sweeps do nothing when already done for the day
 ## First production setup
 
 1. Run with `NODE_ENV=production`. Migrations and the catalogue load on start; demo data does not.
-2. Create the first founder account by SQL once (`insert into orgs (type, name) values ('platform', 'MKW Advisors')`
-   and a `users` row with role `founder`), then sign in and create everything else from the **People** page:
-   partner firms with their first admin, MKW staff, client users. Partner profiles (licence status, emirates,
-   service codes, FTA/auditor approvals) are edited on the **Partners** page.
-3. Load rate cards: export the **Rate Cards** tab of the operating Google Sheet as CSV and run
-   `pnpm import:sheet rate-cards.csv` (dry run), then again with `--apply`.
+2. Create the first founder account once: `pnpm --filter @tasees/api create-founder connect@mkwadvisors.com "Full Name"`
+   (idempotent; creates the MKW Advisors organisation if missing; sends nothing). Then sign in and create everything
+   else from the **People** page: partner firms with their first admin, MKW staff, client users. Partner profiles
+   (licence status, emirates, service codes, FTA/auditor approvals) are edited on the **Partners** page.
+3. Load MKW's go-live data with the importers (below, "Go-live data"): partners, rate cards, government fees,
+   holidays, company details, owner decisions and the two legal texts. Every importer is a dry run until `--apply`.
 4. Email: create the SES identity for mkwadvisors.com in me-central-1, publish the SPF, DKIM and DMARC records it
    gives you, move the account out of the SES sandbox, verify both sender addresses, then set `EMAIL=ses`. Until
    then every message is still recorded in the delivery log (Settings page) and each person's bell.
@@ -126,3 +126,97 @@ in-process; the daily and weekly sweeps do nothing when already done for the day
 5. Verify the government fee table and statutory notes with a qualified person before quoting real clients.
 6. Confirm the retention periods on the **Settings** page after legal advice; until then they show as UNCERTAIN.
 7. Take a first backup and run the restore drill against the new server; record it in `docs/RESTORE-DRILL.md`.
+
+## Go-live data (O10)
+
+The go-live files (`Tasees-Go-Live-Data.xlsx`, `Owner-Decisions.md`, `MKW-Company-Details.md`,
+`Tasees-Client-Terms.md`, `MKW-Partner-Network-Agreement.md`) hold business contact details and MKW's commercial
+terms. Keep them in `data/import/` (ignored by git) or in the private files bucket under `import/`; never commit them.
+
+```bash
+pnpm import all data/import                                   # dry run of everything, in order; writes nothing
+pnpm import all data/import --as connect@mkwadvisors.com --apply
+pnpm import partners data/import/Tasees-Go-Live-Data.xlsx     # one kind at a time
+pnpm import fees data/import/Tasees-Go-Live-Data.xlsx --decisions data/import/Owner-Decisions.md
+pnpm import:sheet rate-cards.csv                              # the Sheet's Rate Cards tab exported as CSV
+pnpm import:dev ...                                           # the same, from the TypeScript sources (development)
+```
+
+- **Dry run first, always.** A dry run runs exactly the `--apply` code inside a transaction that is rolled back, so
+  its report is what `--apply` will do. `--evidence docs/evidence/O10` also writes a copy with firm names and contact
+  details removed.
+- **Re-running changes nothing.** Rows already in the platform report as unchanged; each created or updated record
+  writes one audit event. **Nobody is emailed or notified by an import.**
+- **Partners** are created as prospects. An admin is added only when "Admin email" is filled, as `invite_pending`
+  (no sign-in); MKW moving the firm to **pilot** sends the invitation. "FTA tax agent" is never set by an import.
+  Once a firm is past `contacted`, the console is the record and the file no longer overwrites it.
+- **Company details and decisions** apply through the founder's own Settings and Rules services, so `--as` must name
+  a founder account; a blank answer changes nothing.
+- **Legal texts** become a new version when the text changes, shown as "Draft, pending legal review" until the founder
+  records the lawyer's review on Settings.
+
+## Staging runbook (AWS me-central-1)
+
+`infra/` describes staging and a separate demo as code (AWS CDK, TypeScript; `docs/DECISIONS.md` D44). Nothing in it
+holds a secret: passwords and keys are generated into AWS Secrets Manager and read by the tasks at start.
+
+| Stack | What it is |
+| --- | --- |
+| `TaseesStaging` | Real data. VPC (public, private, isolated subnets), RDS PostgreSQL 16 (encrypted, 30-day backups, deletion protection, isolated subnets), private encrypted versioned buckets for files and backups, the Dockerfile image on ECS Fargate behind an HTTPS load balancer (TLS 1.2+, HTTP redirects), `TRUST_PROXY=1`, `DEV_LOGIN` unset, the 15-minute jobs on an EventBridge schedule, alarms when jobs stop or the app is unhealthy. |
+| `TaseesDemo` | Synthetic demo data only, for the browser smoke test: same image, embedded Postgres inside the task, development sign-in on, load balancer reachable only from one address range. No database, bucket or secret shared with staging. |
+
+What the owner provides first (the "Ask me" items): an AWS account with access for the person deploying, the domain
+and DNS (for example `app.tasees.ae` and `demo.tasees.ae`), an ACM certificate for those names in me-central-1, the
+SES sender verification for mkwadvisors.com, and an email address for alarms. Staging costs money from the first
+hour (RDS, NAT gateway, load balancers, Fargate); the owner approves the account and budget before step 2.
+
+1. **Prepare.** Install Node 22, pnpm 10, Docker and the AWS CLI; sign in to the account (`aws sso login` or a named
+   profile) with `AWS_REGION=me-central-1`. Request the certificate in ACM (me-central-1), validate it by DNS, note
+   its ARN. Then:
+   ```bash
+   cd infra && pnpm install --ignore-workspace
+   pnpm synth:check            # local check with example values; no AWS call
+   npx cdk bootstrap aws://<account-id>/me-central-1
+   ```
+2. **Deploy staging.** Review the diff, then deploy (CDK builds the image from the repository's Dockerfile and pushes it):
+   ```bash
+   pnpm run diff -- TaseesStaging -c domainName=app.tasees.ae -c certificateArn=<arn> -c alarmEmail=<email>
+   pnpm run deploy -- TaseesStaging -c domainName=app.tasees.ae -c certificateArn=<arn> -c alarmEmail=<email>
+   ```
+   Point the domain at the `LoadBalancerDns` output (CNAME or Route 53 alias). Confirm the alarm subscription email.
+   The first task runs the migrations and loads the catalogue; no demo data is loaded (`NODE_ENV=production`).
+   RDS's master user owns the database, so migration 001 can create its three roles on the first start.
+3. **Check it.** `curl https://app.tasees.ae/api/health` answers `{"ok":true,"db":"postgres",...,"devLogin":false}`.
+4. **Create the founder.** One-off task with the stack's outputs (`ClusterName`, `TaskDefinitionArn`, `TaskSubnets`,
+   `TaskSecurityGroup`):
+   ```bash
+   aws ecs run-task --cluster <ClusterName> --task-definition <TaskDefinitionArn> --launch-type FARGATE \
+     --network-configuration 'awsvpcConfiguration={subnets=[<subnet-a>,<subnet-b>],securityGroups=[<sg>],assignPublicIp=DISABLED}' \
+     --overrides '{"containerOverrides":[{"name":"ScheduledContainer","command":["sh","-c","export DATABASE_URL=\"postgres://$DB_USER:$DB_PASSWORD@$DB_HOST:$DB_PORT/$DB_NAME?sslmode=verify-full&sslrootcert=/etc/ssl/certs/rds-global-bundle.pem\" && exec node --conditions=production dist/scripts/create-founder.js connect@mkwadvisors.com \"Full Name\""]}]}'
+   ```
+   The task's log (`JobLogs` group) prints what it did. The founder can sign in once email works (step 7): sign-in
+   codes are emailed only, never written to the logs, and development sign-in is off on staging.
+5. **Dry-run the go-live data on staging and show the owner.** Upload the five files to the files bucket under
+   `import/` (`aws s3 cp data/import/ s3://<FilesBucket>/import/ --recursive --sse AES256`), then run a one-off task as
+   in step 4, keeping the `export DATABASE_URL=... && exec` wrapper and replacing only the final command with
+   `node --conditions=production dist/scripts/import.js all import/ --from-storage --as connect@mkwadvisors.com`.
+   Send the owner the report from the task log. **Do not continue without the owner's go.**
+6. **Apply.** The same task with `--apply` added. Run the same command again: every row must report unchanged. Then
+   delete the files from the bucket (`aws s3 rm s3://<FilesBucket>/import/ --recursive`); the versioned copies expire
+   after 35 days.
+7. **Email.** In SES (me-central-1): verify the mkwadvisors.com domain, publish the DKIM, SPF and DMARC records, leave
+   the sandbox, verify `tasees@mkwadvisors.com` and `partners@mkwadvisors.com`. Add a sending key to Secrets Manager,
+   pass it as `SES_ACCESS_KEY_ID` / `SES_SECRET_ACCESS_KEY`, set `EMAIL=ses` in `staging-stack.ts`, redeploy. Until then
+   every message is recorded in the delivery log and the bell, and nothing leaves.
+8. **Backups.** RDS snapshots run daily (30 days, point-in-time recovery). Also schedule `scripts/backup.sh` with
+   `BACKUP_BUCKET=s3://<BackupsBucket>` and run the restore drill (`docs/RESTORE-DRILL.md`) against a scratch server.
+9. **Demo and smoke test.** Deploy the demo with its own name and your office address range, then run the smoke test
+   from that address against the demo, never against staging:
+   ```bash
+   pnpm run deploy -- TaseesDemo -c demoDomainName=demo.tasees.ae -c certificateArn=<arn> -c demoAllowedCidr=<office-ip>/32
+   BASE_URL=https://demo.tasees.ae node scripts/smoke.mjs
+   ```
+   The demo task re-seeds synthetic data on every start; destroy it when not needed (`npx cdk destroy TaseesDemo`).
+
+Undo: `npx cdk destroy TaseesDemo` removes the demo completely. Staging keeps its database (deletion protection, a
+final snapshot), buckets and log groups on `cdk destroy`; removing those is a deliberate, separate step.

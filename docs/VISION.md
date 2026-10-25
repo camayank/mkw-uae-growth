@@ -159,6 +159,9 @@ The vision depends on these; a change that weakens one is not shipped, whatever 
 
 ## Roadmap
 
+*Numbering note (18 Oct 2026): the owner released O10 as "Real data and staging", so the outcomes in the table
+below are queued in `outcomes/QUEUE.yaml` one number later, O11 to O16, in the same order.*
+
 O1–O9 are built and merged; three strengthening outcomes come before the pilot, and the pilot's go / no-go gates the launch work.
 
 Each gate is a named person's sign-off with evidence the platform produced; no phase starts on a calendar date alone.
@@ -229,13 +232,13 @@ queue behind the `ai` adapter, hash-chained audit, PDPL consent, export and eras
 
 | Vision item | What exists | What the vision adds | Outcome |
 | --- | --- | --- | --- |
-| Ops command centre | The ops home ("What needs a person today") lists every exception kind with counts and an Open link | Order by risk and SLA, a "why it is here" line, the agent's draft inline, one-click actions, queue timings | O10 |
-| State machines | `packages/core/src/states.ts` declares transitions as data (from, to, who) | An action and a guard per transition, one `transition()` applying them, "what can happen next" for screens | O12 |
-| Logging | Fastify's logger, on unless `LOG=0` | Request id, user and org on every line; job metrics; an alert when a job did not run | O12 |
-| Founder numbers | Revenue, VAT, cash, payouts, margin, on-time, funnel, partner share, credits | Time from intake to offer; ops minutes per engagement; renewals captured | O10, O15 |
+| Ops command centre | The ops home ("What needs a person today") lists every exception kind with counts and an Open link | Order by risk and SLA, a "why it is here" line, the agent's draft inline, one-click actions, queue timings | O11 |
+| State machines | `packages/core/src/states.ts` declares transitions as data (from, to, who) | An action and a guard per transition, one `transition()` applying them, "what can happen next" for screens | O13 |
+| Logging | Fastify's logger, on unless `LOG=0` | Request id, user and org on every line; job metrics; an alert when a job did not run | O13 |
+| Founder numbers | Revenue, VAT, cash, payouts, margin, on-time, funnel, partner share, credits | Time from intake to offer; ops minutes per engagement; renewals captured | O11, O16 |
 | Partner scorecard | Weights 40/20/15/15/10 as on-time, first-pass QA, disputes, SLA strikes, client rating | The vision names the parts on-time, quality, responsiveness, compliance, volume; see "For the owner" below | owner |
-| Agents | Scoping agent only, on the in-memory model; drafts reviewed by ops | Document checker, fee and rule watcher, calendar, drafting, vetting, risk, translation, founder analyst; the learning loop | O10, O15 |
-| Web app | One 2,199-line `app.js` with a shared stylesheet, no build step | One module per screen over a dozen shared components and design tokens, still no build step | O11 |
+| Agents | Scoping agent only, on the in-memory model; drafts reviewed by ops | Document checker, fee and rule watcher, calendar, drafting, vetting, risk, translation, founder analyst; the learning loop | O11, O16 |
+| Web app | One 2,199-line `app.js` with a shared stylesheet, no build step | One module per screen over a dozen shared components and design tokens, still no build step | O12 |
 
 **Not built yet.** Event outbox and dispatcher; idempotency keys; route modules and an OpenAPI contract (all 53
 routes are in `server.ts`); read-model snapshots; real Postgres in CI; a load test; validated config at boot; the
@@ -250,6 +253,6 @@ remain as listed in `docs/KNOWN-GAPS.md`.
    strikes 15, client rating 10. The vision's partner journey says on-time 40, quality 20, responsiveness 15,
    compliance 15, volume 10. The weights match; three of the parts do not. Default kept: the built formula, until
    you choose. Changing it is one function in `packages/core/src/scorecard.ts` and its tests.
-2. **Order of work.** The vision puts O10, O11 and O12 before the pilot (O7). `outcomes/QUEUE.yaml` records them as
-   `planned` in that order; none is released. Release one with: "Release O10 Ops command centre and event outbox.
+2. **Order of work.** The vision puts its first three outcomes (queued as O11, O12 and O13) before the pilot (O7). `outcomes/QUEUE.yaml` records them as
+   `planned` in that order; none is released. Release one with: "Release O11 Ops command centre and event outbox.
    Decisions: defaults stand. Base branch: main."

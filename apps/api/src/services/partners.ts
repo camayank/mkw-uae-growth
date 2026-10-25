@@ -165,8 +165,15 @@ export async function movePartner(tx: Queryable, actor: SessionUser, orgId: stri
   if (to === "signed") patch.signedAt = new Date().toISOString();
   await patchProfile(tx, orgId, patch);
   await audit(tx, actor, "partner.status_changed", "org", orgId, { from, to, note });
+  // An admin added by the import waits as `invite_pending` and cannot sign in; MKW moving the firm to pilot is
+  // the action that invites them. The status notice below then reaches them as an active user too.
+  const invited = to === "pilot" ? (await tx.query<{ id: string; email: string }>("update users set status = 'active' where org_id = $1 and status = 'invite_pending' returning id, email", [orgId])).rows : [];
+  for (const u of invited) {
+    await audit(tx, actor, "user.invited", "user", u.id, { orgId, role: "partner_admin", on: "moved_to_pilot" });
+    await notify.send({ to: u.email, channel: "email", template: "user_invited", vars: { orgName: p.name, role: "partner_admin" } });
+  }
   await notifyPartner(tx, notify, orgId, "partner_status_changed", { firm: p.name, status: to, note });
-  return { ok: true, changed: true, status: to };
+  return { ok: true, changed: true, status: to, invited: invited.length };
 }
 
 // Licence watch ----------------------------------------------------------------------------------------------
@@ -292,7 +299,9 @@ export async function partnerOnboarding(tx: Queryable, actor: SessionUser, orgId
   // Erased people are MKW's record, not the firm's list.
   const staff = (await tx.query(`select id, name, email, role, status from users where org_id = $1 ${isStaff(actor) ? "" : "and status <> 'erased'"} order by role, name`, [orgId])).rows;
   const scorecards = await scorecardHistory(tx, orgId, 12);
-  const { conflicts: _c, bank: _b, ...profile } = p.profile as Record<string, unknown>;
+  const { conflicts: _c, bank: _b, importNotes, ftaTaxAgentClaim, ...rest } = p.profile as Record<string, unknown>;
+  // MKW's own notes from the import stay with MKW; the firm sees its profile without them.
+  const profile = isStaff(actor) ? { ...rest, importNotes, ftaTaxAgentClaim } : rest;
   return { org: { id: p.id, name: p.name }, profile, documents: docs.map(camel), staff, scorecards, moves: MOVES[p.profile.status ?? "prospect"] };
 }
 

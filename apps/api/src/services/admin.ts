@@ -27,7 +27,7 @@ interface UserRow {
   email: string;
   name: string;
   role: Role;
-  status: "active" | "deactivated" | "erased";
+  status: "active" | "deactivated" | "erased" | "invite_pending";
 }
 
 const WRITERS: Role[] = ["ops", "founder"];
@@ -168,6 +168,12 @@ export async function deactivateUser(tx: Queryable, actor: SessionUser, userId: 
   const user = await loadUser(tx, userId);
   assertCanManage(actor, user.org_type);
   if (user.id === actor.id) throw forbidden("You cannot deactivate your own account");
+  // An admin held by the import (O10) is cancelled here: deactivated, so the move to pilot does not invite them.
+  if (user.status === "invite_pending") {
+    await tx.query("update users set status = 'deactivated', deactivated_at = app_now() where id = $1", [userId]);
+    await audit(tx, actor, "user.invitation_cancelled", "user", userId, {});
+    return { ok: true, changed: true };
+  }
   if (user.status !== "active") return { ok: true, changed: false };
   await assertNotLastFounder(tx, user);
   await tx.query("update users set status = 'deactivated', deactivated_at = app_now() where id = $1", [userId]);
@@ -182,6 +188,7 @@ export async function reactivateUser(tx: Queryable, actor: SessionUser, userId: 
   assertCanManage(actor, user.org_type);
   if (user.status === "erased") throw conflict("An erased person cannot be reactivated; invite them again as a new user");
   if (user.status === "active") return { ok: true, changed: false };
+  if (user.status === "invite_pending") throw conflict("This person's invitation is held until MKW moves the firm to pilot");
   await tx.query("update users set status = 'active', deactivated_at = null where id = $1", [userId]);
   await audit(tx, actor, "user.reactivated", "user", userId, {});
   return { ok: true, changed: true };

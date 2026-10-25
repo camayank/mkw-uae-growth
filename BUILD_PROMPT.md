@@ -203,10 +203,11 @@ stacks on the last and ships with its own tests, smoke checks, review and docume
 | O8 | Reporting and compliance | The founder sees the business in numbers that match the books; every client has a compliance calendar that never files anything by itself | founder and partner dashboards by period, accounting CSV export, obligations with UNCERTAIN dates until confirmed, reminders, evidence and MKW check |
 | O9 | Arabic and accessibility | Clients can use Tasees in Arabic once a reviewer signs it off; every screen passes WCAG 2.1 AA machine checks and works by keyboard | locale on the user, Arabic dictionary and templates, reviewer sign-off gate, preview accounts, RTL layout, axe-core in smoke, keyboard path |
 
-After O9 the queue follows `docs/VISION.md` (18 Oct 2026): O10 Ops command centre and event outbox, O11 Client
-experience, O12 Observability and hardening before the pilot; then O7; then O13 Real payments and WhatsApp, O14
-Books and Arabic completeness, O15 Agents round two. They sit in `outcomes/QUEUE.yaml` as `planned` until the owner
-releases one. The vision's "Where the build stands" section lists what each one adds to the code as it is.
+After O9 the owner released O10 Real data and staging (`outcomes/O10-real-data-and-staging.md`). The queue then
+follows `docs/VISION.md` (18 Oct 2026), one number later than the vision's table: O11 Ops command centre and event
+outbox, O12 Client experience, O13 Observability and hardening before the pilot; then O7; then O14 Real payments
+and WhatsApp, O15 Books and Arabic completeness, O16 Agents round two. They sit in `outcomes/QUEUE.yaml` as
+`planned` until the owner releases one. The vision's "Where the build stands" section lists what each one adds.
 
 ## How to work one outcome
 

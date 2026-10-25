@@ -3,3 +3,8 @@ node_modules
 **/data
 .git
 *.log
+infra
+docs
+outcomes
+smoke-shots
+**/cdk.out

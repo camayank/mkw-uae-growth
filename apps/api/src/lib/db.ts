@@ -81,12 +81,38 @@ export async function openDatabase(): Promise<Database> {
 
 const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), "../../migrations");
 
+/** Any number; the same for every process, so two tasks starting at once take turns. */
+const MIGRATION_LOCK = 72_434_210;
+
+/**
+ * Apply pending migrations in name order. On Postgres every file runs in its own transaction holding an advisory
+ * lock and re-checks whether another process (the app, the scheduled jobs task, a one-off task) applied it in the
+ * meantime, so tasks starting together never run the same DDL twice (O10). PGlite is single-process.
+ */
 export async function migrate(db: Database): Promise<string[]> {
+  const files = (await readdir(MIGRATIONS_DIR)).filter((f) => f.endsWith(".sql")).sort();
+  const applied: string[] = [];
+  if (db.kind === "postgres") {
+    await db.transaction(async (tx) => {
+      await tx.query("select pg_advisory_xact_lock($1)", [MIGRATION_LOCK]);
+      await tx.query("create table if not exists schema_migrations (name text primary key, applied_at timestamptz not null default now())");
+    });
+    for (const file of files) {
+      const sql = await readFile(join(MIGRATIONS_DIR, file), "utf8");
+      const ran = await db.transaction(async (tx) => {
+        await tx.query("select pg_advisory_xact_lock($1)", [MIGRATION_LOCK]);
+        if ((await tx.query("select 1 from schema_migrations where name = $1", [file])).rows.length) return false;
+        await tx.query(sql); // no parameters: the simple protocol runs every statement in the file
+        await tx.query("insert into schema_migrations (name) values ($1)", [file]);
+        return true;
+      });
+      if (ran) applied.push(file);
+    }
+    return applied;
+  }
   await db.exec(
     "create table if not exists schema_migrations (name text primary key, applied_at timestamptz not null default now())",
   );
-  const files = (await readdir(MIGRATIONS_DIR)).filter((f) => f.endsWith(".sql")).sort();
-  const applied: string[] = [];
   for (const file of files) {
     const done = await db.transaction((tx) =>
       tx.query<{ name: string }>("select name from schema_migrations where name = $1", [file]),
@@ -98,6 +124,15 @@ export async function migrate(db: Database): Promise<string[]> {
     applied.push(file);
   }
   return applied;
+}
+
+/** Migrations not yet applied to this database (all of them when it has never been migrated). Changes nothing. */
+export async function pendingMigrations(db: Database): Promise<string[]> {
+  const files = (await readdir(MIGRATIONS_DIR)).filter((f) => f.endsWith(".sql")).sort();
+  const exists = await db.transaction((tx) => tx.query<{ ok: boolean }>("select to_regclass('schema_migrations') is not null as ok"));
+  if (!exists.rows[0]?.ok) return files;
+  const done = new Set((await db.transaction((tx) => tx.query<{ name: string }>("select name from schema_migrations"))).rows.map((r) => r.name));
+  return files.filter((f) => !done.has(f));
 }
 
 /** Postgres bigint may arrive as a string from some drivers; amounts are always safe integers here. */

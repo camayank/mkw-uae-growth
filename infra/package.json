@@ -1,0 +1,23 @@
+{
+  "name": "@tasees/infra",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Staging and demo environments for the Tasees platform in AWS me-central-1 (UAE), as code (AWS CDK).",
+  "license": "UNLICENSED",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "synth": "pnpm build && cdk synth --quiet",
+    "synth:check": "pnpm build && cdk synth --quiet -c domainName=staging.example.ae -c certificateArn=arn:aws:acm:me-central-1:111111111111:certificate/00000000-0000-0000-0000-000000000000 -c demoDomainName=demo.example.ae -c demoAllowedCidr=203.0.113.10/32 -c alarmEmail=alerts@example.ae",
+    "diff": "pnpm build && cdk diff",
+    "deploy": "pnpm build && cdk deploy"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "2.270.0",
+    "constructs": "10.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.2",
+    "aws-cdk": "2.1142.0",
+    "typescript": "5.9.3"
+  }
+}

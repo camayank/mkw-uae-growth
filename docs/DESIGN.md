@@ -39,6 +39,7 @@ new, add a token or a pattern here first.
 | Conversation | `form.convo` with one visible `fieldset.q` (its `legend` takes focus), Back / Next, and `aside.plan` (live region) | Client intake |
 | Checked upload | `dropzone(expect, label)` in `js/core.js`: `label.dropzone` around the file input, `p.field-msg` (live), `form.upload-row` in lists; `checkFile` runs on choose, drop and submit | Client documents, filing evidence; the same check on every upload |
 | Ranked queue | `ol.qlist > li.qitem.{overdue,due_soon,on_track}` with why line, factors, inline `.qdraft`, buttons tied to the title by `aria-describedby` | Ops command centre (O11) |
+| System health | `section.card` per concern (alerts as `ol.qlist`, runs with steps in `details`, messages waiting, audit checks) | Setup → System (O13) |
 | Status chip | `.badge.{ok,warn,bad,info}` via `badge(status, label)` | Everywhere |
 | Progress | `.progress[role=progressbar] > span` | Engagement cards |
 

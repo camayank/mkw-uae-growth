@@ -313,3 +313,49 @@ export async function renderCompany() {
 }
 
 // Events ----------------------------------------------------------------------------------
+
+// System (O13): is the platform keeping up? Runs, steps, messages waiting, alerts, the audit chain. No personal data.
+
+const ALERT_KIND = { jobs_late: "Scheduled jobs late", job_step_failed: "A jobs step failed", outbox_stuck: "Messages stuck", audit_chain: "Audit chain broken" };
+const RUN_TONE = { ok: "ok", failed: "rejected", running: "pending", abandoned: "UNCERTAIN" };
+const ms = (n) => (n == null ? "–" : n < 1000 ? `${n} ms` : `${(n / 1000).toFixed(1)} s`);
+
+export async function renderSystem() {
+  const s = await api("GET", "/api/ops/system");
+  const open = s.alerts.filter((a) => !a.closedAt);
+  const closed = s.alerts.filter((a) => a.closedAt);
+  const last = s.runs.find((r) => r.status === "ok" || r.status === "failed");
+  const canRun = ["ops", "founder"].includes(role());
+  const alertItem = (a) => `<li class="qitem ${a.closedAt ? "on_track" : a.severity === "critical" ? "overdue" : "due_soon"}">
+      <div class="row between"><b>${esc(ALERT_KIND[a.kind] ?? words(a.kind))}${a.subject ? `: ${esc(a.subject)}` : ""}</b>${a.closedAt ? badge("ok", "cleared") : badge(a.severity === "critical" ? "rejected" : "pending", a.severity)}</div>
+      <p class="small">${esc(a.summary)}</p>
+      <p class="small muted">Opened ${dateTime(a.openedAt)}${a.closedAt ? ` · cleared ${dateTime(a.closedAt)}` : a.lastNotifiedAt ? ` · last emailed ${dateTime(a.lastNotifiedAt)}` : ""}</p></li>`;
+  $app.innerHTML = `
+  <h1>System</h1>
+  <p class="muted">Whether the platform is keeping up. An alert opens when the scheduled jobs have not completed for ${s.thresholds.jobsLateMinutes} minutes, when a step fails, when a message has waited more than ${s.thresholds.outboxStuckMinutes} minutes, or when the nightly audit check fails. It is emailed to MKW's alert address, again every ${s.thresholds.remindHours} hours while it stays open, and closes on its own when the cause clears.</p>
+  <section class="card" aria-labelledby="alerts-h"><h2 id="alerts-h">Alerts ${open.length ? badge("pending", `${open.length} open`) : badge("ok", "none open")}</h2>
+    ${open.length ? `<ol class="qlist">${open.map(alertItem).join("")}</ol>` : `<p class="muted small">Nothing needs attention.</p>`}
+    ${closed.length ? `<details><summary class="small">${closed.length} cleared in the last 7 days</summary><ol class="qlist">${closed.map(alertItem).join("")}</ol></details>` : ""}
+  </section>
+  <section class="card flush" aria-labelledby="runs-h"><h2 id="runs-h">Scheduled jobs</h2>
+    <p class="small muted pad" style="padding-top:0">${last ? `Last completed ${dateTime(last.finishedAt)} in ${ms(last.durationMs)}.` : "No run has completed yet."} They run every 15 minutes.</p>
+    ${table(
+      ["Started", "Status", "#Duration", "Steps"],
+      s.runs.map((r) => {
+        const steps = Object.entries(r.steps ?? {});
+        const failed = steps.filter(([, x]) => x.error);
+        return `<tr><td class="small">${dateTime(r.startedAt)}</td><td>${badge(RUN_TONE[r.status] ?? r.status, r.status)}${r.error ? `<br><span class="small muted">${esc(r.error)}</span>` : ""}</td><td class="num">${ms(r.durationMs)}</td>
+        <td class="small">${steps.length ? `<details><summary>${steps.length} steps${failed.length ? `, ${failed.length} failed` : ""}</summary><ul class="plain">${steps.map(([name, x]) => `<li>${esc(words(name))}: ${x.count} in ${ms(x.ms)}${x.error ? ` ${badge("rejected", "failed")} <span class="muted">${esc(x.error)}</span>` : ""}</li>`).join("")}</ul></details>` : "–"}</td></tr>`;
+      }),
+      "No runs recorded yet.",
+    )}
+    ${canRun ? `<div class="row pad"><button class="sm" data-act="run-jobs">Run the jobs now</button><span class="small muted">Only one run at a time: a second press while one runs is skipped.</span></div>` : ""}
+  </section>
+  <section class="card flush" aria-labelledby="outbox-h"><h2 id="outbox-h">Messages waiting</h2>
+    ${table(["Status", "#Messages", "Oldest"], s.outbox.map((o) => `<tr><td>${esc(words(o.status))}</td><td class="num">${o.n}</td><td class="small">${dateTime(o.oldest)}</td></tr>`), "Nothing waiting: every message has been handed to the email provider.")}
+    <p class="small muted pad">Messages that failed or whose delivery is not confirmed wait for a person in the queue.</p>
+  </section>
+  <section class="card flush" aria-labelledby="audit-h"><h2 id="audit-h">Audit chain, checked nightly</h2>
+    ${table(["Day", "#Events checked", "Result"], s.auditChecks.map((c) => `<tr><td>${date(c.day)}</td><td class="num">${c.checked}</td><td>${c.brokenId === null ? badge("ok", "intact") : badge("rejected", `broken at event ${c.brokenId}`)}</td></tr>`), "Not checked yet: the first jobs run of the day checks it.")}
+  </section>`;
+}

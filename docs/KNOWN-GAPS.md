@@ -93,6 +93,21 @@ in a browser; everything listed here is not.
 36. **The working-day estimate on the proposal is the longest one-off line's milestone plan**, not a promise. Lines
     run in parallel in the estimate; if one step truly waits on another, the real time is longer.
 
+## O13: observability and hardening
+
+37. **No alert address yet.** Until the owner sets `ALERT_EMAIL` (and the staging `alarmEmail`), alerts are logged and
+    shown on the System page and in the ops queue only. Nobody is paged out of hours.
+38. **A key left "running" waits 24 hours.** If the process stops between a change committing and its answer being
+    recorded, repeats with that key get 409 until the key expires (D66). Rare, and safe: the person checks the screen.
+39. **Logs stay in the host's log store.** No metrics service, dashboards or tracing; the job durations are in
+    `job_runs` and on the System page. CloudWatch Logs Insights can query the JSON lines in staging.
+40. **The contract describes requests, not responses.** Bodies, queries and path parameters are generated from the
+    schemas; responses are "200 Success" plus the error shape. Typed responses would need a schema per route.
+41. **The nightly audit check walks the whole chain.** 1,600 events take a few milliseconds; at millions it should
+    check from the last verified event (a checkpoint) and walk the whole chain weekly.
+42. **Allocation decisions queue behind one lock** (D68). Fine at tens of decisions a second (the load test runs 50
+    engagements a second); a much larger network would lock per partner instead.
+
 ## Soon after
 
 7. **Scoping rules and zone data are working estimates.** The advice engine, rule confidence, zone table,
@@ -134,11 +149,13 @@ in a browser; everything listed here is not.
 17a. **UAE public holidays are expected dates.** The calendar is a setting with a founder screen (O10); the import
     loads the 14 dates from the go-live workbook (2 Dec 2026 to 3 Dec 2027), every one "expected". The founder confirms
     each when the government announces it, and adds the next year's dates before December 2027.
-17. **Row-level security tests run on PGlite in CI.** They also pass on PostgreSQL 16 locally
-    (`TEST_DATABASE_URL`); CI should add a Postgres service so that run is repeated on every pull request.
+17. ~~Row-level security tests run on PGlite in CI.~~ Closed in O13: a CI job runs the whole API suite, the race tests
+    and a small load test on PostgreSQL 16 on every pull request.
 
 ## Verified so far
 
+- O13: 57 domain tests and 254 API tests, all passing on PGlite and on PostgreSQL 16 (CI runs both); the race tests fail
+  without the row locks they prove; a 200-engagement load test holds every invariant (`docs/evidence/O13/`).
 - 57 domain tests (`packages/core`) and 212 API tests (`apps/api`), all passing on PGlite and on PostgreSQL 16;
   typecheck clean; `pnpm build` compiles and the compiled server runs in production mode from a fresh database.
 - O1: partner creation, invitations, role changes and deactivation (sessions revoked, codes refused) are tested as

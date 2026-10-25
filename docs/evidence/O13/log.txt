@@ -1,0 +1,272 @@
+01-sign-in
+the intake asks one question at a time: OK
+focus moves to the next question: OK
+the plan builds as the client answers, with no unreviewed advice: OK
+02-client-intake
+the last question sums up the answers before anything is sent: OK
+02b-client-intake-review
+request: Request received. We will send your offers shortly.
+build: Offers built
+03-ops-pipeline
+04-ops-queue
+05-ops-offer-no-margin
+publish: Published to the client
+06-finance-offer-with-margin
+axe: no WCAG 2.1 AA violations on client offer with the client terms (O10): OK
+client sees the client terms with their version before accepting: OK
+client terms show the draft note until the lawyer's review is recorded: OK
+the offer reads as a proposal with every section: OK
+the proposal states the working-day estimate, the deposit now and the balance later: OK
+the proposal says the rules where the client acts: OK
+the proposal shows no partner cost or margin: OK
+72-client-proposal
+acceptance without ticking the terms is stopped: OK
+07-client-offer
+08-client-engagement-awaiting-payment
+client sees a card payment link for the deposit: OK
+the deposit is the pinned next action: OK
+the timeline runs from acceptance to completion: OK
+deposit: Payment recorded
+09-finance-engagement-allocated
+admin@setup-partner.test accepted 0
+10-partner-offered-work
+shot-partner
+admin@corporate-services.test accepted 1
+admin@tax-accounts.test accepted 1
+submit: Sent to MKW Advisors for checking
+partner page shows no client price or margin: OK
+11-partner-engagement
+qa: Passed to the client for approval
+12-ops-engagement
+the step waiting for the client is pinned with its automatic approval date: OK
+73-client-timeline-approve
+the pinned card links the evidence MKW checked: OK
+approve: Approved. Thank you.
+client page hides the partner's phone and email: OK
+client page shows no partner cost or margin: OK
+13-client-engagement-approved
+client bell shows unread notices after the flow: OK
+client notifications mention the offers and the deposit: OK
+client notifications carry no partner cost or margin: OK
+22-client-notifications
+mark all as read clears the bell: OK
+partner notifications come from MKW Advisors and never say Tasees: OK
+partner notifications carry no client price: OK
+23-partner-notifications
+client page at 390 px has no horizontal overflow: OK
+notifications at 390 px have no horizontal overflow: OK
+client home with the next action (O12) at 390 px has no horizontal overflow: OK
+75-mobile-client-home
+axe: no WCAG 2.1 AA violations on client home with the next action (O12) at 390 px: OK
+conversational intake (O12) at 390 px has no horizontal overflow: OK
+76-mobile-client-intake
+axe: no WCAG 2.1 AA violations on conversational intake (O12) at 390 px: OK
+client timeline (O12) at 390 px has no horizontal overflow: OK
+77-mobile-client-timeline
+axe: no WCAG 2.1 AA violations on client timeline (O12) at 390 px: OK
+client proposal (O12) at 390 px has no horizontal overflow: OK
+78-mobile-client-proposal
+axe: no WCAG 2.1 AA violations on client proposal (O12) at 390 px: OK
+statement at 390 px has no horizontal overflow: OK
+audit chain intact on the audit screen: OK
+15-audit
+16-people
+partner created: Partner firm created; its admin can sign in now
+new partner admin signed in, sees: MKW Advisors Partner Network
+invite: Invited
+role change: Role changed
+deactivate: Account deactivated
+deactivated user shows the badge and a reactivate button: OK
+export downloaded: person-c8b1147b-d567-43c6-bb10-70335d4fef3f.json
+erase: Personal data erased and recorded
+erased person shown as a tombstone: OK
+17-people-after-changes
+ops cannot invite MKW staff or erase anyone: OK
+finance sees no admin forms or deactivate buttons: OK
+retention UNCERTAIN badges before: 5
+18-settings-retention
+retention: Retention periods confirmed
+no UNCERTAIN retention badge after the founder confirms: OK
+19-settings-retention-confirmed
+finance cannot confirm retention periods: OK
+delivery log lists sent messages for client and partner audiences: OK
+invoice held while TRN missing: OK
+company: Company details saved
+issue held: Issued 1 invoice(s): TI-2026-000001
+held invoice issued with a sequential number: OK
+29-settings-company
+client statement shows the paid deposit and the tax invoice: OK
+client statement carries no partner cost or margin: OK
+client downloads the tax invoice PDF: OK
+30-client-statement
+bank: Bank details saved
+partner invoice: Invoice uploaded; MKW Advisors pays it in the next run
+partner payouts page shows the invoice number and no client price: OK
+31-partner-payouts
+one payout is ready for the run: OK
+run: Run PR-2026-0001 created: 1 payout(s), AED 3,200
+finance downloads the bank bulk-transfer file: OK
+run paid: Run paid; payouts released
+payout run marked paid: OK
+32-finance-payout-runs
+partner sees the payout released: OK
+ops has no payout run controls: OK
+pipeline flags advice to review: OK
+ops sees the structure advice with UNCERTAIN labels: OK
+35-ops-scoping-review
+advice: Advice approved; the client can see it now
+client sees the approved advice with confidence labels and no money internals: OK
+36-client-advice
+AI queue shows the draft as UNCERTAIN with its lines: OK
+37-ai-queue
+draft: Draft discarded
+rule: Recorded
+verified rule shows the verifier: OK
+38-scoping-rules
+the public intake page keeps its single-column layout: OK
+39-public-intake
+public intake accepted the lead: OK
+lead from the public page appears in the pipeline: OK
+search finds the new client: OK
+repeat lead gets the same answer: OK
+repeat lead is held for ops, not attached: OK
+42-held-leads
+held lead marked handled: OK
+catalogue lists 82 services: OK
+25-catalogue
+fee: Fee added as UNCERTAIN
+new fee shows as UNCERTAIN: OK
+verify: Fee marked verified
+verified fee shows the verifier and no stale badge: OK
+rule: Rule scheduled
+scheduled rule change is listed with its date: OK
+26-rules
+ops sees the fee table but no margin rates, floors or settings: OK
+ops catalogue hides the rule column values: OK
+partners page links to onboarding: OK
+43-ops-partner-onboarding
+partner moved to contacted: OK
+application submitted: OK
+trade licence uploaded, awaiting MKW check: OK
+44-partner-firm
+command centre says why the partner document is waiting: OK
+the document check sits beside it, UNCERTAIN, read from the name only: OK
+every queue item says why it is ranked where it is: OK
+the licence item offers Verify and Reject as one click: OK
+70-ops-command-centre
+axe: no WCAG 2.1 AA violations on ops command centre (O11): OK
+the filter shows one kind and says it is pressed: OK
+one click records that the check is right: OK
+the check now shows as confirmed: OK
+command centre at 390 px has no horizontal overflow: OK
+71-mobile-command-centre
+axe: no WCAG 2.1 AA violations on ops command centre at 390 px (O11): OK
+the jobs run from the System page: OK
+the run is listed with its steps and the audit chain as checked: OK
+every change the web app sends carries an idempotency key: OK
+79-system
+axe: no WCAG 2.1 AA violations on System page (O13): OK
+System page at 390 px has no horizontal overflow: OK
+80-mobile-system
+axe: no WCAG 2.1 AA violations on System page at 390 px (O13): OK
+licence verified: OK
+partner moved to pilot with a verified licence: OK
+client is asked for documents per step: OK
+a wrong file type is refused before upload, beside the item: OK
+the refused file is marked invalid for screen readers: OK
+74-client-checklist-refused
+client document uploaded: OK
+45-client-documents
+offer PDF downloads for the client: OK
+partner marked the client document received: OK
+46-ops-delays
+founder dashboard shows revenue, cash and margin: OK
+49-founder-dashboard
+ops dashboard hides margin: OK
+accounting export downloads as CSV: OK
+ops cannot export margin: OK
+obligation added: OK
+50-ops-compliance
+client sees the confirmed obligation: OK
+client uploaded filing evidence: OK
+51-client-compliance
+ops marked the obligation met: OK
+the next obligation rolled forward: OK
+partner performance page has no client or margin figures: OK
+52-partner-performance
+axe: no WCAG 2.1 AA violations on sign-in (en): OK
+skip link is the first focus stop: OK
+activating the skip link moves focus to the page without changing the route: OK
+the document title follows the heading: OK
+keyboard reaches the email field: OK
+keyboard-only path opens the engagement: OK
+axe: no WCAG 2.1 AA violations on client offer (en): OK
+axe: no WCAG 2.1 AA violations on client home (en): OK
+axe: no WCAG 2.1 AA violations on client engagement (en): OK
+axe: no WCAG 2.1 AA violations on client compliance (en): OK
+axe: no WCAG 2.1 AA violations on client intake (en): OK
+axe: no WCAG 2.1 AA violations on partner home (en): OK
+axe: no WCAG 2.1 AA violations on partner firm (en): OK
+axe: no WCAG 2.1 AA violations on public intake (en): OK
+no Arabic switch for clients before the sign-off: OK
+Arabic sign-off recorded: OK
+client home renders in Arabic, right-to-left: OK
+55-client-home-ar
+offer in Arabic keeps amounts and the accept wording: OK
+56-client-offer-ar
+engagement in Arabic: OK
+57-client-engagement-ar
+compliance in Arabic: OK
+58-client-compliance-ar
+public intake in Arabic: OK
+59-public-intake-ar
+axe: no WCAG 2.1 AA violations on client home (ar): OK
+axe: no WCAG 2.1 AA violations on client offer (ar): OK
+axe: no WCAG 2.1 AA violations on client engagement (ar): OK
+axe: no WCAG 2.1 AA violations on client compliance (ar): OK
+axe: no WCAG 2.1 AA violations on client intake (ar): OK
+the Arabic document title follows the heading: OK
+people's own words are left untranslated: OK
+axe: no WCAG 2.1 AA violations on public intake (ar): OK
+staff menu fits on one row at 1280 px: OK
+staff menu has four entries (Work, Partners, Dashboard, Setup): OK
+Enter opens the Work menu and focuses its first link: OK
+61-console-menu
+axe: no WCAG 2.1 AA violations on console with the Work menu open (O10): OK
+Escape closes the menu and returns focus to its button: OK
+Setup tells screen readers which page is open: OK
+staff menu still on one row with the longest label open: OK
+settings lists both legal texts as drafts: OK
+the review is recorded and the client terms are no longer a draft: OK
+the holiday shows as expected until confirmed: OK
+62-settings-legal-holidays
+axe: no WCAG 2.1 AA violations on settings: legal texts and holidays (O10): OK
+an imported prospect shows its Partner ID and an unconfirmed FTA claim: OK
+63-ops-imported-prospect
+the partner sees the agreement as a draft pending legal review: OK
+axe: no WCAG 2.1 AA violations on partner firm: the agreement (O10): OK
+partner screens never show the name Tasees: OK
+64-partner-agreement
+console menu open at 390 px has no horizontal overflow: OK
+65-mobile-console-menu
+axe: no WCAG 2.1 AA violations on console with the Setup menu open at 390 px (O10): OK
+settings with legal texts and holidays at 390 px has no horizontal overflow: OK
+66-mobile-settings-legal
+axe: no WCAG 2.1 AA violations on settings: legal texts and holidays at 390 px (O10): OK
+partner agreement at 390 px has no horizontal overflow: OK
+67-mobile-partner-agreement
+axe: no WCAG 2.1 AA violations on partner firm: the agreement at 390 px (O10): OK
+Arabic home at 390 px has no horizontal overflow: OK
+people at 390 px has no horizontal overflow: OK
+settings at 390 px has no horizontal overflow: OK
+catalogue at 390 px has no horizontal overflow: OK
+rules at 390 px has no horizontal overflow: OK
+partners at 390 px has no horizontal overflow: OK
+scoping at 390 px has no horizontal overflow: OK
+agent at 390 px has no horizontal overflow: OK
+delays at 390 px has no horizontal overflow: OK
+dashboard at 390 px has no horizontal overflow: OK
+compliance at 390 px has no horizontal overflow: OK
+firm page at 390 px has no horizontal overflow: OK
+ERRORS:
+SMOKE TEST PASSED

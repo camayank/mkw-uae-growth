@@ -450,3 +450,56 @@ test before any screen changed.
     payment provider, web address, AI, accounting system, year end, digest time, Arabic reviewer, template wording,
     pilot partners and clients, lawyer and tax adviser. MKW-Company-Details.md gave only the three email addresses, which
     match the built defaults; legal name, licence, address and TRN are still blank, so invoices stay held.
+
+**D63. Configuration is checked before anything starts.** (O13, `lib/config.ts`.) One table lists every variable the API
+reads with its rule; the server, the jobs runner and every script refuse to start on any problem and print each one as
+"NAME: rule". A value is never printed (a secret pasted into the wrong variable must not reach a log). Unknown values
+that used to fall back silently are now refused (`EMAIL=sess`, `STORAGE=S3`). Production adds: `DEV_LOGIN=1` is refused
+rather than ignored, `APP_URL` must be https, and a webhook secret, when set, has at least 16 characters (unset still
+rejects every webhook, which is safe while there is no payment provider). The adapters keep reading their own variables:
+the check decides only whether the set makes sense, so nothing working was rewritten.
+
+**D64. Logs are one JSON line per event, with ids and no personal data.** (O13.) Fastify's own logger (pino, already a
+dependency of Fastify; nothing added). Each request keeps a well-formed `x-request-id` from the load balancer or gets a
+new one, and returns it; after sign-in every line carries the user, organisation and role ids. The request serializer
+logs the method, the path without its query (a search can carry a name or an email) and the address; headers and bodies
+are never logged. A server error answers with its request id, so a person can quote it and MKW can find the lines.
+
+**D65. The platform raises its own alerts, by email, through the outbox.** (O13, `services/system.ts`.) Four conditions:
+the jobs have not completed for 45 minutes (three missed runs), a step failed in the last run, a message has been due
+for 30 minutes without being handed to the provider, the nightly audit check failed. The watchdog runs in the server
+every five minutes (the jobs cannot report that they did not run) and again at the end of each jobs run. One alert per
+condition and subject is open at a time: emailed to `ALERT_EMAIL` when it opens, every four hours while open, and once
+when it clears; opening and closing are audited. Alerts are about the platform only and carry no personal data (error
+text is shortened and email addresses in it are replaced). Sending them is an explicit, tested rule (rule 6) to MKW's own
+address, never to a client or partner. Without `ALERT_EMAIL` they are logged and shown on the System page and at the
+top of the ops queue. The staging CloudWatch alarm on missing job runs stays as a second, independent signal.
+
+**D66. Idempotency keys answer a repeat with the first answer, never a second change.** (O13, `lib/idempotency.ts`.)
+The key is claimed before the handler runs and the answer stored as it leaves; a 5xx releases it (the change rolled
+back). A process that stops between commit and recording leaves the key "running": every repeat gets 409 until it
+expires after 24 hours, so the person checks the screen rather than the change happening twice. Keys are per person,
+refused on public routes (the public intake and sign-in have their own duplicate handling) and erased with the person.
+Stored answers are kept only 24 hours. The web app keys every change by method, path and body, keeps the key while
+the answer is unknown (a network failure, or "still running"), and retries a dropped request once with the same key.
+
+**D67. Milestones, offers and engagements move only through `transition()`.** (O13, `lib/transition.ts`.) The tables
+in `packages/core/src/states.ts` are the rule; `transition()` locks the row (`for update`), checks who may make the
+move, sets the status and its timestamp, updates only where the status is still the one it read, and writes the audit
+event with `from` and `to`. A refusal names what can happen next. A source test fails on any other status update for
+the three machines. The audit action names are unchanged.
+
+**D68. Rows that money and work hang on are locked before they are checked.** (O13.) The concurrency tests on
+PostgreSQL 16 found that two acceptances of one allocation could both pass (both created steps and payouts). Payments,
+allocations, payouts, change orders, refunds, guarantee credits, delays, document requests, AI drafts and obligations
+are now read `for update` before their state is checked, and allocation decisions take a transaction lock
+(`pg_advisory_xact_lock(777003)`) because partner capacity is counted from rows another transaction may be writing.
+Both cost milliseconds and are proven by tests that fail without them.
+
+**D69. The API contract is generated from the schemas the handlers parse with.** (O13, `lib/openapi.ts`.) Each route
+declares `config: { body }` (or `body: null`), the same zod object its handler parses with, and `GET /api/openapi.json`
+builds an OpenAPI 3.1 document from them with a small converter (zod 3 has none built in; adding
+`zod-to-json-schema` was not worth a dependency for the features the routes use). `docs/openapi.json` is the committed
+copy; a test fails when they differ or when a route that changes something declares no body. Refresh with
+`pnpm --filter @tasees/api contract` and review the diff. Routes live in `src/routes/` by area; `server.ts` keeps the
+hooks. Responses are not described yet (gap 40).

@@ -74,7 +74,7 @@ outcomes:
     needs_from_owner: [AWS account and credentials, domain and DNS, SES sender verification, named fee verifier, lawyer sign-off on client terms and partner agreement]
   - id: O11
     title: Ops command centre and event outbox
-    status: verified-pending-merge
+    status: merged
     contract: outcomes/O11-ops-command-centre.md
     depends_on: [O10]
     needs_from_owner: []

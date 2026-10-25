@@ -1,7 +1,7 @@
 # O12 Client experience
 
-Status: in-progress (branch `outcome/O12-client-experience`, stacked on O11, camayank/mkw-uae-growth#12; released by the
-owner 25 Oct 2026)
+Status: in-progress (branch `outcome/O12-client-experience` from `main` after O11 merged as camayank/mkw-uae-growth#12;
+released by the owner 25 Oct 2026)
 
 ## Business result
 

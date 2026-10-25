@@ -78,6 +78,12 @@ outcomes:
     contract: outcomes/O11-ops-command-centre.md
     depends_on: [O10]
     needs_from_owner: []
+  - id: O12
+    title: Client experience
+    status: in-progress
+    contract: outcomes/O12-client-experience.md
+    depends_on: [O11]
+    needs_from_owner: [wording review of the proposal and intake questions]
 
 # Roadmap from docs/VISION.md (18 Oct 2026). Order of work: O11, O12, O13 before the pilot; then O7 (launch gate);
 # then O14, O15, O16. Renumbered on 18 Oct 2026 when the owner released O10 as Real data and staging.
@@ -85,14 +91,6 @@ outcomes:
 # The rest are `planned`: the owner releases one at a time ("Release O11 ..."), and its contract
 # file is written from the vision's scope at that point, before any code.
 roadmap:
-  - id: O12
-    title: Client experience
-    status: planned
-    business_result: A client always knows the next action, and the offer reads as a proposal.
-    scope: [engagement timeline with the next action pinned, proposal-style offer, conversational intake with the plan building on screen,
-            checklist uploads with validation before upload, design tokens, web app split into modules with no build step]
-    depends_on: [O11]
-    needs_from_owner: [wording review of the proposal and intake questions]
   - id: O13
     title: Observability and hardening
     status: planned

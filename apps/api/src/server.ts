@@ -23,7 +23,7 @@ import type { PaymentProvider } from "./lib/payments.ts";
 import { issueHeldInvoices, loadCompany, refundPayment, statement, updateCompany } from "./services/invoices.ts";
 import { approveAdvice, recomputeAdvice, requestScoping, scopingOverview, search, verifyRule, verifyZone } from "./services/scoping.ts";
 import { draftScopeForRequest, listDrafts, reviewDraft } from "./services/drafts.ts";
-import { registerDocumentChecker } from "./services/doccheck.ts";
+import { registerDocumentChecker, supersedeChecks } from "./services/doccheck.ts";
 import { openQueueItem, opsQueue, syncQueueTimings } from "./services/queue.ts";
 import { resolveOutbox } from "./lib/outbox.ts";
 import { publicIntake, PublicIntakeSchema, listLeads, handleLead } from "./services/intake.ts";
@@ -864,6 +864,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     const key = await putFile(r.engagement_id, body.fileName, body.contentBase64);
     return asPlatform(db, user, async (tx) => {
       const r = await uploadClientDocument(tx, user, req.params.id, { key, name: body.fileName }, deps);
+      await supersedeChecks(tx, "document_request", req.params.id);
       await opts.notify.emit("document_check", { subject: "document_request", id: req.params.id });
       return r;
     });
@@ -993,6 +994,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     const key = await putFile(o.client_org_id, body.fileName, body.contentBase64);
     return asPlatform(db, user, async (tx) => {
       const r = await uploadObligationEvidence(tx, user, req.params.id, { key, name: body.fileName });
+      await supersedeChecks(tx, "obligation", req.params.id);
       await opts.notify.emit("document_check", { subject: "obligation", id: req.params.id });
       return r;
     });

@@ -321,7 +321,9 @@ it is done; if nothing was handed over, it is retried; if it was handed over wit
 and ops decides (Mark delivered, Send again, Cancel), with a note that goes into the audit trail. The alternative,
 re-sending automatically, would sometimes send a client the same invoice twice. The same applies at the moment of
 sending: only a definite 4xx answer from SES is a refusal; a timeout, a dropped connection or a 5xx may mean SES took
-the message, so the row goes straight to `unknown`. Every update after a handler runs checks that its claim still
+the message, so the row goes straight to `unknown`; so does a message the provider took when recording that
+fails afterwards (a database error after delivery is not a refusal). A replacement upload closes the earlier upload's
+pending document check as superseded, so no verdict is confirmed against the wrong file. Every update after a handler runs checks that its claim still
 stands, so a run that outlived its lease never overrides a recovery or a person's decision. Provider error text stays
 out of the audit trail (it can quote an address that a later erasure must be able to remove), and erasure clears it from
 the outbox.

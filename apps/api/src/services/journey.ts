@@ -13,7 +13,7 @@ import { CLIENT_REVIEW_DAYS } from "./engagements.ts";
  *   documents  documents a partner asked for, still missing or sent back
  *   filing     a confirmed compliance date within 30 days with no filing evidence yet
  */
-export type NextActionKind = "offer" | "payment" | "approve" | "documents" | "filing";
+export type NextActionKind = "offer" | "payment" | "change" | "approve" | "documents" | "filing";
 
 export interface NextAction {
   kind: NextActionKind;
@@ -99,6 +99,23 @@ export async function clientNextActions(tx: Queryable, now: Date, cal: WorkCalen
       due: null,
       engagementId: p.engagement_id,
       ref: p.id,
+    });
+  }
+  // A scope change MKW has priced waits for the account owner; nothing extra is done or charged until they decide.
+  const changes = await tx.query<{ id: string; engagement_id: string; description: string; client_fils: number | string | null }>(
+    "select id, engagement_id, description, client_fils from change_orders where status = 'priced' and ($1::uuid is null or engagement_id = $1) order by created_at",
+    [only],
+  );
+  for (const c of changes.rows) {
+    actions.push({
+      kind: "change",
+      title: `Decide on a change to scope: ${aed(num(c.client_fils ?? 0))}`,
+      why: "The partner firm proposed extra work and MKW Advisors priced it. Nothing extra is done or charged until your account owner approves it.",
+      link: `#/engagement/${c.engagement_id}`,
+      due: null,
+      engagementId: c.engagement_id,
+      ref: c.id,
+      detail: c.description,
     });
   }
   const steps = await tx.query<{ id: string; engagement_id: string; name: string; qa_passed_at: string }>(

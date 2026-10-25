@@ -115,6 +115,20 @@ describe("client journey", () => {
     expect(after.whatsNext).toMatch(/is (next|in progress)(, expected by \d+ \w+ \d{4})?\. We will tell you when it needs you\./);
   });
 
+  it("a priced scope change waits for the client's decision, with the partner's words beside it", async () => {
+    const e = (await env.call("ops", "GET", `/api/engagements/${engagementId}`)).body;
+    const who = partnerKey(e.allocations.find((a: any) => a.acceptedAt).partner);
+    expect((await env.call(who, "POST", `/api/engagements/${engagementId}/change-orders`, { description: "Add a second activity to the licence", partnerCostAed: 1_000 })).status).toBe(200);
+    const journey = (await env.call("client", "GET", `/api/engagements/${engagementId}`)).body.journey;
+    expect(journey.nextAction).toMatchObject({ kind: "change", title: "Decide on a change to scope: AED 1,500.00", link: `#/engagement/${engagementId}`, detail: "Add a second activity to the licence" });
+    expect(journey.nextAction.why).not.toMatch(/activity/);
+    expect(JSON.stringify(journey)).not.toMatch(NO_MONEY_LEAK);
+    expect((await home()).nextActions.map((a: any) => a.kind)).toContain("change");
+    // Declined: nothing more is needed.
+    expect((await env.call("client", "POST", `/api/change-orders/${journey.nextAction.ref}/decide`, { approve: false })).status).toBe(200);
+    expect((await env.call("client", "GET", `/api/engagements/${engagementId}`)).body.journey.nextAction).toBeNull();
+  });
+
   it("a confirmed filing date within 30 days is an action, with the rule that we do not file", async () => {
     const clientOrg = (await env.call("client", "GET", "/api/me")).body.orgId;
     await asPlatform(env.db, null, (tx) =>

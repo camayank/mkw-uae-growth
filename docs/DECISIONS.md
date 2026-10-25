@@ -375,7 +375,8 @@ the audit trail, and the comparison uses its Dubai date (it used the UTC date, w
 00:00 and 04:00 GST on the next day as on time). The audit trail itself keeps wall-clock time, as before.
 
 **D58. The client's next action is worked out on the server.** (O12, `services/journey.ts`.) From the client's own rows,
-under their own database role: an offer to decide (by its expiry), a payment due, a step to approve (with the date it is
+under their own database role: an offer to decide (by its expiry), a payment due, a priced scope change waiting for the
+account owner (the partner's description in `detail`), a step to approve (with the date it is
 approved automatically, from the same calendar and five-working-day rule the sweep uses), documents to upload (each kind
 once, with how many steps wait), filing evidence due within 30 days. The first is pinned on the home and engagement
 screens; the rest fold under it. With nothing to do, the screen says what is happening and when the next step is

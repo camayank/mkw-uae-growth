@@ -7,6 +7,9 @@
  */
 import { asPlatform, audit } from "../lib/context.ts";
 import { migrate, openDatabase } from "../lib/db.ts";
+import { checkConfigOrExit } from "../lib/config.ts";
+
+checkConfigOrExit();
 
 const [emailArg, ...nameParts] = process.argv.slice(2);
 const email = (emailArg ?? "").trim().toLowerCase();

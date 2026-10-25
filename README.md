@@ -21,11 +21,13 @@ Needs Node 22 and pnpm 10.
 pnpm install
 pnpm seed          # catalogue, margin rules and demo parties (invented firm names) into ./apps/api/data/pglite
 pnpm dev           # http://localhost:8787 with development sign-in (codes shown on screen)
-pnpm test          # 275 tests: pricing, allocation, rules, full HTTP flow, database security, admin, PDPL, storage
+pnpm test          # 320 tests: pricing, allocation, rules, full HTTP flow, database security, races, contract, PDPL
 pnpm typecheck
 pnpm build         # compiles to dist/; `pnpm start` then runs the compiled build (what production and the Dockerfile run)
 npx playwright install chromium && pnpm smoke   # browser smoke test against a running demo; screenshots in ./smoke-shots
-TEST_DATABASE_URL=postgres://... pnpm test       # the same suites on a real Postgres server
+TEST_DATABASE_URL=postgres://... pnpm test       # the same suites on a real Postgres server (CI runs both)
+TEST_DATABASE_URL=postgres://... pnpm --filter @tasees/api load 200 20   # load test on allocation and payouts
+pnpm --filter @tasees/api contract               # refresh docs/openapi.json after a deliberate route change
 pnpm import:dev all data/import                  # go-live importers, dry run (add --apply --as <founder>); see docs/DEPLOY.md
 pnpm --dir infra synth:check                     # staging and demo as code (AWS CDK), checked locally; see docs/DEPLOY.md
 ```
@@ -73,7 +75,12 @@ packages/core     Pure domain logic, no I/O. Money in integer fils, rates in bas
 apps/api          Fastify 5 + zod + Postgres (pg in production, PGlite in dev and tests)
   migrations/       schema, roles, row-level security, column grants, hash-chained audit function
   src/services/     pricing, engagements (allocation, milestones, payouts, change orders, RFQs), views
-  src/jobs/         timers: partner reply deadlines, client auto-approval, offer expiry
+  src/routes/       the HTTP routes by area (auth, client, partner, ops, admin, delivery, reporting, scoping, money, system)
+  src/jobs/         timers: partner reply deadlines, client auto-approval, offer expiry; each run recorded in job_runs (O13)
+  src/lib/config.ts      every environment variable and its rule, checked before anything starts (O13)
+  src/lib/transition.ts  the one way milestones, offers and engagements change status (O13)
+  src/lib/idempotency.ts idempotency keys on changes (O13); src/lib/openapi.ts the generated API contract
+  src/services/system.ts job runs, alerts, the nightly audit check, the System page (O13)
   src/services/admin.ts  organisations, people, PDPL export and erasure, retention settings
   src/lib/storage.ts     evidence files: memory (tests), local disk (development), S3-compatible bucket (production)
   src/lib/notify.ts      notifications: recorded in the database, delivered by memory/console/Amazon SES transports
@@ -94,12 +101,13 @@ apps/api          Fastify 5 + zod + Postgres (pg in production, PGlite in dev an
   src/services/locale.ts    language per person, Arabic gated on the reviewer's sign-off (O9); src/lib/templates-ar.ts Arabic client emails
   src/db/catalogue.ts    the 62 catalogue codes added to the 20 starter codes (83 Service Catalogue rows)
   src/scripts/      seed, run-jobs, import-sheet (rate cards from the operating Google Sheet), verify-audit
-  test/             end-to-end HTTP flow, exceptions, database security, admin, PDPL, storage adapters
+  test/             end-to-end HTTP flow, exceptions, database security, admin, PDPL, storage, races, contract; load.ts
 scripts/          smoke.mjs (browser smoke test), backup.sh, restore-drill.sh
-.github/workflows CI: typecheck, tests, compiled build, smoke test against the compiled build, container image
+.github/workflows CI: typecheck, tests, compiled build, smoke test against the compiled build, the API suite and a load
+                  test on PostgreSQL 16, container image
 apps/web/public   The web app: plain HTML, CSS and ES modules, no build step. Served by the API. app.js loads js/ (core,
                   shell, events, one module per area); tokens.css holds the design tokens (docs/DESIGN.md).
-docs/             DEPLOY.md, DECISIONS.md, KNOWN-GAPS.md
+docs/             DEPLOY.md, DECISIONS.md, KNOWN-GAPS.md, DESIGN.md, openapi.json (the API contract)
 ```
 
 ## How the money stays private

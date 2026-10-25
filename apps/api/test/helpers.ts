@@ -9,7 +9,7 @@ import { memoryModel } from "../src/lib/ai.ts";
 import { memoryStorage } from "../src/lib/storage.ts";
 import { seedCatalogue, seedDemo, type DemoIds } from "../src/db/seed.ts";
 import { DEMO } from "../src/db/seed-data.ts";
-import { buildApp } from "../src/server.ts";
+import { buildApp, type AppOptions } from "../src/server.ts";
 
 export interface TestEnv {
   app: FastifyInstance;
@@ -24,6 +24,8 @@ export interface TestEnv {
   clock: { now: Date };
   tokens: Record<string, string>;
   call: <T = any>(who: string, method: string, url: string, body?: unknown) => Promise<{ status: number; body: T }>;
+  /** Like `call`, with extra request headers and the response headers back. */
+  send: <T = any>(who: string, method: string, url: string, body?: unknown, headers?: Record<string, string>) => Promise<{ status: number; body: T; headers: Record<string, unknown> }>;
 }
 
 export const EMAILS = {
@@ -65,7 +67,10 @@ async function openTestDatabase(): Promise<Database> {
   };
 }
 
-export async function makeEnv(start = new Date("2026-10-19T06:00:00Z"), extra: { trustProxy?: number } = {}): Promise<TestEnv> {
+export async function makeEnv(
+  start = new Date("2026-10-19T06:00:00Z"),
+  extra: Partial<Pick<AppOptions, "trustProxy" | "logger" | "alertEmail" | "startedAt">> = {},
+): Promise<TestEnv> {
   const db = await openTestDatabase();
   await migrate(db);
   await seedCatalogue(db);
@@ -78,15 +83,19 @@ export async function makeEnv(start = new Date("2026-10-19T06:00:00Z"), extra: {
   const app = await buildApp({ db, notify, storage, provider, model: memoryModel(), now: () => clock.now, devLogin: true, webhookSecret: "test-secret", ...extra });
   const tokens: Record<string, string> = {};
   for (const [k, email] of Object.entries(EMAILS)) tokens[k] = await createSession(db, email);
-  const call = async (who: string, method: string, url: string, body?: unknown) => {
+  const send = async (who: string, method: string, url: string, body?: unknown, headers: Record<string, string> = {}) => {
     const res = await app.inject({
       method: method as "GET",
       url,
-      headers: who === "anon" ? {} : { authorization: `Bearer ${tokens[who]}` },
+      headers: { ...(who === "anon" ? {} : { authorization: `Bearer ${tokens[who]}` }), ...headers },
       ...(body === undefined ? {} : { payload: body as object }),
     });
     await notify.flush(); // deliveries happen after the request, as in production
-    return { status: res.statusCode, body: res.body ? JSON.parse(res.body) : null };
+    return { status: res.statusCode, body: res.body ? JSON.parse(res.body) : null, headers: res.headers as Record<string, unknown> };
   };
-  return { app, db, ids, notify, emails: transport.delivered, transport, storage, provider, clock, tokens, call };
+  const call = async (who: string, method: string, url: string, body?: unknown) => {
+    const { status, body: b } = await send(who, method, url, body);
+    return { status, body: b };
+  };
+  return { app, db, ids, notify, emails: transport.delivered, transport, storage, provider, clock, tokens, call, send };
 }

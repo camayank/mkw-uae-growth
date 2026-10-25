@@ -186,15 +186,31 @@ export function toast(msg, err = false) {
   toast.t = setTimeout(() => ($toast.className = ""), err ? 6000 : 3000);
 }
 
+// Idempotency keys (O13): every change carries one. A change whose answer never arrived keeps its key, so the retry
+// below, or a second click on the same button, cannot make it happen twice; the server answers with the first result.
+const pendingKeys = new Map();
+const CHANGES = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
 export async function api(method, url, body) {
-  const res = await fetch(url, {
-    method,
-    credentials: "same-origin",
-    headers: body === undefined ? {} : { "content-type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  const payload = body === undefined ? undefined : JSON.stringify(body);
+  const keyed = CHANGES.has(method) && !url.startsWith("/api/auth/") && !url.startsWith("/api/public/");
+  const id = `${method} ${url} ${payload ?? ""}`;
+  // getRandomValues works on plain http too (a development machine on the network); randomUUID needs https.
+  if (keyed && !pendingKeys.has(id)) pendingKeys.set(id, Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join(""));
+  const headers = { ...(payload === undefined ? {} : { "content-type": "application/json" }), ...(keyed ? { "idempotency-key": pendingKeys.get(id) } : {}) };
+  const send = () => fetch(url, { method, credentials: "same-origin", headers, body: payload });
+  let res;
+  try {
+    res = await send();
+  } catch {
+    // The network dropped: try once more with the same key, after a moment.
+    await new Promise((r) => setTimeout(r, 1000));
+    res = await send();
+  }
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
+  // Keep the key only while the server says the first attempt is still running.
+  if (keyed && data?.error !== "in_progress") pendingKeys.delete(id);
   if (!res.ok) {
     const e = new Error(data?.message ?? `Request failed (${res.status})`);
     e.status = res.status;

@@ -162,7 +162,8 @@ document.addEventListener("click", (ev) => {
     "run-jobs": () =>
       act(async () => {
         const r = await api("POST", "/api/ops/jobs/run");
-        toast(`Timers run: ${r.allocationTimeouts} re-routed, ${r.autoApprovals} auto-approved, ${r.offersExpired} offers expired`);
+        if (r.skipped) toast("Another run is in progress; nothing was done twice.");
+        else toast(`Jobs run: ${r.allocationTimeouts} re-routed, ${r.autoApprovals} auto-approved, ${r.offersExpired} offers expired${r.errors.length ? `; ${r.errors.length} step(s) failed (see System)` : ""}`);
       }, null),
     scorecards: () => act(() => api("POST", "/api/ops/scorecards/recompute"), "Scorecards recomputed"),
     "doc-review": () => {

@@ -129,6 +129,11 @@ log.push("request: " + (await toastText(client)));
 
 // Ops: price and publish
 const ops = await session("ops@mkwadvisors.test");
+// O13: every change ops sends through the web app, from here to the System page check, should carry an idempotency key.
+const opsKeyed = [];
+ops.on("request", (r) => {
+  if (["POST", "PUT", "DELETE"].includes(r.method()) && r.url().includes("/api/") && !/\/api\/(auth|public)\//.test(r.url())) opsKeyed.push(!!r.headers()["idempotency-key"]);
+});
 await ops.goto(BASE + "/#/pipeline");
 await ops.locator('button[data-act="build"]').first().click();
 await ops.waitForTimeout(900);
@@ -650,6 +655,32 @@ await eventually("the check now shows as confirmed:", async () => /check confirm
   await mops.screenshot({ path: `${OUT}/71-mobile-command-centre.png`, fullPage: false });
   log.push("71-mobile-command-centre");
   await axeCheck(mops, "ops command centre at 390 px (O11)");
+  await mctx.close();
+}
+// O13 System page: runs and their steps, messages waiting, alerts, the nightly audit check. Every change the web app
+// sends carries an idempotency key.
+{
+  await ops.goto(BASE + "/#/system"); await ops.reload();
+  await ops.waitForSelector("#runs-h");
+  await ops.locator('button[data-act="run-jobs"]').click();
+  check("the jobs run from the System page:", await toastHas(ops, /Jobs run:/));
+  await eventually("the run is listed with its steps and the audit chain as checked:", async () => {
+    const t = await ops.locator("main").innerText();
+    return /\d+ steps/.test(t) && /intact/.test(t);
+  });
+  check(`every change the web app sent for ops carried an idempotency key (${opsKeyed.length} changes):`, opsKeyed.length > 5 && opsKeyed.every(Boolean));
+  await shot(ops, "79-system");
+  await axeCheck(ops, "System page (O13)");
+  // The same ops session at phone width: another sign-in would count against the per-address sign-in limit.
+  const mctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, storageState: await ops.context().storageState() });
+  const mops = await mctx.newPage();
+  mops.on("pageerror", (e) => errors.push(`O13 mobile: ${e.message}`));
+  await mops.goto(BASE + "/#/system");
+  await mops.waitForSelector("#runs-h");
+  check("System page at 390 px has no horizontal overflow:", !(await mops.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
+  await mops.screenshot({ path: `${OUT}/80-mobile-system.png`, fullPage: true });
+  log.push("80-mobile-system");
+  await axeCheck(mops, "System page at 390 px (O13)");
   await mctx.close();
 }
 // Ops verifies the licence and moves the firm to pilot

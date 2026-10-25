@@ -14,7 +14,7 @@
 | `TRUST_PROXY` | unset | Number of proxy hops in front of the API (`1` behind one load balancer). Unset, `X-Forwarded-For` is ignored and every visitor behind a proxy shares one rate-limit bucket; set it or the public intake page and sign-in throttle lock everyone out together. |
 | `AI` | `memory` | Model behind the AI draft queue. Only the deterministic in-memory double exists until an API key and a monthly cap are agreed (`AI=anthropic` is reserved for it). |
 | `PAYMENT` | `memory` | Card payment provider. Only `memory` exists until the merchant account is chosen; its links lead to an explanatory page. |
-| `STORAGE` | `local` | `s3` stores evidence files in an S3-compatible bucket (production); anything else uses local disk. |
+| `STORAGE` | `local` | `s3` stores evidence files in an S3-compatible bucket (production); `local` uses local disk. Any other value is refused at start. |
 | `S3_BUCKET` | unset | Bucket name. Required when `STORAGE=s3`. |
 | `S3_REGION` | `me-central-1` | Region used in the request signature (AWS UAE). Other providers accept any value. |
 | `S3_ENDPOINT` | AWS for the region | Service URL for a non-AWS S3-compatible store, for example `https://objects.example.ae`. Path-style addressing is used when set. |
@@ -24,7 +24,7 @@
 | `S3_SSE` | `AES256` | Server-side encryption asked for on every upload; `aws:kms` with `S3_KMS_KEY_ID` to use a customer key. |
 | `S3_FORCE_PATH_STYLE` | by endpoint | `1` or `0` to override the addressing style. |
 | `UPLOAD_DIR` | `./data/uploads` | Where evidence files are stored with the local disk adapter. |
-| `EMAIL` | `console` | `ses` sends email through Amazon SES; anything else records and prints each message. |
+| `EMAIL` | `console` | `ses` sends email through Amazon SES; `console` records and prints each message. Any other value is refused at start. |
 | `SES_REGION`, `SES_ACCESS_KEY_ID`, `SES_SECRET_ACCESS_KEY` | fall back to the `S3_*` values | Credentials of a user allowed only `ses:SendEmail`. `SES_ENDPOINT` overrides the service URL. |
 | `EMAIL_FROM_CLIENT` | `tasees@mkwadvisors.com` | Sender address for messages to clients (shown as "Tasees, by MKW Advisors"). Must be verified in SES. |
 | `EMAIL_FROM_PARTNER` | `partners@mkwadvisors.com` | Sender address for messages to partners and staff (shown as "MKW Advisors"). |
@@ -32,9 +32,37 @@
 | `WEB_DIR` | `apps/web/public` | Static web app served at `/`. |
 | `IN_PROCESS_JOBS` | on | `0` turns off the 15-minute in-process timers; then run `pnpm jobs` from cron. |
 | `LOG` | on | `0` turns off request logging. |
+| `ALERT_EMAIL` | unset | Where platform alerts go (jobs late, a step failed, messages stuck, audit chain broken). Needs `EMAIL=ses` to actually send (the server warns at start otherwise). Unset, alerts are logged and shown on Setup → System and in the ops queue only. |
 
 Copy `.env.example` and fill it in. Nothing reads `.env` automatically; export the variables or use your host's
 secret store.
+
+**Checked at start (O13).** The server, `pnpm jobs` and every script check these variables first and refuse to start
+with a list such as `PORT: must be a whole number from 1 to 65535` or `DEV_LOGIN: must not be 1 in production`. Values
+are never printed. Fix the variable named and start again.
+
+## Logs, alerts and the System page (O13)
+
+- **Logs.** One JSON line per request (`reqId`, method, path without its query, status, time, and after sign-in
+  `userId`, `orgId`, `role`). The jobs log one line per step. In staging they are in CloudWatch Logs; for example
+  `fields @timestamp, reqId, userId, res.statusCode | filter res.statusCode >= 500`. A person who sees "quote reference
+  …" gives you the `reqId` to search for.
+- **Alerts.** Emailed to `ALERT_EMAIL` when they open, every four hours while open, and when they clear:
+  - *Scheduled jobs late*: no run completed for 45 minutes. Check the scheduled task (staging: the `Jobs` Fargate task
+    and its log group) or, with in-process jobs, that the app is up. `pnpm jobs` runs one by hand.
+  - *A jobs step failed*: the System page shows the step and its error; the other steps still ran.
+  - *Messages stuck*: due for 30 minutes and not handed to the provider. Check the email provider and the jobs.
+  - *Audit chain broken*: an audit row was changed or removed. Change nothing else. Take a database snapshot, run
+    `pnpm verify:audit` to confirm the event, and compare with the latest backup (`docs/RESTORE-DRILL.md`) to find what
+    changed and when. Tell the founder.
+- **For an external monitor.** `GET /api/health/jobs` answers 200, or 503 when the jobs are late, with the last run's
+  time (no other data). `GET /api/health` stays the load balancer's liveness check.
+- **The System page** (Setup → System; founder, ops, finance) shows recent runs with each step's count and duration,
+  messages waiting, alerts and the nightly audit checks. "Run the jobs now" is safe: only one run happens at a time.
+- **The API contract** is served to MKW staff at `GET /api/openapi.json` (also `docs/openapi.json`).
+- **Load test.** `TEST_DATABASE_URL=postgres://… pnpm --filter @tasees/api load 200 20 report.md` drives the
+  allocation and payout paths on a fresh database it creates and drops, and exits 1 if an invariant fails. Never point
+  it at a database with real data: it needs a role allowed to create databases.
 
 ## Postgres
 

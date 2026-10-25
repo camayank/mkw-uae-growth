@@ -80,10 +80,16 @@ outcomes:
     needs_from_owner: []
   - id: O12
     title: Client experience
-    status: verified-pending-merge
+    status: merged
     contract: outcomes/O12-client-experience.md
     depends_on: [O11]
     needs_from_owner: [wording review of the proposal and intake questions]
+  - id: O13
+    title: Observability and hardening
+    status: verified-pending-merge
+    contract: outcomes/O13-observability-hardening.md
+    depends_on: [O11, O12]
+    needs_from_owner: [alerting destination (ALERT_EMAIL and the staging alarm email)]
 
 # Roadmap from docs/VISION.md (18 Oct 2026). Order of work: O11, O12, O13 before the pilot; then O7 (launch gate);
 # then O14, O15, O16. Renumbered on 18 Oct 2026 when the owner released O10 as Real data and staging.
@@ -91,15 +97,6 @@ outcomes:
 # The rest are `planned`: the owner releases one at a time ("Release O11 ..."), and its contract
 # file is written from the vision's scope at that point, before any code.
 roadmap:
-  - id: O13
-    title: Observability and hardening
-    status: planned
-    business_result: Nothing fails silently, and a retry never double-creates.
-    scope: [structured logs with user, org and request id, job metrics and an alert when a job did not run, idempotency keys on mutating routes and jobs,
-            state machines as data with one transition(), route modules and an OpenAPI contract, real Postgres in CI beside PGlite,
-            load test on allocation and payouts, validated config at boot, verify:audit nightly]
-    depends_on: [O11]
-    needs_from_owner: [alerting destination]
   - id: O14
     title: Real payments and WhatsApp
     status: planned

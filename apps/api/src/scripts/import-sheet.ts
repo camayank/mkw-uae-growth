@@ -16,6 +16,9 @@ import { openDatabase, pendingMigrations } from "../lib/db.ts";
 import { formatReport, runImport } from "../import/common.ts";
 import { importRateCards } from "../import/rate-cards.ts";
 import { readXlsx } from "../import/xlsx.ts";
+import { checkConfigOrExit } from "../lib/config.ts";
+
+checkConfigOrExit();
 
 const [file, ...flags] = process.argv.slice(2);
 if (!file) {

@@ -3,6 +3,9 @@
 import { verifyAuditChain } from "../lib/audit.ts";
 import { asPlatform } from "../lib/context.ts";
 import { openDatabase } from "../lib/db.ts";
+import { checkConfigOrExit } from "../lib/config.ts";
+
+checkConfigOrExit();
 
 const db = await openDatabase();
 try {

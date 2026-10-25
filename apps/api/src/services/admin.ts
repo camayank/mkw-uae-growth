@@ -260,6 +260,14 @@ export async function erasePerson(tx: Queryable, actor: SessionUser, userId: str
   // "returning" so the counts are the same whichever driver runs the query.
   const sessions = await tx.query("delete from sessions where user_id = $1 returning token_hash", [userId]);
   const codes = await tx.query("delete from login_codes where email = $1 returning id", [user.email]);
+  // Stored answers (O13) can carry the person's details: their own, and anyone else's that quote their email or name
+  // (an invitation, a message, a reply naming them). Losing a stored answer only means a repeat runs again.
+  await tx.query(
+    `delete from idempotency_keys where user_id = $1
+        or strpos(lower(coalesce(response, '')), lower($2)) > 0
+        or (length($3) >= 3 and strpos(lower(coalesce(response, '')), lower($3)) > 0)`,
+    [userId, user.email, user.name ?? ""],
+  );
   const messages = await tx.query("update messages set author_name = $2, body_original = $3, body_shown = $3 where author_user_id = $1 returning id", [
     userId,
     TOMBSTONE_NAME,

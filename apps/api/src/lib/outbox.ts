@@ -1,4 +1,4 @@
-import { asPlatform, audit, txScope, type SessionUser } from "./context.ts";
+import { asPlatform, audit, lockAuditChain, txScope, type SessionUser } from "./context.ts";
 import type { Database, Queryable } from "./db.ts";
 import { conflict, forbidden, notFound } from "./errors.ts";
 
@@ -114,6 +114,7 @@ export function createDispatcher(db: Database, log: (msg: string) => void = (m) 
       const verdict = await handlers.get(row.topic)!.check(row).catch(() => "unknown" as const);
       // Each update re-checks the claim, so two processes recovering the same row change (and audit) it once.
       const changed = await asPlatform(db, null, async (tx) => {
+        await lockAuditChain(tx); // it may audit after updating the row: the lock order is audit chain first
         const r =
           verdict === "done"
             ? await tx.query("update outbox set status = 'done', done_at = app_now() where id = $1 and status = 'sending' and claimed_at = $2::timestamptz returning id", [row.id, row.claimed_at])
@@ -158,6 +159,7 @@ export function createDispatcher(db: Database, log: (msg: string) => void = (m) 
         if ((e as InDoubtError).inDoubt) {
           log(`[outbox] ${row.topic} #${row.id}: delivery in doubt, left for a person: ${msg}`);
           await asPlatform(db, null, async (tx) => {
+            await lockAuditChain(tx);
             const r = await tx.query(`update outbox set status = 'unknown', last_error = $3 where ${ours} returning id`, [row.id, row.claimed_at, msg]);
             if (r.rows.length) await audit(tx, null, "outbox.claim_unknown", "outbox", String(row.id), { topic: row.topic });
           });
@@ -167,6 +169,7 @@ export function createDispatcher(db: Database, log: (msg: string) => void = (m) 
         const final = row.attempts >= MAX_ATTEMPTS;
         log(`[outbox] ${row.topic} #${row.id} attempt ${row.attempts} failed${final ? " (final)" : ""}: ${msg}`);
         await asPlatform(db, null, async (tx) => {
+          if (final) await lockAuditChain(tx);
           const r = await tx.query(
             final
               ? `update outbox set status = 'failed', last_error = $3 where ${ours} returning id`
@@ -229,6 +232,7 @@ export function createDispatcher(db: Database, log: (msg: string) => void = (m) 
  */
 export async function resolveOutbox(tx: Queryable, actor: SessionUser, id: number, action: "retry" | "mark_delivered" | "cancel", note: string) {
   if (!["ops", "founder"].includes(actor.role)) throw forbidden("Only MKW ops settles undelivered messages");
+  await lockAuditChain(tx);
   const row = (await tx.query<{ status: string; topic: string }>("select status, topic from outbox where id = $1 for update", [id])).rows[0];
   if (!row) throw notFound("Message not found");
   if (!["failed", "unknown"].includes(row.status)) throw conflict(`This message is ${row.status}; nothing to settle`);

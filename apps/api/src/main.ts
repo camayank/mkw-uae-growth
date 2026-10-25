@@ -8,8 +8,14 @@ import { storageFromEnv } from "./lib/storage.ts";
 import { runJobs } from "./jobs/run.ts";
 import { buildApp } from "./server.ts";
 import { seedCatalogue } from "./db/seed.ts";
+import { checkConfigOrExit } from "./lib/config.ts";
+import { asPlatform } from "./lib/context.ts";
+import { sweepAlerts } from "./services/system.ts";
+
+checkConfigOrExit();
 
 const here = dirname(fileURLToPath(import.meta.url));
+const startedAt = new Date();
 
 const db = await openDatabase();
 const applied = await migrate(db);
@@ -39,6 +45,8 @@ const app = await buildApp({
   webhookSecret: process.env.PAYMENT_WEBHOOK_SECRET,
   webDir: process.env.WEB_DIR ?? join(here, "../../web/public"),
   logger: process.env.LOG !== "0",
+  alertEmail: process.env.ALERT_EMAIL || undefined,
+  startedAt,
 });
 
 const port = Number(process.env.PORT ?? 8787);
@@ -46,11 +54,21 @@ await app.listen({ port, host: process.env.HOST ?? "127.0.0.1" });
 console.log(`Tasees platform on http://localhost:${port} · db ${db.kind} · files ${storageKind} · email ${transport.kind}${devLogin ? " · development sign-in codes shown on screen" : ""}`);
 
 // In-process sweeps every 15 minutes. In production prefer an external cron calling `pnpm jobs`.
+const alertEmail = process.env.ALERT_EMAIL || undefined;
+if (!alertEmail) console.warn("ALERT_EMAIL is not set: platform alerts are logged and shown on the System page, not emailed.");
+else if (transport.kind !== "ses") console.warn("ALERT_EMAIL is set but EMAIL is not ses: alerts are recorded and printed, not emailed.");
 if (process.env.IN_PROCESS_JOBS !== "0") {
   setInterval(() => {
-    runJobs(db, { notify, storage, provider: providerFromEnv() }).catch((e) => console.error("jobs failed", e));
+    runJobs(db, { notify, storage, provider: providerFromEnv() }, null, { alertEmail, log: (line) => app.log.info(line) }).catch((e) => app.log.error({ err: e }, "jobs failed"));
   }, 15 * 60 * 1000).unref();
 }
+// The watchdog (O13): every five minutes, open or close alerts. It runs here, not in the jobs, because its main
+// question is whether the jobs ran at all.
+setInterval(() => {
+  asPlatform(db, null, (tx) => sweepAlerts(tx, { notify, alertEmail, since: startedAt, log: (line) => app.log.warn(line) }))
+    .then(() => notify.flush())
+    .catch((e) => app.log.error({ err: e }, "watchdog failed"));
+}, 5 * 60 * 1000).unref();
 
 // Graceful shutdown: finish in-flight requests, then close the database. PGlite in particular cannot reopen a
 // data directory that was not closed cleanly, and a container runtime sends SIGTERM before it kills the process.

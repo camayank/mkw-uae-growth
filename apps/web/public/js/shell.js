@@ -5,7 +5,7 @@ import { renderClientCompliance, renderClientHome, renderClientOffer, renderInta
 import { renderEngagement } from "./engagement.js";
 import { renderFirm, renderPartnerHome, renderPartnerPayouts, renderPartnerPerformance, renderRateCards } from "./partner.js";
 import { renderAgentQueue, renderAudit, renderDashboard, renderDelays, renderOpsCompliance, renderOpsOffer, renderPartners, renderPipeline, renderQueue, renderRequest, renderScoping, renderSearch } from "./ops.js";
-import { renderCatalogue, renderPeople, renderRules, renderSettings } from "./admin.js";
+import { renderCatalogue, renderPeople, renderRules, renderSettings, renderSystem } from "./admin.js";
 
 hooks.render = renderNow;
 
@@ -19,12 +19,12 @@ document.addEventListener("visibilitychange", () => {
 export function navFor() {
   if (isClient()) return [["home", "Overview"], ["new", "New request"], ["compliance", "Compliance"], ["statement", "Statement"]];
   if (isPartner()) return [["home", "Work"], ["performance", "Performance"], ["firm", "Your firm"], ["rates", "Rate card"], ["payouts", "Payouts"]];
-  // MKW staff: fourteen pages in four entries, so the bar stays on one row at desktop and phone width.
+  // MKW staff: fifteen pages in four entries, so the bar stays on one row at desktop and phone width.
   return [
     { group: "Work", items: [["home", "Queue"], ["pipeline", "Pipeline"], ["new", "New request"], ["delays", "Delays"], ["compliance", "Compliance"], ["agent", "AI queue"]] },
     ["partners", "Partners"],
     ["dashboard", "Dashboard"],
-    { group: "Setup", items: [["people", "People"], ["catalogue", "Catalogue"], ["rules", "Rules"], ["scoping", "Scoping"], ["settings", "Settings"], ["audit", "Audit trail"]] },
+    { group: "Setup", items: [["people", "People"], ["catalogue", "Catalogue"], ["rules", "Rules"], ["scoping", "Scoping"], ["settings", "Settings"], ["system", "System"], ["audit", "Audit trail"]] },
   ];
 }
 
@@ -189,6 +189,7 @@ export async function renderPage(page, id) {
     if (page === "agent") return await renderAgentQueue();
     if (page === "search") return await renderSearch(decodeURIComponent(id ?? ""));
     if (page === "settings") return await renderSettings();
+    if (page === "system") return await renderSystem();
     return await renderQueue();
   }
 }

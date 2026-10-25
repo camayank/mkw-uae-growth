@@ -1,5 +1,5 @@
 import { applyBp, DEFAULT_SETTINGS, splitByShares } from "@tasees/core";
-import { audit, type SessionUser } from "../lib/context.ts";
+import { audit, lockAuditChain, type SessionUser } from "../lib/context.ts";
 import { num, type Queryable } from "../lib/db.ts";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.ts";
 import { col, textPdf } from "../lib/pdf.ts";
@@ -193,7 +193,8 @@ export async function issueHeldInvoices(tx: Queryable, actor: SessionUser, stora
 /** Finance records a full refund of a paid payment: the payment is refunded and a credit note reverses the invoice. */
 export async function refundPayment(tx: Queryable, actor: SessionUser, paymentId: string, reference: string, reason: string, storage: Storage, notify: Notifier) {
   if (!["finance", "founder"].includes(actor.role)) throw forbidden("Only finance records refunds");
-  const payment = (await tx.query<Record<string, unknown>>("select * from payments where id = $1", [paymentId])).rows[0];
+  await lockAuditChain(tx);
+  const payment = (await tx.query<Record<string, unknown>>("select * from payments where id = $1 for update", [paymentId])).rows[0];
   if (!payment) throw notFound("Payment not found");
   if (payment.status !== "paid") throw conflict("Only a paid payment can be refunded");
   const released = await tx.query("select 1 from payouts where engagement_id = $1 and status = 'released'", [String(payment.engagement_id)]);

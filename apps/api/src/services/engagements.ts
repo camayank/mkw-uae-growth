@@ -3,8 +3,6 @@ import {
   addWorkingHours,
   allocate,
   applyBp,
-  assertEngagement,
-  assertMilestone,
   ceilTo,
   clientDocumentsFor,
   maskContacts,
@@ -18,7 +16,8 @@ import {
   type OfferTotals,
   type PayoutStage,
 } from "@tasees/core";
-import { audit, type SessionUser } from "../lib/context.ts";
+import { audit, lockAuditChain, type SessionUser } from "../lib/context.ts";
+import { lockRequestOffers, transition, withdrawOffers } from "../lib/transition.ts";
 import { num, type Queryable } from "../lib/db.ts";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.ts";
 import type { Notifier } from "../lib/notify.ts";
@@ -74,11 +73,11 @@ export async function acceptOffer(tx: Queryable, user: SessionUser, offerId: str
   // The client accepts the current client terms with the offer; the engagement keeps which version.
   const acceptedTerms = await requiredTermsVersion(tx, termsVersion);
 
-  await tx.query("update offers set status = 'accepted', accepted_at = app_now() where id = $1", [offerId]);
-  await tx.query(
-    "update offers set status = 'withdrawn' where request_id = $1 and id <> $2 and status in ('draft','ops_review','published')",
-    [o.request_id, offerId],
-  );
+  // Lock the request's offers in id order first: two acceptances (of one tier or of two) queue here instead of each
+  // holding one offer and waiting for the other's. The second then finds its offer moved and is refused.
+  await lockRequestOffers(tx, String(o.request_id));
+  await transition(tx, "offer", offerId, "accepted", "client", { actor: user });
+  await withdrawOffers(tx, String(o.request_id), offerId, user);
   await tx.query("update requests set status = 'closed' where id = $1", [o.request_id]);
   const answers = (o.answers ?? {}) as { emirate?: string; freeZone?: string | null };
   const eng = (
@@ -124,7 +123,8 @@ export async function acceptOffer(tx: Queryable, user: SessionUser, offerId: str
 
 /** Called by the payment provider webhook (or finance in development). */
 export async function markPaymentPaid(tx: Queryable, actor: SessionUser | null, paymentId: string, providerRef: string, deps: Deps, amountFils?: number) {
-  const p = (await tx.query<Record<string, unknown>>("select * from payments where id = $1", [paymentId])).rows[0];
+  await lockAuditChain(tx);
+  const p = (await tx.query<Record<string, unknown>>("select * from payments where id = $1 for update", [paymentId])).rows[0];
   if (!p) throw notFound("Payment not found");
   if (p.status === "paid") return; // idempotent: webhooks may repeat
   if (p.status !== "pending") throw conflict(`Payment is ${String(p.status)}, not pending`);
@@ -147,11 +147,7 @@ export async function markPaymentPaid(tx: Queryable, actor: SessionUser | null, 
 }
 
 async function setEngagementStatus(tx: Queryable, id: string, to: EngagementStatus, by: "system" | "platform" | "client" | "partner") {
-  const e = (await tx.query<{ status: EngagementStatus }>("select status from engagements where id = $1", [id])).rows[0];
-  if (!e) throw notFound("Engagement not found");
-  if (e.status === to) return;
-  assertEngagement(e.status, to, by);
-  await tx.query(`update engagements set status = $2${to === "completed" ? ", completed_at = app_now()" : ""} where id = $1`, [id, to]);
+  await transition(tx, "engagement", id, to, by, { idempotent: true });
 }
 
 // Allocation -------------------------------------------------------------------
@@ -167,6 +163,10 @@ export async function runAllocation(
   deps: Deps,
   retryReason?: "next_ranked_declined" | "next_ranked_sla_timeout",
 ): Promise<Array<{ allocationId: string | null; partnerId: string | null; reason: string; codes: string[] }>> {
+  // One allocation decision at a time (O13), taken before anything is read: the unassigned lines and partner capacity
+  // both come from rows another allocation may be writing. Allocation takes milliseconds, so queueing costs nothing.
+  await lockAuditChain(tx);
+  await tx.query("select pg_advisory_xact_lock(777003)");
   const e = (await tx.query<Record<string, unknown>>("select * from engagements where id = $1", [engagementId])).rows[0];
   if (!e) throw notFound("Engagement not found");
   const lines = (
@@ -317,7 +317,8 @@ export async function respondToAllocation(
   reason: string | undefined,
   deps: Deps,
 ) {
-  const a = (await tx.query<Record<string, unknown>>("select * from allocations where id = $1", [allocationId])).rows[0];
+  await lockAuditChain(tx);
+  const a = (await tx.query<Record<string, unknown>>("select * from allocations where id = $1 for update", [allocationId])).rows[0];
   if (!a || a.partner_org_id !== user.orgId) throw notFound("Allocation not found");
   if (user.role !== "partner_admin") throw forbidden("Only a partner admin can accept or decline work");
   if (a.accepted_at || a.declined_at || a.timed_out_at) throw conflict("This allocation has already been answered or has lapsed");
@@ -432,9 +433,7 @@ async function loadMilestone(tx: Queryable, id: string) {
 export async function startMilestone(tx: Queryable, user: SessionUser, id: string) {
   const m = await loadMilestone(tx, id);
   if (user.orgType === "partner" && m.partner_org_id !== user.orgId) throw notFound("Milestone not found");
-  assertMilestone(m.status, "in_progress", user.orgType === "partner" ? "partner" : "platform");
-  await tx.query("update milestones set status = 'in_progress', updated_at = app_now() where id = $1", [id]);
-  await audit(tx, user, "milestone.started", "milestone", id);
+  await transition(tx, "milestone", id, "in_progress", user.orgType === "partner" ? "partner" : "platform", { audit: { actor: user, action: "milestone.started" } });
 }
 
 export async function addEvidence(
@@ -452,7 +451,7 @@ export async function addEvidence(
       [milestoneId, m.engagement_id, file.type, file.key, file.name, user.id],
     )
   ).rows[0]!;
-  if (m.status === "pending") await tx.query("update milestones set status = 'in_progress' where id = $1", [milestoneId]);
+  if (m.status === "pending") await transition(tx, "milestone", milestoneId, "in_progress", "partner", { idempotent: true, actor: user });
   await audit(tx, user, "evidence.added", "milestone", milestoneId, { type: file.type, name: file.name });
   return { id: row.id };
 }
@@ -466,21 +465,17 @@ export async function submitMilestone(tx: Queryable, user: SessionUser, mileston
   if (have.length === 0 || missing.length > 0) {
     throw badRequest(`Attach the evidence first: ${missing.join(", ") || "at least one file"}`);
   }
-  assertMilestone(m.status, "evidence_submitted", "partner");
-  await tx.query("update milestones set status = 'evidence_submitted', updated_at = app_now(), first_submitted_at = coalesce(first_submitted_at, app_now()) where id = $1", [milestoneId]);
-  await audit(tx, user, "milestone.submitted", "milestone", milestoneId);
+  await transition(tx, "milestone", milestoneId, "evidence_submitted", "partner", { audit: { actor: user, action: "milestone.submitted" } });
 }
 
 export async function qaMilestone(tx: Queryable, user: SessionUser, milestoneId: string, pass: boolean, note: string | undefined, deps: Deps) {
   const m = await loadMilestone(tx, milestoneId);
   const to: MilestoneStatus = pass ? "qa_passed" : "qa_rejected";
-  assertMilestone(m.status, to, "platform");
   if (!pass && !note?.trim()) throw badRequest("Say what needs fixing");
-  await tx.query(
-    `update milestones set status = $2, qa_note = $3, updated_at = app_now()${pass ? ", qa_passed_at = app_now()" : ""} where id = $1`,
-    [milestoneId, to, note ?? null],
-  );
-  await audit(tx, user, pass ? "milestone.qa_passed" : "milestone.qa_rejected", "milestone", milestoneId, { note });
+  await transition(tx, "milestone", milestoneId, to, "platform", {
+    set: { qa_note: note ?? null },
+    audit: { actor: user, action: pass ? "milestone.qa_passed" : "milestone.qa_rejected", data: { note } },
+  });
   if (pass) {
     const client = (await tx.query<{ client_org_id: string }>("select client_org_id from engagements where id = $1", [m.engagement_id])).rows[0];
     if (client) await notifyOrg(tx, deps, client.client_org_id, "milestone_ready_for_review", { milestoneId, engagementId: m.engagement_id });
@@ -504,17 +499,10 @@ export async function clientReviewMilestone(
     if (!e || e.client_org_id !== user.orgId) throw notFound("Milestone not found");
   }
   const by = user ? "client" : "system";
-  if (approve) {
-    assertMilestone(m.status, "client_approved", by);
-    await tx.query("update milestones set status = 'client_approved', updated_at = app_now() where id = $1", [milestoneId]);
-  } else {
-    if (!reason?.trim()) throw badRequest("Tell us what is wrong so we can fix it");
-    assertMilestone(m.status, "disputed", "client");
-    await tx.query("update milestones set status = 'disputed', dispute_reason = $2, updated_at = app_now() where id = $1", [milestoneId, reason]);
-  }
-  await audit(tx, user, approve ? "milestone.approved" : "milestone.disputed", "milestone", milestoneId, {
-    reason,
-    auto: user === null,
+  if (!approve && !reason?.trim()) throw badRequest("Tell us what is wrong so we can fix it");
+  await transition(tx, "milestone", milestoneId, approve ? "client_approved" : "disputed", by, {
+    ...(approve ? {} : { set: { dispute_reason: reason ?? null } }),
+    audit: { actor: user, action: approve ? "milestone.approved" : "milestone.disputed", data: { reason, auto: user === null } },
   });
   await refreshPayouts(tx, m.engagement_id, deps);
 }
@@ -522,12 +510,9 @@ export async function clientReviewMilestone(
 /** Resolve a disputed milestone: send it back to the partner, or approve it. */
 export async function resolveDispute(tx: Queryable, user: SessionUser, milestoneId: string, outcome: "rework" | "approve", deps: Deps) {
   const m = await loadMilestone(tx, milestoneId);
-  assertMilestone(m.status, outcome === "rework" ? "in_progress" : "client_approved", "platform");
-  await tx.query("update milestones set status = $2, updated_at = app_now() where id = $1", [
-    milestoneId,
-    outcome === "rework" ? "in_progress" : "client_approved",
-  ]);
-  await audit(tx, user, `milestone.dispute_${outcome}`, "milestone", milestoneId);
+  await transition(tx, "milestone", milestoneId, outcome === "rework" ? "in_progress" : "client_approved", "platform", {
+    audit: { actor: user, action: `milestone.dispute_${outcome}` },
+  });
   await refreshPayouts(tx, m.engagement_id, deps);
 }
 
@@ -589,7 +574,8 @@ async function refreshPayouts(tx: Queryable, engagementId: string, deps: Deps) {
 
 export async function releasePayout(tx: Queryable, user: SessionUser, payoutId: string, deps: Deps) {
   if (!["finance", "founder"].includes(user.role)) throw forbidden("Only finance can release payouts");
-  const p = (await tx.query<Record<string, unknown>>("select * from payouts where id = $1", [payoutId])).rows[0];
+  await lockAuditChain(tx);
+  const p = (await tx.query<Record<string, unknown>>("select * from payouts where id = $1 for update", [payoutId])).rows[0];
   if (!p) throw notFound("Payout not found");
   if (p.status !== "eligible") throw conflict(`This payout is ${String(p.status)}; only eligible payouts can be released`);
   const invoice = await tx.query("select 1 from partner_invoices where payout_id = $1", [payoutId]);
@@ -633,7 +619,8 @@ export async function proposeChangeOrder(tx: Queryable, user: SessionUser, engag
 }
 
 export async function decideChangeOrder(tx: Queryable, user: SessionUser, changeOrderId: string, approve: boolean, deps: Deps) {
-  const co = (await tx.query<Record<string, unknown>>("select c.*, e.client_org_id from change_orders c join engagements e on e.id = c.engagement_id where c.id = $1", [changeOrderId])).rows[0];
+  await lockAuditChain(tx);
+  const co = (await tx.query<Record<string, unknown>>("select c.*, e.client_org_id from change_orders c join engagements e on e.id = c.engagement_id where c.id = $1 for update of c", [changeOrderId])).rows[0];
   if (!co || co.client_org_id !== user.orgId) throw notFound("Change order not found");
   if (user.role !== "client_owner") throw forbidden("Only the account owner can approve extra costs");
   if (co.status !== "priced") throw conflict("This change order is not waiting for a decision");

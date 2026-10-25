@@ -77,6 +77,16 @@ export function asPlatform<T>(db: Database, actor: SessionUser | null, fn: (tx: 
   );
 }
 
+/**
+ * The lock order (O13). `audit_append` serialises the hash chain on advisory lock 777001, held until commit. A
+ * transaction that took another lock first (a row `for update`, the allocation or payout-run lock) and then audits
+ * would wait for 777001 while a transaction holding 777001 waits for its lock: a deadlock. So anything that locks and
+ * then audits takes 777001 first; it is re-entrant, so a later audit in the same transaction does not wait again.
+ */
+export async function lockAuditChain(tx: Queryable): Promise<void> {
+  await tx.query("select pg_advisory_xact_lock(777001)");
+}
+
 export async function audit(
   tx: Queryable,
   actor: SessionUser | null,

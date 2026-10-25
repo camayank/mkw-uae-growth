@@ -16,7 +16,7 @@ export type MilestoneStatus =
 export type PayoutStatus = "pending" | "eligible" | "released" | "withheld";
 export type ChangeOrderStatus = "proposed" | "priced" | "approved" | "rejected";
 
-type Actor = "client" | "partner" | "platform" | "system";
+export type Actor = "client" | "partner" | "platform" | "system";
 
 interface Transition<S extends string> {
   from: S;
@@ -57,9 +57,32 @@ const engagementTransitions: Transition<EngagementStatus>[] = [
   { from: "in_delivery", to: "cancelled", by: ["platform"] },
 ];
 
+/** The three machines that move money and work, as data (O13). The API changes their status only through these. */
+export const MACHINES = {
+  milestone: milestoneTransitions,
+  offer: offerTransitions,
+  engagement: engagementTransitions,
+} as const;
+export type MachineName = keyof typeof MACHINES;
+export type MachineStatus<M extends MachineName> = (typeof MACHINES)[M][number]["to"];
+
+/** What can happen next from a status: every destination, or only those `by` may choose. */
+export function nextStates(machine: MachineName, from: string, by?: Actor): string[] {
+  const table = MACHINES[machine] as Transition<string>[];
+  return [...new Set(table.filter((t) => t.from === from && (!by || t.by.includes(by))).map((t) => t.to))];
+}
+
 function check<S extends string>(table: Transition<S>[], from: S, to: S, by: Actor): void {
   const ok = table.some((t) => t.from === from && t.to === to && t.by.includes(by));
-  if (!ok) throw new TransitionError(`${by} cannot move from ${from} to ${to}`);
+  if (ok) return;
+  const next = [...new Set(table.filter((t) => t.from === from && t.by.includes(by)).map((t) => t.to))];
+  throw new TransitionError(
+    `${by} cannot move from ${from} to ${to}; ${next.length ? `from ${from} ${by} can move to ${next.join(" or ")}` : `nothing ${by} can do changes ${from}`}`,
+  );
+}
+
+export function assertTransition(machine: MachineName, from: string, to: string, by: Actor): void {
+  check(MACHINES[machine] as Transition<string>[], from, to, by);
 }
 
 export class TransitionError extends Error {

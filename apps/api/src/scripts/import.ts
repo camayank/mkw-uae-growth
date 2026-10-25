@@ -39,6 +39,9 @@ import { importFees } from "../import/fees.ts";
 import { importHolidays } from "../import/holidays.ts";
 import { feeVerifierFrom, importCompany, importDecisions, parseDecisions } from "../import/decisions.ts";
 import { importLegal } from "../import/legal.ts";
+import { checkConfigOrExit } from "../lib/config.ts";
+
+checkConfigOrExit();
 
 const args = process.argv.slice(2);
 const flag = (name: string) => {

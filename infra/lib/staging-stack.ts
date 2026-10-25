@@ -113,6 +113,8 @@ export class StagingStack extends Stack {
       DB_HOST: db.dbInstanceEndpointAddress,
       DB_PORT: db.dbInstanceEndpointPort,
       DB_NAME: "tasees",
+      // The app's own alerts (O13) go to the same address as the CloudWatch alarms.
+      ...(props.alarmEmail ? { ALERT_EMAIL: props.alarmEmail } : {}),
     };
     const secrets: Record<string, ecs.Secret> = {
       DB_USER: ecs.Secret.fromSecretsManager(dbSecret, "username"),

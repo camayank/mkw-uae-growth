@@ -1,5 +1,5 @@
 import { applyBp, DEFAULT_SETTINGS } from "@tasees/core";
-import { audit, type SessionUser } from "../lib/context.ts";
+import { audit, lockAuditChain, type SessionUser } from "../lib/context.ts";
 import { num, type Queryable } from "../lib/db.ts";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.ts";
 import type { Notifier } from "../lib/notify.ts";
@@ -99,6 +99,7 @@ export async function payablePayouts(tx: Queryable) {
 /** Finance opens a run with every payable payout. The total paid to a partner never exceeds its payouts' amounts plus its own VAT. */
 export async function createPayoutRun(tx: Queryable, actor: SessionUser) {
   if (!["finance", "founder"].includes(actor.role)) throw forbidden("Only finance runs payouts");
+  await lockAuditChain(tx);
   await tx.query("select pg_advisory_xact_lock(777002)"); // one finance user at a time creates or closes runs
   const open = await tx.query("select 1 from payout_runs where status in ('open', 'exported')");
   if (open.rows.length) throw conflict("Finish or cancel the open payout run first");
@@ -153,6 +154,7 @@ export async function markPayoutRunPaid(tx: Queryable, actor: SessionUser, runId
   const run = (await tx.query<Record<string, unknown>>("select * from payout_runs where id = $1", [runId])).rows[0];
   if (!run) throw notFound("Payout run not found");
   if (run.status !== "exported") throw conflict(run.status === "paid" ? "This run is already paid" : "Export the bank file before marking the run paid");
+  await lockAuditChain(tx);
   await tx.query("select pg_advisory_xact_lock(777002)");
   await assertRunIntact(tx, runId, num(run.total_fils));
   const payouts = (await tx.query<Record<string, unknown>>("select id, partner_org_id, amount_fils from payouts where run_id = $1 and status = 'eligible'", [runId])).rows;
@@ -192,6 +194,7 @@ async function assertRunIntact(tx: Queryable, runId: string, total: number) {
 /** Cancelling an exported run is only safe if the file was never submitted to the bank: finance must say so. */
 export async function cancelPayoutRun(tx: Queryable, actor: SessionUser, runId: string, reason: string, confirmNotSubmitted = false) {
   if (!["finance", "founder"].includes(actor.role)) throw forbidden("Only finance cancels payout runs");
+  await lockAuditChain(tx);
   await tx.query("select pg_advisory_xact_lock(777002)");
   const run = (await tx.query<Record<string, unknown>>("select status from payout_runs where id = $1", [runId])).rows[0];
   if (!run) throw notFound("Payout run not found");

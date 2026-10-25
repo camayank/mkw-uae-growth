@@ -1,7 +1,7 @@
 # O12 Client experience
 
-Status: verified-pending-merge (branch `outcome/O12-client-experience` from `main` after O11 merged as
-camayank/mkw-uae-growth#12; released by the owner 25 Oct 2026)
+Status: merged (pull request camayank/mkw-uae-growth#13 into `main`, 25 Oct 2026; was: branch
+`outcome/O12-client-experience`)
 
 ## Business result
 

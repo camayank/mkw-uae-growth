@@ -6,7 +6,7 @@
  * `test/transitions.test.ts` fails if any other code updates these statuses.
  */
 import { assertTransition, type Actor, type MachineName } from "@tasees/core";
-import { audit, type SessionUser } from "./context.ts";
+import { audit, lockAuditChain, type SessionUser } from "./context.ts";
 import type { Queryable } from "./db.ts";
 import { notFound } from "./errors.ts";
 
@@ -49,6 +49,7 @@ export async function transition(
   opts: TransitionOptions = {},
 ): Promise<{ from: string; changed: boolean }> {
   const table = TABLE[machine];
+  await lockAuditChain(tx); // the lock order: audit chain first, then the row (lib/context.ts)
   const row = (await tx.query<{ status: string }>(`select status from ${table} where id = $1 for update`, [id])).rows[0];
   if (!row) throw notFound(`${machine[0]!.toUpperCase()}${machine.slice(1)} not found`);
   if (opts.idempotent && row.status === to) return { from: row.status, changed: false };
@@ -75,6 +76,7 @@ export async function transition(
  * could each hold one offer and wait for the other's.
  */
 export async function withdrawOffers(tx: Queryable, requestId: string, except: string | null = null, actor: SessionUser | null = null): Promise<number> {
+  await lockAuditChain(tx);
   const open = await tx.query<{ id: string }>(
     "select id from offers where request_id = $1 and ($2::uuid is null or id <> $2) and status in ('draft', 'ops_review', 'published') order by id for update",
     [requestId, except],
@@ -85,5 +87,6 @@ export async function withdrawOffers(tx: Queryable, requestId: string, except: s
 
 /** Lock every offer of a request, in id order: the first thing a change to one of them does (no deadlock). */
 export async function lockRequestOffers(tx: Queryable, requestId: string): Promise<void> {
+  await lockAuditChain(tx);
   await tx.query("select id from offers where request_id = $1 order by id for update", [requestId]);
 }

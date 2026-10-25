@@ -1,17 +1,17 @@
 # Load test: allocation and payouts
 
-200 engagements, 20 at a time, on postgres. Path time 4.2 s (48.1 engagements a second); total with set-up 8.3 s.
+200 engagements, 20 at a time, on postgres. Path time 4.3 s (46.5 engagements a second); total with set-up 8.6 s.
 
 Partner capacity is set to bind part-way: 137 engagement(s) ended waiting for a partner with room (the ops queue shows them as "No partner for some lines"), as they would in production.
 
 | Step | Requests | p50 ms | p95 ms | max ms |
 | --- | ---: | ---: | ---: | ---: |
-| accept offer | 200 | 143 | 217 | 217 |
-| deposit paid + allocation | 200 | 111 | 236 | 239 |
-| allocation accepted | 63 | 224 | 237 | 239 |
-| partner invoice | 63 | 22 | 33 | 118 |
+| accept offer | 200 | 142 | 239 | 251 |
+| deposit paid + allocation | 200 | 114 | 257 | 261 |
+| allocation accepted | 63 | 250 | 302 | 305 |
+| partner invoice | 63 | 20 | 34 | 137 |
 | payout run exported | 1 | 5 | 5 | 5 |
-| payout run paid | 1 | 29 | 29 | 29 |
+| payout run paid | 1 | 27 | 27 | 27 |
 
 | Invariant | Holds | Detail |
 | --- | --- | --- |
@@ -22,4 +22,4 @@ Partner capacity is set to bind part-way: 137 engagement(s) ended waiting for a 
 | every payout in the run released once | yes | 63 released of 63 |
 | no partner given more live work than its capacity | yes | within capacity |
 | one engagement per accepted offer | yes | 200 of 200 |
-| audit chain intact | yes | 2058 events in 6 ms |
+| audit chain intact | yes | 2058 events in 5 ms |

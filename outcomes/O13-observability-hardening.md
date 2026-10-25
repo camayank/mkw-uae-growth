@@ -105,7 +105,7 @@ Migration 012 only adds tables. Reverting the branch restores the previous serve
 
 | Claim | Evidence |
 | --- | --- |
-| Tests | `pnpm test`: 57 core + 262 API = 319 (O12: 275), all passing on PGlite (one PostgreSQL-only test skipped there) and on PostgreSQL 16, including a brand-new server; `pnpm typecheck` clean. New: `hardening.test.ts` (22), `transitions.test.ts` (7), `contract.test.ts` (6), `concurrency.test.ts` (10); CI now runs the API suite on PostgreSQL 16 too |
+| Tests | `pnpm test`: 57 core + 263 API = 320 (O12: 275), all passing on PGlite (one PostgreSQL-only test skipped there) and on PostgreSQL 16, including a brand-new server; `pnpm typecheck` clean. New: `hardening.test.ts` (22), `transitions.test.ts` (7), `contract.test.ts` (6), `concurrency.test.ts` (11); CI now runs the API suite on PostgreSQL 16 too |
 | Configuration | each misconfiguration refused with "NAME: rule" and never the value; production refuses `DEV_LOGIN=1`, http `APP_URL`, a short webhook secret, `EMAIL=ses` without senders and region, `STORAGE=s3` without bucket and region |
 | Logs | a load balancer's request id is kept and returned, a malformed one replaced; every line after sign-in carries user, organisation and role ids; no email, query string, token, cookie or header in any line of a request; a server error answers with its request id and no internals |
 | Jobs and alerts | each run and step recorded with duration and count; one run at a time, a dead run closed after 30 minutes; jobs late, a failed step, stuck messages and a broken audit chain each open one alert, emailed from "MKW Advisors", reminded after four hours, cleared with an email, opened and closed in the audit trail; an email address in step error text is replaced; the alert tops the ops queue with no buttons; `/api/health/jobs` 503 when late, times only |
@@ -113,7 +113,7 @@ Migration 012 only adds tables. Reverting the branch restores the previous serve
 | Idempotency | a repeat gets the first answer (marked as a replay) and creates nothing; a different request with the key is refused (422); a repeat while running is told to wait (409); keys are per person, refused on public routes and when malformed; a refusal is replayed; a server error releases the key; erasure and the 24-hour purge remove keys; the smoke test sees a key on every change the web app sends |
 | Transitions | every listed move made on a real row with its timestamp and audit event; every unlisted move, for every actor, refused with what can happen next; a source scan finds no other status update for the three machines |
 | Contract | `GET /api/openapi.json` equals `docs/openapi.json` (134 paths, 140 operations); every route that changes something declares its body or that it reads none |
-| Races (PostgreSQL 16) | two acceptances of one offer, two tiers accepted at once (six rounds), two deposit recordings, two answers to one allocation, two reallocations, two QA decisions, two payout releases, two payout runs, two deposits against the last unit of capacity, the same idempotency key twice: one wins, nothing is created twice. Without their locks: the allocation answer gave `[200, 200]`, two reallocations offered a line twice, two tiers deadlocked (`[200, 500]`) |
+| Races (PostgreSQL 16) | two acceptances of one offer, two tiers accepted at once (six rounds), a deposit and a reallocation on different engagements (six rounds), two deposit recordings, two answers to one allocation, two reallocations, two QA decisions, two payout releases, two payout runs, two deposits against the last unit of capacity, the same idempotency key twice: one wins, nothing is created twice. Without their locks: the allocation answer gave `[200, 200]`, two reallocations offered a line twice, two tiers deadlocked (`[200, 500]`), and so did a deposit against a reallocation until the audit lock was taken first |
 | Lost connection | a connection ended by the server is logged and replaced and the next request succeeds; without the pool's error listener the process crashed (found by the load test) |
 | Load | `docs/evidence/O13/load-test.md`: 200 engagements, 20 at a time, on PostgreSQL 16, about 50 engagements a second, p95 under 330 ms on every step, all eight invariants hold |
 | Smoke | `docs/evidence/O13/log.txt`: 174 checks OK on a fresh demo, including the System page and an idempotency key on every change ops sent (8); `79-system.png` (1280 px), `80-mobile-system.png` (390 px); axe-core zero WCAG 2.1 AA violations on 30 screens (`axe.json`) |
@@ -145,3 +145,8 @@ Nits fixed: a long run is only taken as dead when no step has finished for 30 mi
 overlap; the contract describes objects as zod strips them, is staff-only, and a test checks each declared schema is
 the one its handler parses (the intake preview's was not); the status scan catches aliased updates; the smoke test
 checks every change in the ops session; request logs no longer carry the client's address.
+
+After the pull request opened, the Codex review found that a deposit (which audits, then allocates) and a reallocation
+(which allocates, then audits) took the audit-chain lock and the allocation lock in opposite orders and could deadlock.
+Every path that locks and then audits now takes the audit-chain lock first (D68); a six-round race test failed with a
+500 before and passes after.

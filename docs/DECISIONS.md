@@ -504,6 +504,11 @@ are now read `for update` before their state is checked, and every allocation de
 transaction lock (`pg_advisory_xact_lock(777003)`) before it reads anything, because the open lines and partner
 capacity both come from rows another transaction may be writing. Both cost milliseconds and are proven by tests that
 fail without them (two reallocations at once offered the same line twice; two tiers accepted at once deadlocked).
+**One lock order:** every audit event takes the chain's lock (777001, held to commit), so anything that locks a row
+or takes the allocation (777003) or payout-run (777002) lock and then audits takes 777001 first (`lockAuditChain`,
+re-entrant). Without it a deposit on one engagement and a reallocation on another deadlocked (found by the Codex review
+of camayank/mkw-uae-growth#14; the race test failed with a 500). The cost: writes that audit already queued on that
+lock from their first audit to commit; they now queue from their first lock, a few milliseconds earlier.
 On PostgreSQL the test files run in parallel databases, so `test/global-setup.ts` creates the server-wide roles once.
 
 **D69. The API contract is generated from the schemas the handlers parse with.** (O13, `lib/openapi.ts`.) Each route

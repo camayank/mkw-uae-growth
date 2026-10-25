@@ -1,4 +1,4 @@
-import { audit, type SessionUser } from "../lib/context.ts";
+import { audit, lockAuditChain, type SessionUser } from "../lib/context.ts";
 import type { Queryable } from "../lib/db.ts";
 import { conflict, forbidden, notFound } from "../lib/errors.ts";
 import type { AiModel } from "../lib/ai.ts";
@@ -39,6 +39,7 @@ export async function listDrafts(tx: Queryable, status = "pending") {
 /** Approving a scope draft replaces the request's scope lines with the draft's (ops may trim them first). */
 export async function reviewDraft(tx: Queryable, actor: SessionUser, draftId: string, decision: "approve" | "discard", note: string, keepCodes?: string[]) {
   if (!["ops", "founder"].includes(actor.role)) throw forbidden("Only ops reviews AI drafts");
+  await lockAuditChain(tx);
   const d = (await tx.query<Record<string, unknown>>("select * from ai_drafts where id = $1 for update", [draftId])).rows[0];
   if (!d) throw notFound("Draft not found");
   if (d.status !== "pending") throw conflict(`This draft was already ${String(d.status)}`);

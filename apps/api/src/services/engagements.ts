@@ -16,7 +16,7 @@ import {
   type OfferTotals,
   type PayoutStage,
 } from "@tasees/core";
-import { audit, type SessionUser } from "../lib/context.ts";
+import { audit, lockAuditChain, type SessionUser } from "../lib/context.ts";
 import { lockRequestOffers, transition, withdrawOffers } from "../lib/transition.ts";
 import { num, type Queryable } from "../lib/db.ts";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.ts";
@@ -123,6 +123,7 @@ export async function acceptOffer(tx: Queryable, user: SessionUser, offerId: str
 
 /** Called by the payment provider webhook (or finance in development). */
 export async function markPaymentPaid(tx: Queryable, actor: SessionUser | null, paymentId: string, providerRef: string, deps: Deps, amountFils?: number) {
+  await lockAuditChain(tx);
   const p = (await tx.query<Record<string, unknown>>("select * from payments where id = $1 for update", [paymentId])).rows[0];
   if (!p) throw notFound("Payment not found");
   if (p.status === "paid") return; // idempotent: webhooks may repeat
@@ -164,6 +165,7 @@ export async function runAllocation(
 ): Promise<Array<{ allocationId: string | null; partnerId: string | null; reason: string; codes: string[] }>> {
   // One allocation decision at a time (O13), taken before anything is read: the unassigned lines and partner capacity
   // both come from rows another allocation may be writing. Allocation takes milliseconds, so queueing costs nothing.
+  await lockAuditChain(tx);
   await tx.query("select pg_advisory_xact_lock(777003)");
   const e = (await tx.query<Record<string, unknown>>("select * from engagements where id = $1", [engagementId])).rows[0];
   if (!e) throw notFound("Engagement not found");
@@ -315,6 +317,7 @@ export async function respondToAllocation(
   reason: string | undefined,
   deps: Deps,
 ) {
+  await lockAuditChain(tx);
   const a = (await tx.query<Record<string, unknown>>("select * from allocations where id = $1 for update", [allocationId])).rows[0];
   if (!a || a.partner_org_id !== user.orgId) throw notFound("Allocation not found");
   if (user.role !== "partner_admin") throw forbidden("Only a partner admin can accept or decline work");
@@ -571,6 +574,7 @@ async function refreshPayouts(tx: Queryable, engagementId: string, deps: Deps) {
 
 export async function releasePayout(tx: Queryable, user: SessionUser, payoutId: string, deps: Deps) {
   if (!["finance", "founder"].includes(user.role)) throw forbidden("Only finance can release payouts");
+  await lockAuditChain(tx);
   const p = (await tx.query<Record<string, unknown>>("select * from payouts where id = $1 for update", [payoutId])).rows[0];
   if (!p) throw notFound("Payout not found");
   if (p.status !== "eligible") throw conflict(`This payout is ${String(p.status)}; only eligible payouts can be released`);
@@ -615,6 +619,7 @@ export async function proposeChangeOrder(tx: Queryable, user: SessionUser, engag
 }
 
 export async function decideChangeOrder(tx: Queryable, user: SessionUser, changeOrderId: string, approve: boolean, deps: Deps) {
+  await lockAuditChain(tx);
   const co = (await tx.query<Record<string, unknown>>("select c.*, e.client_org_id from change_orders c join engagements e on e.id = c.engagement_id where c.id = $1 for update of c", [changeOrderId])).rows[0];
   if (!co || co.client_org_id !== user.orgId) throw notFound("Change order not found");
   if (user.role !== "client_owner") throw forbidden("Only the account owner can approve extra costs");

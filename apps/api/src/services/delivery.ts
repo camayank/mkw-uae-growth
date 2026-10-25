@@ -9,7 +9,7 @@ import {
   MILESTONE_TEMPLATES,
   type DelayCause,
 } from "@tasees/core";
-import { audit, type SessionUser } from "../lib/context.ts";
+import { audit, lockAuditChain, type SessionUser } from "../lib/context.ts";
 import { num, type Queryable } from "../lib/db.ts";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.ts";
 import { col, textPdf } from "../lib/pdf.ts";
@@ -31,6 +31,7 @@ const isFinance = (u: SessionUser) => ["finance", "founder"].includes(u.role);
 // Client document requests ---------------------------------------------------------------------------------
 
 async function loadRequest(tx: Queryable, id: string) {
+  await lockAuditChain(tx);
   const r = (await tx.query<Record<string, unknown>>("select * from document_requests where id = $1 for update", [id])).rows[0];
   if (!r) throw notFound("Document request not found");
   return r;
@@ -162,6 +163,7 @@ export async function sweepDelays(tx: Queryable, deps: Deps): Promise<{ delays: 
 export async function attributeDelay(tx: Queryable, actor: SessionUser, delayId: string, cause: DelayCause, note: string) {
   if (!isOps(actor)) throw forbidden("Only ops attributes a delay");
   if (!note.trim()) throw badRequest("Say why");
+  await lockAuditChain(tx);
   const d = (await tx.query<{ id: string; credit_id: string | null; cause: string | null }>("select id, credit_id, cause from delays where id = $1 for update", [delayId])).rows[0];
   if (!d) throw notFound("Delay not found");
   if (d.credit_id) {
@@ -185,6 +187,7 @@ export async function attributeDelay(tx: Queryable, actor: SessionUser, delayId:
  */
 export async function decideCredit(tx: Queryable, actor: SessionUser, creditId: string, decision: "approve" | "waive", note: string, deps: Deps) {
   if (!isFinance(actor)) throw forbidden("Only finance decides guarantee credits");
+  await lockAuditChain(tx);
   const c = (await tx.query<Record<string, unknown>>("select * from guarantee_credits where id = $1 for update", [creditId])).rows[0];
   if (!c) throw notFound("Credit not found");
   if (c.status !== "pending") throw conflict(`This credit is already ${String(c.status)}`);
@@ -228,6 +231,7 @@ export async function decideCredit(tx: Queryable, actor: SessionUser, creditId: 
 /** Finance records how an approved credit was paid back to the client. */
 export async function settleCredit(tx: Queryable, actor: SessionUser, creditId: string, reference: string) {
   if (!isFinance(actor)) throw forbidden("Only finance settles guarantee credits");
+  await lockAuditChain(tx);
   const c = (await tx.query<{ status: string }>("select status from guarantee_credits where id = $1 for update", [creditId])).rows[0];
   if (!c) throw notFound("Credit not found");
   if (c.status !== "approved") throw conflict("Only an approved credit awaiting settlement can be settled");
@@ -292,6 +296,7 @@ export async function allocateManually(tx: Queryable, actor: SessionUser, engage
   if (!isOps(actor)) throw forbidden("Only ops allocates by hand");
   if (reason.trim().length < 5) throw badRequest("Record why this partner, for the audit trail");
   // The same lock as the allocation engine (O13), so a manual offer and an automatic one never take the same line.
+  await lockAuditChain(tx);
   await tx.query("select pg_advisory_xact_lock(777003)");
   const e = (await tx.query<Record<string, unknown>>("select * from engagements where id = $1", [engagementId])).rows[0];
   if (!e) throw notFound("Engagement not found");

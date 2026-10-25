@@ -10,7 +10,7 @@ import {
   type ScopeLine,
   type Tier,
 } from "@tasees/core";
-import { audit, type SessionUser } from "../lib/context.ts";
+import { audit, lockAuditChain, type SessionUser } from "../lib/context.ts";
 import { transition, withdrawOffers } from "../lib/transition.ts";
 import { num, type Queryable } from "../lib/db.ts";
 import { badRequest, conflict, notFound } from "../lib/errors.ts";
@@ -188,6 +188,7 @@ function dedupeByPartner(quotes: CostQuote[]): CostQuote[] {
  * them, and the flagged lines with their reasons are written into the audit event so the approval is evidenced.
  */
 export async function publishOffer(tx: Queryable, actor: SessionUser, offerId: string, acknowledgeReview = false): Promise<void> {
+  await lockAuditChain(tx);
   const o = (await tx.query<{ status: OfferStatus }>("select status from offers where id = $1 for update", [offerId])).rows[0];
   if (!o) throw notFound("Offer not found");
   assertOffer(o.status, "published", "platform");
@@ -267,6 +268,7 @@ export async function recomputeOffer(tx: Queryable, offerId: string): Promise<vo
 }
 
 export async function expireOffers(tx: Queryable): Promise<number> {
+  await lockAuditChain(tx);
   const r = await tx.query<{ id: string }>("select id from offers where status = 'published' and valid_to < app_now()::date order by id for update");
   for (const o of r.rows) await transition(tx, "offer", o.id, "expired", "system");
   return r.rows.length;

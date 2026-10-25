@@ -143,6 +143,29 @@ describe("at the same moment", () => {
     expect(open.filter((r) => r.n > 1)).toEqual([]);
   });
 
+  it("a deposit on one engagement and a reallocation on another, at once, never deadlock", async () => {
+    // Both write audit events and take the allocation lock: they must take the two locks in the same order (D68).
+    const accept = async () => {
+      const req = await env.call("client", "POST", "/api/requests", { answers: { mode: "new_company", jurisdiction: "free_zone", emirate: "Dubai", visas: 1 } });
+      const offer = (await env.call("ops", "POST", `/api/ops/requests/${req.body.id}/build-offers`, { tiers: ["standard"] })).body.offerIds[0];
+      await env.call("ops", "POST", `/api/ops/offers/${offer}/publish`);
+      return (await env.call("client", "POST", `/api/client/offers/${offer}/accept`)).body.engagementId as string;
+    };
+    await rows(env, "update orgs set profile = jsonb_set(profile, '{capacity}', '1000'::jsonb) where type = 'partner'");
+    for (let round = 0; round < 6; round++) {
+      const [a, b] = [await accept(), await accept()];
+      const depositB = (await rows(env, "select id from payments where engagement_id = $1 and kind = 'deposit'", [b]))[0].id;
+      await env.call("finance", "POST", `/api/ops/payments/${depositB}/mark-paid`, { reference: `TT-B${round}` });
+      await rows(env, "update allocations set timed_out_at = app_now() where engagement_id = $1", [b]);
+      const depositA = (await rows(env, "select id from payments where engagement_id = $1 and kind = 'deposit'", [a]))[0].id;
+      const rs = await both(
+        env.call("finance", "POST", `/api/ops/payments/${depositA}/mark-paid`, { reference: `TT-A${round}` }),
+        env.call("ops", "POST", `/api/ops/engagements/${b}/reallocate`),
+      );
+      expect(statuses(rs)).toEqual([200, 200]);
+    }
+  });
+
   it("the same idempotency key twice at once creates one request", async () => {
     const before = (await rows(env, "select count(*)::int as n from requests"))[0].n;
     const body = { answers: { mode: "services", emirate: "Dubai", services: ["vat_registration"] } };

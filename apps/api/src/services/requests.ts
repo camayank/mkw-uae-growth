@@ -1,10 +1,10 @@
-import { advise, buildScope, type AdviceInput, type IntakeAnswers } from "@tasees/core";
-import { loadScopingRules, loadZones } from "./scoping.ts";
+import { buildScope, type AdviceInput, type IntakeAnswers } from "@tasees/core";
+import { adviseNow } from "./scoping.ts";
 import { z } from "zod";
 import { audit, type SessionUser } from "../lib/context.ts";
 import type { Queryable } from "../lib/db.ts";
 import { badRequest, forbidden } from "../lib/errors.ts";
-import { dbToday, loadDeliverables } from "./repo.ts";
+import { loadDeliverables } from "./repo.ts";
 
 export const IntakeSchema = z.object({
   mode: z.enum(["new_company", "services"]),
@@ -74,7 +74,7 @@ export async function createRequest(
   // Scoping advice: computed from the rules and zones as they stand, stored with their confidence, and shown
   // to the client only once ops has approved it. A request with no scoping questions answered gets none.
   const hasScopingAnswers = parsed.data.mode === "new_company" && (parsed.data.activity || parsed.data.customers || parsed.data.expectedTurnoverAed != null);
-  const advice = hasScopingAnswers ? advise(parsed.data as AdviceInput, await loadScopingRules(tx), await loadZones(tx), await dbToday(tx)) : null;
+  const advice = hasScopingAnswers ? await adviseNow(tx, parsed.data as AdviceInput) : null;
   const r = (
     await tx.query<{ id: string }>(
       `insert into requests (client_org_id, answers, scope, notes, status, sourced_by_partner_id, created_by, advice, advice_status, source)

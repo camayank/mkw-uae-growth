@@ -131,6 +131,19 @@ in a browser; everything listed here is not.
 53. **The scorecard is not comparable across the E1 change.** Scorecard figures computed before E1 counted repeat
     submissions and repeat disputes; figures after E1 count each step once (D74).
 
+## E2: jurisdiction catalogue and evidence
+
+54. **No authoritative data yet.** The catalogue's machinery is in place, but every seeded figure is still a starting
+    estimate (UNCERTAIN), and no authority's activity list, package, relationship or coordinates is recorded. Each
+    needs the owner's verifier, through the console or `import catalogue`.
+55. **Umm Al Quwain and Fujairah places are not offered.** They have no figures, so they stay inactive. Each can be
+    activated once its cost, visas and timeline are recorded.
+56. **Activity groups, not exact activities.** An activity list records the 13 activity groups a place confirms. Exact
+    licensing activities, at ISIC level, need each authority's list in a machine-readable form.
+57. **Pre-E2 verifications are re-dated.** A rule or place verified before E2 has no recorded re-verification date.
+    It is treated as due 180 days after its verification date.
+58. **No map.** Coordinates are stored with their source; the map view belongs to the public selector (E3).
+
 ## O7: launch-gate preparation
 
 43. ~~zod 3 has a memory-exhaustion advisory.~~ Closed by S1: zod 4.6.7 (D71); the body caps stay as defence in depth.

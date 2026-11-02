@@ -99,14 +99,14 @@ outcomes:
   # Right UAE Entity programme, released by the owner on 2 Nov 2026 (docs/ENTITY-PROGRAMME.md), in order.
   - id: E1
     title: Entity correctness (baseline repaired, eligibility before recommendation, quotes wait for a settled structure)
-    status: verified-pending-merge
+    status: merged
     contract: outcomes/E1-entity-correctness.md
     depends_on: [S1]
     needs_from_owner: [named verifier for scoping rules and place data]
   - id: E2
     title: Jurisdiction catalogue and evidence (versioned authorities, places, activities, packages and fees)
-    status: released
-    contract: docs/ENTITY-PROGRAMME.md
+    status: verified-pending-merge
+    contract: outcomes/E2-jurisdiction-catalogue.md
     depends_on: [E1]
     needs_from_owner: [authoritative data per authority, named verifier]
   - id: E3

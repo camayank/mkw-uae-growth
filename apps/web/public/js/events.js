@@ -1,6 +1,6 @@
 // Tasees workspace: events module (split from app.js in O12; plain ES modules, no build step).
 import { act, aed, api, checkFile, showFileCheck, date, download, fileToBase64, isPlatform, lang, render, role, route, state, toast, translatePage, translateText } from "./core.js";
-import { queueItems, setQueueFilter } from "./ops.js";
+import { queueItems, renderFactHistory, setQueueFilter } from "./ops.js";
 import { intakeAnswers, intakeGo } from "./client.js";
 import { closeNavMenus, renderSignIn, requestCode } from "./shell.js";
 
@@ -232,6 +232,17 @@ document.addEventListener("click", (ev) => {
       toast(`Issued ${r.issued.length} invoice(s): ${r.issued.join(", ")}`);
     }, null),
     "recompute-advice": () => act(() => api("POST", `/api/ops/requests/${id}/scoping/recompute`), "Advice recomputed; review it again"),
+    "fact-history": () => {
+      const target = document.getElementById(el.dataset.target);
+      if (!target) return;
+      if (target.innerHTML.trim()) {
+        target.innerHTML = "";
+        el.setAttribute("aria-expanded", "false");
+        return;
+      }
+      el.setAttribute("aria-expanded", "true");
+      renderFactHistory(el.dataset.kind, el.dataset.subject, target).catch((e) => toast(e.message));
+    },
     "fee-verify": () => {
       const verifiedBy = prompt("Who verified this fee against its source? Name and qualification.");
       if (!verifiedBy) return;
@@ -407,6 +418,22 @@ document.addEventListener("submit", (ev) => {
     const body = { removeRuleKeys: all.filter((k) => !kept.includes(k)), removePlaces: allPlaces.filter((p) => !keptPlaces.includes(p)), structure: String(fd.get("structure") || "") || undefined, note: String(fd.get("note") || "") || undefined };
     if (!confirm("Approve this advice for the client? Items left UNCERTAIN are shown with that label.")) return;
     return act(() => api("POST", `/api/ops/requests/${id}/scoping/approve`, body), "Advice approved; the client can see it now");
+  }
+  if (kind === "record-fact") {
+    const [subjectKind, ...rest] = String(fd.get("subject")).split(":");
+    const body = {
+      subjectKind,
+      subject: rest.join(":"),
+      field: String(fd.get("field")),
+      valueText: String(fd.get("valueText") || ""),
+      sourceUrl: String(fd.get("sourceUrl") || ""),
+      evidenceDate: String(fd.get("evidenceDate") || ""),
+      confidence: String(fd.get("confidence")),
+      verifiedBy: String(fd.get("verifiedBy") || "") || undefined,
+      nextVerification: String(fd.get("nextVerification") || "") || undefined,
+      note: String(fd.get("note") || "") || undefined,
+    };
+    return act(() => api("POST", "/api/admin/jurisdictions/facts", body), "Evidence recorded");
   }
   if (kind === "verify-rule" || kind === "verify-zone") {
     const body = { confidence: String(fd.get("confidence")), verifiedBy: String(fd.get("verifiedBy") || "") || undefined, sourceUrl: String(fd.get("sourceUrl") || "") || undefined };

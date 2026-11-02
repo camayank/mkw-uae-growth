@@ -363,7 +363,7 @@ export function adviceHtml(a, opts = {}) {
       }
     </div>
     <div class="card"><h2>Where to register</h2>
-      ${a.places.length ? `<ul class="plain">${a.places.map((p) => `<li>${opts.editable ? `<label><input type="checkbox" name="keepPlace" value="${esc(p.zone)}" checked /> ` : ""}<b>${esc(p.zone)}</b> (${esc(p.emirate)}) ${statusBadge(p.status)} · ${cost(p)} · ${p.visaQuota} visa(s) in the standard package · about ${p.timelineDays} working days ${confBadge(p.confidence)}<br><span class="small muted">${esc(p.why.join("; "))}</span>${opts.editable ? "</label>" : ""}${placeFindings(p)}</li>`).join("")}</ul>` : `<p class="muted">No place fits every answer yet.</p>`}
+      ${a.places.length ? `<ul class="plain">${a.places.map((p) => `<li>${opts.editable ? `<label><input type="checkbox" name="keepPlace" value="${esc(p.zone)}" checked /> ` : ""}<b>${esc(p.zone)}</b> (${esc(p.emirate)}) ${statusBadge(p.status)} · ${cost(p)}${p.renewalMinFils ? ` · renews at ${aed(p.renewalMinFils)} to ${aed(p.renewalMaxFils)} a year (estimate)` : ""} · ${p.visaQuota} visa(s) in the standard package · about ${p.timelineDays} working days ${confBadge(p.confidence)}${p.stale ? ` ${badge("UNCERTAIN", "being re-checked")}` : ""}<br><span class="small muted">${esc([p.authority ? `licensed by ${p.authority}` : "", ...p.why].filter(Boolean).join("; "))}</span>${opts.editable ? "</label>" : ""}${placeFindings(p)}</li>`).join("")}</ul>` : `<p class="muted">No place fits every answer yet.</p>`}
       ${
         a.excluded?.length
           ? `<details><summary class="small">${a.excluded.length} other place(s) do not fit, and why</summary><ul class="plain small">${a.excluded.map((p) => `<li><b>${esc(p.zone)}</b>: ${firstFinding(p.findings, ["fail"])}</li>`).join("")}</ul></details>`
@@ -374,7 +374,7 @@ export function adviceHtml(a, opts = {}) {
       ${a.missingFacts?.length ? `<h3>What would sharpen this</h3><ul class="plain small">${a.missingFacts.map((m) => `<li>${esc(m)}</li>`).join("")}</ul>` : ""}
     </div>
   </div>
-  <p class="small muted">${a.hasUncertain ? "Items marked UNCERTAIN or rule of thumb have not yet been verified by a qualified person; MKW Advisors confirms them before anything is filed." : "Every item above is a verified rule with a named sign-off."} Costs are estimates until a partner firm quotes. Nothing is filed automatically: a person at MKW Advisors handles every registration.</p>`;
+  <p class="small muted">${a.hasUncertain ? "Items marked UNCERTAIN or rule of thumb have not yet been verified by a qualified person; MKW Advisors confirms them before anything is filed." : "Every item above is a verified rule with a named sign-off."} Costs are estimates until a partner firm quotes.${a.dataVersion ? ` <span>Rules and place data as of ${date(a.dataVersion.asOf)}.</span>` : ""} Nothing is filed automatically: a person at MKW Advisors handles every registration.</p>`;
 }
 
 export async function renderRequest(id) {
@@ -407,23 +407,79 @@ export async function renderRequest(id) {
       ${(r.drafts ?? []).length ? `<h3>AI drafts</h3>${r.drafts.map((d) => `<div class="small">${badge(d.status === "pending" ? "UNCERTAIN" : d.status === "approved" ? "ok" : "rejected", d.status)} ${esc(d.kind)} by ${esc(d.model)} · ${esc(d.output?.summary ?? "")}${d.status === "pending" ? ` <a href="#/agent">decide in the AI queue</a>` : ""}</div>`).join("")}` : ""}
     </div>
   </div>
+  ${r.dataChanged ? `<div class="card" role="alert" style="margin-top:16px"><h2>The rules or place data changed since this advice was computed</h2><p>A fact was recorded, a rule verified, or evidence passed its re-check date after ${date(r.advice?.dataVersion?.asOf)}. Recompute the advice, check it, then approve: approval of the older version is refused.</p></div>` : ""}
   ${r.advice ? `<form data-form="approve-advice" data-id="${r.id}"><h2 style="margin-top:16px">Advice ${r.advice_status === "approved" ? `(approved by ${esc(r.reviewed_by ?? "")} on ${date(r.advice_reviewed_at)})` : "to review"}</h2>
     ${adviceHtml(r.advice, { editable: canAct && r.advice_status !== "approved" })}
     ${canAct ? `<div class="row" style="margin-top:8px">${r.advice_status !== "approved" ? `<input name="note" placeholder="Note for the audit trail (optional)" style="max-width:360px" /><button class="primary" type="submit">Approve for the client (untick anything to leave out)</button>` : ""}<button type="button" class="sm" data-act="recompute-advice" data-id="${r.id}">Recompute from current rules</button></div>` : ""}</form>` : `<p class="muted">No scoping advice: the founder answered no scoping questions.</p>`}`;
 }
 
+// E2: the evidence behind one figure, as a compact chip: its confidence today, and why if it changed.
+const evidenceChip = (e) =>
+  `<span class="small" title="${esc(`${e.field}: recorded ${e.recorded}${e.evidenceDate ? `, evidence ${e.evidenceDate}` : ""}${e.nextVerification ? `, check again by ${e.nextVerification}` : ""}${e.verifiedBy ? `, verified by ${e.verifiedBy}` : ""}`)}">${esc(words(e.field))} ${confBadge(e.confidence)}${e.stale ? ` ${badge("UNCERTAIN", "stale")}` : ""}</span>`;
+
+export async function renderFactHistory(kind, subject, target) {
+  const rows = await api("GET", `/api/admin/jurisdictions/history?kind=${encodeURIComponent(kind)}&subject=${encodeURIComponent(subject)}`);
+  const value = (v) => (v && typeof v === "object" && "minFils" in v ? `${aed(v.minFils)} to ${aed(v.maxFils)}` : Array.isArray(v) ? v.join(", ") : v && typeof v === "object" ? Object.entries(v).map(([k, x]) => `${k}: ${x}`).join(", ") : String(v ?? "–"));
+  target.innerHTML = rows.length
+    ? table(
+        ["Field", "Value", "Evidence", "Confidence", "Recorded", ""],
+        rows.map((f) => `<tr><td class="small">${esc(f.label)}</td><td class="small" data-no-i18n>${esc(value(f.value))}</td>
+          <td class="small">${date(f.evidenceDate)}${f.sourceUrl ? ` · <a href="${esc(f.sourceUrl)}" target="_blank" rel="noopener noreferrer">source</a>` : ""}${f.verifiedBy ? `<br>${esc(f.verifiedBy)}` : ""}${f.nextVerification ? `<br><span class="muted">check by ${date(f.nextVerification)}</span>` : ""}</td>
+          <td>${confBadge(f.effective.confidence)}${f.effective.stale ? ` ${badge("UNCERTAIN", "stale")}` : ""}</td><td class="small">${dateTime(f.recordedAt)}${f.recordedBy ? `<br>${esc(f.recordedBy)}` : ""}</td><td>${f.current ? badge("ok", "current") : badge("pending", "superseded")}</td></tr>`),
+      )
+    : `<p class="small muted">No evidence recorded yet: the figures are the starting estimates, UNCERTAIN.</p>`;
+}
+
 export async function renderScoping() {
-  const o = await api("GET", "/api/admin/scoping");
+  const [o, cat] = await Promise.all([api("GET", "/api/admin/scoping"), api("GET", "/api/admin/jurisdictions")]);
   const founder = role() === "founder";
+  const stalePlaces = cat.places.filter((p) => p.stale).length;
+  const duePlaces = cat.places.filter((p) => p.due.length).length;
+  const authorityName = Object.fromEntries(cat.authorities.map((a) => [a.id, a.name]));
+  const factForm = founder
+    ? `<form class="card" data-form="record-fact" style="margin-top:16px"><h2>Record evidence</h2>
+      <p class="small muted">Each figure is a new fact with its source; nothing is overwritten and the history stays. A verified fact names the person who checked it and a source link, and is due for re-checking after 180 days unless you set a date.</p>
+      <div class="grid cols-2">
+        <div class="field"><label for="fact-subject">Place or authority</label><select id="fact-subject" name="subject" required>
+          <optgroup label="Places">${cat.places.map((p) => `<option value="place:${esc(p.name)}">${esc(p.name)}</option>`).join("")}</optgroup>
+          <optgroup label="Authorities">${cat.authorities.map((a) => `<option value="authority:${esc(a.id)}">${esc(a.name)}</option>`).join("")}</optgroup></select></div>
+        <div class="field"><label for="fact-field">Field</label><select id="fact-field" name="field" required>
+          <optgroup label="Place">${cat.fields.place.map((f) => `<option value="${f.field}">${esc(f.label)}</option>`).join("")}</optgroup>
+          <optgroup label="Authority">${cat.fields.authority.map((f) => `<option value="${f.field}">${esc(f.label)}</option>`).join("")}</optgroup></select></div>
+        <div class="field"><label for="fact-value">Value</label><input id="fact-value" name="valueText" required placeholder="12000-20000 · office; warehouse · 25.2, 55.3" /></div>
+        <div class="field"><label for="fact-source">Source link</label><input id="fact-source" name="sourceUrl" type="url" placeholder="https://" /></div>
+        <div class="field"><label for="fact-date">Evidence date</label><input id="fact-date" name="evidenceDate" type="date" required value="${cat.asOf}" /></div>
+        <div class="field"><label for="fact-conf">Confidence</label><select id="fact-conf" name="confidence">${["UNCERTAIN", "rule_of_thumb", "verified"].map((v) => `<option value="${v}">${CONF_LABEL[v]}</option>`).join("")}</select></div>
+        <div class="field"><label for="fact-by">Verified by (name, qualification)</label><input id="fact-by" name="verifiedBy" /></div>
+        <div class="field"><label for="fact-next">Check again by (optional)</label><input id="fact-next" name="nextVerification" type="date" /></div>
+      </div>
+      <div class="row"><input name="note" placeholder="Note (optional)" style="max-width:360px" /><button class="primary" type="submit">Record</button></div></form>`
+    : "";
   const verifyForm = (kind, key, c) => founder ? `<form class="row" data-form="verify-${kind}" data-id="${esc(key)}" style="flex-wrap:wrap;gap:4px">
       <select name="confidence">${["verified", "rule_of_thumb", "UNCERTAIN"].map((v) => `<option value="${v}" ${c === v ? "selected" : ""}>${CONF_LABEL[v]}</option>`).join("")}</select>
       <input name="verifiedBy" placeholder="Verified by (name, qualification)" style="width:200px" /><input name="sourceUrl" type="url" placeholder="https://source" style="width:180px" /><button class="sm" type="submit">Save</button></form>` : "";
   $app.innerHTML = `<h1>Scoping rules and places</h1>
-  <p class="muted">The advice shown to founders is built only from these. Each starts UNCERTAIN; a qualified person verifies it with a source, the founder records that here, and from then on the advice built on it says "verified rule" with the date. ${o.pendingReviews ? `${o.pendingReviews} request(s) have advice waiting for review on the Pipeline.` : ""}</p>
+  <p class="muted">The advice shown to founders is built only from these. Each starts UNCERTAIN; a qualified person verifies it with a source, the founder records that here, and from then on the advice built on it says "verified rule" with the date. Evidence past its re-check date counts one level lower until it is checked again. ${o.pendingReviews ? `${o.pendingReviews} request(s) have advice waiting for review on the Pipeline.` : ""}</p>
+  <div class="kpis">
+    <div class="kpi"><b>${cat.places.filter((p) => p.active).length}</b><span>places offered; ${cat.places.filter((p) => !p.active).length} waiting for figures</span></div>
+    <div class="kpi"><b>${stalePlaces}</b><span>places with stale evidence</span></div>
+    <div class="kpi"><b>${duePlaces + cat.rules.due.length}</b><span>due for re-check in 30 days</span></div>
+    <div class="kpi"><b>${cat.rules.stale.length}</b><span>rules past their re-check date</span></div>
+  </div>
+  <div class="card flush"><h2 style="padding:16px 18px 0">Jurisdiction catalogue</h2>${table(
+    ["Place", "Authority", "Evidence the engine uses", "Confidence", ""],
+    cat.places.map((p, i) => `<tr><td>${esc(p.name)}<br><span class="small muted">${esc(p.emirate)} · ${esc(words(p.type))}${p.active ? "" : " · not offered: no figures yet"}</span></td>
+      <td class="small">${esc(p.authority ?? "–")}${p.authorityId && cat.authorities.find((a) => a.id === p.authorityId)?.parentId ? `<br><span class="muted">under ${esc(authorityName[cat.authorities.find((a) => a.id === p.authorityId).parentId] ?? "")}</span>` : ""}</td>
+      <td>${p.evidence.map(evidenceChip).join(" · ")}${p.activitiesListed ? `<br><span class="small">Activity list: ${esc(p.activitiesListed.map(words).join(", "))}</span>` : ""}${p.due.length ? `<br><span class="small muted">Due soon: ${esc(p.due.map(words).join(", "))}</span>` : ""}</td>
+      <td>${confBadge(p.confidence)}${p.stale ? ` ${badge("UNCERTAIN", "stale")}` : ""}</td>
+      <td><button type="button" class="sm" data-act="fact-history" data-kind="place" data-subject="${esc(p.name)}" data-target="hist-${i}" aria-controls="hist-${i}">History</button></td></tr>
+      <tr><td colspan="5" id="hist-${i}" class="small"></td></tr>`),
+  )}</div>
+  ${factForm}
   <div class="card flush"><h2 style="padding:16px 18px 0">Rules</h2>${table(
     ["Kind", "Rule", "Confidence", "Verified", ...(founder ? ["Record verification"] : [])],
-    o.rules.map((r) => `<tr><td class="small">${esc(r.kind)}</td><td>${esc(r.statement)}<br><span class="small mono muted">${esc(r.key)}</span>${r.sourceUrl ? ` · <a class="small" href="${esc(r.sourceUrl)}" target="_blank" rel="noopener noreferrer">source</a>` : ""}</td>
-      <td>${confBadge(r.confidence)}</td><td class="small">${r.verifiedBy ? `${esc(r.verifiedBy)}<br><span class="muted">${date(r.verifiedAt)}</span>` : "–"}</td>${founder ? `<td>${verifyForm("rule", r.key, r.confidence)}</td>` : ""}</tr>`),
+    o.rules.map((r) => `<tr><td class="small">${esc(r.kind)}</td><td>${esc(r.statement)}<br><span class="small mono muted">${esc(r.key)} · v${r.version}</span>${r.sourceUrl ? ` · <a class="small" href="${esc(r.sourceUrl)}" target="_blank" rel="noopener noreferrer">source</a>` : ""}</td>
+      <td>${confBadge(r.confidence)}${r.stale ? ` ${badge("UNCERTAIN", "stale")}` : ""}</td><td class="small">${r.verifiedBy ? `${esc(r.verifiedBy)}<br><span class="muted">${date(r.verifiedAt)}${r.nextVerification ? ` · check by ${date(r.nextVerification)}` : ""}</span>` : "–"}</td>${founder ? `<td>${verifyForm("rule", r.key, r.recorded)}</td>` : ""}</tr>`),
   )}</div>
   <div class="card flush" style="margin-top:16px"><h2 style="padding:16px 18px 0">Places</h2>${table(
     ["Place", "Type", "#Visas", "#Cost from", "#Cost to", "#Days", "Known for", "Confidence", "Verified", ...(founder ? ["Record verification"] : [])],

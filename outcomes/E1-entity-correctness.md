@@ -1,6 +1,6 @@
 # E1 Entity correctness
 
-Status: verified-pending-merge (branch `outcome/E1-entity-correctness` from `main` at `a9274f4`; released by the
+Status: merged (camayank/mkw-uae-growth#17) (branch `outcome/E1-entity-correctness` from `main` at `a9274f4`; released by the
 owner on 2 Nov 2026 with the Right UAE Entity programme, `docs/ENTITY-PROGRAMME.md`)
 
 ## Business result

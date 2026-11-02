@@ -4,6 +4,7 @@ import { PLATFORM_ROLES, requireRole } from "../lib/auth.ts";
 import { asPlatform } from "../lib/context.ts";
 import { approveAdvice, recomputeAdvice, requestScoping, scopingOverview, search, verifyRule, verifyZone } from "../services/scoping.ts";
 import { listDrafts, reviewDraft } from "../services/drafts.ts";
+import { catalogueOverview, factHistory, recordFact } from "../services/catalogue.ts";
 import { markPaymentPaid } from "../services/engagements.ts";
 import type { RouteContext } from "./context.ts";
 
@@ -17,7 +18,14 @@ export function registerScopingRoutes(ctx: RouteContext) {
     return asPlatform(db, user, (tx) => scopingOverview(tx));
   });
 
-  const AdminScopingRulesBody = z.object({ confidence: z.enum(["verified", "rule_of_thumb", "UNCERTAIN"]), verifiedBy: z.string().max(120).optional(), sourceUrl: z.string().max(500).optional(), statement: z.string().max(1000).optional() });
+  const IsoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "a date, YYYY-MM-DD");
+  const AdminScopingRulesBody = z.object({
+    confidence: z.enum(["verified", "rule_of_thumb", "UNCERTAIN"]),
+    verifiedBy: z.string().max(120).optional(),
+    sourceUrl: z.string().max(500).optional(),
+    statement: z.string().max(1000).optional(),
+    nextVerification: IsoDate.optional(),
+  });
   app.put<{ Params: { key: string } }>("/api/admin/scoping/rules/:key", { config: { body: AdminScopingRulesBody } }, async (req) => {
     const user = requireRole(req, "founder");
     const body = AdminScopingRulesBody.parse(req.body);
@@ -33,6 +41,7 @@ export function registerScopingRoutes(ctx: RouteContext) {
       visaQuota: z.number().int().min(0).max(100).optional(),
       timelineDays: z.number().int().min(1).max(365).optional(),
       active: z.boolean().optional(),
+      nextVerification: IsoDate.optional(),
     });
   app.put<{ Params: { name: string } }>("/api/admin/scoping/zones/:name", { config: { body: AdminScopingZonesBody } }, async (req) => {
     const user = requireRole(req, "founder");
@@ -40,6 +49,37 @@ export function registerScopingRoutes(ctx: RouteContext) {
     return asPlatform(db, user, (tx) =>
       verifyZone(tx, user, req.params.name, { ...body, costMinFils: body.costMinAed === undefined ? undefined : aed(body.costMinAed), costMaxFils: body.costMaxAed === undefined ? undefined : aed(body.costMaxAed) }),
     );
+  });
+
+  // Jurisdiction catalogue and evidence (E2) ------------------------------------------------------------
+  app.get("/api/admin/jurisdictions", async (req) => {
+    const user = requireRole(req, ...PLATFORM_ROLES);
+    return asPlatform(db, user, (tx) => catalogueOverview(tx));
+  });
+
+  const CatalogueHistoryQuery = z.object({ kind: z.enum(["place", "authority", "rule"]), subject: z.string().min(1).max(120) });
+  app.get("/api/admin/jurisdictions/history", { config: { query: CatalogueHistoryQuery } }, async (req) => {
+    const user = requireRole(req, ...PLATFORM_ROLES);
+    const q = CatalogueHistoryQuery.parse(req.query);
+    return asPlatform(db, user, (tx) => factHistory(tx, q.kind, q.subject));
+  });
+
+  const CatalogueFactBody = z.object({
+    subjectKind: z.enum(["place", "authority"]),
+    subject: z.string().min(1).max(120),
+    field: z.string().min(1).max(40),
+    valueText: z.string().min(1).max(2000),
+    sourceUrl: z.string().max(500).default(""),
+    evidenceDate: IsoDate,
+    confidence: z.enum(["verified", "rule_of_thumb", "UNCERTAIN"]),
+    verifiedBy: z.string().max(120).optional(),
+    nextVerification: IsoDate.optional(),
+    note: z.string().max(500).optional(),
+  });
+  app.post("/api/admin/jurisdictions/facts", { config: { body: CatalogueFactBody } }, async (req) => {
+    const user = requireRole(req, "founder");
+    const body = CatalogueFactBody.parse(req.body);
+    return asPlatform(db, user, (tx) => recordFact(tx, user, body));
   });
 
   app.get<{ Params: { id: string } }>("/api/ops/requests/:id/scoping", async (req) => {

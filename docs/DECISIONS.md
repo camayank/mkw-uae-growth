@@ -648,3 +648,34 @@ has a test that fails without the fix.
   premises until ops resolves it, so a contradiction can never lift the offshore exclusion. (From the pull request's
   automated review, with the two re-scoping points above.)
 
+**D77. Every catalogue figure is an append-only fact, and evidence goes stale.** (E2, migration 015, `services/catalogue.ts`, `packages/core/src/catalogue.ts`.)
+- **What a fact holds.** Every place figure (cost, renewal, visas, timeline, facilities, activity list, legal forms,
+  coordinates), authority relationship and rule verification is a fact. It records the source, evidence date,
+  confidence, verifier and re-verification date.
+- **Append-only.** The database refuses update and delete, both by the trigger and through the app role's grants. The
+  latest fact per field is current, and the history stays readable. The value on the place is a cache, refreshed in
+  the same transaction, so the E1 engine reads it unchanged.
+- **Verified facts.** A verified fact needs a named verifier, an http(s) source and a re-verification date. The
+  default is 180 days after the evidence date, because free zone fees and packages change often. The owner may
+  change it.
+- **Staleness.** A fact past its date drops one level (verified to rule of thumb, rule of thumb to UNCERTAIN) and is
+  labelled stale. A place is as confident as the weakest evidence the engine uses; rules are judged the same way.
+- **Nothing invented.**
+  - Relationships between authorities are recorded only as facts with a source.
+  - Places added without figures (Umm Al Quwain, Fujairah) stay inactive. They cannot be verified from placeholders,
+    or activated until their figures are recorded.
+  - A spreadsheet alone can never make evidence verified: the importing founder must be named.
+
+**D78. Advice records the rules and data it was computed from; approval needs them current.** (E2.)
+- **What is recorded.** Advice carries `dataVersion`: the day, a digest of the effective rules and places it used,
+  and the latest fact on record.
+- **What changes it.** A new fact, a rule verification, or evidence passing its re-verification date all change the
+  digest.
+- **At approval.** Ops cannot approve advice whose digest no longer matches. The review says why, and one click
+  recomputes it. Advice computed before E2 needs one recompute.
+- **What the client sees.** The approved advice shows the date its rules and data stand at.
+
+**D79. A listed activity is evidence, a missing one is not.** (E2.) When a place's activity list on record includes
+the founder's activity group, the place finding passes at the weaker of the rule and that evidence. When it does
+not, the finding stays "to confirm": activity groups are coarse, and a group missing from a list does not prove the
+exact activity is refused. A place the founder names matches by its name, its authority's name or an alias.

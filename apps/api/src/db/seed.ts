@@ -3,7 +3,8 @@ import { asPlatform } from "../lib/context.ts";
 import type { Database } from "../lib/db.ts";
 import { DELIVERABLES, DEMO, MARGIN_RULES } from "./seed-data.ts";
 import { CATALOGUE_EXTENSION, EXTENSION_MARGIN_RULES, STARTER_ROWS } from "./catalogue.ts";
-import { SCOPING_RULES, ZONES } from "./scoping-data.ts";
+import { AUTHORITIES, PENDING_PLACES, PLACE_AUTHORITY, SCOPING_RULES, ZONES } from "./scoping-data.ts";
+import { normaliseName } from "@tasees/core";
 
 /** Catalogue, margin rules and settings. Safe to run more than once. */
 export async function seedCatalogue(db: Database): Promise<void> {
@@ -47,6 +48,19 @@ export async function seedCatalogue(db: Database): Promise<void> {
         "insert into zones (name, emirate, type, visa_quota, cost_min_fils, cost_max_fils, timeline_days, activities) values ($1,$2,$3,$4,$5,$6,$7,$8) on conflict (name) do nothing",
         [name, emirate, type, visas, aed(min), aed(max), days, activities],
       );
+    }
+    // E2: authorities with their aliases, and the authority behind each place. Places without figures stay inactive.
+    for (const [id, name, kind, emirate, aliases] of AUTHORITIES) {
+      await tx.query("insert into authorities (id, name, kind, emirate) values ($1,$2,$3,$4) on conflict (id) do nothing", [id, name, kind, emirate]);
+      for (const alias of aliases) {
+        await tx.query("insert into authority_aliases (alias_norm, alias, authority_id) values ($1,$2,$3) on conflict (alias_norm) do nothing", [normaliseName(alias), alias, id]);
+      }
+    }
+    for (const [name, emirate] of PENDING_PLACES) {
+      await tx.query("insert into zones (name, emirate, type, visa_quota, cost_min_fils, cost_max_fils, timeline_days, activities, active) values ($1,$2,'free_zone',0,0,0,1,'{}',false) on conflict (name) do nothing", [name, emirate]);
+    }
+    for (const [place, authority] of Object.entries(PLACE_AUTHORITY)) {
+      await tx.query("update zones set authority_id = $2 where name = $1 and authority_id is null", [place, authority]);
     }
   });
 }

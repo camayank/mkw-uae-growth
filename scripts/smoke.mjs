@@ -498,6 +498,7 @@ await client.waitForSelector('main h1:text-is("Our advice for your request")');
 const clientAdvice = await client.locator("main").innerText();
 check("client sees the approved advice with confidence labels and no money internals:", /Free zone/.test(clientAdvice) && /UNCERTAIN/.test(clientAdvice) && !/margin|partner cost/i.test(clientAdvice));
 check("client sees each option's eligibility and why other places do not fit:", /to be verified/.test(clientAdvice) && /Every structure compared/.test(clientAdvice) && /Costs are estimates/.test(clientAdvice));
+check("client sees the date the advice's rules and data stand at (E2):", /Rules and place data as of \d/.test(clientAdvice) && /licensed by /.test(clientAdvice));
 await shot(client, "36-client-advice");
 await axeCheck(client, "client advice with eligibility (E1)");
 {
@@ -530,6 +531,28 @@ await founder.waitForTimeout(700);
 log.push("rule: " + (await toastText(founder)));
 await eventually("verified rule shows the verifier:", async () => /A\. Qualified, FTA tax agent/.test(await founder.locator("main").innerText()));
 await shot(founder, "38-scoping-rules");
+// E2: the jurisdiction catalogue, recording evidence as a fact, and its history.
+{
+  const main = await founder.locator("main").innerText();
+  check("the Scoping page shows the jurisdiction catalogue with its evidence (E2):", /Jurisdiction catalogue/.test(main) && /places offered/.test(main) && /Sharjah Media City/.test(main) && /waiting for figures/.test(main));
+  const f = founder.locator('form[data-form="record-fact"]');
+  await f.locator('select[name="subject"]').selectOption("place:SHAMS");
+  await f.locator('select[name="field"]').selectOption("activities_listed");
+  await f.locator('input[name="valueText"]').fill("consulting; tech; ecommerce");
+  await f.locator('input[name="sourceUrl"]').fill("https://www.shams.ae/activities");
+  await f.locator('select[name="confidence"]').selectOption("verified");
+  await f.locator('input[name="verifiedBy"]').fill("A. Qualified, licensing adviser");
+  await f.locator('button[type="submit"]').click();
+  await founder.waitForTimeout(700);
+  log.push("fact: " + (await toastText(founder)));
+  await eventually("recorded evidence shows on the place (E2):", async () => /Activity list: consulting, ecommerce, tech/.test(await founder.locator("main").innerText()));
+  const row = founder.locator('button[data-act="fact-history"][data-subject="SHAMS"]');
+  await row.click();
+  const target = await row.getAttribute("data-target");
+  await eventually("the place's evidence history opens with the current fact (E2):", async () => /current/.test(await founder.locator(`#${target}`).innerText()) && /A\. Qualified, licensing adviser/.test(await founder.locator(`#${target}`).innerText()));
+  await shot(founder, "82-scoping-catalogue");
+  await axeCheck(founder, "jurisdiction catalogue and evidence history (E2)");
+}
 // Public intake page, no sign-in
 const pub = await browser.newContext({ viewport: { width: 1280, height: 900 } });
 const pp = await pub.newPage();

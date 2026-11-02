@@ -9,8 +9,9 @@
  * the evidence behind it. Every finding names the rule it came from, for the audit trail and the reviewer.
  */
 import type { Activity, AdviceInput, Confidence, ScopingRule, Zone } from "./advice.ts";
+import { normaliseName } from "./catalogue.ts";
 
-export const ELIGIBILITY_ENGINE_VERSION = "e1.2";
+export const ELIGIBILITY_ENGINE_VERSION = "e2.0";
 
 export type EligibilityStatus = "ELIGIBLE_VERIFIED" | "ELIGIBLE_CONDITIONAL" | "REQUIRES_VERIFICATION" | "INELIGIBLE" | "DATA_UNAVAILABLE";
 export type Structure = "free_zone" | "mainland" | "offshore" | "difc_adgm";
@@ -50,6 +51,18 @@ export interface PlaceAssessment {
   confidence: Confidence;
   /** Plain-English reasons it ranks where it does (preferences, not eligibility). */
   why: string[];
+  authority?: string | null;
+  renewalMinFils?: number | null;
+  renewalMaxFils?: number | null;
+  stale?: boolean;
+}
+
+/** Whether the place the founder named is this one: by its name, its authority's name or any alias (E2). */
+export function namesPlace(z: Pick<Zone, "name" | "authority" | "aliases">, named: string | null | undefined): boolean {
+  if (!named) return false;
+  const n = normaliseName(named);
+  if (!n) return false;
+  return [z.name, z.authority ?? "", ...(z.aliases ?? [])].some((x) => x && normaliseName(x) === n);
 }
 
 const ORDER: EligibilityStatus[] = ["ELIGIBLE_VERIFIED", "ELIGIBLE_CONDITIONAL", "REQUIRES_VERIFICATION", "DATA_UNAVAILABLE", "INELIGIBLE"];
@@ -167,12 +180,12 @@ const structureOfZone = (z: Zone): Structure => (z.type === "financial" ? "difc_
 /** Place-level checks: the package and the facts we hold about one place, on top of its structure's findings. */
 export function assessPlace(z: Zone, structure: StructureAssessment, a: AdviceInput, book: Rulebook): PlaceAssessment {
   const out: Finding[] = [...structure.findings];
-  const placeFinding = (ruleKey: string, outcome: Finding["outcome"], text: string, missing?: Finding["missing"]): Finding => ({
+  const placeFinding = (ruleKey: string, outcome: Finding["outcome"], text: string, missing?: Finding["missing"], data: Confidence = z.confidence): Finding => ({
     ruleKey,
     outcome,
     text,
-    // A place finding is as confident as the weaker of its rule and the place's own data.
-    confidence: weaker(book.confidence(ruleKey), z.confidence),
+    // A place finding is as confident as the weaker of its rule and the place data behind it.
+    confidence: weaker(book.confidence(ruleKey), data),
     ...(missing ? { missing } : {}),
   });
   const visas = a.visas ?? 0;
@@ -188,8 +201,14 @@ export function assessPlace(z: Zone, structure: StructureAssessment, a: AdviceIn
     else out.push(placeFinding("place.budget", "pass", "The estimated setup cost is within the stated budget."));
   }
 
-  // Sector strength is a preference, never permission: the authority's own activity list decides (E2).
-  if (a.activity && a.activity !== "holding") out.push(placeFinding("place.activity_listed", "unknown", `Whether ${z.name} licenses this exact activity must be confirmed against its activity list.`, "check"));
+  // Sector strength is a preference, never permission: the authority's own activity list decides (E2). A list on
+  // record that includes the activity group confirms it, as confidently as that evidence; anything else stays a check
+  // (a group missing from a list is not proof the exact activity is refused).
+  if (a.activity && a.activity !== "holding") {
+    const listed = z.activitiesListed?.includes(a.activity);
+    if (listed) out.push(placeFinding("place.activity_listed", "pass", `${z.name}'s activity list includes ${a.activity.replace(/_/g, " ")} activities; the exact activity is chosen at application.`, undefined, z.evidence?.activities_listed?.confidence ?? z.confidence));
+    else out.push(placeFinding("place.activity_listed", "unknown", `Whether ${z.name} licenses this exact activity must be confirmed against its activity list.`, "check"));
+  }
 
   if (a.activity === "manufacturing") {
     if (z.facilities && !z.facilities.includes("industrial")) out.push(placeFinding("place.industrial_facilities", "fail", `${z.name} has no industrial plots or units on record.`));
@@ -202,7 +221,7 @@ export function assessPlace(z: Zone, structure: StructureAssessment, a: AdviceIn
   const why: string[] = [];
   if (z.emirate === a.emirate) why.push(`in ${a.emirate}`);
   if (a.activity && z.activities.includes(a.activity)) why.push(`known for ${a.activity.replace(/_/g, " ")} businesses`);
-  if (a.freeZone && z.name.toLowerCase() === a.freeZone.toLowerCase()) why.push("the place you named");
+  if (namesPlace(z, a.freeZone)) why.push("the place you named");
   if (visas > 0 && visas <= z.visaQuota) why.push(`${z.visaQuota} visa(s) in the standard package`);
   return {
     zone: z.name,
@@ -217,6 +236,9 @@ export function assessPlace(z: Zone, structure: StructureAssessment, a: AdviceIn
     timelineDays: z.timelineDays,
     confidence: z.confidence,
     why,
+    ...(z.authority !== undefined ? { authority: z.authority } : {}),
+    ...(z.renewalMinFils != null ? { renewalMinFils: z.renewalMinFils, renewalMaxFils: z.renewalMaxFils ?? z.renewalMinFils } : {}),
+    ...(z.stale ? { stale: true } : {}),
   };
 }
 
@@ -224,7 +246,7 @@ export function assessPlace(z: Zone, structure: StructureAssessment, a: AdviceIn
 function preference(p: PlaceAssessment, a: AdviceInput, preferred: Structure | null): number {
   let s = 0;
   if (preferred && p.structure === preferred) s += 10;
-  if (a.freeZone && p.zone.toLowerCase() === a.freeZone.toLowerCase()) s += 5;
+  if (p.why.includes("the place you named")) s += 5;
   if (p.emirate === a.emirate) s += 3;
   if (a.activity && p.why.some((w) => w.startsWith("known for"))) s += 2;
   if ((a.visas ?? 0) <= p.visaQuota) s += 1;
@@ -254,7 +276,7 @@ export function assess(a: AdviceInput, rules: ScopingRule[], zones: Zone[], pref
   // When the founder named a place, keep it first if it is viable and of the recommended structure (a place of
   // another structure never jumps ahead of the recommendation), whatever its status rank.
   if (a.freeZone) {
-    const i = viable.findIndex((p) => p.zone.toLowerCase() === a.freeZone!.toLowerCase());
+    const i = viable.findIndex((p) => p.why.includes("the place you named"));
     if (i > 0 && (!preferred || viable[i]!.structure === preferred)) viable.unshift(...viable.splice(i, 1));
   }
   const excluded = places.filter((p) => !isViable(p.status)).sort((x, y) => x.zone.localeCompare(y.zone));

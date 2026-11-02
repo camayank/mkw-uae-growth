@@ -1,4 +1,5 @@
 import type { IntakeAnswers } from "./scope.ts";
+import type { FieldEvidence } from "./catalogue.ts";
 import { assess, isViable, statusRank, type EligibilityStatus, type Finding, type PlaceAssessment, type Structure, type StructureAssessment, ELIGIBILITY_ENGINE_VERSION } from "./eligibility.ts";
 
 /**
@@ -38,6 +39,21 @@ export interface Zone {
   facilities?: string[] | null;
   sourceUrl: string;
   confidence: Confidence;
+  /** E2: the authority the place belongs to, and the other names it goes by. */
+  authority?: string | null;
+  aliases?: string[];
+  /** E2: activity groups the authority's own activity list confirms (null: not on record), with the confidence that
+   *  evidence deserves today (the engine's finding is never more confident than it). */
+  activitiesListed?: string[] | null;
+  activitiesListedConfidence?: Confidence;
+  /** E2: yearly renewal estimate, fils, when on record, with its own confidence. */
+  renewalMinFils?: number | null;
+  renewalMaxFils?: number | null;
+  renewalConfidence?: Confidence;
+  /** E2: the evidence behind each current value. */
+  evidence?: Record<string, FieldEvidence>;
+  /** E2: some evidence the engine relies on is past its re-verification date. */
+  stale?: boolean;
 }
 
 export interface Reasoned {
@@ -59,6 +75,22 @@ export interface Candidate {
   /** E1: the place's eligibility and the findings behind it (absent on advice stored before E1). */
   status?: EligibilityStatus;
   findings?: Finding[];
+  /** E2: the authority, the renewal estimate, and whether evidence is past its re-verification date. */
+  authority?: string | null;
+  renewalMinFils?: number | null;
+  renewalMaxFils?: number | null;
+  renewalConfidence?: Confidence;
+  stale?: boolean;
+}
+
+/** E2: the rules and catalogue data an advice was computed from. */
+export interface DataVersion {
+  /** The day the advice was computed (staleness is judged on this day). */
+  asOf: string;
+  /** Digest of the effective rules and places used. */
+  digest: string;
+  /** The latest catalogue fact on record when computed (0: none). */
+  lastFactId: number;
 }
 
 export interface Advice {
@@ -84,6 +116,8 @@ export interface Advice {
   needsVerification?: boolean;
   /** E1: the engine version the advice was computed with. */
   engineVersion?: string;
+  /** E2: the rules and data version the advice was computed from (set by the caller that loaded them). */
+  dataVersion?: DataVersion;
 }
 
 export type Activity =
@@ -200,6 +234,9 @@ const asCandidate = (p: PlaceAssessment): Candidate => ({
   why: p.why,
   status: p.status,
   findings: p.findings,
+  ...(p.authority !== undefined ? { authority: p.authority } : {}),
+  ...(p.renewalMinFils != null ? { renewalMinFils: p.renewalMinFils, renewalMaxFils: p.renewalMaxFils ?? p.renewalMinFils, renewalConfidence: p.renewalConfidence ?? "UNCERTAIN" } : {}),
+  ...(p.stale ? { stale: true } : {}),
 });
 
 /** Answers that cannot both be true. The engine never resolves these by guessing; a person asks the founder. */

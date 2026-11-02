@@ -15,3 +15,4 @@ export * from "./scorecard.ts";
 export * from "./reporting.ts";
 export * from "./obligations.ts";
 export * from "./triage.ts";
+export * from "./catalogue.ts";

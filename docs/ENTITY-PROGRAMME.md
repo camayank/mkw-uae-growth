@@ -50,11 +50,11 @@ Status per contract capability:
 | Founder and ownership profiling | Partial (E1) | Owner type and foreign tax residence added; nationality, UBO and parent jurisdiction to come (E3) |
 | Mainland / free zone / offshore comparison | Built (E1) | Every structure assessed with a status and its reasons |
 | DIFC and ADGM pathways | Partial | Assessed as one structure; separate regimes (DFSA, FSRA) only in findings |
-| All seven emirates | Partial | Places in Dubai, Abu Dhabi, Sharjah, Ras Al Khaimah and Ajman; Umm Al Quwain and Fujairah missing (E2 catalogue) |
-| Verified jurisdiction directory, map | Missing | 14 places, all UNCERTAIN, no coordinates (E2) |
-| Activity eligibility checks | Partial (E1) | Never assumed from a sector tag; each place says its activity list must be confirmed. Needs authority activity lists (E2, owner data) |
+| All seven emirates | Partial (E2) | Authorities in all seven. Umm Al Quwain and Fujairah places exist but stay inactive until their figures are recorded |
+| Verified jurisdiction directory, map | Partial (E2) | 22 authorities with aliases. Places carry append-only evidence that goes stale; coordinates only with a source. Verification needs owner data; the map is E3 |
+| Activity eligibility checks | Partial (E2) | Never assumed from a sector tag. An activity list on record confirms the activity group at its evidence's confidence. Exact activities need each authority's list |
 | Licensing and regulator requirements | Partial (E1) | Health, education, food, finance, virtual assets, industrial: as conditions with rule keys |
-| Setup and renewal cost estimates | Partial | Setup ranges, unverified; no renewal costs (E2) |
+| Setup and renewal cost estimates | Partial (E2) | Setup and renewal ranges as facts with sources; all unverified until the owner's data |
 | Visa and premises requirements | Built (E1) | Standard package versus hard limit; offshore excluded for visas and premises; facilities on record |
 | Corporate tax and VAT considerations | Built (E1) | Ordinary regime, QFZP conditions, small business relief window, VAT on taxable supplies, designated zones |
 | Cross-border flags | Built (E1) | Founder residence, permanent establishment, corporate shareholder: always a specialist's review |
@@ -78,7 +78,7 @@ Status per contract capability:
 | 11 Customs and import/export | Missing (E2) |
 | 12 Cross-border tax and PE | Partial (E1): flags only, by design |
 | 13 Banking readiness | Missing (E3) |
-| 14 Cost and renewal comparison | Partial: setup only (E2) |
+| 14 Cost and renewal comparison | Partial (E2): setup and renewal estimates per place, with evidence |
 | 15 Restructuring and expansion | Missing (E3) |
 | 16 Compliance obligations | Built (O8) for the calendar; the engine lists the follow-on obligations |
 | AI limits | Built (O5): AI drafts into a review queue only; no AI in the engine |

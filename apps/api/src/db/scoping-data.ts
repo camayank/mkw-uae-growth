@@ -72,3 +72,66 @@ export const ZONES: Array<[string, string, "free_zone" | "mainland" | "offshore"
   ["DIFC", "Dubai", "financial", 2, 30_000, 60_000, 30, ["finance", "holding"]],
   ["ADGM", "Abu Dhabi", "financial", 2, 25_000, 50_000, 30, ["finance", "holding", "tech"]],
 ];
+
+/**
+ * E2 authorities: who licenses or registers each place, by name only. Parents, registrars and websites are recorded
+ * as facts with a source (the Scoping page or the catalogue importer), never assumed here. Regulators are listed so
+ * findings can name them; they license activities, not places.
+ * Columns: id, name, kind, emirate (null: federal), aliases.
+ */
+export const AUTHORITIES: Array<[string, string, "free_zone_authority" | "mainland_department" | "offshore_registry" | "financial_centre" | "regulator", string | null, string[]]> = [
+  ["ifza", "International Free Zone Authority", "free_zone_authority", "Dubai", ["IFZA"]],
+  ["meydan_fz", "Meydan Free Zone", "free_zone_authority", "Dubai", ["Meydan FZ", "Meydan"]],
+  ["dmcc", "Dubai Multi Commodities Centre", "free_zone_authority", "Dubai", ["DMCC"]],
+  ["dso", "Dubai Silicon Oasis", "free_zone_authority", "Dubai", ["DSO", "Dubai Silicon Oasis Authority", "DSOA"]],
+  ["shams", "Sharjah Media City", "free_zone_authority", "Sharjah", ["SHAMS", "Sharjah Media City Free Zone"]],
+  ["rakez", "Ras Al Khaimah Economic Zone", "free_zone_authority", "Ras Al Khaimah", ["RAKEZ"]],
+  ["ajman_fz", "Ajman Free Zone", "free_zone_authority", "Ajman", ["AFZ", "Ajman Free Zone Authority"]],
+  // The offshore registry only: "JAFZA" alone means the free zone, whose own licence is not a place here yet.
+  ["jafza_offshore", "JAFZA Offshore Companies Registry", "offshore_registry", "Dubai", ["JAFZA Offshore"]],
+  ["uaq_ftz", "Umm Al Quwain Free Trade Zone", "free_zone_authority", "Umm Al Quwain", ["UAQ FTZ", "UAQ Free Trade Zone"]],
+  ["fujairah_fz", "Fujairah Free Zone", "free_zone_authority", "Fujairah", ["FFZ", "Fujairah Free Zone Authority"]],
+  ["fujairah_cc", "Fujairah Creative City", "free_zone_authority", "Fujairah", ["Creative City", "FCC"]],
+  ["dubai_det", "Dubai Department of Economy and Tourism", "mainland_department", "Dubai", ["DET", "Dubai DED", "Dubai Economy", "Dubai mainland"]],
+  ["ad_ded", "Abu Dhabi Department of Economic Development", "mainland_department", "Abu Dhabi", ["ADDED", "Abu Dhabi DED", "Abu Dhabi mainland"]],
+  ["sharjah_sedd", "Sharjah Economic Development Department", "mainland_department", "Sharjah", ["SEDD", "Sharjah DED", "Sharjah mainland"]],
+  ["rak_icc", "RAK International Corporate Centre", "offshore_registry", "Ras Al Khaimah", ["RAK ICC", "RAKICC"]],
+  ["difc", "Dubai International Financial Centre", "financial_centre", "Dubai", ["DIFC"]],
+  ["adgm", "Abu Dhabi Global Market", "financial_centre", "Abu Dhabi", ["ADGM"]],
+  ["dfsa", "Dubai Financial Services Authority", "regulator", "Dubai", ["DFSA"]],
+  ["fsra", "Financial Services Regulatory Authority", "regulator", "Abu Dhabi", ["FSRA"]],
+  ["vara", "Virtual Assets Regulatory Authority", "regulator", "Dubai", ["VARA"]],
+  ["sca", "Securities and Commodities Authority", "regulator", null, ["SCA"]],
+  ["cbuae", "Central Bank of the UAE", "regulator", null, ["CBUAE", "UAE Central Bank"]],
+];
+
+/** Which authority each place belongs to: the place is the authority's own licence or registry (no inference). */
+export const PLACE_AUTHORITY: Record<string, string> = {
+  IFZA: "ifza",
+  "Meydan Free Zone": "meydan_fz",
+  DMCC: "dmcc",
+  "Dubai Silicon Oasis": "dso",
+  SHAMS: "shams",
+  RAKEZ: "rakez",
+  "Ajman Free Zone": "ajman_fz",
+  "Dubai DET mainland": "dubai_det",
+  "Abu Dhabi DED mainland": "ad_ded",
+  "Sharjah SEDD mainland": "sharjah_sedd",
+  "RAK ICC": "rak_icc",
+  "JAFZA Offshore": "jafza_offshore",
+  DIFC: "difc",
+  ADGM: "adgm",
+  "UAQ Free Trade Zone": "uaq_ftz",
+  "Fujairah Free Zone": "fujairah_fz",
+  "Fujairah Creative City": "fujairah_cc",
+};
+
+/**
+ * Places in Umm Al Quwain and Fujairah, added with no figures: they stay inactive (never offered) until their cost,
+ * visas and timeline are recorded as facts and the founder activates them. No number here is a market figure.
+ */
+export const PENDING_PLACES: Array<[string, string]> = [
+  ["UAQ Free Trade Zone", "Umm Al Quwain"],
+  ["Fujairah Free Zone", "Fujairah"],
+  ["Fujairah Creative City", "Fujairah"],
+];

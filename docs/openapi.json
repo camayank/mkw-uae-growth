@@ -885,6 +885,201 @@
         }
       }
     },
+    "/api/admin/jurisdictions": {
+      "get": {
+        "operationId": "getApiAdminJurisdictions",
+        "tags": [
+          "admin"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "4XX": {
+            "description": "Refused: the message says why",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Server error, with a request id to quote",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/jurisdictions/facts": {
+      "post": {
+        "operationId": "postApiAdminJurisdictionsFacts",
+        "tags": [
+          "admin"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "subjectKind": {
+                    "type": "string",
+                    "enum": [
+                      "place",
+                      "authority"
+                    ]
+                  },
+                  "subject": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "field": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "valueText": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  },
+                  "sourceUrl": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  "evidenceDate": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  "confidence": {
+                    "type": "string",
+                    "enum": [
+                      "verified",
+                      "rule_of_thumb",
+                      "UNCERTAIN"
+                    ]
+                  },
+                  "verifiedBy": {
+                    "type": "string",
+                    "maxLength": 120
+                  },
+                  "nextVerification": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 500
+                  }
+                },
+                "required": [
+                  "subjectKind",
+                  "subject",
+                  "field",
+                  "valueText",
+                  "evidenceDate",
+                  "confidence"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "4XX": {
+            "description": "Refused: the message says why",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Server error, with a request id to quote",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/jurisdictions/history": {
+      "get": {
+        "operationId": "getApiAdminJurisdictionsHistory",
+        "tags": [
+          "admin"
+        ],
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "place",
+                "authority",
+                "rule"
+              ]
+            }
+          },
+          {
+            "name": "subject",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "4XX": {
+            "description": "Refused: the message says why",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Server error, with a request id to quote",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/legal": {
       "get": {
         "operationId": "getApiAdminLegal",
@@ -1478,6 +1673,10 @@
                   "statement": {
                     "type": "string",
                     "maxLength": 1000
+                  },
+                  "nextVerification": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
                   }
                 },
                 "required": [
@@ -1573,6 +1772,10 @@
                   },
                   "active": {
                     "type": "boolean"
+                  },
+                  "nextVerification": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
                   }
                 },
                 "required": [

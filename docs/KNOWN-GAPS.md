@@ -131,6 +131,29 @@ in a browser; everything listed here is not.
 53. **The scorecard is not comparable across the E1 change.** Scorecard figures computed before E1 counted repeat
     submissions and repeat disputes; figures after E1 count each step once (D74).
 
+## E2: jurisdiction catalogue and evidence
+
+54. **No authoritative data yet.** The catalogue's machinery is in place, but every seeded figure is still a starting
+    estimate (UNCERTAIN), and no authority's activity list, package, relationship or coordinates is recorded. Each
+    needs the owner's verifier, through the console or `import catalogue`.
+55. **Umm Al Quwain and Fujairah places are not offered.** They have no figures, so they stay inactive. Each can be
+    activated once its cost, visas and timeline are recorded.
+56. **Activity groups, not exact activities.** An activity list records the 13 activity groups a place confirms. Exact
+    licensing activities, at ISIC level, need each authority's list in a machine-readable form.
+57. **Pre-E2 verifications are re-dated.** A rule or place verified before E2 has no recorded re-verification date.
+    It is treated as due 180 days after its verification date.
+58. **No map.** Coordinates are stored with their source; the map view belongs to the public selector (E3).
+59. **Rules of thumb recorded before E2 never go stale.** A rule or place marked rule of thumb before E2 has no
+    verification date, so no re-verification date can be derived. It stays a rule of thumb until it is recorded again.
+60. **A verifier's name is kept.** `verified_by` and `approved_by` are personal data in append-only evidence and
+    audit tables, kept as the legal-basis record of who checked what; they are not erased on request.
+61. **Any new fact blocks approval of every pending advice** until it is recomputed, because the data digest covers
+    every active place and rule. A bulk import therefore forces one recompute per pending request. Hashing only the
+    places an advice considered would narrow this.
+62. **Abu Dhabi's registrar may be out of date.** Company registration in Abu Dhabi moved to the Abu Dhabi
+    Registration Authority (ADRA) in 2023; the seed names the Department of Economic Development. For the owner's
+    verifier to confirm and record as a fact.
+
 ## O7: launch-gate preparation
 
 43. ~~zod 3 has a memory-exhaustion advisory.~~ Closed by S1: zod 4.6.7 (D71); the body caps stay as defence in depth.

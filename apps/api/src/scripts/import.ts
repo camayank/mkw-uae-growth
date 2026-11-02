@@ -12,6 +12,8 @@
  *   company      MKW-Company-Details.md              company fields through the founder's settings (needs --as)
  *   decisions    Owner-Decisions.md                  answers through Settings and Rules (needs --as when anything applies)
  *   legal        Tasees-Client-Terms.md, MKW-Partner-Network-Agreement.md   new version of a legal text
+ *   catalogue    catalogue-facts.csv or the .xlsx    E2 evidence on places and authorities ("Catalogue facts" tab); verified
+ *                rows need --as (not part of `all`)
  *   all          a folder holding the five files above; every step runs in ONE transaction, in that order, so the
  *                dry run shows exactly what applying does (rate cards see the partners created just before)
  *
@@ -39,6 +41,7 @@ import { importFees } from "../import/fees.ts";
 import { importHolidays } from "../import/holidays.ts";
 import { feeVerifierFrom, importCompany, importDecisions, parseDecisions } from "../import/decisions.ts";
 import { importLegal } from "../import/legal.ts";
+import { importCatalogueFacts } from "../import/catalogue.ts";
 import { checkConfigOrExit } from "../lib/config.ts";
 
 checkConfigOrExit();
@@ -51,7 +54,7 @@ const flag = (name: string) => {
 const positional = args.filter((a, i) => !a.startsWith("--") && !["--as", "--decisions", "--evidence"].includes(args[i - 1] ?? ""));
 const [kind, fileArg] = positional;
 const apply = args.includes("--apply");
-const KINDS = ["partners", "rate-cards", "fees", "holidays", "company", "decisions", "legal", "all"];
+const KINDS = ["partners", "rate-cards", "fees", "holidays", "company", "decisions", "legal", "catalogue", "all"];
 const fail = (msg: string): never => {
   console.error(msg);
   process.exit(2);
@@ -129,6 +132,13 @@ async function step(k: string, path: string, decisions?: string): Promise<Step> 
     case "decisions": {
       const md = await readFile(path, "utf8");
       return (tx) => importDecisions(tx, md, path, actor);
+    }
+    case "catalogue": {
+      const grid = /\.csv$/i.test(path)
+        ? (parse(await readFile(path, "utf8"), { relax_column_count: true, skip_empty_lines: false }) as string[][])
+        : readXlsx(await readFile(path), ["Catalogue facts"]).get("Catalogue facts");
+      if (!grid) throw new Error('The workbook has no "Catalogue facts" tab');
+      return (tx) => importCatalogueFacts(tx, grid, path, actor);
     }
     case "legal": {
       const md = await readFile(path, "utf8");

@@ -212,6 +212,8 @@ async function recover(code) {
     const res = await fetch(`/api/public/assessments/${encodeURIComponent(code.trim().toUpperCase())}`);
     const data = await res.json();
     if (!res.ok || !data.found) { msg.textContent = "No saved result with that code (saved results are kept for a limited time)."; return; }
+    // Only the recovered answers: nothing typed or recovered before stays behind.
+    for (const k of Object.keys(answers)) delete answers[k];
     Object.assign(answers, data.answers, { owners: data.answers.ownerType, foreignTaxResident: data.answers.foreignTaxResident === true ? "yes" : data.answers.foreignTaxResident === false ? "no" : undefined });
     savedCode = code.trim().toUpperCase();
     $("questions").hidden = true;

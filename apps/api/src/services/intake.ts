@@ -6,7 +6,7 @@ import type { Notifier } from "../lib/notify.ts";
 import type { AiModel } from "../lib/ai.ts";
 import { draftScopeForRequest } from "./drafts.ts";
 import { createRequest, IntakeSchema } from "./requests.ts";
-import { CONSENT_TEXTS, createLead } from "./leads.ts";
+import { CONSENT_TEXTS, createLead, firstTouchAttribution } from "./leads.ts";
 import { adviseNow } from "./scoping.ts";
 import { cleanAttribution, type AdviceInput } from "@tasees/core";
 import { conflict, forbidden, notFound } from "../lib/errors.ts";
@@ -53,7 +53,8 @@ export async function publicIntake(tx: Queryable, input: PublicIntake, ip: strin
   const email = input.email.trim().toLowerCase();
   const company = input.company.trim();
   const consent = { given: true, at: new Date().toISOString(), version: input.consentVersion, channel: "public_intake", ip };
-  const attribution = cleanAttribution({ ...(input.attribution ?? {}), campaign: input.attribution?.campaign ?? input.campaign, referrer: input.attribution?.referrer ?? input.referrer });
+  // First touch wins: a saved result's campaign stays with the lead and the request it becomes.
+  const attribution = await firstTouchAttribution(tx, input.assessmentCode, cleanAttribution({ ...(input.attribution ?? {}), campaign: input.attribution?.campaign ?? input.campaign, referrer: input.attribution?.referrer ?? input.referrer }));
   const source = { channel: "public_intake", campaign: attribution.campaign, referrer: attribution.referrer, phone: input.phone ? "provided" : "none", attribution };
   // What the engine makes of the answers feeds the lead's complexity: contradictions, missing facts, no viable option.
   const assessed = input.answers.mode === "new_company" ? await adviseNow(tx, input.answers as AdviceInput) : null;

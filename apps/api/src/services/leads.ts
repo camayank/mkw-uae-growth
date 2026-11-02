@@ -64,10 +64,22 @@ export async function recoverAssessment(tx: Queryable, code: string): Promise<{ 
   return { id: r.id, answers: r.answers, savedAt: r.created_at, recovered: num(r.recovered) + 1 };
 }
 
-async function assessmentByCode(tx: Queryable, code: string | undefined): Promise<{ id: string; recovered: number } | null> {
+async function assessmentByCode(tx: Queryable, code: string | undefined): Promise<{ id: string; recovered: number; source: Attribution } | null> {
   if (!code) return null;
-  const r = (await tx.query<{ id: string; recovered: number }>("select id, recovered from assessments where code_hash = $1 and status <> 'anonymised'", [hash(code)])).rows[0];
-  return r ? { id: r.id, recovered: num(r.recovered) } : null;
+  const r = (await tx.query<{ id: string; recovered: number; source: Attribution }>("select id, recovered, source from assessments where code_hash = $1 and status <> 'anonymised'", [hash(code)])).rows[0];
+  return r ? { id: r.id, recovered: num(r.recovered), source: r.source ?? {} } : null;
+}
+
+/**
+ * First touch wins: a person who saved a result from a campaign and comes back by its code keeps that campaign's
+ * attribution on the lead and the request, with the new visit filling only what the first left empty.
+ */
+export async function firstTouchAttribution(tx: Queryable, code: string | undefined, current: Attribution): Promise<Attribution> {
+  const saved = await assessmentByCode(tx, code);
+  if (!saved) return current;
+  const merged: Record<string, unknown> = { ...current };
+  for (const [k, v] of Object.entries(saved.source)) if (v) merged[k] = v;
+  return cleanAttribution(merged);
 }
 
 export interface NewLead {
@@ -342,6 +354,13 @@ export async function anonymiseOldLeads(tx: Queryable, actor: SessionUser | null
     )
   ).rows;
   for (const l of leads) await tx.query("update lead_notes set body = '' where lead_id = $1", [l.id]);
+  // The held intake copy of an anonymised lead (an email that already had an account) goes with it, and leaves the
+  // ops queue: nobody will act on an enquiry whose details are gone.
+  await tx.query(
+    `update intake_leads set email = 'anonymised-' || id::text || '@erased.invalid', name = 'Anonymised', company = 'Anonymised', answers = '{}'::jsonb, ip = null,
+       status = 'handled', handled_at = coalesce(handled_at, app_now())
+     where id in (select intake_lead_id from leads where status = 'anonymised' and intake_lead_id is not null) and email not like 'anonymised-%'`,
+  );
   // Saved assessments: old open ones, and the ones behind leads that were just anonymised.
   const assessments = (
     await tx.query<{ id: string }>(

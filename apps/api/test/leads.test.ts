@@ -87,6 +87,17 @@ describe("lead intelligence", () => {
     expect((await env.call("ops", "GET", "/api/ops/pipeline/leads")).body.find((x: any) => x.company === "Dup Co").intakeLeadId).toBeTruthy();
   });
 
+  it("first touch wins: a lead that comes back by its saved code keeps the saved campaign on the lead and the request", async () => {
+    const { code: c } = (await env.call("anon", "POST", "/api/public/assessments", { answers, attribution: { source: "newsletter", campaign: "oct-issue" } })).body;
+    const r = await env.call("anon", "POST", "/api/public/intake", { company: "Returning Co", name: "R. Founder", email: "returning@example.test", consent: true, consentVersion: "2026-10-privacy-v1", answers: { mode: "new_company", jurisdiction: "not_sure", ...answers }, assessmentCode: c, attribution: { referrer: "https://direct.test/" } });
+    expect(r.status).toBe(200);
+    const lead = (await env.call("ops", "GET", "/api/ops/pipeline/leads")).body.find((x: any) => x.company === "Returning Co");
+    expect(lead.source).toMatchObject({ source: "newsletter", campaign: "oct-issue", referrer: "https://direct.test/" });
+    const [req] = (await asPlatform(env.db, null, (tx) => tx.query("select source from requests where id = $1", [lead.requestId]))).rows as any[];
+    expect(req.source.attribution).toMatchObject({ source: "newsletter", campaign: "oct-issue" });
+    expect(req.source.campaign).toBe("oct-issue");
+  });
+
   it("routing sends a segment's leads to its owner; unmapped segments stay with ops", async () => {
     expect((await env.call("ops", "PUT", "/api/admin/settings/lead-routing", { routing: { starter: opsId } })).status).toBe(403);
     expect((await env.call("founder", "PUT", "/api/admin/settings/lead-routing", { routing: { starter: (await env.call("client", "GET", "/api/me")).body.id } })).status).toBe(400);
@@ -162,6 +173,7 @@ describe("lead intelligence", () => {
     expect(google).toMatchObject({ assessments: 1, leads: 1, requests: 1, offersPublished: 1, offersAccepted: 1 });
     expect(google.revenueFils).toBeGreaterThan(0);
     expect(a.find((x: any) => x.source === "direct")).toMatchObject({ leads: 4 });
+    expect(a.find((x: any) => x.source === "newsletter")).toMatchObject({ assessments: 1, leads: 1, requests: 1 });
     expect(JSON.stringify(a)).not.toMatch(/margin|partner|payout/i);
     expect((await env.call("finance", "GET", "/api/ops/pipeline/leads/analytics")).status).toBe(403);
   });
@@ -191,7 +203,7 @@ describe("lead intelligence", () => {
     // A form-only lead (it has a client organisation and a request, but no accepted offer) is old enough to go; the
     // converted lead with an accepted offer is not, however old.
     await asPlatform(env.db, null, async (tx) => {
-      await tx.query("update leads set created_at = $1 where company in ('Complex Co', 'Saved Ventures')", [old.toISOString()]);
+      await tx.query("update leads set created_at = $1 where company in ('Complex Co', 'Saved Ventures', 'Dup Co')", [old.toISOString()]);
       await tx.query("insert into assessments (code_hash, answers, created_at) values ('old-hash', '{\"activity\":\"tech\"}'::jsonb, $1)", [old.toISOString()]);
     });
     const jobs = async () => (await env.call("founder", "POST", "/api/ops/jobs/run")).body;
@@ -200,10 +212,15 @@ describe("lead intelligence", () => {
     expect((await asPlatform(env.db, null, (tx) => tx.query("select status from leads where company = 'Complex Co'"))).rows[0]).toEqual({ status: "new" });
     expect((await env.call("founder", "PUT", "/api/admin/settings/retention", { note: "Confirmed with counsel on 2 Nov 2026" })).status).toBe(200);
     const run = await jobs();
-    expect(run.leadsAnonymised).toBe(1);
+    expect(run.leadsAnonymised).toBe(2); // Complex Co and the held enquiry Dup Co
+    // The held intake copy of the anonymised enquiry is anonymised too, and leaves the ops queue.
+    const [held] = (await asPlatform(env.db, null, (tx) => tx.query("select email, company, answers, status from intake_leads where company = 'Anonymised'"))).rows as any[];
+    expect(held).toMatchObject({ company: "Anonymised", answers: {}, status: "handled" });
+    expect(held.email).toMatch(/^anonymised-/);
+    expect((await env.call("ops", "GET", "/api/ops/queue")).body.items.some((x: any) => x.kind === "lead" && /Dup Co/.test(x.detail))).toBe(false);
     // The converted lead was erased earlier in this file (so it reads "Erased person"), but it is kept, not anonymised.
     const rows = (await asPlatform(env.db, null, (tx) => tx.query("select company, status, email, answers from leads where status = 'anonymised' or id = $1 order by company", [leadId]))).rows as any[];
-    expect(rows.map((x) => [x.company, x.status])).toEqual([["Anonymised", "anonymised"], ["Erased person", "converted"]]);
+    expect(rows.map((x) => [x.company, x.status])).toEqual([["Anonymised", "anonymised"], ["Anonymised", "anonymised"], ["Erased person", "converted"]]);
     expect(rows[0].answers).toEqual({});
     expect(rows[0].email).toMatch(/^anonymised-/);
     expect((await asPlatform(env.db, null, (tx) => tx.query("select status, answers from assessments where code_hash like 'anonymised-%' or code_hash = 'old-hash'"))).rows.every((x: any) => x.status === "anonymised" && Object.keys(x.answers).length === 0)).toBe(true);

@@ -973,6 +973,13 @@ await shot(client, "58-client-compliance-ar");
 await pp.goto(BASE + "/intake.html?lang=ar"); await pp.waitForSelector('html[dir="rtl"]');
 await pp.waitForTimeout(400);
 await eventually("public intake in Arabic:", async () => /شركتك في الإمارات/.test(await pp.locator("main").innerText()));
+// E3: the selector's questions and controls are translated too, question by question.
+await pp.goto(BASE + "/selector.html?lang=ar"); await pp.waitForSelector('html[dir="rtl"]');
+await pp.waitForSelector("#questions .choice");
+check("the public selector in Arabic, first question:", /ما النشاط الرئيسي للشركة/.test(await pp.locator("main").innerText()) && /التالي/.test(await pp.locator("#next").innerText()));
+await pp.locator('.choice[data-val="tech"]').click(); await pp.locator("#next").click();
+await pp.waitForTimeout(300);
+check("the public selector in Arabic, second question:", /أين عملاؤك/.test(await pp.locator("#step").innerText()));
 await shot(pp, "59-public-intake-ar");
 // axe on the Arabic screens (same account, new context that bypasses CSP for the axe script only)
 const ap3 = await (await browser.newContext({ viewport: { width: 1280, height: 900 }, bypassCSP: true })).newPage();

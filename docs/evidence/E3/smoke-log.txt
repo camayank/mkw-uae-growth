@@ -77,7 +77,7 @@ invite: Invited
 role change: Role changed
 deactivate: Account deactivated
 deactivated user shows the badge and a reactivate button: OK
-export downloaded: person-d3806a2e-633d-4ffb-8296-8b0f54c475f8.json
+export downloaded: person-c689e7b8-eaf1-4cab-97d9-8d1d158da116.json
 erase: Personal data erased and recorded
 erased person shown as a tombstone: OK
 17-people-after-changes
@@ -249,6 +249,8 @@ engagement in Arabic: OK
 compliance in Arabic: OK
 58-client-compliance-ar
 public intake in Arabic: OK
+the public selector in Arabic, first question: OK
+the public selector in Arabic, second question: OK
 59-public-intake-ar
 axe: no WCAG 2.1 AA violations on client home (ar): OK
 axe: no WCAG 2.1 AA violations on client offer (ar): OK

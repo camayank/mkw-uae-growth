@@ -137,7 +137,7 @@ function place(p) {
 
 function showResult(p) {
   const rec = p.structure.recommendation;
-  const head = rec && p.structure.confirmed ? `Structure: ${STRUCTURE[rec] ?? words(rec)}` : rec ? `Likely structure: ${STRUCTURE[rec] ?? words(rec)}, to be confirmed by a person` : p.noViableOption ? "No structure fits every answer yet" : "The structure is to be confirmed by a person";
+  const head = rec && p.structure.confirmed ? `Structure: ${STRUCTURE[rec] ?? words(rec)}` : p.noViableOption ? "No structure fits every answer yet" : "The structure is to be confirmed by a person";
   $("result").innerHTML = `
     <div class="notice" role="note"><b>Preliminary, general information, not advice.</b> <span data-no-i18n>${esc(p.disclaimer)}</span>${p.asOf ? ` Rules and place data as of ${esc(p.asOf)}.` : ""}</div>
     <p class="small muted" style="margin-top:8px">${p.approved.statements} of ${p.approved.ofStatements} statements and ${p.approved.places} of ${p.approved.ofPlaces} places shown have been checked by a named person for public display; the rest are shown as "to be verified".</p>

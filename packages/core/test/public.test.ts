@@ -57,6 +57,8 @@ describe("the public view (E3, D80)", () => {
       // "Data missing" states what MKW does not hold, not a rule's conclusion, so it may stay.
       expect(p.places.every((x) => x.toBeVerified && !x.figures && x.why.length === 0 && (x.status === "REQUIRES_VERIFICATION" || x.status === "DATA_UNAVAILABLE")), label).toBe(true);
       expect(p.structure.confirmed, label).toBe(false);
+      expect(p.structure.recommendation, label).toBeNull(); // the chosen structure is itself a conclusion
+      expect(json, label).not.toMatch(/"recommendation":"/);
       expect(p.structures.every((s) => s.status === "REQUIRES_VERIFICATION" || s.status === "DATA_UNAVAILABLE"), label).toBe(true);
       expect(p.excluded, label).toHaveLength(0);
       expect(p.noViableOption, label).toBe(false);
@@ -77,6 +79,7 @@ describe("the public view (E3, D80)", () => {
       const label = JSON.stringify(input);
       expect([...p.structure.reasons, ...p.licences, ...p.obligations, ...p.crossBorder].map((s) => s.text), label).toEqual(texts(a));
       expect(p.structure.confirmed, label).toBe(!!a.structure.recommendation);
+      expect(p.structure.recommendation, label).toBe(a.structure.recommendation ?? null);
       expect(p.places.map((x) => x.figures!.costMinFils), label).toEqual(a.places.map((x) => x.costMinFils));
       expect(p.noViableOption, label).toBe(!!a.noViableOption);
       expect(p.structures.map((s) => s.status), label).toEqual(a.structures!.map((s) => s.status));
@@ -99,8 +102,9 @@ describe("the public view (E3, D80)", () => {
     expect(off.status).toBe("INELIGIBLE");
     expect(off.findings.find((f) => f.ruleKey === "structure.offshore_no_visas")!.text).toMatch(/cannot sponsor residence visas/);
     expect(p.contradictions.some((c) => /offshore company and 2 residence visa/.test(c))).toBe(true);
-    // The recommendation's reasons are not all approved, so it is not confirmed; other structures stay "to be verified".
+    // The recommendation's reasons are not all approved, so it is withheld; other structures stay "to be verified".
     expect(p.structure.confirmed).toBe(false);
+    expect(p.structure.recommendation).toBeNull();
     // "You asked for offshore, which does not fit: ..." restates the offshore rule, so it is public only when that
     // rule is; requested_differs itself is not approved here, so it stays hidden.
     expect(p.structure.reasons.find((r) => r.topic === "a point about the structure" && r.text?.includes("You asked for"))).toBeUndefined();

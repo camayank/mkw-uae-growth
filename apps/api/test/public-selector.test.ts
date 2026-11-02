@@ -37,7 +37,7 @@ describe("public display and the public selector", () => {
     expect(p.places.length).toBeGreaterThan(0);
     expect(p.places.every((x: any) => x.toBeVerified && !x.figures)).toBe(true);
     expect([...p.structure.reasons, ...p.obligations].every((s: any) => s.toBeVerified && s.text === undefined)).toBe(true);
-    expect(p.structure.confirmed).toBe(false);
+    expect(p.structure).toMatchObject({ confirmed: false, recommendation: null });
     expect(JSON.stringify(p)).not.toMatch(/AED|Fils":\s*[1-9]|visaQuota|timelineDays|ruleKey|outcome|authority|known for/);
     expect(p.noViableOption).toBe(false);
     for (const s of walk(p)) expect(s, s).not.toMatch(/margin|partner_?(unit|cost|org|id)|payout|rate_?card|professional_?fils|commission|digest|lastFactId/i);

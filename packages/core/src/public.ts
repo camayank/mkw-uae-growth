@@ -64,6 +64,7 @@ export interface PublicAssessment {
   crossBorder: PublicStatement[];
   missingFacts: string[];
   contradictions: string[];
+  /** `recommendation` is null unless every reason behind it is approved (then `confirmed` is true). */
   /** True only when the rules behind "no option fits" are approved. */
   noViableOption: boolean;
   /** How much of the result a person has approved for public display. */
@@ -116,8 +117,10 @@ export function publicView(a: Advice, approvedRules: ReadonlySet<string>, approv
     };
   };
   const reasons = a.structure.reasons.map(statement);
-  const recommendation = (a.structure.recommendation as Structure | null) ?? null;
-  const confirmed = !!recommendation && reasons.length > 0 && reasons.every((r) => !r.toBeVerified);
+  // The structure the engine chose is a conclusion: the public sees it only when every reason behind it is approved.
+  const chosen = (a.structure.recommendation as Structure | null) ?? null;
+  const confirmed = !!chosen && reasons.length > 0 && reasons.every((r) => !r.toBeVerified);
+  const recommendation = confirmed ? chosen : null;
   const licences = a.licences.map(statement);
   const obligations = a.obligations.map(statement);
   const crossBorder = (a.crossBorder ?? []).map(statement);

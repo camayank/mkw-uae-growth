@@ -34,7 +34,7 @@ export function clientHome(db: Database, user: SessionUser, now: Date = new Date
   return asUser(db, user, async (tx) => {
     // Advice reaches the client only once ops has approved it; it keeps its confidence labels.
     const requests = await tx.query(
-      "select id, status, scope, notes, created_at, advice_status, app_approved_advice(id) as advice, advice_reviewed_at from requests order by created_at desc",
+      "select id, status, scope, notes, created_at, advice_status, app_approved_advice(id) as advice, advice_reviewed_at, assessment_id, obligation_id from requests order by created_at desc",
     );
     // E2: the client sees the day the advice's rules and data stand at; the digest and fact id are internal.
     for (const r of requests.rows as Array<{ advice: { dataVersion?: { asOf: string } } | null }>) {

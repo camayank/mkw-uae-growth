@@ -703,6 +703,22 @@ await ops.fill('form[data-form="lead"] input[name="note"]', "Duplicate of the fi
 await ops.locator('form[data-form="lead"] button[type="submit"]').click();
 await ops.waitForTimeout(600);
 check("held lead marked handled:", !/Second Try Co/.test(await ops.locator("main").innerText()));
+// E5: a held enquiry becomes a request for the existing client on ops' action.
+await pp.goto(BASE + "/intake.html");
+await pp.fill("#company", "Third Try Co");
+await pp.fill("#name", "Smoke Lead");
+await pp.fill("#email", `lead-${stamp}@smoke.test`);
+await pp.selectOption("#activity", "trading");
+await pp.selectOption("#customers", "uae_mainland");
+await pp.check('input[name="consent"]');
+await pp.locator('button[type="submit"]').click();
+await pp.waitForTimeout(1200);
+await ops.goto(BASE + "/#/agent"); await ops.reload();
+await ops.waitForSelector('button[data-act="lead-convert"]');
+await ops.locator('button[data-act="lead-convert"]').first().click();
+await ops.waitForSelector('form[data-form="approve-advice"], h1:text-is("Scoping")', { timeout: 8000 }).catch(() => {});
+await eventually("ops turned the held enquiry into a request for the existing client (E5):", async () => /Scoping/.test(await ops.locator("main h1").innerText()) && /trading/.test(await ops.locator("main").innerText()));
+await shot(ops, "89-held-enquiry-converted");
 
 // Catalogue and rules (O4)
 await founder.goto(BASE + "/#/catalogue");
@@ -912,6 +928,43 @@ await client.locator('form[data-form="obligation-evidence"] button[type="submit"
 await client.waitForTimeout(800);
 check("client uploaded filing evidence:", (await toastHas(client, /MKW Advisors will check/)));
 await shot(client, "51-client-compliance");
+// E5: a saved public result becomes the signed-in client's request without re-typing; a renewal is asked for from
+// the obligation that is due.
+{
+  const saved = await (await pub.request.post(BASE + "/api/public/assessments", { data: { answers: { emirate: "Dubai", activity: "consulting", customers: "international", visas: 1, budgetAed: 20000 }, attribution: { source: "smoke", campaign: "handoff" } } })).json();
+  await client.goto(BASE + "/#/new"); await client.reload();
+  await client.waitForSelector('form[data-form="from-assessment"]');
+  await client.fill("#saved-code", saved.code);
+  await client.locator('form[data-form="from-assessment"] button[type="submit"]').click();
+  await eventually("a saved result became the client's request without re-typing (E5):", async () => /^#\/request\//.test(await client.evaluate(() => location.hash)));
+  const fromAssessment = (await client.evaluate(() => location.hash)).replace("#/request/", "");
+  await ops.goto(BASE + "/#/request/" + fromAssessment); await ops.reload();
+  await ops.waitForSelector('form[data-form="approve-advice"]');
+  check("the review shows the saved result then against today's advice (E5):", /From a saved public result/.test(await ops.locator("main").innerText()) && /smoke \/ handoff/.test(await ops.locator("main").innerText()));
+  await shot(ops, "90-review-from-saved-result");
+  const clients = await (await ops.request.get(BASE + "/api/ops/clients")).json();
+  const sampleClient = clients.find((c) => /Sample Trading/.test(c.name)) ?? clients[0];
+  const ob = await (await ops.request.post(BASE + `/api/ops/clients/${sampleClient.id}/obligations`, { data: { kind: "licence_renewal", title: "Trade licence renewal", dueDate: "2027-03-01", recurrence: "yearly", basis: "On the licence" } })).json();
+  await client.goto(BASE + "/#/compliance"); await client.reload();
+  await client.waitForSelector(`button[data-act="renewal-request"][data-id="${ob.id}"]`);
+  await client.locator(`button[data-act="renewal-request"][data-id="${ob.id}"]`).click();
+  await eventually("the client asked for a renewal offer from the obligation (E5):", async () => /Renewal requested/.test(await client.locator("main").innerText()));
+  await client.goto(BASE + "/#/compliance"); await client.reload();
+  await client.waitForSelector('main h1:text-is("Your compliance calendar")');
+  check("the obligation shows its renewal request after a reload too (E5):", /Renewal requested/.test(await client.locator("main").innerText()));
+  await shot(client, "91-client-renewal-requested");
+  await axeCheck(client, "client compliance with a renewal request (E5)");
+  const mctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, storageState: await client.context().storageState() });
+  const m = await mctx.newPage();
+  m.on("pageerror", (e) => errors.push(`E5 mobile: ${e.message}`));
+  await m.goto(BASE + "/#/new"); await m.waitForSelector('form[data-form="from-assessment"]');
+  check("the saved-result box at 390 px has no horizontal overflow (E5):", !(await m.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
+  await m.screenshot({ path: `${OUT}/92-mobile-saved-result.png`, fullPage: false });
+  log.push("92-mobile-saved-result");
+  await mctx.close();
+  await ops.goto(BASE + "/#/compliance"); await ops.reload();
+  await ops.waitForSelector("main h1");
+}
 await ops.reload();
 await ops.waitForSelector('button[data-act="obligation-met"]');
 await ops.locator('button[data-act="obligation-met"]').first().click();

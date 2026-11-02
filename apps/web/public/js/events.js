@@ -242,6 +242,24 @@ document.addEventListener("click", (ev) => {
       if (note === null) return;
       act(() => api("POST", "/api/admin/public-display/revoke", { kind: el.dataset.kind, subject: el.dataset.subject, note }), "Withdrawn from public display");
     },
+    "lead-convert": () => {
+      const note = prompt("Make this enquiry a request for the client who already has the account? The request is created from the enquiry's answers; nothing is sent. Note (optional):", "");
+      if (note === null) return;
+      act(async () => {
+        const r = await api("POST", `/api/ops/leads/${id}/convert`, { note });
+        toast("Request created for the client");
+        location.hash = `#/request/${r.id}`;
+      }, null);
+    },
+    "renewal-request": () => {
+      if (!confirm("Ask MKW Advisors for a renewal offer? A request with the renewal service is created; partner firms price it and you choose an offer. Nothing is filed until then.")) return;
+      act(async () => {
+        const r = await api("POST", `/api/obligations/${id}/renewal-request`);
+        toast(isPlatform() ? "Renewal request created" : "Renewal request created: partner firms price it and your offers appear on the overview");
+        if (isPlatform()) location.hash = `#/request/${r.id}`;
+        else render(); // the calendar row now shows the request
+      }, null);
+    },
     "fact-history": () => {
       const target = document.getElementById(el.dataset.target);
       if (!target) return;
@@ -471,6 +489,15 @@ document.addEventListener("submit", (ev) => {
     return act(() => api("POST", `/api/ops/drafts/${id}/review`, { decision, note: String(fd.get("note") || ""), ...(decision === "approve" ? { keepCodes } : {}) }), decision === "approve" ? "Draft approved and applied" : "Draft discarded");
   }
   if (kind === "lead") return act(() => api("POST", `/api/ops/leads/${id}/handle`, { note: String(fd.get("note") || "") }), "Lead marked handled");
+  if (kind === "from-assessment") {
+    const code = String(fd.get("code") || "").trim().toUpperCase();
+    if (!/^[A-Z0-9]{10}$/.test(code)) return toast("Enter the 10-character code of your saved result", true);
+    return act(async () => {
+      const r = await api("POST", "/api/requests/from-assessment", { code });
+      toast("Your request is in: a person at MKW Advisors reviews the advice before you see it");
+      location.hash = `#/request/${r.id}`;
+    }, null);
+  }
   if (kind === "bank") return act(() => api("PUT", "/api/partner/bank", { beneficiary: String(fd.get("beneficiary")), iban: String(fd.get("iban")), bank: String(fd.get("bank")) }), "Bank details saved");
   if (kind === "partner-invoice") {
     const file = fd.get("file");

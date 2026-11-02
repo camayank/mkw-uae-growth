@@ -179,6 +179,15 @@ in a browser; everything listed here is not.
     request without the client's name until an offer is accepted; naming a client earlier, with this consent, is
     not built.
 
+## E5: handoff and renewals
+
+72. **Only the trade licence renewal is a product.** Visa renewals, establishment-card and office renewals are not
+    offered from the calendar yet; a renewal request carries the renewal line only, and ops adds lines at scoping.
+73. **A held enquiry is converted by ops, never by the client.** A signed-in client whose public enquiry was held
+    starts the request themselves from the New request page (from a saved code, or afresh).
+74. **The renewal's emirate is taken from the original engagement**, or the client's latest request; a client with
+    companies in two emirates should check it at scoping.
+
 ## O7: launch-gate preparation
 
 43. ~~zod 3 has a memory-exhaustion advisory.~~ Closed by S1: zod 4.6.7 (D71); the body caps stay as defence in depth.

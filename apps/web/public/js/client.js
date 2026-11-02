@@ -193,6 +193,9 @@ export async function renderIntake() {
   $app.innerHTML = `
   <h1>What do you need?</h1>
   <p class="muted">A few questions, one at a time. Your plan builds as you answer; nothing is sent until you ask for your offers.</p>
+  <form class="card" data-form="from-assessment" style="margin-bottom:16px"><h2>Already answered on our public page?</h2>
+    <p class="small muted">Enter the code of your saved result and we start the request from those answers; nothing to type again. MKW Advisors checks them against today's rules before anything is priced.</p>
+    <div class="row"><label class="small" for="saved-code">Saved result code</label><input id="saved-code" name="code" maxlength="10" autocapitalize="characters" placeholder="ABCDE23456" style="max-width:160px" /><button class="sm" type="submit">Start from my saved result</button></div></form>
   <div class="intake-convo">
     <form class="card convo" data-form="intake" novalidate>
       <fieldset class="q" data-step="start"><legend tabindex="-1">Where are you starting from?</legend>
@@ -387,7 +390,7 @@ export async function renderClientCompliance() {
     list.map((o) => `<tr><td><b>${date(o.dueDate)}</b>${o.periodLabel ? `<br><span class="small muted">${esc(o.periodLabel)}</span>` : ""}</td><td>${esc(o.title)}${o.confidence !== "confirmed" ? ` ${badge("UNCERTAIN")}` : ""}<br><span class="small muted">${esc(words(o.kind))}${o.recurrence !== "none" ? ` · ${esc(o.recurrence)}` : ""}</span>${o.basis ? `<br><span class="small muted">${esc(o.basis)}</span>` : ""}</td>
       <td>${badge(obligationTone(o), obligationLabel(o))}${o.metAt ? `<br><span class="small muted">${date(o.metAt)}</span>` : ""}</td>
       <td class="small">${o.evidenceName ? `<a href="/api/obligations/${o.id}/file" target="_blank" rel="noopener">${esc(o.evidenceName)}</a>` : "–"}</td>
-      <td>${["open", "evidence_uploaded"].includes(o.status) ? `<form data-form="obligation-evidence" data-id="${o.id}">${dropzone("filing confirmation", "Drop the filing confirmation here, or choose it")}<button class="sm primary" type="submit">Upload filing confirmation</button></form>` : ""}</td></tr>`),
+      <td>${o.kind === "licence_renewal" && o.status === "open" ? (o.renewalRequestId ? `<p class="small">${o.renewalEngagementId ? `Renewal in progress ${badge(o.renewalEngagementStatus)} <a href="#/engagement/${o.renewalEngagementId}">follow it</a>` : `Renewal requested ${badge(o.renewalRequestStatus)}: your offers appear on the <a href="#/">overview</a>`}</p>` : `<button class="sm primary" data-act="renewal-request" data-id="${o.id}">Ask for a renewal offer</button>`) : ""}${["open", "evidence_uploaded"].includes(o.status) ? `<form data-form="obligation-evidence" data-id="${o.id}">${dropzone("filing confirmation", "Drop the filing confirmation here, or choose it")}<button class="sm primary" type="submit">Upload filing confirmation</button></form>` : ""}</td></tr>`),
     "Nothing on your calendar yet. Obligations appear when an engagement completes and MKW Advisors confirms the dates.",
   )}</div>
   <p class="small muted">${live.length} open · ${list.length - live.length} done</p>`;

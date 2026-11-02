@@ -43,6 +43,7 @@ export async function renderOpsCompliance(clientId) {
       let action = "";
       if (canAct && ["pending_review", "open"].includes(o.status)) action += `<form class="row" data-form="obligation-confirm" data-id="${o.id}"><input name="dueDate" type="date" value="${esc(o.dueDate)}" style="width:auto" /><input name="note" placeholder="Checked against…" required style="max-width:200px" /><button class="sm ${o.status === "pending_review" ? "primary" : ""}" type="submit">${o.status === "pending_review" ? "Confirm" : "Re-date"}</button></form>`;
       if (canAct && o.status === "evidence_uploaded") action += `<button class="sm primary" data-act="obligation-met" data-id="${o.id}">Checked: met</button> `;
+      if (canAct && o.kind === "licence_renewal" && o.status === "open") action += o.renewalRequestId ? `<span class="small">${o.renewalEngagementId ? `Renewal in progress ${badge(o.renewalEngagementStatus)} <a href="#/engagement/${o.renewalEngagementId}">engagement</a>` : `Renewal requested ${badge(o.renewalRequestStatus)} <a href="#/request/${o.renewalRequestId}">open</a>`}</span> ` : `<button class="sm" data-act="renewal-request" data-id="${o.id}">Ask for a renewal offer</button> `;
       if (canAct && !["met", "waived"].includes(o.status)) action += `<button class="sm" data-act="obligation-waive" data-id="${o.id}">Does not apply</button>`;
       return `<tr><td><b>${date(o.dueDate)}</b></td><td>${esc(o.client)}</td><td>${esc(o.title)} ${o.confidence !== "confirmed" ? badge("UNCERTAIN") : ""}<br><span class="small muted">${esc(words(o.kind))}${o.recurrence !== "none" ? ` · ${esc(o.recurrence)}` : ""}</span>${o.basis ? `<br><span class="small muted">${esc(o.basis)}</span>` : ""}${o.metNote ? `<br><span class="small">Checked: ${esc(o.metNote)}</span>` : ""}${o.waiveReason ? `<br><span class="small">Waived: ${esc(o.waiveReason)}</span>` : ""}</td>
         <td>${badge(obligationTone(o), obligationLabel(o))}${(o.remindersSent ?? []).length ? `<br><span class="small muted">reminded ${o.remindersSent.map((r) => (r === -1 ? "overdue" : `${r}d`)).join(", ")}</span>` : ""}</td>
@@ -382,10 +383,10 @@ export async function renderRequest(id) {
     const h = await api("GET", "/api/client/home");
     const r = h.requests.find((x) => x.id === id);
     if (!r || !r.advice) {
-      $app.innerHTML = `<p><a href="#/">← Overview</a></p><h1>Our advice</h1><p class="muted">${r?.adviceStatus === "pending_review" ? "A person at MKW Advisors is checking the advice for your case; it appears here once approved." : "No advice for this request."}</p>`;
+      $app.innerHTML = `<p><a href="#/">← Overview</a></p><h1>Our advice</h1><p class="muted">${r?.adviceStatus === "pending_review" ? "A person at MKW Advisors is checking the advice for your case; it appears here once approved." : r?.obligationId ? "This is your renewal request: partner firms price it and your offers appear on the overview; nothing is filed until you accept one." : "No advice for this request."}</p>${r?.assessmentId ? `<p class="small muted">It started from your saved result on our public page.</p>` : ""}`;
       return;
     }
-    $app.innerHTML = `<p><a href="#/">← Overview</a></p><h1>Our advice for your request</h1><p class="muted">Reviewed by MKW Advisors on ${date(r.adviceReviewedAt)}. Confidence is shown for each statement.</p>${adviceHtml(r.advice)}`;
+    $app.innerHTML = `<p><a href="#/">← Overview</a></p><h1>Our advice for your request</h1><p class="muted">Reviewed by MKW Advisors on ${date(r.adviceReviewedAt)}. Confidence is shown for each statement.</p>${r.assessmentId ? `<p class="small muted">This request started from your saved result on our public page; the advice here was built afresh on the rules and data of the day, and a person reviewed it.</p>` : ""}${adviceHtml(r.advice)}`;
     return;
   }
   const r = await api("GET", `/api/ops/requests/${id}/scoping`);
@@ -407,6 +408,7 @@ export async function renderRequest(id) {
       ${(r.drafts ?? []).length ? `<h3>AI drafts</h3>${r.drafts.map((d) => `<div class="small">${badge(d.status === "pending" ? "UNCERTAIN" : d.status === "approved" ? "ok" : "rejected", d.status)} ${esc(d.kind)} by ${esc(d.model)} · ${esc(d.output?.summary ?? "")}${d.status === "pending" ? ` <a href="#/agent">decide in the AI queue</a>` : ""}</div>`).join("")}` : ""}
     </div>
   </div>
+  ${r.assessment ? `<div class="card" style="margin-top:16px"><h2>From a saved public result</h2><p class="small">Saved ${date(r.assessment.savedAt)}${r.assessment.source?.source ? ` · came from ${esc([r.assessment.source.source, r.assessment.source.campaign].filter(Boolean).join(" / "))}` : ""} · opened ${r.assessment.recovered} time(s). What the public saw then: ${r.assessment.summary?.confirmed ? `structure ${esc(STRUCTURE_LABEL[r.assessment.summary.recommendation] ?? r.assessment.summary.recommendation)}` : "no structure (not approved for display)"}, ${r.assessment.summary?.approvedStatements ?? 0} approved statement(s), ${r.assessment.summary?.approvedPlaces ?? 0} approved place(s)${r.assessment.summary?.noViableOption ? ", no option fitted" : ""}. The advice below is computed on today's rules and data${r.assessment.dataAsOf ? ` (the result was built on data as of ${date(r.assessment.dataAsOf)})` : ""}.</p></div>` : ""}
   ${r.dataChanged ? `<div class="card" role="alert" style="margin-top:16px"><h2>The rules or place data changed since this advice was computed</h2><p>A fact was recorded, a rule verified, or evidence passed its re-check date after ${date(r.advice?.dataVersion?.asOf)}. Recompute the advice, check it, then approve: approval of the older version is refused.</p></div>` : ""}
   ${r.advice ? `<form data-form="approve-advice" data-id="${r.id}"><h2 style="margin-top:16px">Advice ${r.advice_status === "approved" ? `(approved by ${esc(r.reviewed_by ?? "")} on ${date(r.advice_reviewed_at)})` : "to review"}</h2>
     ${adviceHtml(r.advice, { editable: canAct && r.advice_status !== "approved" })}
@@ -525,7 +527,7 @@ export async function renderAgentQueue() {
   <p class="muted small">Public-page submissions for an email that already has an account. Nothing was attached to that account; a person decides whether to call, merge or discard.</p>
   <div class="card flush">${table(["Received", "Email", "Company", "Name", "Answers", ""], leads.map((l) => `<tr><td class="small">${dateTime(l.createdAt ?? l.created_at)}</td><td class="mono small">${esc(l.email)}</td><td>${esc(l.company)}</td><td>${esc(l.name)}${l.phone_given ? ' <span class="small muted">(phone given)</span>' : ""}</td>
     <td class="small">${esc(words(l.answers?.jurisdiction ?? ""))} · ${esc(l.answers?.emirate ?? "")} · ${l.answers?.visas ?? 0} visa(s)${l.answers?.description ? `<br><span class="muted">${esc(l.answers.description.slice(0, 160))}</span>` : ""}</td>
-    <td><form data-form="lead" data-id="${l.id}" class="row"><input name="note" placeholder="What was done" style="max-width:180px" /><button class="sm" type="submit">Handled</button></form></td></tr>`), "No held leads.")}</div>` : ""}`;
+    <td><form data-form="lead" data-id="${l.id}" class="row"><input name="note" placeholder="What was done" style="max-width:180px" /><button class="sm" type="submit">Handled</button><button class="sm primary" type="button" data-act="lead-convert" data-id="${l.id}">Make it a request for this client</button></form></td></tr>`), "No held leads.")}</div>` : ""}`;
 }
 
 export async function renderSearch(q) {

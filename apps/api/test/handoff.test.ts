@@ -86,11 +86,15 @@ describe("the handoff into Tasees", () => {
     expect((await env.call("client", "POST", `/api/obligations/${other}/renewal-request`)).status).toBe(400);
     expect((await env.call("setup", "POST", `/api/obligations/${obligationId}/renewal-request`)).status).toBe(403);
     const outbox = await count(env, "outbox");
+    // An obligation ops added by hand has no engagement: the renewal takes the client's latest request's place.
+    const latest = await env.call("client", "POST", "/api/requests", { answers: { mode: "new_company", jurisdiction: "free_zone", emirate: "Sharjah", freeZone: "SHAMS", visas: 1 } });
+    expect(latest.status).toBe(200);
+    await asPlatform(env.db, null, (tx) => tx.query("update requests set created_at = created_at - interval '1 day' where id <> $1", [latest.body.id])); // the test clock stands still
     const r = await env.call("client", "POST", `/api/obligations/${obligationId}/renewal-request`);
     expect(r.status).toBe(200);
     expect(r.body.lines).toBe(1);
     const [req] = (await asPlatform(env.db, null, (tx) => tx.query("select answers, scope, obligation_id, client_org_id from requests where id = $1", [r.body.id]))).rows as any[];
-    expect(req.answers).toMatchObject({ mode: "services", services: ["SET-RENEW"] });
+    expect(req.answers).toMatchObject({ mode: "services", emirate: "Sharjah", freeZone: "SHAMS", services: ["SET-RENEW"] });
     expect(req.scope.lines).toEqual([{ code: "SET-RENEW", qty: 1 }]);
     expect(req.obligation_id).toBe(obligationId);
     expect(req.client_org_id).toBe(clientOrg);
@@ -134,8 +138,12 @@ describe("the handoff into Tasees", () => {
     expect((await env.call("client", "GET", "/api/client/compliance")).body.find((o: any) => o.id === obligationId).renewalRequestId).toBeNull();
     // An engagement that delivered something else does not meet a renewal obligation.
     const other2 = (await env.call("ops", "POST", `/api/ops/clients/${clientOrg}/obligations`, { kind: "licence_renewal", title: "Second licence renewal", dueDate: "2027-06-01", recurrence: "yearly" })).body.id;
+    // An obligation generated from a delivered engagement renews that engagement's licence: its emirate and zone.
+    await asPlatform(env.db, null, (tx) => tx.query("update obligations set engagement_id = (select id from engagements where request_id = $2) where id = $1", [other2, r.body.id]));
+    await asPlatform(env.db, null, (tx) => tx.query("update engagements set emirate = 'Dubai', free_zone = 'IFZA' where request_id = $1", [r.body.id]));
     const r2 = await env.call("ops", "POST", `/api/obligations/${other2}/renewal-request`);
     expect(r2.status).toBe(200);
+    expect((await asPlatform(env.db, null, (tx) => tx.query("select answers from requests where id = $1", [r2.body.id]))).rows[0]).toMatchObject({ answers: { emirate: "Dubai", freeZone: "IFZA", services: ["SET-RENEW"] } });
     const { completeRenewal } = await import("../src/services/handoff.ts");
     // Simulate: the engagement for the second request carries no SET-RENEW line.
     const offer2 = (await env.call("ops", "POST", `/api/ops/requests/${r2.body.id}/build-offers`, { tiers: ["standard"] })).body.offerIds[0];

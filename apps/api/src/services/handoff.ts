@@ -82,9 +82,15 @@ export async function assessmentContext(tx: Queryable, requestId: string) {
  * client, linked both ways. The client asks for their own; ops may ask for any. One open request per obligation.
  */
 export async function renewalRequest(tx: Queryable, actor: SessionUser, obligationId: string) {
+  // Lock order (lib/context.ts): the audit chain before the obligation row; the reminder sweep holds the chain lock
+  // while it moves through obligations.
+  await lockAuditChain(tx);
   const o = (await tx.query<{ id: string; client_org_id: string; engagement_id: string | null; kind: string; status: string }>("select id, client_org_id, engagement_id, kind, status from obligations where id = $1 for update", [obligationId])).rows[0];
   if (!o) throw notFound("Obligation not found");
-  const engagementEmirate = o.engagement_id ? ((await tx.query<{ emirate: string | null }>("select emirate from engagements where id = $1", [o.engagement_id])).rows[0]?.emirate ?? null) : null;
+  // The renewal is for the licence the original engagement delivered: its emirate and free zone travel with the
+  // request, so the zone's own renewal fee row applies when MKW's fee table has one.
+  const origin = o.engagement_id ? (await tx.query<{ emirate: string | null; free_zone: string | null }>("select emirate, free_zone from engagements where id = $1", [o.engagement_id])).rows[0] ?? null : null;
+  const engagementEmirate = origin?.emirate ?? null;
   const own = actor.orgType === "client" && actor.orgId === o.client_org_id && ["client_owner", "client_member"].includes(actor.role);
   const ops = ["ops", "founder"].includes(actor.role);
   if (!own && !ops) throw forbidden("Only the client or MKW ops asks for a renewal offer");
@@ -92,8 +98,10 @@ export async function renewalRequest(tx: Queryable, actor: SessionUser, obligati
   if (o.status !== "open") throw conflict(`The obligation is ${o.status.replace("_", " ")}; a renewal offer is asked for while it is open`);
   const live = (await tx.query<{ id: string }>(`select r.id from requests r where r.obligation_id = $1 and ${RENEWAL_LIVE}`, [obligationId])).rows[0];
   if (live) throw conflict("A renewal for this obligation is already in progress (being quoted, offered or delivered)");
-  const emirate = engagementEmirate ?? (await tx.query<{ e: string | null }>("select answers->>'emirate' as e from requests where client_org_id = $1 order by created_at desc limit 1", [o.client_org_id])).rows[0]?.e ?? "Dubai";
-  const answers: IntakeAnswers = { mode: "services", emirate, services: ["SET-RENEW"] };
+  const latest = engagementEmirate ? null : (await tx.query<{ e: string | null; z: string | null }>("select answers->>'emirate' as e, answers->>'freeZone' as z from requests where client_org_id = $1 order by created_at desc limit 1", [o.client_org_id])).rows[0];
+  const emirate = engagementEmirate ?? latest?.e ?? "Dubai";
+  const freeZone = origin ? origin.free_zone : (latest?.z ?? null);
+  const answers: IntakeAnswers = { mode: "services", emirate, ...(freeZone ? { freeZone } : {}), services: ["SET-RENEW"] };
   const created = await createRequest(tx, actor, answers, ops ? o.client_org_id : undefined, null, { channel: own ? "client" : "console", from: "obligation", obligationId });
   await tx.query("update requests set obligation_id = $2 where id = $1", [created.id, obligationId]);
   await audit(tx, actor, "obligation.renewal_requested", "obligation", obligationId, { requestId: created.id });

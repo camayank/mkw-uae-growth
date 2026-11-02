@@ -4,7 +4,7 @@ import { renderNotifications } from "./common.js";
 import { renderClientCompliance, renderClientHome, renderClientOffer, renderIntake, renderPayPage, renderStatement } from "./client.js";
 import { renderEngagement } from "./engagement.js";
 import { renderFirm, renderPartnerHome, renderPartnerPayouts, renderPartnerPerformance, renderRateCards } from "./partner.js";
-import { renderAgentQueue, renderAudit, renderDashboard, renderDelays, renderOpsCompliance, renderOpsOffer, renderPartners, renderPipeline, renderQueue, renderRequest, renderScoping, renderSearch } from "./ops.js";
+import { renderAgentQueue, renderAudit, renderDashboard, renderDelays, renderLead, renderLeads, renderOpsCompliance, renderOpsOffer, renderPartners, renderPipeline, renderQueue, renderRequest, renderScoping, renderSearch } from "./ops.js";
 import { renderCatalogue, renderPeople, renderRules, renderSettings, renderSystem } from "./admin.js";
 
 hooks.render = renderNow;
@@ -21,7 +21,7 @@ export function navFor() {
   if (isPartner()) return [["home", "Work"], ["performance", "Performance"], ["firm", "Your firm"], ["rates", "Rate card"], ["payouts", "Payouts"]];
   // MKW staff: fifteen pages in four entries, so the bar stays on one row at desktop and phone width.
   return [
-    { group: "Work", items: [["home", "Queue"], ["pipeline", "Pipeline"], ["new", "New request"], ["delays", "Delays"], ["compliance", "Compliance"], ["agent", "AI queue"]] },
+    { group: "Work", items: [["home", "Queue"], ["leads", "Leads"], ["pipeline", "Pipeline"], ["new", "New request"], ["delays", "Delays"], ["compliance", "Compliance"], ["agent", "AI queue"]] },
     ["partners", "Partners"],
     ["dashboard", "Dashboard"],
     { group: "Setup", items: [["people", "People"], ["catalogue", "Catalogue"], ["rules", "Rules"], ["scoping", "Scoping"], ["settings", "Settings"], ["system", "System"], ["audit", "Audit trail"]] },
@@ -175,6 +175,7 @@ export async function renderPage(page, id) {
     }
     if (page === "offer" && id) return await renderOpsOffer(id);
     if (page === "pipeline") return await renderPipeline();
+    if (page === "leads") return id ? await renderLead(id) : await renderLeads();
     if (page === "partners") return await renderPartners();
     if (page === "partner" && id) return await renderFirm(id);
     if (page === "delays") return await renderDelays();

@@ -87,13 +87,13 @@ Status per contract capability:
 
 | Feature | Status |
 | --- | --- |
-| Anonymous sessions, assessment persistence and recovery | Missing (E4) |
-| UTM and referral attribution | Partial: `intake_leads.source` stores a channel only (E4) |
-| Distinct assessment, lead and customer identities | Partial: leads are separate from clients; no assessment entity (E4) |
-| Consent records | Partial: one consent at intake with version and time; service, marketing and partner disclosure are not separate yet (E4) |
-| Scoring, segmentation, complexity, high-intent detection | Missing (E4) |
-| Expert routing, consultation booking, CRM pipeline, follow-ups | Missing (E4); ops queue (O11) and pipeline (O4) are reusable |
-| Conversion and source-to-revenue analytics | Missing (E4) |
+| Anonymous sessions, assessment persistence and recovery | Built (E4): saved on the founder's action, no contact details, recovered by code, anonymised after the retention period |
+| UTM and referral attribution | Built (E4): the five UTM fields, referrer and landing page on the session, the lead and the request |
+| Distinct assessment, lead and customer identities | Built (E4): `assessments`, `leads`, and the client organisation they become |
+| Consent records | Built (E4): service, marketing and partner disclosure as separate append-only records with the text version; withdrawals recorded; in the export and erasure paths |
+| Scoring, segmentation, complexity, high-intent detection | Built (E4): complexity and intent scores, five segments, a high-intent flag; heuristics that order attention |
+| Expert routing, consultation booking, CRM pipeline, follow-ups | Built (E4) as internal work: routing per segment to an owner, call requests and follow-ups in the ops queue, the leads page. No booking integration (owner decision, rules 7 and 11) |
+| Conversion and source-to-revenue analytics | Built (E4): per source and campaign, assessments to accepted client revenue |
 
 ### D. Tasees fulfilment
 

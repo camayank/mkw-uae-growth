@@ -33,6 +33,9 @@
     <h1>Which UAE structure fits your business?</h1>
     <p class="muted">Seven short questions. You see which structures and places fit, which do not and why, with nothing to sign up for. Only points a named person at MKW Advisors has checked show their detail; the rest say "to be verified" until a person reviews your case.</p>
 
+    <form class="card noprint" id="recover" novalidate>
+      <div class="row"><label class="small" for="code">Have a saved result? Enter its code</label><input id="code" name="code" maxlength="10" autocapitalize="characters" style="max-width:160px" placeholder="ABCDE23456" /><button type="submit" class="sm">Open</button><span class="small muted" id="recover-msg"></span></div>
+    </form>
     <form class="card" id="questions" novalidate>
       <p class="progress" id="progress" aria-live="polite"></p>
       <div id="step" class="step"></div>
@@ -54,9 +57,13 @@
         <div class="field"><label for="email">Work email</label><input id="email" name="email" type="email" required /></div>
         <div class="field"><label for="phone">Phone (optional)</label><input id="phone" name="phone" /></div>
       </div>
+      <label class="small"><input type="checkbox" name="call" id="call" /> I would like a call with a person at MKW Advisors</label>
+      <div class="field" id="times-field" hidden><label for="times">When suits you? (optional)</label><input id="times" name="times" maxlength="300" placeholder="for example weekday mornings, Gulf time" /></div>
       <label class="hp" aria-hidden="true">Leave this field empty <input name="website" tabindex="-1" autocomplete="off" aria-hidden="true" /></label>
       <label class="small"><input type="checkbox" name="consent" required /> I agree that MKW Advisors may process the details above and my answers to review my case, store them in the UAE and contact me about this request (UAE Personal Data Protection Law). I can ask for a copy or deletion at any time.</label>
       <input type="hidden" name="consentVersion" value="2026-11-selector-v1" />
+      <label class="small"><input type="checkbox" name="marketing" /> <span id="marketing-text">MKW Advisors may send me occasional updates about UAE company setup and its services. I can withdraw this at any time.</span> <span class="badge">optional</span></label>
+      <label class="small"><input type="checkbox" name="partner" /> <span id="partner-text">MKW Advisors may name my company to a vetted partner firm it has chosen for my request before I accept an offer, so the firm can prepare. Until then partners see my request without my name.</span> <span class="badge">optional</span></label>
       <div class="row" style="margin-top:12px"><button class="primary" type="submit">Send for review</button><span class="small muted">A reply usually comes within one working day.</span></div>
       <p class="notice small" id="rmsg" hidden></p>
     </form>

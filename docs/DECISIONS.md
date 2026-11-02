@@ -718,3 +718,29 @@ reviewed" and "structures only, no figures". This is the documented resolution o
 - **Disclaimer.** The default wording is `PUBLIC_DISCLAIMER` in `packages/core/src/public.ts`; the owner may change
   it.
 
+**D81. Leads are their own identity, with consents per purpose, and nothing is sent to them.** (E4, migration 017.)
+- **A saved assessment is the founder's own action** and holds answers, a result summary and attribution only: no
+  contact details, no email. The recovery code is shown once and stored hashed. Recovery re-runs the assessment on
+  today's rules and says so.
+- **A lead is never a user.** Every review request creates a lead that points at the session it came from and at
+  what it became (a client organisation and request, or a held enquiry). Scores (complexity, intent), a segment and
+  a high-intent flag come from `scoreLead` in core: deterministic, bounded, with no commercial input.
+- **Consents are append-only records per purpose:** service (required), marketing and partner disclosure (never
+  pre-ticked), each with the text version shown. A withdrawal is a new record. Consents carry no IP (the lead row
+  does, and it is tombstoned). Consents travel with the PDPL export, with the lead's notes and saved assessment, and
+  are kept through erasure; the lead's personal data, notes and saved answers are tombstoned.
+- **A submitted form is not a client.** A lead "became a client" only when an offer on its request was accepted or
+  an engagement exists for the organisation it became. That predicate decides both the `converted` status and what
+  retention keeps.
+- **The recovery code is never stored in clear:** it is hashed at rest and stripped from the landing page and
+  referrer before attribution is recorded, so neither the request's source nor the audit trail can carry it.
+- **Free text a person types about a lead** lives in `lead_notes`, which erasure reaches; the audit trail records
+  that a note or status was recorded, never its text.
+- **Routing assigns, it does not send.** The founder maps segments to owners on Settings; a routed lead, a call
+  request and a due follow-up are queue items for a person. No function in E4 writes to the outbox.
+- **Analytics stop at client revenue.** Per source and campaign, from saved assessments to accepted offers, in
+  client totals; margin never appears.
+- **Retention is a confirmed rule or nothing.** Leads and sessions that never became a client are anonymised after
+  the retention period only once the founder has confirmed the periods; until then the job counts and changes
+  nothing. Counts stay for analytics.
+

@@ -6,6 +6,9 @@ import type { Notifier } from "../lib/notify.ts";
 import type { AiModel } from "../lib/ai.ts";
 import { draftScopeForRequest } from "./drafts.ts";
 import { createRequest, IntakeSchema } from "./requests.ts";
+import { CONSENT_TEXTS, createLead, firstTouchAttribution } from "./leads.ts";
+import { adviseNow } from "./scoping.ts";
+import { cleanAttribution, type AdviceInput } from "@tasees/core";
 import { conflict, forbidden, notFound } from "../lib/errors.ts";
 
 /**
@@ -32,6 +35,12 @@ export const PublicIntakeSchema = z.object({
   campaign: z.string().max(80).optional(),
   referrer: z.string().max(300).optional(),
   answers: IntakeSchema,
+  // E4: attribution, the saved assessment this came from, the other consents (never pre-ticked), a call request.
+  attribution: z.object({ source: z.string().max(80).optional(), medium: z.string().max(80).optional(), campaign: z.string().max(80).optional(), term: z.string().max(120).optional(), content: z.string().max(120).optional(), referrer: z.string().max(300).optional(), landing: z.string().max(200).optional() }).partial().optional(),
+  assessmentCode: z.string().max(12).optional(),
+  marketingConsent: z.boolean().default(false),
+  partnerDisclosureConsent: z.boolean().default(false),
+  consultation: z.object({ wanted: z.boolean(), times: z.string().max(300).optional() }).optional(),
 });
 export type PublicIntake = z.infer<typeof PublicIntakeSchema>;
 
@@ -44,18 +53,31 @@ export async function publicIntake(tx: Queryable, input: PublicIntake, ip: strin
   const email = input.email.trim().toLowerCase();
   const company = input.company.trim();
   const consent = { given: true, at: new Date().toISOString(), version: input.consentVersion, channel: "public_intake", ip };
-  const source = { channel: "public_intake", campaign: input.campaign ?? null, referrer: input.referrer ?? null, phone: input.phone ? "provided" : "none" };
+  // First touch wins: a saved result's campaign stays with the lead and the request it becomes.
+  const attribution = await firstTouchAttribution(tx, input.assessmentCode, cleanAttribution({ ...(input.attribution ?? {}), campaign: input.attribution?.campaign ?? input.campaign, referrer: input.attribution?.referrer ?? input.referrer }));
+  const source = { channel: "public_intake", campaign: attribution.campaign, referrer: attribution.referrer, phone: input.phone ? "provided" : "none", attribution };
+  // What the engine makes of the answers feeds the lead's complexity: contradictions, missing facts, no viable option.
+  const assessed = input.answers.mode === "new_company" ? await adviseNow(tx, input.answers as AdviceInput) : null;
+  const signals = assessed ? { contradictions: assessed.contradictions?.length ?? 0, missingFacts: assessed.missingFacts?.length ?? 0, noViableOption: !!assessed.noViableOption } : {};
+  const lead = (outcome: { clientOrgId?: string | null; requestId?: string | null; intakeLeadId?: string | null }) =>
+    createLead(tx, {
+      email, name: input.name, company, phoneGiven: !!input.phone, answers: input.answers, attribution, assessmentCode: input.assessmentCode, signals,
+      consents: { service: { version: input.consentVersion }, marketing: { given: input.marketingConsent, version: CONSENT_TEXTS.marketing.version }, partnerDisclosure: { given: input.partnerDisclosureConsent, version: CONSENT_TEXTS.partner_disclosure.version } },
+      consultation: input.consultation ?? null, ip, outcome,
+    });
   const existing = (await tx.query<{ id: string }>("select id from users where email = $1", [email])).rows[0];
   if (existing) {
     // Held for a person. Nothing is written as the account holder, their consent record stays as it was, and
     // the only email is a neutral sign-in note carrying none of the submitted text.
-    const lead = (
+    const createLeadRecord = lead;
+    const held = (
       await tx.query<{ id: string }>(
         "insert into intake_leads (email, company, name, phone_given, answers, consent, source, ip) values ($1, $2, $3, $4, $5, $6, $7, $8) returning id",
         [email, company, input.name.trim(), !!input.phone, JSON.stringify(input.answers), JSON.stringify(consent), JSON.stringify(source), ip],
       )
     ).rows[0]!.id;
-    await audit(tx, null, "intake.lead_held", "intake_lead", lead, { reason: "email already has an account" });
+    await audit(tx, null, "intake.lead_held", "intake_lead", held, { reason: "email already has an account" });
+    await createLeadRecord({ intakeLeadId: held });
     await notify.send({ to: email, channel: "email", template: "intake_signin", vars: {} });
     return { ok: true };
   }
@@ -67,6 +89,7 @@ export async function publicIntake(tx: Queryable, input: PublicIntake, ip: strin
   const actor: SessionUser = { id: userId, orgId, orgType: "client", orgName: company, role: "client_owner", email, name: input.name.trim() };
   const req = await createRequest(tx, actor, input.answers, undefined, null, source);
   await audit(tx, actor, "intake.consent_recorded", "user", userId, { version: input.consentVersion });
+  await lead({ clientOrgId: orgId, requestId: req.id });
   // A free-text description gets an AI draft into the review queue; nothing changes until ops approves it.
   if (model && input.answers.description?.trim()) await draftScopeForRequest(tx, actor, req.id, model);
   await notify.send({ to: email, channel: "email", template: "intake_received", vars: { company, newAccount: 1 } });

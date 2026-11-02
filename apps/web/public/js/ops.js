@@ -540,3 +540,75 @@ export async function renderSearch(q) {
 }
 
 // People: organisations, users, data requests ------------------------------------------------
+
+// Lead intelligence (E4): the pipeline is internal; nothing here sends anything to a lead. ----------------------
+const SEGMENT_LABEL = { starter: "Starter", standard: "Standard", complex: "Complex", regulated: "Regulated", cross_border: "Cross-border" };
+const LEAD_STATUS = ["new", "routed", "contacted", "consultation", "converted", "closed"];
+const leadStatusBadge = (s) => badge(s === "converted" ? "ok" : s === "closed" ? "pending" : s === "new" ? "UNCERTAIN" : "info", words(s));
+const consentBadges = (c) => ["service", "marketing", "partner_disclosure"].map((p) => `<span class="badge ${c?.[p] ? "ok" : ""}" title="${esc(words(p))}">${esc(words(p))}: ${c?.[p] ? "yes" : "no"}</span>`).join(" ");
+
+export async function renderLeads() {
+  const params = new URLSearchParams(location.hash.split("?")[1] ?? "");
+  const q = ["status", "segment", "owner"].filter((k) => params.get(k)).map((k) => `${k}=${encodeURIComponent(params.get(k))}`).join("&");
+  const [leads, analytics] = await Promise.all([api("GET", `/api/ops/pipeline/leads${q ? `?${q}` : ""}`), api("GET", "/api/ops/pipeline/leads/analytics")]);
+  const filter = (k, v, label) => `<a class="badge ${params.get(k) === v ? "ok" : ""}" href="#/leads?${new URLSearchParams({ ...Object.fromEntries(params), [k]: v }).toString()}">${esc(label)}</a>`;
+  $app.innerHTML = `<h1>Leads</h1>
+  <p class="muted">Everyone who asked MKW Advisors to review their case, with their consents, where they came from and two scores that order a person's attention. Nothing is sent to a lead from here: a person calls, writes or books, and records it. ${role() === "founder" ? `Who owns each kind of lead is set on <a href="#/settings">Settings</a>.` : ""}</p>
+  <div class="row small" style="margin-bottom:12px"><a class="badge ${!params.toString() ? "ok" : ""}" href="#/leads">All</a> ${filter("owner", "me", "Mine")} ${LEAD_STATUS.map((s) => filter("status", s, words(s))).join(" ")} ${Object.entries(SEGMENT_LABEL).map(([k, v]) => filter("segment", k, v)).join(" ")}</div>
+  <div class="card flush">${table(
+    ["Received", "Company", "Segment", "#Intent", "#Complexity", "Status", "Owner", "Consents", "Source", ""],
+    leads.map((l) => `<tr><td class="small">${dateTime(l.createdAt)}</td><td>${esc(l.company)}<br><span class="small muted">${esc(l.name)}${l.phoneGiven ? " · phone given" : ""}${l.consultation ? ` · ${badge("info", "call requested")}` : ""}</span></td>
+      <td>${esc(SEGMENT_LABEL[l.segment] ?? l.segment)}</td><td class="num">${l.intent}${l.highIntent ? ` ${badge("ok", "high")}` : ""}</td><td class="num">${l.complexity}</td><td>${leadStatusBadge(l.status)}${l.openFollowups ? `<br><span class="small muted">follow-up ${date(l.nextFollowup)}</span>` : ""}</td>
+      <td class="small">${esc(l.owner ?? "–")}</td><td class="small">${consentBadges(l.consents)}</td><td class="small">${esc([l.source?.source, l.source?.campaign].filter(Boolean).join(" / ") || "direct")}</td><td><a href="#/leads/${l.id}">Open</a></td></tr>`),
+    "No leads yet.",
+  )}</div>
+  <h2 style="margin-top:24px">Where leads come from, and what they become</h2>
+  <p class="muted small">Per source and campaign: saved assessments on the public selector, leads, requests, offers published and accepted, and the client revenue of accepted offers (client totals; no margin here).</p>
+  <div class="card flush">${table(
+    ["Source", "Campaign", "#Assessments", "#Leads", "#Requests", "#Offers published", "#Offers accepted", "#Revenue"],
+    analytics.map((a) => `<tr><td>${esc(a.source)}</td><td class="small">${esc(a.campaign || "–")}</td><td class="num">${a.assessments}</td><td class="num">${a.leads}</td><td class="num">${a.requests}</td><td class="num">${a.offersPublished}</td><td class="num">${a.offersAccepted}</td><td class="num">${aed(a.revenueFils)}</td></tr>`),
+    "Nothing yet.",
+  )}</div>`;
+}
+
+export async function renderLead(id) {
+  const [l, routing] = await Promise.all([api("GET", `/api/ops/pipeline/leads/${id}`), api("GET", "/api/admin/settings/lead-routing")]);
+  const a = l.answers ?? {};
+  const answer = (k, v) => `<tr><td>${esc(k)}</td><td>${esc(v ?? "–")}</td></tr>`;
+  $app.innerHTML = `<p><a href="#/leads">← Leads</a></p>
+  <div class="row between"><h1>${esc(l.company)}</h1>${leadStatusBadge(l.status)}</div>
+  <div class="grid cols-2">
+    <div class="card"><h2>Who</h2>
+      <table>${answer("Name", l.name)}${answer("Email", l.email)}${answer("Phone", l.phoneGiven ? "given (ask ops for it)" : "not given")}${answer("Received", dateTime(l.createdAt))}${answer("Source", [l.source?.source, l.source?.medium, l.source?.campaign].filter(Boolean).join(" / ") || "direct")}${answer("Landing page", l.source?.landing)}${answer("Saved assessment", l.assessmentId ? "yes" : "no")}</table>
+      <p class="small">${consentBadges(l.consents)}</p>
+      ${l.consultation ? `<p><b>Asked for a call.</b> ${l.consultation.times ? `Preferred: <span data-no-i18n>${esc(l.consultation.times)}</span>` : ""}</p>` : ""}
+      ${l.requestId ? `<p class="small"><a href="#/request/${l.requestId}">Open the request's scoping</a></p>` : l.intakeLeadId ? `<p class="small muted">The email already had an account; the enquiry is held in the <a href="#/agent">AI queue</a>.</p>` : ""}
+    </div>
+    <div class="card"><h2>What they answered</h2>
+      <table>${answer("Activity", a.activity)}${answer("Customers", words(a.customers))}${answer("Visas", a.visas)}${answer("Premises", a.premises)}${answer("Budget", a.budgetAed ? aed(a.budgetAed * 100) : null)}${answer("Emirate", a.emirate)}${answer("Place in mind", a.freeZone)}${answer("Owners", a.ownerType)}${answer("Tax resident abroad", a.foreignTaxResident === true ? "yes" : a.foreignTaxResident === false ? "no" : null)}</table>
+      <p class="small muted">Segment ${esc(SEGMENT_LABEL[l.segment] ?? l.segment)} · intent ${l.intent}${l.highIntent ? " (high)" : ""} · complexity ${l.complexity}. Scores order attention; they decide nothing.</p>
+    </div>
+  </div>
+  <div class="grid cols-2" style="margin-top:16px">
+    <form class="card" data-form="lead-assign" data-id="${l.id}"><h2>Owner</h2>
+      <div class="row"><select name="ownerUserId" aria-label="Owner"><option value="">Nobody yet</option>${routing.owners.map((o) => `<option value="${o.id}" ${o.id === l.ownerUserId ? "selected" : ""}>${esc(o.name)} (${esc(o.role)})</option>`).join("")}</select><input name="note" placeholder="Note (optional)" style="max-width:220px" /><button class="sm" type="submit">Assign</button></div></form>
+    <form class="card" data-form="lead-status" data-id="${l.id}"><h2>Status</h2>
+      <div class="row"><select name="status" aria-label="Status">${LEAD_STATUS.filter((s) => s !== "converted" || l.becameClient).map((s) => `<option value="${s}" ${s === l.status ? "selected" : ""}>${esc(words(s))}</option>`).join("")}</select><input name="note" placeholder="What happened (optional)" style="max-width:260px" /><button class="sm" type="submit">Record</button></div></form>
+  </div>
+  <div class="grid cols-2" style="margin-top:16px">
+    <form class="card" data-form="lead-note" data-id="${l.id}"><h2>Note</h2><div class="row"><input name="body" required placeholder="What was said or decided" style="flex:1" /><button class="sm" type="submit">Add</button></div></form>
+    <form class="card" data-form="lead-followup" data-id="${l.id}"><h2>Follow-up</h2><p class="small muted">A task for a person; it appears in the queue when due. Nothing is sent.</p><div class="row"><input name="dueAt" type="date" required /><input name="body" placeholder="What to do" style="max-width:260px" /><button class="sm" type="submit">Set</button></div></form>
+  </div>
+  <form class="card" data-form="lead-withdraw" data-id="${l.id}" style="margin-top:16px"><h2>Record a consent withdrawal</h2><p class="small muted">When the person tells MKW they withdraw a consent (by email, phone or in writing), record it here; the history keeps every decision.</p>
+    <div class="row"><select name="purpose" aria-label="Consent purpose"><option value="marketing">marketing</option><option value="partner_disclosure">partner disclosure</option></select><input name="note" required placeholder="How they told us (recorded)" style="max-width:300px" /><button class="sm" type="submit">Record withdrawal</button></div></form>
+  <div class="card flush" style="margin-top:16px"><h2>History</h2>${table(
+    ["When", "What", "By"],
+    l.notes.map((n) => `<tr><td class="small">${dateTime(n.createdAt ?? n.created_at)}</td><td>${badge(n.kind === "followup" && !n.done_at ? "pending" : n.kind === "note" ? "info" : "ok", words(n.kind))} <span data-no-i18n>${esc(n.body)}</span>${n.due_at ? ` <span class="small muted">due ${date(n.due_at)}${n.done_at ? ", done" : ""}</span>` : ""}</td><td class="small">${esc(n.author ?? "system")}</td></tr>`),
+    "Nothing yet.",
+  )}</div>
+  <div class="card flush" style="margin-top:16px"><h2>Consent history</h2>${table(
+    ["When", "Purpose", "Decision", "Text version", "Channel"],
+    l.consentHistory.map((c) => `<tr><td class="small">${dateTime(c.at)}</td><td>${esc(words(c.purpose))}</td><td>${badge(c.given ? "ok" : "pending", c.given ? "given" : "not given")}</td><td class="small mono">${esc(c.version)}</td><td class="small">${esc(words(c.channel))}</td></tr>`),
+  )}</div>`;
+}
+

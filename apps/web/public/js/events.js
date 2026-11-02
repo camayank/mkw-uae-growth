@@ -431,6 +431,19 @@ document.addEventListener("submit", (ev) => {
     if (!confirm("Approve this advice for the client? Items left UNCERTAIN are shown with that label.")) return;
     return act(() => api("POST", `/api/ops/requests/${id}/scoping/approve`, body), "Advice approved; the client can see it now");
   }
+  if (kind === "lead-assign") return act(() => api("POST", `/api/ops/pipeline/leads/${id}/assign`, { ownerUserId: String(fd.get("ownerUserId") || "") || null, note: String(fd.get("note") || "") }), "Owner recorded");
+  if (kind === "lead-status") return act(() => api("POST", `/api/ops/pipeline/leads/${id}/status`, { status: String(fd.get("status")), note: String(fd.get("note") || "") }), "Status recorded");
+  if (kind === "lead-note") return act(() => api("POST", `/api/ops/pipeline/leads/${id}/note`, { body: String(fd.get("body") || "") }), "Note added");
+  if (kind === "lead-followup") return act(() => api("POST", `/api/ops/pipeline/leads/${id}/followup`, { dueAt: `${String(fd.get("dueAt"))}T09:00:00+04:00`, body: String(fd.get("body") || "") }), "Follow-up set; it appears in the queue when due");
+  if (kind === "lead-withdraw") {
+    if (!confirm("Record that the person withdrew this consent? The record is kept with how they told us.")) return;
+    return act(() => api("POST", `/api/ops/pipeline/leads/${id}/consent-withdraw`, { purpose: String(fd.get("purpose")), note: String(fd.get("note") || "") }), "Withdrawal recorded");
+  }
+  if (kind === "lead-routing") {
+    const routing = {};
+    for (const [k, v] of fd.entries()) routing[k] = String(v || "") || null;
+    return act(() => api("PUT", "/api/admin/settings/lead-routing", { routing }), "Routing saved");
+  }
   if (kind === "record-fact") {
     const [subjectKind, ...rest] = String(fd.get("subject")).split(":");
     const body = {
@@ -516,7 +529,9 @@ document.addEventListener("submit", (ev) => {
     const periods = {};
     for (const [k, v] of fd.entries()) {
       if (k === "note" || v === "") continue;
-      periods[k] = ["sessions", "loginCodes"].includes(k) ? { days: Number(v) } : { years: Number(v) };
+      // Each period is counted in the unit its input shows (years for records, days for sessions, codes and leads).
+      const unit = form.querySelector(`input[name="${k}"]`)?.dataset.unit ?? (["sessions", "loginCodes", "leads"].includes(k) ? "days" : "years");
+      periods[k] = unit === "days" ? { days: Number(v) } : { years: Number(v) };
     }
     if (!confirm("Confirm these retention periods? Each becomes 'verified' and the change is recorded in the audit trail with your note.")) return;
     return act(() => api("PUT", "/api/admin/settings/retention", { periods, note: String(fd.get("note")) }), "Retention periods confirmed");

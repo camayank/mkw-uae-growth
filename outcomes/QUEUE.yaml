@@ -111,14 +111,14 @@ outcomes:
     needs_from_owner: [authoritative data per authority, named verifier]
   - id: E3
     title: Public Right UAE Entity selector (adaptive questions, comparison, report)
-    status: verified-pending-merge
+    status: merged
     contract: outcomes/E3-public-selector.md
     depends_on: [E2]
     needs_from_owner: [decision on public display under rule 5, report wording, disclaimer]
   - id: E4
     title: Lead intelligence (sessions, consents, attribution, scoring, routing, consultations)
-    status: planned
-    contract: docs/ENTITY-PROGRAMME.md
+    status: verified-pending-merge
+    contract: outcomes/E4-lead-intelligence.md
     depends_on: [E3]
     needs_from_owner: [routing owners, marketing consent text, lead retention]
   - id: E5

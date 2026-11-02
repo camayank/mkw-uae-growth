@@ -143,7 +143,7 @@ export const byStage = (a, b) => (STAGE_ORDER[a.stage] ?? 9) - (STAGE_ORDER[b.st
 
 export const pct = (bp) => (bp == null ? "–" : (Number(bp) / 100).toFixed(1) + "%");
 
-export const date = (v) => (v ? new Date(v).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "–");
+export const date = (v) => (v ? new Date(v).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Dubai" }) : "–");
 export const dateTime = (v) =>
   v ? new Date(v).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Dubai" }) + " GST" : "–";
 

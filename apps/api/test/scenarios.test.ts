@@ -8,8 +8,11 @@ import { EMAILS, makeEnv, type TestEnv } from "./helpers.ts";
  * and place is UNCERTAIN until a named person verifies it, as on the day of the pilot. Each test names the checks it
  * covers from the contract's list: [eligibility] the status and recommendation; [escalation] exclusion or a person's
  * review; [rationale] the reasons shown; [confidence] confidence propagation; [no-price] no invented figure;
- * [access] no unauthorised reading; [no-side-effect] nothing irreversible without a person; [ui-api] the screens read
- * the same answer the API gives. The traceability table is docs/evidence/E6/SCENARIOS.md.
+ * [access] no unauthorised reading; [no-side-effect] nothing irreversible without a person; [client-view] what the
+ * client's own API view shows is exactly what the review approved (the screens themselves are the smoke test's
+ * business; docs/evidence/E6/SCENARIOS.md names the checks per scenario). A test that verifies or approves anything
+ * puts it back, so every later test still runs on an unverified catalogue; facts (append-only) are recorded by the
+ * test that needs them, so each test runs alone.
  */
 const MONEY = /margin|partner_?(unit|cost|org|id)|payout|rate_?card|professional_?fils|commission|digest|lastFactId/i;
 const walk = (v: unknown, out: string[] = []): string[] => {
@@ -55,9 +58,17 @@ describe("the contract's scenarios, end to end", () => {
   const sameEngine = async (answers: Record<string, unknown>) => {
     const a = await advice({ jurisdiction: "not_sure", ...answers });
     const p = (await publicAssess(answers)).body;
+    expect(p.places.length).toBeGreaterThan(0); // the excluded places are listed too, as "to be verified"
     expect(p.places.slice(0, a.places.length).map((x: any) => x.zone)).toEqual(a.places.map((x: any) => x.zone));
     expect(p.places.every((x: any) => x.toBeVerified && !x.figures)).toBe(true);
     return { a, p };
+  };
+
+  /** Facilities on record for scenarios 6 and 8; facts are append-only, so recording them twice is harmless. */
+  const facilitiesOnRecord = async () => {
+    expect((await fact({ subject: "RAKEZ", field: "facilities", valueText: "office, warehouse, industrial", confidence: "rule_of_thumb" })).status).toBe(200);
+    expect((await fact({ subject: "IFZA", field: "facilities", valueText: "office", confidence: "rule_of_thumb" })).status).toBe(200);
+    expect((await fact({ subject: "Abu Dhabi DED mainland", field: "facilities", valueText: "office, industrial", confidence: "rule_of_thumb" })).status).toBe(200);
   };
 
   beforeAll(async () => {
@@ -71,7 +82,7 @@ describe("the contract's scenarios, end to end", () => {
   });
   afterAll(() => env.db.close());
 
-  it("1. Indian SaaS founder selling to US clients, two visas [eligibility] [rationale] [confidence] [no-side-effect] [ui-api] [access]", async () => {
+  it("1. Indian SaaS founder selling to US clients, two visas [eligibility] [rationale] [no-side-effect] [client-view] [access]", async () => {
     const answers = { activity: "tech", customers: "international", visas: 2, budgetAed: 25_000, premises: "office", ownerType: "individuals", foreignTaxResident: true };
     const r = await request({ jurisdiction: "not_sure", ...answers });
     const s = await scoping(r.id);
@@ -93,6 +104,9 @@ describe("the contract's scenarios, end to end", () => {
     expect(shown.places.map((p: any) => p.zone)).toEqual(a.places.map((p: any) => p.zone));
     expect(shown.dataVersion).toEqual({ asOf: a.dataVersion.asOf });
     noMoney(shown);
+    // Nobody else reads it: another client's home does not list it, a partner cannot open the review.
+    expect((await env.call("other", "GET", "/api/client/home")).body.requests.map((x: any) => x.id)).not.toContain(r.id);
+    expect((await env.call("setup", "GET", `/api/ops/requests/${r.id}/scoping`)).status).toBe(403);
     // The public selector gives the same places for the same answers, confirms nothing and shows no figure.
     const p = (await publicAssess(answers)).body;
     expect(p.places.slice(0, a.places.length).map((x: any) => x.zone)).toEqual(a.places.map((x: any) => x.zone));
@@ -142,11 +156,11 @@ describe("the contract's scenarios, end to end", () => {
     expect(refused.body.message).toMatch(/offshore/i);
   });
 
-  it("4. holding company with no visas [eligibility] [confidence] [no-price]", async () => {
+  it("4. holding company with no visas [eligibility] [no-price]", async () => {
     const a = await advice({ emirate: "Ras Al Khaimah", jurisdiction: "not_sure", activity: "holding", visas: 0, budgetAed: 15_000 });
     expect(a.structure.recommendation).toBe("offshore");
     expect(a.places[0].zone).toBe("RAK ICC");
-    // The setup estimate is shown with the place's own confidence, never as a price.
+    // The setup estimate carries the place's own confidence (UNCERTAIN on the seeded catalogue), never a price.
     expect(a.places[0]).toMatchObject({ confidence: "UNCERTAIN" });
     expect(finding(a.places[0], "place.budget")).toMatchObject({ outcome: "pass", confidence: "UNCERTAIN" });
     const p = (await publicAssess({ emirate: "Ras Al Khaimah", activity: "holding", visas: 0, budgetAed: 15_000 })).body;
@@ -159,7 +173,7 @@ describe("the contract's scenarios, end to end", () => {
     const a = (await scoping(r.id)).advice;
     expect(keysOf(a)).toContain("crossborder.corporate_shareholder");
     expect(a.crossBorder.find((x: any) => x.ruleKey === "crossborder.corporate_shareholder").confidence).toBe("UNCERTAIN");
-    // Cross-border points always go to a person: the request sits in the scoping queue until ops reviews it.
+    // The request waits for a person, as every new-company request does: it sits in the scoping queue until ops reviews it.
     expect((await env.call("ops", "GET", "/api/ops/overview")).body.exceptions.some((x: any) => x.kind === "scoping" && x.ref === r.id)).toBe(true);
   });
 
@@ -167,24 +181,26 @@ describe("the contract's scenarios, end to end", () => {
     const answers = { emirate: "Abu Dhabi", jurisdiction: "not_sure", activity: "manufacturing", customers: "international", visas: 3, premises: "industrial" };
     // No place has facilities on record: nothing is offered as fit, nothing is excluded on a guess; the data is named.
     const before = await advice(answers);
-    expect(before.places.every((p: any) => p.status === "DATA_UNAVAILABLE" && finding(p, "place.industrial_facilities")?.missing === "data")).toBe(true);
+    const recorded = (await env.call("ops", "GET", "/api/admin/jurisdictions")).body.places.filter((p: any) => p.facilities?.length).map((p: any) => p.name);
+    const unknownBefore = before.places.filter((p: any) => !recorded.includes(p.zone));
+    expect(unknownBefore.length).toBeGreaterThan(0);
+    expect(unknownBefore.every((p: any) => p.status === "DATA_UNAVAILABLE" && finding(p, "place.industrial_facilities")?.missing === "data")).toBe(true);
     expect(keysOf(before)).toContain("structure.industrial_licence");
     // The founder records what each place offers; the engine then qualifies on that record, at its confidence.
-    expect((await fact({ subject: "RAKEZ", field: "facilities", valueText: "office, warehouse, industrial", confidence: "rule_of_thumb" })).status).toBe(200);
-    expect((await fact({ subject: "IFZA", field: "facilities", valueText: "office" })).status).toBe(200);
-    expect((await fact({ subject: "Abu Dhabi DED mainland", field: "facilities", valueText: "office, industrial", confidence: "rule_of_thumb" })).status).toBe(200);
+    await facilitiesOnRecord();
     const r = await request(answers);
     const after = (await scoping(r.id)).advice;
     expect(after.places[0].zone).toBe("RAKEZ");
     expect(after.places[0].status).toBe("REQUIRES_VERIFICATION"); // qualified on the record; the rules are still unverified
     expect(finding(after.places[0], "place.industrial_facilities")).toBeUndefined(); // nothing to flag once the land is on record
-    expect(finding(after.excluded.find((p: any) => p.zone === "IFZA"), "place.industrial_facilities")).toMatchObject({ outcome: "fail", confidence: "UNCERTAIN" });
+    expect(finding(after.excluded.find((p: any) => p.zone === "IFZA"), "place.industrial_facilities")).toMatchObject({ outcome: "fail", confidence: "UNCERTAIN" }); // rule-of-thumb data, capped by the unverified rule
     // Ops settles mainland for the Abu Dhabi plant: the places are ranked again for that structure, on the record.
     const approved = await approve(r.id, { structure: "mainland", note: "Plant in Abu Dhabi" });
     expect(approved.status).toBe(200);
     expect(approved.body.places[0].zone).toBe("Abu Dhabi DED mainland");
     expect(approved.body.places[0].status).toBe("REQUIRES_VERIFICATION");
     // The other mainland registries have no land on record: listed below, as data missing, never passed on a guess.
+    expect(approved.body.places.length).toBeGreaterThan(1);
     expect(approved.body.places.slice(1).every((p: any) => p.status === "DATA_UNAVAILABLE")).toBe(true);
   });
 
@@ -197,9 +213,10 @@ describe("the contract's scenarios, end to end", () => {
 
   it("8. cross-border e-commerce needing storage [eligibility] [escalation] [rationale]", async () => {
     const answers = { jurisdiction: "not_sure", activity: "ecommerce", customers: "international", premises: "warehouse", visas: 1 };
+    await facilitiesOnRecord();
     const before = await advice(answers);
-    // Facilities on record from scenario 6: IFZA (office only) is excluded, RAKEZ (warehouse) qualifies. Every other
-    // place says the data is missing and ranks below, instead of being passed on a guess.
+    // With facilities on record for two places: IFZA (office only) is excluded, RAKEZ (warehouse) qualifies. Every
+    // other place says the data is missing and ranks below, instead of being passed on a guess.
     expect(finding(before.excluded.find((p: any) => p.zone === "IFZA"), "place.warehouse_facilities")).toMatchObject({ outcome: "fail", confidence: "UNCERTAIN" });
     expect(before.places[0].zone).toBe("RAKEZ");
     const unknown = before.places.filter((p: any) => p.zone !== "RAKEZ");
@@ -253,7 +270,7 @@ describe("the contract's scenarios, end to end", () => {
     for (const s of a.structures.filter((x: any) => !["offshore", "difc_adgm"].includes(x.structure))) expect(s.findings.some((f: any) => f.ruleKey === "licence.education"), s.structure).toBe(true);
   });
 
-  it("13. free zone company seeking mainland permissions [eligibility] [rationale] [ui-api]", async () => {
+  it("13. free zone company seeking mainland permissions [eligibility] [rationale] [client-view]", async () => {
     const r = await request({ jurisdiction: "free_zone", activity: "consulting", customers: "both", visas: 1 });
     const a = (await scoping(r.id)).advice;
     expect(a.structure.recommendation).toBe("free_zone");
@@ -301,10 +318,19 @@ describe("the contract's scenarios, end to end", () => {
     expect(p.noViableOption).toBe(false);
     expect(p.structure.recommendation).toBeNull();
     expect(p.places.every((x: any) => x.toBeVerified && !x.figures)).toBe(true);
-    // No quote can be built into a published offer from a request with no viable option.
+    // No quote is published on the engine's say-so, even when the client named the structure: a formation quote is
+    // refused because no option fits (gate added in E6), and a specialist assessment is the way forward.
+    const named = await request({ jurisdiction: "free_zone", ...answers });
+    const refusedNamed = await publish((await build(named.id)).offerIds[0]!);
+    expect(refusedNamed.status).toBe(409);
+    expect(refusedNamed.body.message).toMatch(/no option that fits every answer/);
+    // Only a person's approval of a structure at the review (audited, E1) opens the way to a quote: that is the
+    // specialist's decision, not the engine's, and the figures are then a real quote, not an estimate.
     const r = await request({ jurisdiction: "not_sure", ...answers });
-    const { offerIds } = await build(r.id);
-    expect((await publish(offerIds[0]!)).status).toBe(409);
+    expect((await publish((await build(r.id)).offerIds[0]!)).status).toBe(409);
+    expect((await approve(r.id, { structure: "free_zone", note: "Budget is indicative; proceed with the free zone" })).status).toBe(200);
+    expect((await publish((await build(r.id)).offerIds[0]!)).status).toBe(200);
+    expect((await asPlatform(env.db, null, (tx) => tx.query("select 1 from audit_events where action = 'scoping.approved' and entity_id = $1", [r.id]))).rows).toHaveLength(1);
   });
 
   it("17. multiple regulated activities [escalation] [no-side-effect]", async () => {
@@ -315,10 +341,12 @@ describe("the contract's scenarios, end to end", () => {
     expect(keysOf(s.advice)).not.toContain("licence.health"); // the engine does not guess a second activity from prose
     expect(r.aiDraft).toBeTruthy();
     expect(s.drafts.map((d: any) => d.status)).toEqual(["pending"]);
-    expect(s.scope.lines.map((l: any) => l.code)).toContain("SET-FZ-LIC"); // the draft changed nothing
+    expect(s.scope.lines.map((l: any) => l.code).sort()).toEqual(["SET-FZ-LIC", "VISA-RES"]); // the engine's default scope for "not sure": the draft has not touched it
     expect((await env.call("ops", "GET", "/api/ops/overview")).body.exceptions.some((x: any) => x.kind === "ai_draft" && x.ref === r.aiDraft)).toBe(true);
     const { offerIds } = await build(r.id);
-    expect((await publish(offerIds[0]!)).status).toBe(409);
+    const refused = await publish(offerIds[0]!);
+    expect(refused.status).toBe(409);
+    expect(refused.body.message).toMatch(/not sure which structure fits: settle it at the scoping review/);
   });
 
   it("18. holding plus operating company [eligibility] [escalation]", async () => {
@@ -329,7 +357,9 @@ describe("the contract's scenarios, end to end", () => {
     expect(a.hasUncertain).toBe(true);
     const r = await request({ jurisdiction: "not_sure", activity: "holding", customers: "uae_mainland", visas: 2, budgetAed: 50_000 });
     const { offerIds } = await build(r.id);
-    expect((await publish(offerIds[0]!)).status).toBe(409);
+    const refused = await publish(offerIds[0]!);
+    expect(refused.status).toBe(409);
+    expect(refused.body.message).toMatch(/not sure which structure fits: settle it at the scoping review/);
   });
 
   it("19. missing jurisdiction source data [escalation] [no-price]", async () => {
@@ -338,7 +368,9 @@ describe("the contract's scenarios, end to end", () => {
     expect(pending).toEqual(expect.arrayContaining(["UAQ Free Trade Zone", "Fujairah Free Zone", "Fujairah Creative City"]));
     const a = await advice({ emirate: "Umm Al Quwain", jurisdiction: "free_zone", activity: "consulting", customers: "international", visas: 1 });
     expect([...a.places, ...a.excluded].map((p: any) => p.zone)).not.toContain("UAQ Free Trade Zone");
-    expect((await env.call("founder", "POST", "/api/admin/public-display/approve", { kind: "place", subject: "UAQ Free Trade Zone", note: "x" })).status).not.toBe(200);
+    const refused = await env.call("founder", "POST", "/api/admin/public-display/approve", { kind: "place", subject: "UAQ Free Trade Zone", note: "x" });
+    expect(refused.status).toBe(404);
+    expect(refused.body.message).toMatch(/No place UAQ Free Trade Zone/); // not even listed for approval
     const p = (await publicAssess({ emirate: "Umm Al Quwain", activity: "consulting", customers: "international", visas: 1 })).body;
     expect(JSON.stringify(p)).not.toContain("UAQ Free Trade Zone");
   });
@@ -370,7 +402,12 @@ describe("the contract's scenarios, end to end", () => {
       expect((await display("rule", "obligation.ubo")).body.message).toMatch(/past its re-verification date/);
     } finally {
       env.clock.now = saved;
+      // Put the catalogue back as it was, so the later scenarios still run on an unverified one.
+      for (const [kind, subject] of [["rule", "obligation.ubo"], ["place", "Ajman Free Zone"]]) await env.call("founder", "POST", "/api/admin/public-display/revoke", { kind, subject, note: "test" });
+      expect((await env.call("founder", "PUT", "/api/admin/scoping/rules/obligation.ubo", { confidence: "UNCERTAIN" })).status).toBe(200);
+      expect((await env.call("founder", "PUT", "/api/admin/scoping/zones/Ajman%20Free%20Zone", { confidence: "UNCERTAIN" })).status).toBe(200);
     }
+    expect((await advice(answers)).obligations.find((o: any) => o.ruleKey === "obligation.ubo").confidence).toBe("UNCERTAIN");
   });
 
   it("21. contradictory answers [eligibility] [escalation] [rationale]", async () => {
@@ -418,7 +455,7 @@ describe("the contract's scenarios, end to end", () => {
     // Another client: none of it, through any door.
     expect((await env.call("other", "GET", "/api/client/home")).body.requests.map((x: any) => x.id)).not.toContain(r.id);
     expect((await env.call("other", "GET", `/api/client/offers/${offerIds[0]}`)).status).toBe(404);
-    expect((await env.call("other", "POST", `/api/client/offers/${offerIds[0]}/accept`)).status).not.toBe(200);
+    expect((await env.call("other", "POST", `/api/client/offers/${offerIds[0]}/accept`)).status).toBe(403);
     expect((await env.call("other", "GET", `/api/ops/requests/${r.id}/scoping`)).status).toBe(403);
     expect((await env.call("other", "GET", "/api/ops/pipeline/leads")).status).toBe(403);
     expect((await env.call("other", "GET", "/api/admin/jurisdictions")).status).toBe(403);
@@ -457,14 +494,15 @@ describe("the contract's scenarios, end to end", () => {
     const repriced = (await env.call("client", "GET", `/api/client/offers/${next[0]}`)).body;
     expect(repriced.clientTotal).toBeGreaterThan(shown.clientTotal);
     noMoney(repriced);
-    expect((await env.call("ops", "GET", `/api/ops/offers/${next[0]}`)).body).not.toHaveProperty("margin");
+    // Ops sees the partner's cost and payout (it allocates work) but never the margin, at any depth; finance does.
+    for (const s of walk((await env.call("ops", "GET", `/api/ops/offers/${next[0]}`)).body)) expect(s, s).not.toMatch(/margin|commission/i);
     expect((await env.call("finance", "GET", `/api/ops/offers/${next[0]}`)).body.margin).toBeGreaterThan(0);
   });
 
   it("25. lead to engagement without duplicated customers [no-side-effect] [access]", async () => {
     const orgs = await count("orgs");
     const users = await count("users");
-    const outbox = await count("outbox");
+    const emails = env.emails.length;
     const r = await env.call("anon", "POST", "/api/public/intake", { company: "Demo Client again", name: "Client Owner", email: EMAILS.client, consent: true, answers: { mode: "new_company", jurisdiction: "free_zone", emirate: "Dubai", activity: "consulting", customers: "international", visas: 1 } });
     expect(r.status).toBe(200);
     expect(await count("orgs")).toBe(orgs);
@@ -475,6 +513,12 @@ describe("the contract's scenarios, end to end", () => {
     const clientOrg = (await env.call("client", "GET", "/api/me")).body.orgId;
     expect(converted.body.clientOrgId).toBe(clientOrg);
     expect((await env.call("ops", "POST", `/api/ops/leads/${held.id}/convert`, { note: "again" })).status).toBe(409);
+    // A converted enquiry is not a client yet: the lead becomes "converted" only once an offer is accepted.
+    const early = (await env.call("ops", "GET", "/api/ops/pipeline/leads")).body.find((l: any) => l.requestId === converted.body.id);
+    expect(early).toBeTruthy();
+    const tooSoon = await env.call("ops", "POST", `/api/ops/pipeline/leads/${early.id}/status`, { status: "converted" });
+    expect(tooSoon.status).toBe(409);
+    expect(tooSoon.body.message).toMatch(/accepted/);
     expect((await approve(converted.body.id)).status).toBe(200);
     const { offerIds } = await build(converted.body.id);
     const published = await publish(offerIds[0]!);
@@ -488,21 +532,35 @@ describe("the contract's scenarios, end to end", () => {
     const lead = (await env.call("ops", "GET", "/api/ops/pipeline/leads")).body.find((l: any) => l.requestId === converted.body.id);
     expect(lead?.clientOrgId).toBe(clientOrg);
     expect((await env.call("ops", "POST", `/api/ops/pipeline/leads/${lead.id}/status`, { status: "converted" })).status).toBe(200);
-    // The only things sent are the existing notifications of the pipeline (intake acknowledgement, offer, acceptance).
-    const sent = (await asPlatform(env.db, null, (tx) => tx.query<{ topic: string }>("select topic from outbox order by id offset $1", [outbox]))).rows.map((x) => x.topic);
-    expect(sent.filter((t) => /lead|intake/.test(t))).toEqual([]);
+    // The only messages are the pipeline's own, to the existing client (the neutral intake acknowledgement, the
+    // offer, the acceptance) or to MKW; nothing about the lead, and nothing to anyone else.
+    const sent = env.emails.slice(emails);
+    expect(sent.length).toBeGreaterThan(0);
+    for (const e of sent) {
+      expect(e.to === EMAILS.client || e.to.endsWith("@mkwadvisors.test"), `${e.to}: ${e.subject}`).toBe(true);
+      expect(e.subject, e.subject).not.toMatch(/lead|converted|pipeline/i);
+    }
   });
 
-  it("26. existing client asks for an additional assessment [no-side-effect] [ui-api] [access]", async () => {
+  it("26. existing client asks for an additional assessment [no-side-effect] [client-view] [access]", async () => {
     const before = (await env.call("client", "GET", "/api/client/home")).body.requests.length;
     const orgs = await count("orgs");
     const { code } = (await env.call("anon", "POST", "/api/public/assessments", { answers: { emirate: "Dubai", activity: "ecommerce", customers: "both", visas: 2, budgetAed: 40_000 } })).body;
-    const r = await env.call("client", "POST", "/api/requests/from-assessment", { code });
+    // Two days later the saved result becomes a request: the advice is recomputed on that day's data, not copied.
+    const saved = env.clock.now;
+    env.clock.now = new Date(saved.getTime() + 2 * 86_400_000);
+    let r: { status: number; body: any };
+    try {
+      r = await env.call("client", "POST", "/api/requests/from-assessment", { code });
+    } finally {
+      env.clock.now = saved;
+    }
     expect(r.status).toBe(200);
     expect((await env.call("other", "POST", "/api/requests/from-assessment", { code })).status).toBe(409);
     const s = await scoping(r.body.id);
     expect(s.assessment.savedAt).toBeTruthy();
-    expect(s.advice.dataVersion.asOf).toBe((await scoping(r.body.id)).advice.dataVersion.asOf);
+    expect(s.assessment.dataAsOf).toBe(day(saved, 0));
+    expect(s.advice.dataVersion.asOf).toBe(day(saved, 2));
     expect(keysOf(s.advice)).toContain("licence.ecommerce");
     const home = (await env.call("client", "GET", "/api/client/home")).body;
     expect(home.requests.length).toBe(before + 1);

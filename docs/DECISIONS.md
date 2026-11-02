@@ -775,6 +775,9 @@ reviewed" and "structures only, no figures". This is the documented resolution o
 - Where a check needs a fact the catalogue does not hold, the engine says the data is missing and ranks the place
   below those with a record, in both directions: it neither passes nor excludes on a guess. E6 closes the one place
   this was uneven: a storage need at a place with no facilities on record now says so, as industrial land did.
+- When the advice finds no option that fits every answer, the structure it names is an explanation, not a
+  recommendation: no formation quote is published on it, even if the client named that structure. A person's
+  approval of a structure at the review (audited) is what opens the way to a quote.
 - Verification is reported in three states only: executed here (command and result), verified by CI only, or
   blocked with what unblocks it (`docs/evidence/E6/VERIFICATION.md`). No staging or live readiness is claimed
   without the owner's accounts.

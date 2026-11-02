@@ -150,7 +150,7 @@ What the pilot starts with, in one place: `docs/evidence/E6/VERIFICATION.md` (ev
 blocked) and `docs/evidence/E6/SCENARIOS.md` (every contract scenario and check mapped to its test). In short:
 
 - **Engine and catalogue.** Every scenario gives the contract's status, exclusion and reasons on the seeded
-  catalogue, with nothing verified: no place is ever `ELIGIBLE_VERIFIED`, no figure is ever shown as a price, and a
+  catalogue, with nothing verified: no place is ever `ELIGIBLE_VERIFIED`, no estimate is ever shown as a price, and a
   missing record is named rather than assumed. Lifting the UNCERTAIN labels is the owner's data and verifier (E2).
 - **Public, leads, handoff.** The public selector shows only what a named person approved for display; leads carry
   separate consents and withdrawals; a saved result or held enquiry becomes a request on a person's action and is

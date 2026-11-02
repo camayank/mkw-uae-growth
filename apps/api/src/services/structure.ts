@@ -30,6 +30,10 @@ export async function structureSettlement(tx: Queryable, requestId: string): Pro
   if (!r) return { ok: false, structure: null, reason: "Request not found" };
   if (r.answers.mode !== "new_company") return { ok: true, structure: null, reason: "No company formation in this request" };
   const requested = STRUCTURES.has(String(r.answers.jurisdiction)) ? (r.answers.jurisdiction as Structure) : null;
+  // E6 (scenario 16): when no place fits every answer (budget, visas, premises), the engine names the closest
+  // structure only to explain itself; it is no recommendation and never a formation quote. Changed answers, or a
+  // specialist's assessment, come first.
+  if (r.advice?.noViableOption) return { ok: false, structure: null, reason: "The advice finds no option that fits every answer (budget, visas, premises): a specialist assessment, or changed answers, come before a formation quote." };
   let structure: Structure | null = null;
   if (r.advice && r.advice_status === "approved") {
     structure = (r.advice.structure.recommendation as Structure | null) ?? null;

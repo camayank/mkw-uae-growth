@@ -93,7 +93,11 @@ mergeable whatever else it adds.
 5. **Uncertain is a state.** Unverified government fees, statutory rules, scoping advice, obligation dates and
    any AI or machine-translated output carry an explicit UNCERTAIN label and cannot reach a client without a
    named person's approval, recorded with a date and a source. No automatic statutory conclusions or filings,
-   ever.
+   ever. One authorised exception (owner, 2 Nov 2026, D80): the public Right UAE Entity selector shows a statement
+   or a place's figures before any per-case review only when a named person approved that rule version or that
+   place version for public display; everything else it shows as "to be verified" with no figure, and every
+   public result is labelled preliminary general information, not advice. Quotes and client advice keep the
+   per-case review.
 6. **No unattended side effects.** Nothing is sent, paid, released, filed or refunded without a person's action
    or an explicit, tested rule. AI writes drafts into a review queue; a person applies them.
 7. **External services sit behind adapters** with an in-memory double: email, payments, storage, AI, WhatsApp,

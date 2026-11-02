@@ -154,6 +154,17 @@ in a browser; everything listed here is not.
     Registration Authority (ADRA) in 2023; the seed names the Department of Economic Development. For the owner's
     verifier to confirm and record as a fact.
 
+## E3: public selector
+
+63. **Nothing is approved for public display yet.** Until the owner's verifier verifies rules and places and the
+    founder approves them, the public selector shows every statement and figure as "to be verified". Honest, but
+    thin.
+64. **No map.** Coordinates are on record (E2) but not drawn: a map needs a tile provider, which is an external
+    service (rules 7 and 11) and an owner decision.
+65. **One session per page load.** The public selector keeps answers in memory only; closing the page loses them.
+    Sessions, recovery, separate consents, attribution and scoring are E4.
+66. **The disclaimer is a default** (D80), for the owner and a lawyer to settle.
+
 ## O7: launch-gate preparation
 
 43. ~~zod 3 has a memory-exhaustion advisory.~~ Closed by S1: zod 4.6.7 (D71); the body caps stay as defence in depth.

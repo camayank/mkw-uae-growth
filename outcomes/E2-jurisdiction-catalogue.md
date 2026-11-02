@@ -1,6 +1,6 @@
 # E2 Jurisdiction catalogue and evidence
 
-Status: verified-pending-merge (branch `outcome/E2-jurisdiction-catalogue` from `main` at `8d6d3c2`, E1 merged as
+Status: merged (camayank/mkw-uae-growth#18; branch `outcome/E2-jurisdiction-catalogue` from `main` at `8d6d3c2`, E1 merged as
 camayank/mkw-uae-growth#17; released by the owner on 2 Nov 2026 with the Right UAE Entity programme,
 `docs/ENTITY-PROGRAMME.md`)
 

@@ -14,6 +14,11 @@ import { conflict, forbidden, notFound } from "../lib/errors.ts";
  * with the honeypot filled, and tells the new owner how to sign in. Rate limiting is applied by the route.
  */
 export const CONSENT_VERSION = "2026-10-privacy-v1";
+/** The consent texts the platform shows, by version: the record names which one the person agreed to (PDPL). */
+export const CONSENT_VERSIONS: Record<string, string> = {
+  "2026-10-privacy-v1": "intake.html: process the details to prepare offers, store in the UAE, contact about the request",
+  "2026-11-selector-v1": "selector.html: process the details and the answers to review the case, store in the UAE, contact about the request",
+};
 
 export const PublicIntakeSchema = z.object({
   company: z.string().min(2).max(200),
@@ -21,7 +26,7 @@ export const PublicIntakeSchema = z.object({
   email: z.string().email(),
   phone: z.string().max(40).optional(),
   consent: z.boolean(),
-  consentVersion: z.string().max(40).default(CONSENT_VERSION),
+  consentVersion: z.string().max(40).default(CONSENT_VERSION).refine((v) => v in CONSENT_VERSIONS, "unknown consent text version"),
   /** Honeypot: humans never see this field; bots fill it. */
   website: z.string().max(200).optional(),
   campaign: z.string().max(80).optional(),

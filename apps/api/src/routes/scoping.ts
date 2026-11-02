@@ -1,10 +1,12 @@
 import { z } from "zod";
-import { aed } from "@tasees/core";
+import { aed, type AdviceInput } from "@tasees/core";
 import { PLATFORM_ROLES, requireRole } from "../lib/auth.ts";
 import { asPlatform } from "../lib/context.ts";
 import { approveAdvice, recomputeAdvice, requestScoping, scopingOverview, search, verifyRule, verifyZone } from "../services/scoping.ts";
 import { listDrafts, reviewDraft } from "../services/drafts.ts";
 import { catalogueOverview, factHistory, recordFact } from "../services/catalogue.ts";
+import { approveForDisplay, displayOverview, publicAssess, revokeDisplay } from "../services/public.ts";
+import { IntakeSchema } from "../services/requests.ts";
 import { markPaymentPaid } from "../services/engagements.ts";
 import type { RouteContext } from "./context.ts";
 
@@ -80,6 +82,30 @@ export function registerScopingRoutes(ctx: RouteContext) {
     const user = requireRole(req, "founder");
     const body = CatalogueFactBody.parse(req.body);
     return asPlatform(db, user, (tx) => recordFact(tx, user, body));
+  });
+
+  // Public display and the public selector (E3, D80) ----------------------------------------------------
+  app.get("/api/admin/public-display", async (req) => {
+    const user = requireRole(req, ...PLATFORM_ROLES);
+    return asPlatform(db, user, (tx) => displayOverview(tx));
+  });
+  const PublicDisplayBody = z.object({ kind: z.enum(["rule", "place"]), subject: z.string().min(1).max(120), note: z.string().max(500).default("") });
+  app.post("/api/admin/public-display/approve", { config: { body: PublicDisplayBody } }, async (req) => {
+    const user = requireRole(req, "founder");
+    const body = PublicDisplayBody.parse(req.body);
+    return asPlatform(db, user, (tx) => approveForDisplay(tx, user, body.kind, body.subject, body.note));
+  });
+  app.post("/api/admin/public-display/revoke", { config: { body: PublicDisplayBody } }, async (req) => {
+    const user = requireRole(req, "founder");
+    const body = PublicDisplayBody.parse(req.body);
+    return asPlatform(db, user, (tx) => revokeDisplay(tx, user, body.kind, body.subject, body.note));
+  });
+  // The public assessment: no sign-in, rate-limited per IP, writes nothing, keeps nothing.
+  const PublicAssessBody = IntakeSchema.omit({ mode: true, addOns: true, services: true, description: true });
+  app.post("/api/public/assess", { config: { body: PublicAssessBody } }, async (req) => {
+    throttle(req, "public-assess", 60);
+    const answers = PublicAssessBody.parse(req.body);
+    return asPlatform(db, null, (tx) => publicAssess(tx, { ...answers, mode: "new_company" } as AdviceInput));
   });
 
   app.get<{ Params: { id: string } }>("/api/ops/requests/:id/scoping", async (req) => {

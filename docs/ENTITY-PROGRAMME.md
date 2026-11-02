@@ -45,7 +45,7 @@ Status per contract capability:
 
 | Feature | Status | Where, or what is missing |
 | --- | --- | --- |
-| Public, no-registration assessment | Missing | Only a public lead form exists (`intake.html`, consent recorded). Showing an assessment before a person reviews it needs an owner decision (section 3) |
+| Public, no-registration assessment | Built (E3) | `selector.html`: adaptive questions, a public assessment filtered to what is approved for display (D80), printable, ending in a review request with consent |
 | Activity discovery and industry questionnaires | Partial | 13 activity groups; no exact licensing activities (E2) |
 | Founder and ownership profiling | Partial (E1) | Owner type and foreign tax residence added; nationality, UBO and parent jurisdiction to come (E3) |
 | Mainland / free zone / offshore comparison | Built (E1) | Every structure assessed with a status and its reasons |
@@ -59,7 +59,7 @@ Status per contract capability:
 | Corporate tax and VAT considerations | Built (E1) | Ordinary regime, QFZP conditions, small business relief window, VAT on taxable supplies, designated zones |
 | Cross-border flags | Built (E1) | Founder residence, permanent establishment, corporate shareholder: always a specialist's review |
 | Explanation of rejected or uncertain alternatives | Built (E1) | Excluded places and structures with the failing rule |
-| Downloadable report; consultation | Missing | E3 |
+| Downloadable report; consultation | Partial (E3) | The result page prints; the review request creates the lead and request. Consultation booking is E4 |
 
 ### B. Entity intelligence engine
 
@@ -115,9 +115,9 @@ Missing:
 1. **Public assessment versus rule 5 (CLAUDE.md), D30 and D59.**
    - **The conflict.** Today nothing UNCERTAIN reaches a client until a person approves it, case by case. The
      contract asks for a useful public assessment before contact details, and so before any per-case review.
-   - **Proposed resolution, for the owner to authorise before E3 merges.** The public selector shows only
-     statements and figures whose rule or data a named person has approved for public display, once per rule
-     version (not per case).
+   - **Resolution, authorised by the owner on 2 Nov 2026 (D80).** The public selector shows only statements and
+     figures whose rule or data a named person has approved for public display, once per rule or place version
+     (not per case). Implemented in E3.
    - **Everything else.** Anything not approved for public display shows only as "to be verified", with no
      figure. Every public result is labelled preliminary, general information, not advice. Per-case review stays
      as it is for anything that becomes a quote or a client's advice.

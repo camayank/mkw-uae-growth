@@ -1485,6 +1485,171 @@
         }
       }
     },
+    "/api/admin/public-display": {
+      "get": {
+        "operationId": "getApiAdminPublicDisplay",
+        "tags": [
+          "admin"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "4XX": {
+            "description": "Refused: the message says why",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Server error, with a request id to quote",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/public-display/approve": {
+      "post": {
+        "operationId": "postApiAdminPublicDisplayApprove",
+        "tags": [
+          "admin"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "rule",
+                      "place"
+                    ]
+                  },
+                  "subject": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "note": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 500
+                  }
+                },
+                "required": [
+                  "kind",
+                  "subject"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "4XX": {
+            "description": "Refused: the message says why",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Server error, with a request id to quote",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/public-display/revoke": {
+      "post": {
+        "operationId": "postApiAdminPublicDisplayRevoke",
+        "tags": [
+          "admin"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "rule",
+                      "place"
+                    ]
+                  },
+                  "subject": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "note": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 500
+                  }
+                },
+                "required": [
+                  "kind",
+                  "subject"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "4XX": {
+            "description": "Refused: the message says why",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Server error, with a request id to quote",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/rules": {
       "get": {
         "operationId": "getApiAdminRules",
@@ -7567,6 +7732,178 @@
             }
           }
         }
+      }
+    },
+    "/api/public/assess": {
+      "post": {
+        "operationId": "postApiPublicAssess",
+        "tags": [
+          "public"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "jurisdiction": {
+                    "type": "string",
+                    "enum": [
+                      "free_zone",
+                      "mainland",
+                      "offshore",
+                      "difc_adgm",
+                      "not_sure"
+                    ]
+                  },
+                  "emirate": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 40
+                  },
+                  "freeZone": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 60
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "visas": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 50
+                  },
+                  "dependants": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 20
+                  },
+                  "activity": {
+                    "type": "string",
+                    "enum": [
+                      "trading",
+                      "consulting",
+                      "ecommerce",
+                      "tech",
+                      "holding",
+                      "finance",
+                      "virtual_assets",
+                      "health",
+                      "education",
+                      "food",
+                      "construction",
+                      "manufacturing",
+                      "other"
+                    ]
+                  },
+                  "customers": {
+                    "type": "string",
+                    "enum": [
+                      "uae_mainland",
+                      "international",
+                      "both"
+                    ]
+                  },
+                  "officeNeeded": {
+                    "type": "boolean"
+                  },
+                  "premises": {
+                    "type": "string",
+                    "enum": [
+                      "none",
+                      "virtual",
+                      "office",
+                      "retail",
+                      "warehouse",
+                      "industrial",
+                      "clinic"
+                    ]
+                  },
+                  "budgetAed": {
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 100000000
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "expectedTurnoverAed": {
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 10000000000
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "taxableSuppliesAed": {
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 10000000000
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "ownerType": {
+                    "type": "string",
+                    "enum": [
+                      "individuals",
+                      "company"
+                    ]
+                  },
+                  "foreignTaxResident": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "emirate"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "4XX": {
+            "description": "Refused: the message says why",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Server error, with a request id to quote",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": []
       }
     },
     "/api/public/intake": {

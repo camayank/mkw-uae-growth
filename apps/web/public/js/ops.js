@@ -432,8 +432,20 @@ export async function renderFactHistory(kind, subject, target) {
 }
 
 export async function renderScoping() {
-  const [o, cat] = await Promise.all([api("GET", "/api/admin/scoping"), api("GET", "/api/admin/jurisdictions")]);
+  const [o, cat, pub] = await Promise.all([api("GET", "/api/admin/scoping"), api("GET", "/api/admin/jurisdictions"), api("GET", "/api/admin/public-display")]);
   const founder = role() === "founder";
+  // E3 (D80): what the public selector may show. One version per approval; a new version lapses it.
+  const pubRule = Object.fromEntries(pub.rules.map((r) => [r.key, r.display]));
+  const pubPlace = Object.fromEntries(pub.places.map((p) => [p.name, p.display]));
+  const pubTexts = Object.fromEntries(pub.rules.map((r) => [r.key, r.texts ?? []]));
+  const displayCell = (kind, subject, d, confidence) => {
+    if (!d) return `<span class="small muted">not offered</span>`;
+    const wording = kind === "rule" && pubTexts[subject]?.length ? `<details class="small"><summary>What the public would read (${pubTexts[subject].length})</summary><ul class="plain">${pubTexts[subject].map((t) => `<li data-no-i18n>${esc(t)}</li>`).join("")}</ul></details>` : "";
+    const state = d.approved ? `${badge("ok", "public")}<br><span class="small muted">${esc(d.approvedBy ?? "")}</span>` : d.lapsed ? badge("UNCERTAIN", "lapsed: new version") : `<span class="small muted">not public</span>`;
+    if (!founder) return `${state}${wording}`;
+    const can = confidence !== "UNCERTAIN";
+    return `${state}${wording}<br>${d.approved ? `<button type="button" class="sm" data-act="display-revoke" data-kind="${kind}" data-subject="${esc(subject)}">Withdraw</button>` : `<button type="button" class="sm" data-act="display-approve" data-kind="${kind}" data-subject="${esc(subject)}" ${can ? "" : "disabled"} title="${can ? "Approve this version for public display" : "Verify it (or mark it a rule of thumb) first"}">Approve for public</button>`}`;
+  };
   const stalePlaces = cat.places.filter((p) => p.stale).length;
   const duePlaces = cat.places.filter((p) => p.due.length).length;
   const authorityName = Object.fromEntries(cat.authorities.map((a) => [a.id, a.name]));
@@ -460,28 +472,31 @@ export async function renderScoping() {
       <select name="confidence">${["verified", "rule_of_thumb", "UNCERTAIN"].map((v) => `<option value="${v}" ${c === v ? "selected" : ""}>${CONF_LABEL[v]}</option>`).join("")}</select>
       <input name="verifiedBy" placeholder="Verified by (name, qualification)" style="width:200px" /><input name="sourceUrl" type="url" placeholder="https://source" style="width:180px" /><button class="sm" type="submit">Save</button></form>` : "";
   $app.innerHTML = `<h1>Scoping rules and places</h1>
-  <p class="muted">The advice shown to founders is built only from these. Each starts UNCERTAIN; a qualified person verifies it with a source, the founder records that here, and from then on the advice built on it says "verified rule" with the date. Evidence past its re-check date counts one level lower until it is checked again. ${o.pendingReviews ? `${o.pendingReviews} request(s) have advice waiting for review on the Pipeline.` : ""}</p>
+  <p class="muted">The advice shown to founders is built only from these. Each starts UNCERTAIN; a qualified person verifies it with a source, the founder records that here, and from then on the advice built on it says "verified rule" with the date. Evidence past its re-check date counts one level lower until it is checked again. The public selector (<a href="/selector.html" target="_blank" rel="noopener">selector.html</a>) shows only rules and place figures approved for public display, one version at a time; everything else it shows as "to be verified". ${o.pendingReviews ? `${o.pendingReviews} request(s) have advice waiting for review on the Pipeline.` : ""}</p>
   <div class="kpis">
+    <div class="kpi"><b>${pub.rules.filter((r) => r.display.approved).length} / ${pub.rules.length}</b><span>rules the public selector may show</span></div>
+    <div class="kpi"><b>${pub.places.filter((p) => p.display.approved).length} / ${pub.places.length}</b><span>places with public figures</span></div>
     <div class="kpi"><b>${cat.places.filter((p) => p.active).length}</b><span>places offered; ${cat.places.filter((p) => !p.active).length} waiting for figures</span></div>
     <div class="kpi"><b>${stalePlaces}</b><span>places with stale evidence</span></div>
     <div class="kpi"><b>${duePlaces + cat.rules.due.length}</b><span>due for re-check in 30 days</span></div>
     <div class="kpi"><b>${cat.rules.stale.length}</b><span>rules past their re-check date</span></div>
   </div>
   <div class="card flush"><h2 style="padding:16px 18px 0">Jurisdiction catalogue</h2>${table(
-    ["Place", "Authority", "Evidence the engine uses", "Confidence", ""],
+    ["Place", "Authority", "Evidence the engine uses", "Confidence", "Public", ""],
     cat.places.map((p, i) => `<tr><td>${esc(p.name)}<br><span class="small muted">${esc(p.emirate)} · ${esc(words(p.type))}${p.active ? "" : " · not offered: no figures yet"}</span></td>
       <td class="small">${esc(p.authority ?? "–")}${p.authorityId && cat.authorities.find((a) => a.id === p.authorityId)?.parentId ? `<br><span class="muted">under ${esc(authorityName[cat.authorities.find((a) => a.id === p.authorityId).parentId] ?? "")}</span>` : ""}</td>
       <td>${p.evidence.map(evidenceChip).join(" · ")}${p.activitiesListed ? `<br><span class="small">Activity list: ${esc(p.activitiesListed.map(words).join(", "))}</span>` : ""}${p.due.length ? `<br><span class="small muted">Due soon: ${esc(p.due.map(words).join(", "))}</span>` : ""}</td>
       <td>${confBadge(p.confidence)}${p.stale ? ` ${badge("UNCERTAIN", "stale")}` : ""}</td>
+      <td>${displayCell("place", p.name, pubPlace[p.name], p.confidence)}</td>
       <td><button type="button" class="sm" data-act="fact-history" data-kind="place" data-subject="${esc(p.name)}" data-target="hist-place-${i}" aria-controls="hist-place-${i}" aria-expanded="false">History</button></td></tr>
-      <tr hidden><td colspan="5" id="hist-place-${i}" class="small"></td></tr>`),
+      <tr hidden><td colspan="6" id="hist-place-${i}" class="small"></td></tr>`),
   )}</div>
   ${factForm}
   <div class="card flush"><h2 style="padding:16px 18px 0">Rules</h2>${table(
-    ["Kind", "Rule", "Confidence", "Verified", ...(founder ? ["Record verification"] : [])],
+    ["Kind", "Rule", "Confidence", "Verified", "Public", ...(founder ? ["Record verification"] : [])],
     o.rules.map((r, i) => `<tr><td class="small">${esc(r.kind)}</td><td>${esc(r.statement)}<br><span class="small mono muted">${esc(r.key)} · v${r.version}</span>${r.sourceUrl ? ` · <a class="small" href="${esc(r.sourceUrl)}" target="_blank" rel="noopener noreferrer">source</a>` : ""}${r.version > 1 ? ` · <button type="button" class="sm" data-act="fact-history" data-kind="rule" data-subject="${esc(r.key)}" data-target="hist-rule-${i}" aria-controls="hist-rule-${i}" aria-expanded="false">History</button>` : ""}</td>
-      <td>${confBadge(r.confidence)}${r.stale ? ` ${badge("UNCERTAIN", "stale")}` : ""}</td><td class="small">${r.verifiedBy ? `${esc(r.verifiedBy)}<br><span class="muted">${date(r.verifiedAt)}${r.nextVerification ? ` · check by ${date(r.nextVerification)}` : ""}</span>` : "–"}</td>${founder ? `<td>${verifyForm("rule", r.key, r.recorded)}</td>` : ""}</tr>
-      <tr hidden><td colspan="${founder ? 5 : 4}" id="hist-rule-${i}" class="small"></td></tr>`),
+      <td>${confBadge(r.confidence)}${r.stale ? ` ${badge("UNCERTAIN", "stale")}` : ""}</td><td class="small">${r.verifiedBy ? `${esc(r.verifiedBy)}<br><span class="muted">${date(r.verifiedAt)}${r.nextVerification ? ` · check by ${date(r.nextVerification)}` : ""}</span>` : "–"}</td><td>${displayCell("rule", r.key, pubRule[r.key], r.confidence)}</td>${founder ? `<td>${verifyForm("rule", r.key, r.recorded)}</td>` : ""}</tr>
+      <tr hidden><td colspan="${founder ? 6 : 5}" id="hist-rule-${i}" class="small"></td></tr>`),
   )}</div>
   <div class="card flush" style="margin-top:16px"><h2 style="padding:16px 18px 0">Places</h2>${table(
     ["Place", "Type", "#Visas", "#Cost from", "#Cost to", "#Days", "Known for", "Confidence", "Verified", ...(founder ? ["Record verification"] : [])],

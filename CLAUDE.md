@@ -35,6 +35,9 @@ Working code and passing tests are assets: extend them, never rewrite them oppor
    approval (or the auto-approval rule).
 5. **Uncertain is a state.** Unverified fees, statutory rules and AI output are labelled UNCERTAIN and cannot
    reach a client without a person's approval. No automatic statutory conclusions or filings, ever.
+   The public selector (E3, owner's authorisation of 2 Nov 2026, D80) shows only statements and figures a named
+   person approved for public display, once per version; everything else shows as "to be verified" with no
+   figure, and every public result is labelled preliminary general information, not advice.
 6. **No unattended side effects.** Nothing is sent, paid, released or filed without a person's action or an
    explicit, tested rule. AI produces drafts into a review queue.
 7. **External services sit behind adapters** with an in-memory test double (email, payments, storage, AI,

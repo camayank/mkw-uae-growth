@@ -60,6 +60,8 @@ export interface Reasoned {
   text: string;
   confidence: Confidence;
   ruleKey?: string;
+  /** E3: other rules whose findings this statement restates; the public sees it only when all of them are approved. */
+  basedOn?: string[];
 }
 
 export interface Candidate {
@@ -155,9 +157,9 @@ export interface AdviceInput extends IntakeAnswers {
 }
 
 const rule = (rules: ScopingRule[], key: string) => rules.find((r) => r.key === key);
-const say = (rules: ScopingRule[], key: string, text: string): Reasoned => {
+const say = (rules: ScopingRule[], key: string, text: string, basedOn?: string[]): Reasoned => {
   const r = rule(rules, key);
-  return { text, confidence: r?.confidence ?? "UNCERTAIN", ruleKey: key };
+  return { text, confidence: r?.confidence ?? "UNCERTAIN", ruleKey: key, ...(basedOn?.length ? { basedOn: [...new Set(basedOn)].sort() } : {}) };
 };
 
 
@@ -296,13 +298,15 @@ export function advise(a: AdviceInput, rules: ScopingRule[], zones: Zone[], asOf
     if (isViable(prefAssessment.status)) recommendation = pref.structure;
     else {
       const next = [...FALLBACK].filter((s) => isViable(by.get(s)!.status)).sort((x, y) => statusRank(by.get(x)!.status) - statusRank(by.get(y)!.status) || FALLBACK.indexOf(x) - FALLBACK.indexOf(y))[0];
-      const why = prefAssessment.findings.filter((f) => f.outcome === "fail").map((f) => f.text).join(" ");
+      const fails = prefAssessment.findings.filter((f) => f.outcome === "fail");
+      const why = fails.map((f) => f.text).join(" ");
+      const basedOn = fails.map((f) => f.ruleKey);
       if (next) {
         recommendation = next;
-        reasons.push(say(rules, "structure.preferred_excluded", `${words(pref.structure)} would otherwise fit, but it is excluded: ${why} ${words(next)} is the closest structure that remains.`));
+        reasons.push(say(rules, "structure.preferred_excluded", `${words(pref.structure)} would otherwise fit, but it is excluded: ${why} ${words(next)} is the closest structure that remains.`, basedOn));
       } else {
         noViableOption = true;
-        reasons.push(say(rules, "structure.no_viable_option", `No structure we can assess fits all the answers: ${why} A specialist needs to look at this case; we will not guess.`));
+        reasons.push(say(rules, "structure.no_viable_option", `No structure we can assess fits all the answers: ${why} A specialist needs to look at this case; we will not guess.`, basedOn));
       }
     }
     let all = assess(a, rules, zones, recommendation);
@@ -314,14 +318,15 @@ export function advise(a: AdviceInput, rules: ScopingRule[], zones: Zone[], asOf
       const why = [...new Set(all.excluded.filter((p) => p.structure === from).flatMap((p) => p.findings.filter((f) => f.outcome === "fail").map((f) => f.ruleKey)))];
       const reasonText: Record<string, string> = { "place.budget": "the budget", "place.visa_capacity": "the number of visas", "place.industrial_facilities": "industrial facilities", "place.warehouse_facilities": "warehousing" };
       const named = why.map((k) => reasonText[k] ?? k).join(", ");
-      reasons.push(say(rules, "structure.no_viable_place", `No ${words(from)} place we hold data for fits ${named ? `the answers on ${named}` : "every answer"}. ${words(to)} is the closest structure with a place that does.`));
+      reasons.push(say(rules, "structure.no_viable_place", `No ${words(from)} place we hold data for fits ${named ? `the answers on ${named}` : "every answer"}. ${words(to)} is the closest structure with a place that does.`, why));
       recommendation = to;
       all = assess(a, rules, zones, recommendation);
     }
     const requested = toStructure(a.jurisdiction);
     if (requested && requested !== recommendation) {
       const r = by.get(requested)!;
-      const fails = r.findings.filter((f) => f.outcome === "fail").map((f) => f.text);
+      const failing = r.findings.filter((f) => f.outcome === "fail");
+      const fails = failing.map((f) => f.text);
       reasons.push(
         say(
           rules,
@@ -329,6 +334,7 @@ export function advise(a: AdviceInput, rules: ScopingRule[], zones: Zone[], asOf
           fails.length
             ? `You asked for ${words(requested)}, which does not fit: ${fails.join(" ")}`
             : `You asked for ${words(requested)}; the answers above point to ${words(String(recommendation ?? "a specialist review"))}. Ops will confirm which fits before pricing.`,
+          failing.map((f) => f.ruleKey),
         ),
       );
     }
@@ -336,7 +342,9 @@ export function advise(a: AdviceInput, rules: ScopingRule[], zones: Zone[], asOf
     excluded = all.excluded;
     if (!noViableOption && viable.length === 0) {
       noViableOption = true;
-      reasons.push(say(rules, "structure.no_viable_option", "No place we hold data for fits every answer (visas, budget, premises). A specialist needs to look at this case; we will not guess."));
+      // The conclusion rests on the place rules that excluded every place.
+      const placeRules = [...new Set(excluded.flatMap((p) => p.findings.filter((f) => f.outcome === "fail").map((f) => f.ruleKey)))];
+      reasons.push(say(rules, "structure.no_viable_option", "No place we hold data for fits every answer (visas, budget, premises). A specialist needs to look at this case; we will not guess.", placeRules));
     }
   }
 

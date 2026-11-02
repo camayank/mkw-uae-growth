@@ -232,6 +232,16 @@ document.addEventListener("click", (ev) => {
       toast(`Issued ${r.issued.length} invoice(s): ${r.issued.join(", ")}`);
     }, null),
     "recompute-advice": () => act(() => api("POST", `/api/ops/requests/${id}/scoping/recompute`), "Advice recomputed; review it again"),
+    "display-approve": () => {
+      const note = prompt(`Approve this ${el.dataset.kind} for public display? What the public sees is this version only; a new verification or fact lapses it. Note (optional):`, "");
+      if (note === null) return;
+      act(() => api("POST", "/api/admin/public-display/approve", { kind: el.dataset.kind, subject: el.dataset.subject, note }), "Approved for public display");
+    },
+    "display-revoke": () => {
+      const note = prompt("Withdraw this from public display? Why (optional):", "");
+      if (note === null) return;
+      act(() => api("POST", "/api/admin/public-display/revoke", { kind: el.dataset.kind, subject: el.dataset.subject, note }), "Withdrawn from public display");
+    },
     "fact-history": () => {
       const target = document.getElementById(el.dataset.target);
       if (!target) return;

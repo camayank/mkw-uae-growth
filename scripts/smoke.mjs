@@ -553,9 +553,80 @@ await shot(founder, "38-scoping-rules");
   await shot(founder, "82-scoping-catalogue");
   await axeCheck(founder, "jurisdiction catalogue and evidence history (E2)");
 }
-// Public intake page, no sign-in
+// E3: the public Right UAE Entity selector, no sign-in. With nothing approved it shows no rule text and no figure;
+// once the founder approves a verified rule and a verified place for public display, those appear.
 const pub = await browser.newContext({ viewport: { width: 1280, height: 900 } });
 const pp = await pub.newPage();
+{
+  const sel = await pub.newPage();
+  sel.on("pageerror", (e) => errors.push(`selector page: ${e.message}`));
+  const answer = async (page) => {
+    await page.goto(BASE + "/selector.html");
+    await page.waitForSelector("#questions .choice");
+    await page.locator('.choice[data-val="tech"]').click(); await page.locator("#next").click();
+    await page.locator('.choice[data-val="international"]').click(); await page.locator("#next").click();
+    await page.fill("#qnum", "2"); await page.locator("#next").click();
+    await page.locator('.choice[data-val="office"]').click(); await page.locator("#next").click();
+    await page.fill("#qnum", "30000"); await page.locator("#next").click();
+    await page.locator('.choice[data-val="individuals"]').click(); await page.locator("#next").click();
+    await page.locator('.choice[data-val="no"]').click(); await page.locator("#next").click();
+    await page.waitForSelector("#qzone");
+    await page.fill("#qzone", "IFZA");
+    await page.locator("#next").click();
+    await page.waitForSelector("#result:not([hidden]) .card");
+    await page.evaluate(() => window.scrollTo(0, 0));
+    return page.locator("#result").innerText();
+  };
+  const first = await answer(sel);
+  check("the selector answers without sign-in and labels the result preliminary (E3):", /Preliminary, general information, not advice/.test(first) && /IFZA/.test(first));
+  check("with nothing approved the selector shows no rule text and no figure (E3):", !/AED /.test(first) && /0 of \d+ statements and 0 of \d+ places/.test(first) && /to be verified by a person/.test(first) && !/Register for corporate tax/.test(first));
+  await shot(sel, "83-public-selector-unapproved");
+  await axeCheck(sel, "public selector result, nothing approved (E3)");
+  // The founder approves the corporate tax rule (verified earlier in this run? no: VAT was) and IFZA's figures.
+  await founder.goto(BASE + "/#/scoping"); await founder.reload();
+  await founder.waitForSelector('form[data-form="verify-rule"]');
+  const ct = founder.locator('form[data-form="verify-rule"][data-id="obligation.corporate_tax"]');
+  await ct.locator('select[name="confidence"]').selectOption("verified");
+  await ct.locator('input[name="verifiedBy"]').fill("A. Qualified, tax agent");
+  await ct.locator('input[name="sourceUrl"]').fill("https://tax.gov.ae/en/taxes/corporate-tax");
+  await ct.locator('button[type="submit"]').click();
+  await founder.waitForTimeout(700);
+  const zf = founder.locator('form[data-form="verify-zone"][data-id="IFZA"]');
+  await zf.locator('select[name="confidence"]').selectOption("verified");
+  await zf.locator('input[name="verifiedBy"]').fill("A. Qualified, licensing adviser");
+  await zf.locator('input[name="sourceUrl"]').fill("https://ifza.com/");
+  await zf.locator('button[type="submit"]').click();
+  await founder.waitForTimeout(700);
+  await founder.locator('button[data-act="display-approve"][data-kind="rule"][data-subject="obligation.corporate_tax"]').click();
+  await founder.waitForTimeout(700);
+  log.push("public rule: " + (await toastText(founder)));
+  await founder.locator('button[data-act="display-approve"][data-kind="place"][data-subject="IFZA"]').click();
+  await founder.waitForTimeout(700);
+  log.push("public place: " + (await toastText(founder)));
+  await eventually("the Scoping page counts what the public may see (E3):", async () => /1 \/ \d+\s+rules the public selector may show/.test(await founder.locator("main").innerText()));
+  const second = await answer(sel);
+  check("an approved rule and place reach the public with text and figures (E3):", /Register for corporate tax/.test(second) && /AED 12,000 to AED 20,000 to set up/.test(second) && /figures checked/.test(second));
+  check("everything else stays to be verified (E3):", /to be verified by a person/.test(second) && /1 of \d+ statements and 1 of \d+ places/.test(second));
+  await shot(sel, "84-public-selector-approved");
+  await axeCheck(sel, "public selector result, one rule and one place approved (E3)");
+  // The review request becomes a lead through the public intake.
+  await sel.fill("#company", "Selector Smoke Co");
+  await sel.fill("#name", "Selector Founder");
+  await sel.fill("#email", `selector-${stamp}@smoke.test`);
+  await sel.check('#review input[name="consent"]');
+  await sel.locator('#review button[type="submit"]').click();
+  await eventually("the selector's review request is accepted (E3):", async () => /A person at MKW Advisors reviews your case/.test(await sel.locator("#rmsg").innerText()));
+  const m3 = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+  const mp = await m3.newPage();
+  mp.on("pageerror", (e) => errors.push(`selector mobile: ${e.message}`));
+  await answer(mp);
+  check("the selector result at 390 px has no horizontal overflow (E3):", !(await mp.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
+  await mp.screenshot({ path: `${OUT}/85-mobile-public-selector.png`, fullPage: true });
+  log.push("85-mobile-public-selector");
+  await axeCheck(mp, "public selector at 390 px (E3)");
+  await m3.close();
+  await sel.close();
+}
 pp.on("pageerror", (e) => errors.push(`intake page: ${e.message}`));
 await pp.goto(BASE + "/intake.html?utm_campaign=smoke");
 // The public page keeps its own single column: the app's styles must not reach it (O12 review).
@@ -902,6 +973,13 @@ await shot(client, "58-client-compliance-ar");
 await pp.goto(BASE + "/intake.html?lang=ar"); await pp.waitForSelector('html[dir="rtl"]');
 await pp.waitForTimeout(400);
 await eventually("public intake in Arabic:", async () => /شركتك في الإمارات/.test(await pp.locator("main").innerText()));
+// E3: the selector's questions and controls are translated too, question by question.
+await pp.goto(BASE + "/selector.html?lang=ar"); await pp.waitForSelector('html[dir="rtl"]');
+await pp.waitForSelector("#questions .choice");
+check("the public selector in Arabic, first question:", /ما النشاط الرئيسي للشركة/.test(await pp.locator("main").innerText()) && /التالي/.test(await pp.locator("#next").innerText()));
+await pp.locator('.choice[data-val="tech"]').click(); await pp.locator("#next").click();
+await pp.waitForTimeout(300);
+check("the public selector in Arabic, second question:", /أين عملاؤك/.test(await pp.locator("#step").innerText()));
 await shot(pp, "59-public-intake-ar");
 // axe on the Arabic screens (same account, new context that bypasses CSP for the axe script only)
 const ap3 = await (await browser.newContext({ viewport: { width: 1280, height: 900 }, bypassCSP: true })).newPage();

@@ -685,3 +685,36 @@ has a test that fails without the fix.
 the founder's activity group, the place finding passes at the weaker of the rule and that evidence. When it does
 not, the finding stays "to confirm": activity groups are coarse, and a group missing from a list does not prove the
 exact activity is refused. A place the founder names matches by its name, its authority's name or an alias.
+
+**D80. The public selector shows approved rules only.** (E3.) The owner was asked, on 2 Nov 2026, what the public
+selector may show before anyone at MKW has looked at the case, and chose "approved rules only" over "no result until
+reviewed" and "structures only, no figures". This is the documented resolution of the conflict recorded in
+`docs/ENTITY-PROGRAMME.md` section 3.1; rule 5 in `CLAUDE.md` and `BUILD_PROMPT.md` carries it.
+- **Approval is per version.** The founder approves a rule by its version number, or a place by the digest of its
+  current figures, facilities, activity list, confidence and evidence (`public_approvals`). A new verification, a new
+  fact or evidence going stale changes the version and the approval lapses; the console says "lapsed: new version".
+  Approving again supersedes the earlier approval, so exactly one is live per subject. Every approval and
+  withdrawal is audited.
+- **Only checked things can be approved.** An UNCERTAIN rule or place, or one whose evidence is stale, cannot be
+  approved for public display. A rule of thumb can: the founder's approval is the named person's check under this
+  rule, and the public text carries no confidence label beyond "checked".
+- **What is approved is the engine's wording.** A rule's public version is its verification version, the
+  confidence it deserves today and a digest of every text the engine can emit under that key (`engineTextsByRule`
+  runs the engine over a matrix of founders). The console shows those texts before approval. A reworded engine, a
+  new verification or a stale verification each lapse the approval.
+- **Conclusions need every rule they rest on.** A statement that restates other rules' findings (`basedOn`: the
+  fallback after an exclusion, "you asked for X, which does not fit", "no option fits") is public only when all of
+  them are approved. A place-rule finding carries the place's figures, so it also needs the place approved.
+  Unapproved findings carry no outcome, and unapproved places show no authority or preference. A place the engine
+  excluded is listed as "to be verified" rather than dropped, so an empty list never implies that nothing fits.
+- **The public view is a filter** (`packages/core/src/public.ts`): approved statements keep their text, approved
+  places keep their figures, everything else becomes "to be verified" with no text and no figure. A recommendation
+  is confirmed only when every reason behind it is approved; "does not fit" is shown only when the failing rule
+  is approved; a contradiction that restates an offshore rule is gated on that rule. The founder's own open
+  questions are always shown.
+- **The public assessment writes nothing.** `POST /api/public/assess` runs the same engine on the same catalogue
+  and keeps no answer, request, lead or audit row. It is rate-limited per IP. The review request goes through the
+  existing public intake with the PDPL consent text, and only then is anything stored.
+- **Disclaimer.** The default wording is `PUBLIC_DISCLAIMER` in `packages/core/src/public.ts`; the owner may change
+  it.
+

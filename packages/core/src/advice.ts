@@ -42,11 +42,14 @@ export interface Zone {
   /** E2: the authority the place belongs to, and the other names it goes by. */
   authority?: string | null;
   aliases?: string[];
-  /** E2: activity groups the authority's own activity list confirms (null: not on record). */
+  /** E2: activity groups the authority's own activity list confirms (null: not on record), with the confidence that
+   *  evidence deserves today (the engine's finding is never more confident than it). */
   activitiesListed?: string[] | null;
-  /** E2: yearly renewal estimate, fils, when on record. */
+  activitiesListedConfidence?: Confidence;
+  /** E2: yearly renewal estimate, fils, when on record, with its own confidence. */
   renewalMinFils?: number | null;
   renewalMaxFils?: number | null;
+  renewalConfidence?: Confidence;
   /** E2: the evidence behind each current value. */
   evidence?: Record<string, FieldEvidence>;
   /** E2: some evidence the engine relies on is past its re-verification date. */
@@ -76,6 +79,7 @@ export interface Candidate {
   authority?: string | null;
   renewalMinFils?: number | null;
   renewalMaxFils?: number | null;
+  renewalConfidence?: Confidence;
   stale?: boolean;
 }
 
@@ -231,7 +235,7 @@ const asCandidate = (p: PlaceAssessment): Candidate => ({
   status: p.status,
   findings: p.findings,
   ...(p.authority !== undefined ? { authority: p.authority } : {}),
-  ...(p.renewalMinFils != null ? { renewalMinFils: p.renewalMinFils, renewalMaxFils: p.renewalMaxFils ?? p.renewalMinFils } : {}),
+  ...(p.renewalMinFils != null ? { renewalMinFils: p.renewalMinFils, renewalMaxFils: p.renewalMaxFils ?? p.renewalMinFils, renewalConfidence: p.renewalConfidence ?? "UNCERTAIN" } : {}),
   ...(p.stale ? { stale: true } : {}),
 });
 

@@ -54,6 +54,7 @@ export interface PlaceAssessment {
   authority?: string | null;
   renewalMinFils?: number | null;
   renewalMaxFils?: number | null;
+  renewalConfidence?: Confidence;
   stale?: boolean;
 }
 
@@ -206,7 +207,7 @@ export function assessPlace(z: Zone, structure: StructureAssessment, a: AdviceIn
   // (a group missing from a list is not proof the exact activity is refused).
   if (a.activity && a.activity !== "holding") {
     const listed = z.activitiesListed?.includes(a.activity);
-    if (listed) out.push(placeFinding("place.activity_listed", "pass", `${z.name}'s activity list includes ${a.activity.replace(/_/g, " ")} activities; the exact activity is chosen at application.`, undefined, z.evidence?.activities_listed?.confidence ?? z.confidence));
+    if (listed) out.push(placeFinding("place.activity_listed", "pass", `${z.name}'s activity list includes ${a.activity.replace(/_/g, " ")} activities; the exact activity is chosen at application.`, undefined, z.activitiesListedConfidence ?? "UNCERTAIN"));
     else out.push(placeFinding("place.activity_listed", "unknown", `Whether ${z.name} licenses this exact activity must be confirmed against its activity list.`, "check"));
   }
 
@@ -237,7 +238,7 @@ export function assessPlace(z: Zone, structure: StructureAssessment, a: AdviceIn
     confidence: z.confidence,
     why,
     ...(z.authority !== undefined ? { authority: z.authority } : {}),
-    ...(z.renewalMinFils != null ? { renewalMinFils: z.renewalMinFils, renewalMaxFils: z.renewalMaxFils ?? z.renewalMinFils } : {}),
+    ...(z.renewalMinFils != null ? { renewalMinFils: z.renewalMinFils, renewalMaxFils: z.renewalMaxFils ?? z.renewalMinFils, renewalConfidence: z.renewalConfidence ?? "UNCERTAIN" } : {}),
     ...(z.stale ? { stale: true } : {}),
   };
 }

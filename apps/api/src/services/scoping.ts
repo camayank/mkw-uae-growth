@@ -1,6 +1,5 @@
 import { advise, assessStructure, needsVerificationOf, rankPlaces, Rulebook, statusOf, type Advice, type AdviceInput, type EligibilityStatus, type Finding, type ScopingRule, type Structure, type Zone } from "@tasees/core";
-import { dbToday } from "./repo.ts";
-import { appendFact, engineInputs, engineZone, loadPlaces, loadRules } from "./catalogue.ts";
+import { appendFact, catalogueToday, engineInputs, engineZone, loadPlaces, loadRules } from "./catalogue.ts";
 import { rescopeForStructure } from "./structure.ts";
 import { withdrawOffers } from "../lib/transition.ts";
 import { audit, type SessionUser } from "../lib/context.ts";
@@ -23,12 +22,13 @@ export async function loadZones(tx: Queryable, asOf?: string): Promise<Zone[]> {
 }
 
 export async function scopingOverview(tx: Queryable) {
-  const zones = await tx.query<Record<string, unknown>>("select *, verified_at::text as verified_at_text from zones order by type, emirate, name");
+  const zones = (await loadPlaces(tx, undefined, { includeInactive: true })).sort((x, y) => x.type.localeCompare(y.type) || x.emirate.localeCompare(y.emirate) || x.name.localeCompare(y.name));
   const pending = await tx.query<{ n: number }>("select count(*)::int as n from requests where advice_status = 'pending_review'");
   return {
     // E2: each rule with the confidence it deserves today, its version and when it must be checked again.
     rules: (await loadRules(tx)).map((x) => ({ key: x.key, kind: x.kind, statement: x.statement, parameters: x.parameters, sourceUrl: x.sourceUrl, confidence: x.confidence, recorded: x.recorded, stale: x.stale, version: x.version, nextVerification: x.nextVerification, verifiedBy: x.verifiedBy, verifiedAt: x.verifiedAt })),
-    zones: zones.rows.map((z) => ({ name: z.name, emirate: z.emirate, type: z.type, visaQuota: num(z.visa_quota), costMin: num(z.cost_min_fils), costMax: num(z.cost_max_fils), timelineDays: num(z.timeline_days), activities: z.activities, sourceUrl: z.source_url, confidence: z.confidence, verifiedBy: z.verified_by, verifiedAt: z.verified_at_text ? String(z.verified_at_text).slice(0, 10) : null, active: z.active })),
+    // E2: the confidence a place deserves today (its weakest evidence, downgraded when stale), not the raw column.
+    zones: zones.map((z) => ({ name: z.name, emirate: z.emirate, type: z.type, visaQuota: z.visaQuota, costMin: z.costMinFils, costMax: z.costMaxFils, timelineDays: z.timelineDays, activities: z.activities, sourceUrl: z.sourceUrl, confidence: z.confidence, stale: !!z.stale, placeholder: z.placeholder, verifiedBy: z.evidence?.cost?.verifiedBy ?? null, verifiedAt: z.evidence?.cost?.evidenceDate ?? null, active: z.active })),
     pendingReviews: num(pending.rows[0]?.n),
   };
 }
@@ -47,7 +47,7 @@ export async function verifyRule(tx: Queryable, actor: SessionUser, key: string,
     if (!sourceUrl) throw badRequest("A verified rule needs an http(s) source link");
   }
   // E2: every verification is a new rule version, recorded as an append-only fact with its re-verification date.
-  const today = await dbToday(tx);
+  const today = await catalogueToday(tx);
   const statement = input.statement?.trim() || String(before.statement);
   const fact = await appendFact(tx, actor, {
     subjectKind: "rule",
@@ -91,22 +91,21 @@ export async function verifyZone(
   const costMin = input.costMinFils ?? num(before.cost_min_fils);
   const costMax = input.costMaxFils ?? num(before.cost_max_fils);
   if (costMin > costMax) throw badRequest("Minimum cost is above the maximum");
-  const today = await dbToday(tx);
+  const today = await catalogueToday(tx);
   const common = { subjectKind: "place" as const, subject: name, sourceUrl, evidenceDate: today, confidence: input.confidence, verifiedBy: input.verifiedBy ?? null, nextVerification: input.nextVerification ?? null };
-  // A place added without figures (Umm Al Quwain, Fujairah) holds placeholders, not data: only figures given now are
-  // recorded for it, and it cannot be activated until its cost, visas and timeline are on record.
-  const hasFigures = num(before.cost_min_fils) > 0;
-  if (!hasFigures && input.confidence !== "UNCERTAIN" && (input.costMinFils === undefined || input.visaQuota === undefined || input.timelineDays === undefined)) {
-    throw badRequest("This place has no figures on record yet: give its cost range, visas and timeline with the verification");
+  // A place added without figures (Umm Al Quwain, Fujairah) holds placeholders, not data. Each figure counts only
+  // once it is given here or recorded as a fact; a placeholder is never verified, and the place is not offered until
+  // its cost, visas and timeline are all on record.
+  const recorded = new Set((await tx.query<{ field: string }>("select distinct field from catalogue_facts where subject_kind = 'place' and subject = $1", [name])).rows.map((x) => x.field));
+  const given: Record<string, boolean> = { cost: input.costMinFils !== undefined && input.costMaxFils !== undefined, visa_quota: input.visaQuota !== undefined, timeline_days: input.timelineDays !== undefined };
+  const have = (f: string) => given[f] || recorded.has(f) || !before.placeholder;
+  const missing = ["cost", "visa_quota", "timeline_days"].filter((f) => !have(f));
+  if (missing.length && (input.confidence !== "UNCERTAIN" || input.active === true)) {
+    throw badRequest(`This place has no ${missing.join(", ").replace(/_/g, " ")} on record yet: give them before verifying or offering it`);
   }
-  if (costMin > 0 && costMax > 0) await appendFact(tx, actor, { ...common, field: "cost", value: { minFils: costMin, maxFils: costMax } });
-  if (hasFigures || input.visaQuota !== undefined) await appendFact(tx, actor, { ...common, field: "visa_quota", value: input.visaQuota ?? num(before.visa_quota) });
-  if (hasFigures || input.timelineDays !== undefined) await appendFact(tx, actor, { ...common, field: "timeline_days", value: input.timelineDays ?? num(before.timeline_days) });
-  if (input.active === true && !before.active) {
-    const recorded = (await tx.query<{ field: string }>("select distinct field from catalogue_facts where subject_kind = 'place' and subject = $1", [name])).rows.map((x) => x.field);
-    const missing = hasFigures ? [] : ["cost", "visa_quota", "timeline_days"].filter((f) => !recorded.includes(f));
-    if (missing.length) throw badRequest(`Record ${missing.join(", ").replace(/_/g, " ")} for this place before activating it`);
-  }
+  if (have("cost") && costMin > 0 && costMax > 0) await appendFact(tx, actor, { ...common, field: "cost", value: { minFils: costMin, maxFils: costMax } });
+  if (have("visa_quota")) await appendFact(tx, actor, { ...common, field: "visa_quota", value: input.visaQuota ?? num(before.visa_quota) });
+  if (have("timeline_days")) await appendFact(tx, actor, { ...common, field: "timeline_days", value: input.timelineDays ?? num(before.timeline_days) });
   await tx.query(
     `update zones set confidence = $2, verified_by = $3, verified_at = case when $2 = 'verified' then app_now()::date else null end, source_url = $4,
        active = coalesce($5, active), updated_at = app_now() where name = $1`,
@@ -150,7 +149,7 @@ export async function adviseNow(tx: Queryable, answers: AdviceInput): Promise<Ad
 
 export async function recomputeAdvice(tx: Queryable, actor: SessionUser, requestId: string) {
   if (!["ops", "founder"].includes(actor.role)) throw forbidden("Only ops recomputes advice");
-  const r = (await tx.query<{ answers: AdviceInput; advice_status: string }>("select answers, advice_status from requests where id = $1", [requestId])).rows[0];
+  const r = (await tx.query<{ answers: AdviceInput; advice_status: string }>("select answers, advice_status from requests where id = $1 for update", [requestId])).rows[0];
   if (!r) throw notFound("Request not found");
   const advice = await adviseNow(tx, r.answers);
   await tx.query("update requests set advice = $2, advice_status = 'pending_review', advice_reviewed_by = null, advice_reviewed_at = null where id = $1", [requestId, JSON.stringify(advice)]);
@@ -165,7 +164,8 @@ export async function recomputeAdvice(tx: Queryable, actor: SessionUser, request
  */
 export async function approveAdvice(tx: Queryable, actor: SessionUser, requestId: string, edits: { removeRuleKeys?: string[]; structure?: AdviceInput["jurisdiction"]; removePlaces?: string[]; note?: string }) {
   if (!["ops", "founder"].includes(actor.role)) throw forbidden("Only ops approves scoping advice");
-  const r = (await tx.query<{ advice: Advice | null; advice_status: string; answers: AdviceInput }>("select advice, advice_status, answers from requests where id = $1", [requestId])).rows[0];
+  // The row lock orders this against a concurrent recompute (and the audit lock is taken before any offer lock below).
+  const r = (await tx.query<{ advice: Advice | null; advice_status: string; answers: AdviceInput }>("select advice, advice_status, answers from requests where id = $1 for update", [requestId])).rows[0];
   if (!r) throw notFound("Request not found");
   if (!r.advice) throw conflict("This request has no scoping advice to approve");
   const stale = await staleAdviceReason(tx, r.advice);

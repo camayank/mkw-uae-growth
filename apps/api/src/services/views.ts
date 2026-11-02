@@ -36,6 +36,10 @@ export function clientHome(db: Database, user: SessionUser, now: Date = new Date
     const requests = await tx.query(
       "select id, status, scope, notes, created_at, advice_status, app_approved_advice(id) as advice, advice_reviewed_at from requests order by created_at desc",
     );
+    // E2: the client sees the day the advice's rules and data stand at; the digest and fact id are internal.
+    for (const r of requests.rows as Array<{ advice: { dataVersion?: { asOf: string } } | null }>) {
+      if (r.advice?.dataVersion) r.advice.dataVersion = { asOf: r.advice.dataVersion.asOf };
+    }
     const offers = await tx.query(
       `select id, request_id, tier, status, valid_to, professional_fils, mkw_fees_fils, vat_fils, government_fils, client_total_fils
        from offers order by created_at desc`,

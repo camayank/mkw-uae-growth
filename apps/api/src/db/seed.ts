@@ -57,7 +57,7 @@ export async function seedCatalogue(db: Database): Promise<void> {
       }
     }
     for (const [name, emirate] of PENDING_PLACES) {
-      await tx.query("insert into zones (name, emirate, type, visa_quota, cost_min_fils, cost_max_fils, timeline_days, activities, active) values ($1,$2,'free_zone',0,0,0,1,'{}',false) on conflict (name) do nothing", [name, emirate]);
+      await tx.query("insert into zones (name, emirate, type, visa_quota, cost_min_fils, cost_max_fils, timeline_days, activities, active, placeholder) values ($1,$2,'free_zone',0,0,0,1,'{}',false, true) on conflict (name) do nothing", [name, emirate]);
     }
     for (const [place, authority] of Object.entries(PLACE_AUTHORITY)) {
       await tx.query("update zones set authority_id = $2 where name = $1 and authority_id is null", [place, authority]);

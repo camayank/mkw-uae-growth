@@ -363,7 +363,7 @@ export function adviceHtml(a, opts = {}) {
       }
     </div>
     <div class="card"><h2>Where to register</h2>
-      ${a.places.length ? `<ul class="plain">${a.places.map((p) => `<li>${opts.editable ? `<label><input type="checkbox" name="keepPlace" value="${esc(p.zone)}" checked /> ` : ""}<b>${esc(p.zone)}</b> (${esc(p.emirate)}) ${statusBadge(p.status)} · ${cost(p)}${p.renewalMinFils ? ` · renews at ${aed(p.renewalMinFils)} to ${aed(p.renewalMaxFils)} a year (estimate)` : ""} · ${p.visaQuota} visa(s) in the standard package · about ${p.timelineDays} working days ${confBadge(p.confidence)}${p.stale ? ` ${badge("UNCERTAIN", "being re-checked")}` : ""}<br><span class="small muted">${esc([p.authority ? `licensed by ${p.authority}` : "", ...p.why].filter(Boolean).join("; "))}</span>${opts.editable ? "</label>" : ""}${placeFindings(p)}</li>`).join("")}</ul>` : `<p class="muted">No place fits every answer yet.</p>`}
+      ${a.places.length ? `<ul class="plain">${a.places.map((p) => `<li>${opts.editable ? `<label><input type="checkbox" name="keepPlace" value="${esc(p.zone)}" checked /> ` : ""}<b>${esc(p.zone)}</b> (${esc(p.emirate)}) ${statusBadge(p.status)} · ${cost(p)}${p.renewalMinFils ? ` · renews at ${aed(p.renewalMinFils)} to ${aed(p.renewalMaxFils)} a year (estimate) ${confBadge(p.renewalConfidence ?? "UNCERTAIN")}` : ""} · ${p.visaQuota} visa(s) in the standard package · about ${p.timelineDays} working days ${confBadge(p.confidence)}${p.stale ? ` ${badge("UNCERTAIN", "being re-checked")}` : ""}<br><span class="small muted">${esc([p.authority ? `licensed by ${p.authority}` : "", ...p.why].filter(Boolean).join("; "))}</span>${opts.editable ? "</label>" : ""}${placeFindings(p)}</li>`).join("")}</ul>` : `<p class="muted">No place fits every answer yet.</p>`}
       ${
         a.excluded?.length
           ? `<details><summary class="small">${a.excluded.length} other place(s) do not fit, and why</summary><ul class="plain small">${a.excluded.map((p) => `<li><b>${esc(p.zone)}</b>: ${firstFinding(p.findings, ["fail"])}</li>`).join("")}</ul></details>`
@@ -419,6 +419,7 @@ const evidenceChip = (e) =>
 
 export async function renderFactHistory(kind, subject, target) {
   const rows = await api("GET", `/api/admin/jurisdictions/history?kind=${encodeURIComponent(kind)}&subject=${encodeURIComponent(subject)}`);
+  target.hidden = false;
   const value = (v) => (v && typeof v === "object" && "minFils" in v ? `${aed(v.minFils)} to ${aed(v.maxFils)}` : Array.isArray(v) ? v.join(", ") : v && typeof v === "object" ? Object.entries(v).map(([k, x]) => `${k}: ${x}`).join(", ") : String(v ?? "–"));
   target.innerHTML = rows.length
     ? table(
@@ -453,7 +454,7 @@ export async function renderScoping() {
         <div class="field"><label for="fact-by">Verified by (name, qualification)</label><input id="fact-by" name="verifiedBy" /></div>
         <div class="field"><label for="fact-next">Check again by (optional)</label><input id="fact-next" name="nextVerification" type="date" /></div>
       </div>
-      <div class="row"><input name="note" placeholder="Note (optional)" style="max-width:360px" /><button class="primary" type="submit">Record</button></div></form>`
+      <div class="row"><label class="small" for="fact-note">Note (optional)</label><input id="fact-note" name="note" style="max-width:360px" /><button class="primary" type="submit">Record</button></div></form>`
     : "";
   const verifyForm = (kind, key, c) => founder ? `<form class="row" data-form="verify-${kind}" data-id="${esc(key)}" style="flex-wrap:wrap;gap:4px">
       <select name="confidence">${["verified", "rule_of_thumb", "UNCERTAIN"].map((v) => `<option value="${v}" ${c === v ? "selected" : ""}>${CONF_LABEL[v]}</option>`).join("")}</select>
@@ -472,19 +473,20 @@ export async function renderScoping() {
       <td class="small">${esc(p.authority ?? "–")}${p.authorityId && cat.authorities.find((a) => a.id === p.authorityId)?.parentId ? `<br><span class="muted">under ${esc(authorityName[cat.authorities.find((a) => a.id === p.authorityId).parentId] ?? "")}</span>` : ""}</td>
       <td>${p.evidence.map(evidenceChip).join(" · ")}${p.activitiesListed ? `<br><span class="small">Activity list: ${esc(p.activitiesListed.map(words).join(", "))}</span>` : ""}${p.due.length ? `<br><span class="small muted">Due soon: ${esc(p.due.map(words).join(", "))}</span>` : ""}</td>
       <td>${confBadge(p.confidence)}${p.stale ? ` ${badge("UNCERTAIN", "stale")}` : ""}</td>
-      <td><button type="button" class="sm" data-act="fact-history" data-kind="place" data-subject="${esc(p.name)}" data-target="hist-${i}" aria-controls="hist-${i}">History</button></td></tr>
-      <tr><td colspan="5" id="hist-${i}" class="small"></td></tr>`),
+      <td><button type="button" class="sm" data-act="fact-history" data-kind="place" data-subject="${esc(p.name)}" data-target="hist-place-${i}" aria-controls="hist-place-${i}" aria-expanded="false">History</button></td></tr>
+      <tr hidden><td colspan="5" id="hist-place-${i}" class="small"></td></tr>`),
   )}</div>
   ${factForm}
   <div class="card flush"><h2 style="padding:16px 18px 0">Rules</h2>${table(
     ["Kind", "Rule", "Confidence", "Verified", ...(founder ? ["Record verification"] : [])],
-    o.rules.map((r) => `<tr><td class="small">${esc(r.kind)}</td><td>${esc(r.statement)}<br><span class="small mono muted">${esc(r.key)} · v${r.version}</span>${r.sourceUrl ? ` · <a class="small" href="${esc(r.sourceUrl)}" target="_blank" rel="noopener noreferrer">source</a>` : ""}</td>
-      <td>${confBadge(r.confidence)}${r.stale ? ` ${badge("UNCERTAIN", "stale")}` : ""}</td><td class="small">${r.verifiedBy ? `${esc(r.verifiedBy)}<br><span class="muted">${date(r.verifiedAt)}${r.nextVerification ? ` · check by ${date(r.nextVerification)}` : ""}</span>` : "–"}</td>${founder ? `<td>${verifyForm("rule", r.key, r.recorded)}</td>` : ""}</tr>`),
+    o.rules.map((r, i) => `<tr><td class="small">${esc(r.kind)}</td><td>${esc(r.statement)}<br><span class="small mono muted">${esc(r.key)} · v${r.version}</span>${r.sourceUrl ? ` · <a class="small" href="${esc(r.sourceUrl)}" target="_blank" rel="noopener noreferrer">source</a>` : ""}${r.version > 1 ? ` · <button type="button" class="sm" data-act="fact-history" data-kind="rule" data-subject="${esc(r.key)}" data-target="hist-rule-${i}" aria-controls="hist-rule-${i}" aria-expanded="false">History</button>` : ""}</td>
+      <td>${confBadge(r.confidence)}${r.stale ? ` ${badge("UNCERTAIN", "stale")}` : ""}</td><td class="small">${r.verifiedBy ? `${esc(r.verifiedBy)}<br><span class="muted">${date(r.verifiedAt)}${r.nextVerification ? ` · check by ${date(r.nextVerification)}` : ""}</span>` : "–"}</td>${founder ? `<td>${verifyForm("rule", r.key, r.recorded)}</td>` : ""}</tr>
+      <tr hidden><td colspan="${founder ? 5 : 4}" id="hist-rule-${i}" class="small"></td></tr>`),
   )}</div>
   <div class="card flush" style="margin-top:16px"><h2 style="padding:16px 18px 0">Places</h2>${table(
     ["Place", "Type", "#Visas", "#Cost from", "#Cost to", "#Days", "Known for", "Confidence", "Verified", ...(founder ? ["Record verification"] : [])],
     o.zones.map((z) => `<tr><td>${esc(z.name)}<br><span class="small muted">${esc(z.emirate)}</span></td><td class="small">${esc(words(z.type))}</td><td class="num">${z.visaQuota}</td><td class="num">${aed(z.costMin)}</td><td class="num">${aed(z.costMax)}</td><td class="num">${z.timelineDays}</td>
-      <td class="small">${esc((z.activities ?? []).join(", "))}</td><td>${confBadge(z.confidence)}</td><td class="small">${z.verifiedBy ? `${esc(z.verifiedBy)}<br><span class="muted">${date(z.verifiedAt)}</span>` : "–"}</td>${founder ? `<td>${verifyForm("zone", z.name, z.confidence)}</td>` : ""}</tr>`),
+      <td class="small">${esc((z.activities ?? []).join(", "))}</td><td>${confBadge(z.confidence)}${z.stale ? ` ${badge("UNCERTAIN", "stale")}` : ""}${z.placeholder ? `<br><span class="small muted">no figures yet</span>` : ""}</td><td class="small">${z.verifiedBy ? `${esc(z.verifiedBy)}<br><span class="muted">${date(z.verifiedAt)}</span>` : "–"}</td>${founder ? `<td>${verifyForm("zone", z.name, z.confidence)}</td>` : ""}</tr>`),
   )}</div>`;
 }
 

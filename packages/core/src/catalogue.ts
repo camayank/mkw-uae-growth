@@ -13,6 +13,8 @@ export type SubjectKind = "place" | "authority" | "rule";
 
 /** Days a verified fact stays current when no re-verification date is given (D77). */
 export const DEFAULT_REVERIFY_DAYS = 180;
+/** The longest any fact may go before it must be checked again: two years. */
+export const MAX_REVERIFY_DAYS = 730;
 
 export const PLACE_FIELDS = ["cost", "renewal_cost", "visa_quota", "visa_max", "timeline_days", "facilities", "activities_listed", "legal_forms", "coordinates"] as const;
 export const AUTHORITY_FIELDS = ["parent", "registrar", "website"] as const;
@@ -84,9 +86,11 @@ type Parsed = { ok: true; value: unknown } | { ok: false; error: string };
 const ok = (value: unknown): Parsed => ({ ok: true, value });
 const bad = (error: string): Parsed => ({ ok: false, error });
 
+/** The most an amount may be: AED 1 billion, far above any setup fee and well inside safe integer fils. */
+export const MAX_AED = 1_000_000_000;
 const aedToFils = (s: string): number | null => {
   const t = s.replace(/aed/i, "").replace(/,/g, "").trim();
-  if (!/^\d+(\.\d{1,2})?$/.test(t)) return null;
+  if (!/^\d{1,10}(\.\d{1,2})?$/.test(t) || Number(t.split(".")[0]) > MAX_AED) return null;
   // Integer fils without floating point: whole dirhams and up to two decimals.
   const [whole, dec = ""] = t.split(".");
   return Number(whole) * 100 + Number(dec.padEnd(2, "0"));
@@ -116,7 +120,7 @@ export function parseFactValue(kind: SubjectKind, field: string, text: string): 
         return ok({ minFils: lo, maxFils: hi });
       }
       case "visa_quota": {
-        const n = int(s, 0, 500);
+        const n = int(s, 0, 100);
         return n === null ? bad(`"${s}" is not a number of visas`) : ok(n);
       }
       case "visa_max": {

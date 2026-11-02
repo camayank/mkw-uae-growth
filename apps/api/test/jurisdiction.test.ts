@@ -100,6 +100,60 @@ describe("jurisdiction catalogue and evidence", () => {
     expect(listed).toMatchObject({ outcome: "pass", confidence: "UNCERTAIN" }); // the rule itself is still UNCERTAIN
     const other = advice.places.find((p: any) => p.zone !== "SHAMS");
     expect(other.findings.find((f: any) => f.ruleKey === "place.activity_listed")).toMatchObject({ outcome: "unknown", missing: "check" });
+    // "JAFZA" alone means the free zone, which is not a place here: it never names the offshore registry.
+    const jafza = (await env.call("client", "POST", "/api/requests", { answers: { mode: "new_company", emirate: "Dubai", jurisdiction: "offshore", freeZone: "JAFZA", activity: "holding", customers: "international", visas: 0 } })).body.id;
+    const off = (await env.call("ops", "GET", `/api/ops/requests/${jafza}/scoping`)).body.advice;
+    expect(off.places.find((p: any) => p.zone === "JAFZA Offshore")?.why ?? []).not.toContain("the place you named");
+  });
+
+  it("an activity list's own confidence caps the finding, even on a verified place under a verified rule", async () => {
+    expect((await env.call("founder", "PUT", "/api/admin/scoping/rules/place.activity_listed", { confidence: "verified", verifiedBy: "A. Qualified", sourceUrl: "https://example.gov.ae/rules" })).status).toBe(200);
+    expect((await env.call("founder", "PUT", "/api/admin/scoping/zones/DMCC", { confidence: "verified", verifiedBy: "A. Qualified", sourceUrl: "https://dmcc.ae/" })).status).toBe(200);
+    expect((await fact({ subject: "DMCC", field: "activities_listed", valueText: "trading", confidence: "UNCERTAIN" })).status).toBe(200);
+    const id = (await env.call("client", "POST", "/api/requests", { answers: { mode: "new_company", emirate: "Dubai", jurisdiction: "free_zone", freeZone: "DMCC", activity: "trading", customers: "international", visas: 1 } })).body.id;
+    const before = (await env.call("ops", "GET", `/api/ops/requests/${id}/scoping`)).body.advice;
+    const dmcc = before.places.find((p: any) => p.zone === "DMCC");
+    expect(dmcc.findings.find((f: any) => f.ruleKey === "place.activity_listed")).toMatchObject({ outcome: "pass", confidence: "UNCERTAIN" });
+    // Recording the same list as verified changes the data the advice depends on.
+    expect((await fact({ subject: "DMCC", field: "activities_listed", valueText: "trading", confidence: "verified", verifiedBy: "A. Qualified" })).status).toBe(200);
+    expect((await env.call("ops", "GET", `/api/ops/requests/${id}/scoping`)).body.dataChanged).toBe(true);
+    const after = (await env.call("ops", "POST", `/api/ops/requests/${id}/scoping/recompute`)).body;
+    expect(after.places.find((p: any) => p.zone === "DMCC").findings.find((f: any) => f.ruleKey === "place.activity_listed").confidence).toBe("verified");
+  });
+
+  it("a renewal estimate carries its own confidence to the client", async () => {
+    expect((await fact({ subject: "IFZA", field: "renewal_cost", valueText: "8000-11000", confidence: "rule_of_thumb" })).status).toBe(200);
+    const id = (await env.call("client", "POST", "/api/requests", { answers: { mode: "new_company", emirate: "Dubai", jurisdiction: "free_zone", activity: "tech", customers: "international", visas: 1 } })).body.id;
+    const ifza = (await env.call("ops", "GET", `/api/ops/requests/${id}/scoping`)).body.advice.places.find((p: any) => p.zone === "IFZA");
+    expect(ifza).toMatchObject({ renewalMinFils: 800_000, renewalMaxFils: 1_100_000, renewalConfidence: "rule_of_thumb" });
+  });
+
+  it("evidence is never dated in the future and must be checked again within two years, in the service and in the database", async () => {
+    const future = day(env.clock.now, 1);
+    expect((await fact({ subject: "IFZA", field: "visa_quota", valueText: "2", confidence: "rule_of_thumb", evidenceDate: future })).body.message).toMatch(/future/);
+    expect((await fact({ subject: "IFZA", field: "visa_quota", valueText: "2", confidence: "rule_of_thumb", nextVerification: "9999-12-31" })).body.message).toMatch(/within two years/);
+    const insert = (cols: string) => asPlatform(withClock(env.db, () => env.clock.now), null, (tx) => tx.query(`insert into catalogue_facts (subject_kind, subject, field, value, source_url, evidence_date, confidence, verified_by, next_verification) values ${cols}`));
+    await expect(insert(`('place','IFZA','visa_quota','2','', '${future}','UNCERTAIN',null,null)`)).rejects.toThrow(/future/);
+    await expect(insert(`('place','IFZA','visa_quota','2','', '${day(env.clock.now)}','rule_of_thumb',null,'9999-12-31')`)).rejects.toThrow(/two years/);
+    // The database's own rule for verified facts: a verifier, a source link and a re-verification date.
+    await expect(insert(`('place','IFZA','visa_quota','2','https://x.ae','${day(env.clock.now)}','verified',null,'${day(env.clock.now, 10)}')`)).rejects.toThrow(/catalogue_facts_verified/);
+    await expect(insert(`('place','IFZA','visa_quota','2','','${day(env.clock.now)}','verified','A. Q','${day(env.clock.now, 10)}')`)).rejects.toThrow(/catalogue_facts_verified/);
+    await expect(insert(`('place','IFZA','visa_quota','2','https://x.ae','${day(env.clock.now)}','verified','A. Q',null)`)).rejects.toThrow(/catalogue_facts_verified/);
+  });
+
+  it("finance reads the catalogue and its history; the old Places table shows the confidence a place deserves today", async () => {
+    expect((await env.call("finance", "GET", "/api/admin/jurisdictions")).status).toBe(200);
+    expect((await env.call("finance", "GET", "/api/admin/jurisdictions/history?kind=rule&subject=obligation.ubo")).status).toBe(200);
+    expect((await env.call("finance", "POST", "/api/admin/jurisdictions/facts", { subjectKind: "place", subject: "IFZA", field: "visa_quota", valueText: "2", evidenceDate: day(env.clock.now), confidence: "UNCERTAIN" })).status).toBe(403);
+    expect((await env.call("founder", "PUT", "/api/admin/scoping/zones/Ajman%20Free%20Zone", { confidence: "verified", verifiedBy: "A. Qualified", sourceUrl: "https://afz.ae/", nextVerification: day(env.clock.now, 5) })).status).toBe(200);
+    const saved = env.clock.now;
+    env.clock.now = new Date(saved.getTime() + 10 * 86_400_000);
+    try {
+      const z = (await env.call("ops", "GET", "/api/admin/scoping")).body.zones.find((x: any) => x.name === "Ajman Free Zone");
+      expect(z).toMatchObject({ confidence: "rule_of_thumb", stale: true });
+    } finally {
+      env.clock.now = saved;
+    }
   });
 
   it("advice records its data version; advice built on data that has since changed is recomputed before approval", async () => {
@@ -131,8 +185,15 @@ describe("jurisdiction catalogue and evidence", () => {
   it("a place added without figures is never offered, cannot be verified from placeholders, and is activated only once its figures are on record", async () => {
     expect((await place("Fujairah Creative City")).active).toBe(false);
     const verify = (body: Record<string, unknown>) => env.call("founder", "PUT", "/api/admin/scoping/zones/Fujairah%20Creative%20City", { confidence: "verified", verifiedBy: "A. Qualified", sourceUrl: "https://creativecity.ae/", ...body });
-    expect((await verify({})).body.message).toMatch(/no figures on record/);
-    expect((await env.call("founder", "PUT", "/api/admin/scoping/zones/Fujairah%20Creative%20City", { confidence: "UNCERTAIN", active: true })).body.message).toMatch(/before activating/);
+    expect((await verify({})).body.message).toMatch(/no cost, visa quota, timeline days on record/);
+    expect((await env.call("founder", "PUT", "/api/admin/scoping/zones/Fujairah%20Creative%20City", { confidence: "UNCERTAIN", active: true })).body.message).toMatch(/before verifying or offering/);
+    // A cost fact alone does not make the other placeholders figures: verifying or offering still waits for them.
+    expect((await fact({ subject: "Fujairah Free Zone", field: "cost", valueText: "9000-14000", confidence: "UNCERTAIN" })).status).toBe(200);
+    const partial = await env.call("founder", "PUT", "/api/admin/scoping/zones/Fujairah%20Free%20Zone", { confidence: "verified", verifiedBy: "A. Qualified", sourceUrl: "https://fujairahfreezone.ae/", active: true });
+    expect(partial.status).toBe(400);
+    expect(partial.body.message).toMatch(/no visa quota, timeline days on record/);
+    expect((await place("Fujairah Free Zone")).active).toBe(false);
+    expect((await asPlatform(env.db, null, (tx) => tx.query("select count(*)::int as n from catalogue_facts where subject = 'Fujairah Free Zone' and field <> 'cost'"))).rows[0]!.n).toBe(0);
     expect((await verify({ costMinAed: 9_000, costMaxAed: 14_000, visaQuota: 1, timelineDays: 5, active: true })).status).toBe(200);
     const id = (await env.call("client", "POST", "/api/requests", { answers: { mode: "new_company", emirate: "Fujairah", jurisdiction: "free_zone", activity: "consulting", customers: "international", visas: 1 } })).body.id;
     const advice = (await env.call("ops", "GET", `/api/ops/requests/${id}/scoping`)).body.advice;

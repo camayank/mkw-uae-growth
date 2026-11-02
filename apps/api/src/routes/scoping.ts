@@ -38,7 +38,7 @@ export function registerScopingRoutes(ctx: RouteContext) {
       sourceUrl: z.string().max(500).optional(),
       costMinAed: z.number().min(0).optional(),
       costMaxAed: z.number().min(0).optional(),
-      visaQuota: z.number().int().min(0).max(100).optional(),
+      visaQuota: z.number().int().min(0).max(100).optional(), // the same cap as a visa_quota fact
       timelineDays: z.number().int().min(1).max(365).optional(),
       active: z.boolean().optional(),
       nextVerification: IsoDate.optional(),

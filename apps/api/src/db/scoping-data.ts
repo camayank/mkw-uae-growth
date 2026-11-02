@@ -87,7 +87,8 @@ export const AUTHORITIES: Array<[string, string, "free_zone_authority" | "mainla
   ["shams", "Sharjah Media City", "free_zone_authority", "Sharjah", ["SHAMS", "Sharjah Media City Free Zone"]],
   ["rakez", "Ras Al Khaimah Economic Zone", "free_zone_authority", "Ras Al Khaimah", ["RAKEZ"]],
   ["ajman_fz", "Ajman Free Zone", "free_zone_authority", "Ajman", ["AFZ", "Ajman Free Zone Authority"]],
-  ["jafza", "Jebel Ali Free Zone", "free_zone_authority", "Dubai", ["JAFZA", "JAFZA Offshore"]],
+  // The offshore registry only: "JAFZA" alone means the free zone, whose own licence is not a place here yet.
+  ["jafza_offshore", "JAFZA Offshore Companies Registry", "offshore_registry", "Dubai", ["JAFZA Offshore"]],
   ["uaq_ftz", "Umm Al Quwain Free Trade Zone", "free_zone_authority", "Umm Al Quwain", ["UAQ FTZ", "UAQ Free Trade Zone"]],
   ["fujairah_fz", "Fujairah Free Zone", "free_zone_authority", "Fujairah", ["FFZ", "Fujairah Free Zone Authority"]],
   ["fujairah_cc", "Fujairah Creative City", "free_zone_authority", "Fujairah", ["Creative City", "FCC"]],
@@ -117,7 +118,7 @@ export const PLACE_AUTHORITY: Record<string, string> = {
   "Abu Dhabi DED mainland": "ad_ded",
   "Sharjah SEDD mainland": "sharjah_sedd",
   "RAK ICC": "rak_icc",
-  "JAFZA Offshore": "jafza",
+  "JAFZA Offshore": "jafza_offshore",
   DIFC: "difc",
   ADGM: "adgm",
   "UAQ Free Trade Zone": "uaq_ftz",

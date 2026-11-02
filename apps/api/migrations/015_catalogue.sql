@@ -24,6 +24,8 @@ create table authority_aliases (
 -- The current value of each place fact, kept on the place as a cache of the latest recorded fact (the engine reads
 -- these). Null means "not on record", which the engine says rather than assumes.
 alter table zones add column authority_id text references authorities(id);
+-- A place added without figures: its cost, visas and timeline are placeholders until each is recorded as a fact.
+alter table zones add column placeholder boolean not null default false;
 alter table zones add column legal_forms text[];
 alter table zones add column activities_listed text[];
 alter table zones add column renewal_min_fils bigint check (renewal_min_fils is null or renewal_min_fils >= 0);
@@ -67,6 +69,15 @@ create function catalogue_facts_append_only() returns trigger language plpgsql a
 begin
   raise exception 'catalogue facts are append-only: record a new fact instead';
 end $$;
+-- Evidence is never dated in the future, and nothing goes unchecked for more than two years: a fact cannot be made
+-- to never go stale.
+create function catalogue_facts_dates() returns trigger language plpgsql as $$
+begin
+  if new.evidence_date > gulf(app_now()) then raise exception 'the evidence date is in the future'; end if;
+  if new.next_verification is not null and new.next_verification > new.evidence_date + 730 then raise exception 're-verification must be within two years of the evidence'; end if;
+  return new;
+end $$;
+create trigger catalogue_facts_dates before insert on catalogue_facts for each row execute function catalogue_facts_dates();
 create trigger catalogue_facts_no_update before update or delete on catalogue_facts for each row execute function catalogue_facts_append_only();
 create trigger catalogue_facts_no_truncate before truncate on catalogue_facts for each statement execute function catalogue_facts_append_only();
 

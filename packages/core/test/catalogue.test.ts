@@ -9,6 +9,8 @@ describe("catalogue evidence (E2)", () => {
     expect(parseFactValue("place", "cost", "20000-12000").ok).toBe(false);
     expect(parseFactValue("place", "cost", "0").ok).toBe(false);
     expect(parseFactValue("place", "cost", "1.234").ok).toBe(false);
+    expect(parseFactValue("place", "cost", "99999999999999999").ok).toBe(false); // beyond AED 1 billion: not a fee
+    expect(parseFactValue("place", "visa_quota", "101").ok).toBe(false);
   });
 
   it("parses lists, numbers and coordinates, and rejects anything outside the UAE or the known vocabulary", () => {
@@ -47,7 +49,7 @@ describe("catalogue evidence (E2)", () => {
     const z: Zone = {
       name: "X", emirate: "Dubai", type: "free_zone", visaQuota: 1, costMinFils: 1, costMaxFils: 2, timelineDays: 5, activities: [], sourceUrl: "", confidence: "UNCERTAIN",
       activitiesListed: ["tech"],
-      evidence: { activities_listed: { field: "activities_listed", recorded: "verified", confidence: "verified", stale: false, evidenceDate: "2026-10-01", nextVerification: "2027-04-01", verifiedBy: "A", sourceUrl: "https://x.ae", factId: 1 } },
+      activitiesListedConfidence: "verified",
     };
     const a = { mode: "new_company" as const, emirate: "Dubai", activity: "tech" as const };
     const tech = assessPlace(z, assessStructure("free_zone", a, book), a, book).findings.find((f) => f.ruleKey === "place.activity_listed")!;
@@ -55,5 +57,8 @@ describe("catalogue evidence (E2)", () => {
     const b = { ...a, activity: "trading" as const };
     const trading = assessPlace(z, assessStructure("free_zone", b, book), b, book).findings.find((f) => f.ruleKey === "place.activity_listed")!;
     expect(trading).toMatchObject({ outcome: "unknown", missing: "check" });
+    // Without the list's own confidence the finding is UNCERTAIN, whatever the place's: the list is the evidence.
+    const bare = { ...z, activitiesListedConfidence: undefined, confidence: "verified" as const };
+    expect(assessPlace(bare, assessStructure("free_zone", a, book), a, book).findings.find((f) => f.ruleKey === "place.activity_listed")!.confidence).toBe("UNCERTAIN");
   });
 });

@@ -1,7 +1,7 @@
 import { AUTHORITY_FIELDS, FIELD_LABEL, PLACE_FIELDS, normaliseName, parseFactValue, type Confidence, type SubjectKind } from "@tasees/core";
 import type { SessionUser } from "../lib/context.ts";
 import type { Queryable } from "../lib/db.ts";
-import { appendFact, placeByName } from "../services/catalogue.ts";
+import { appendFact, loadPlaces, placeByName } from "../services/catalogue.ts";
 import { excelDate } from "./xlsx.ts";
 import { newReport, readTable, sameValue, type Report, type ReportRow } from "./common.ts";
 
@@ -48,6 +48,7 @@ export async function importCatalogueFacts(tx: Queryable, grid: string[][], sour
     const hit = authorities.filter((a) => a.id === raw || [a.name, ...a.aliases].some((x) => normaliseName(x) === n));
     return hit.length === 1 ? hit[0]!.id : null;
   };
+  const places = await loadPlaces(tx, undefined, { includeInactive: true });
   const CONF: Record<string, Confidence> = { verified: "verified", "rule of thumb": "rule_of_thumb", rule_of_thumb: "rule_of_thumb", uncertain: "UNCERTAIN" };
 
   for (const { line, cells } of t.rows) {
@@ -65,7 +66,7 @@ export async function importCatalogueFacts(tx: Queryable, grid: string[][], sour
       continue;
     }
     const kind = kindRaw as SubjectKind;
-    const subject = kind === "place" ? await placeByName(tx, rawSubject) : authorityBy(rawSubject);
+    const subject = kind === "place" ? await placeByName(tx, rawSubject, places) : authorityBy(rawSubject);
     if (!subject) {
       row.reason = `no single ${kind} matches "${rawSubject}"`;
       continue;

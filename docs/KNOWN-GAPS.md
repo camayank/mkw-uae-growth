@@ -143,6 +143,16 @@ in a browser; everything listed here is not.
 57. **Pre-E2 verifications are re-dated.** A rule or place verified before E2 has no recorded re-verification date.
     It is treated as due 180 days after its verification date.
 58. **No map.** Coordinates are stored with their source; the map view belongs to the public selector (E3).
+59. **Rules of thumb recorded before E2 never go stale.** A rule or place marked rule of thumb before E2 has no
+    verification date, so no re-verification date can be derived. It stays a rule of thumb until it is recorded again.
+60. **A verifier's name is kept.** `verified_by` and `approved_by` are personal data in append-only evidence and
+    audit tables, kept as the legal-basis record of who checked what; they are not erased on request.
+61. **Any new fact blocks approval of every pending advice** until it is recomputed, because the data digest covers
+    every active place and rule. A bulk import therefore forces one recompute per pending request. Hashing only the
+    places an advice considered would narrow this.
+62. **Abu Dhabi's registrar may be out of date.** Company registration in Abu Dhabi moved to the Abu Dhabi
+    Registration Authority (ADRA) in 2023; the seed names the Department of Economic Development. For the owner's
+    verifier to confirm and record as a fact.
 
 ## O7: launch-gate preparation
 

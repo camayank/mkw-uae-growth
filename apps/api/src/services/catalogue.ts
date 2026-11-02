@@ -10,6 +10,8 @@ import {
   normaliseName,
   parseFactValue,
   weaker,
+  ELIGIBILITY_ENGINE_VERSION,
+  MAX_REVERIFY_DAYS,
   type Confidence,
   type DataVersion,
   type FieldEvidence,
@@ -20,7 +22,13 @@ import {
 import { audit, type SessionUser } from "../lib/context.ts";
 import { num, type Queryable } from "../lib/db.ts";
 import { badRequest, forbidden, notFound } from "../lib/errors.ts";
-import { dbToday } from "./repo.ts";
+import type { Queryable as Q } from "../lib/db.ts";
+
+/** Today in the Gulf (Asia/Dubai) by the application clock: the day evidence is dated and judged on (D77). */
+export async function catalogueToday(tx: Q): Promise<string> {
+  const r = await tx.query<{ d: string }>("select gulf(app_now())::text as d");
+  return String(r.rows[0]!.d).slice(0, 10);
+}
 
 /**
  * The jurisdiction catalogue (E2): authorities, places and rules, each current value backed by the latest recorded
@@ -100,7 +108,7 @@ const legacyEvidence = (field: string, confidence: Confidence, verifiedAt: strin
 
 /** Scoping rules with the confidence each deserves on `asOf` (a rule past its re-verification date drops a level). */
 export async function loadRules(tx: Queryable, asOf?: string): Promise<Array<ScopingRule & { recorded: ScopingRule["confidence"]; stale: boolean; version: number; nextVerification: string | null }>> {
-  const day = asOf ?? (await dbToday(tx));
+  const day = asOf ?? (await catalogueToday(tx));
   const r = await tx.query<Record<string, unknown>>("select *, verified_at::text as verified_at_text, next_verification::text as next_text from scoping_rules order by kind, key");
   return r.rows.map((x) => {
     const recorded = x.confidence as Confidence;
@@ -124,11 +132,11 @@ export async function loadRules(tx: Queryable, asOf?: string): Promise<Array<Sco
   });
 }
 
-export type Place = Zone & { active: boolean; authorityId: string | null; legalForms: string[] | null; coordinates: { lat: number; lng: number } | null };
+export type Place = Zone & { active: boolean; placeholder: boolean; authorityId: string | null; legalForms: string[] | null; coordinates: { lat: number; lng: number } | null };
 
 /** Places with their current values and the evidence behind each, judged on `asOf`. */
 export async function loadPlaces(tx: Queryable, asOf?: string, opts: { includeInactive?: boolean } = {}): Promise<Place[]> {
-  const day = asOf ?? (await dbToday(tx));
+  const day = asOf ?? (await catalogueToday(tx));
   const rows = await tx.query<Record<string, unknown>>(
     `select z.*, z.verified_at::text as verified_at_text, a.name as authority_name,
        coalesce((select array_agg(alias order by alias) from authority_aliases x where x.authority_id = z.authority_id), '{}') as aliases
@@ -166,11 +174,14 @@ export async function loadPlaces(tx: Queryable, asOf?: string, opts: { includeIn
       authority: (z.authority_name as string | null) ?? null,
       aliases: (z.aliases as string[]) ?? [],
       activitiesListed: (z.activities_listed as string[] | null) ?? null,
+      ...(z.activities_listed ? { activitiesListedConfidence: evidence.activities_listed?.confidence ?? "UNCERTAIN" } : {}),
       renewalMinFils: z.renewal_min_fils == null ? null : num(z.renewal_min_fils),
       renewalMaxFils: z.renewal_max_fils == null ? null : num(z.renewal_max_fils),
+      ...(z.renewal_min_fils != null ? { renewalConfidence: evidence.renewal_cost?.confidence ?? "UNCERTAIN" } : {}),
       evidence,
-      stale: used.some((e) => e.stale),
+      stale: used.some((e) => e.stale) || !!evidence.activities_listed?.stale,
       active: !!z.active,
+      placeholder: !!z.placeholder,
       authorityId: (z.authority_id as string | null) ?? null,
       legalForms: (z.legal_forms as string[] | null) ?? null,
       coordinates: z.latitude == null ? null : { lat: Number(z.latitude), lng: Number(z.longitude) },
@@ -180,7 +191,7 @@ export async function loadPlaces(tx: Queryable, asOf?: string, opts: { includeIn
 
 /** What the engine sees, without the console-only fields (so the digest covers exactly what the advice used). */
 export const engineZone = (p: Place): Zone => {
-  const { active: _a, authorityId: _i, legalForms: _l, coordinates: _c, evidence: _e, ...z } = p;
+  const { active: _a, placeholder: _p, authorityId: _i, legalForms: _l, coordinates: _c, evidence: _e, ...z } = p;
   return z;
 };
 
@@ -190,7 +201,7 @@ export const engineZone = (p: Place): Zone => {
  */
 export async function dataVersionOf(tx: Queryable, asOf: string, rules: ScopingRule[], zones: Zone[]): Promise<DataVersion> {
   const digest = createHash("sha256")
-    .update(JSON.stringify({ rules: rules.map((r) => [r.key, r.confidence, r.statement]), zones }))
+    .update(JSON.stringify({ engine: ELIGIBILITY_ENGINE_VERSION, rules: rules.map((r) => [r.key, r.confidence, r.statement, r.parameters]), zones }))
     .digest("hex")
     .slice(0, 16);
   const last = (await tx.query<{ id: number | null }>("select max(id) as id from catalogue_facts")).rows[0]?.id;
@@ -199,7 +210,7 @@ export async function dataVersionOf(tx: Queryable, asOf: string, rules: ScopingR
 
 /** The engine's inputs as they stand today, with their version. */
 export async function engineInputs(tx: Queryable) {
-  const asOf = await dbToday(tx);
+  const asOf = await catalogueToday(tx);
   const rules = await loadRules(tx, asOf);
   const zones = (await loadPlaces(tx, asOf)).map(engineZone);
   return { asOf, rules, zones, dataVersion: await dataVersionOf(tx, asOf, rules, zones) };
@@ -209,6 +220,8 @@ export async function engineInputs(tx: Queryable) {
 export async function appendFact(tx: Queryable, actor: SessionUser | null, input: FactInput): Promise<{ id: number }> {
   const { subjectKind: kind, subject, field } = input;
   if (!isoDate(input.evidenceDate)) throw badRequest("The evidence date must be a date (YYYY-MM-DD)");
+  const today = await catalogueToday(tx);
+  if (input.evidenceDate > today) throw badRequest("The evidence date cannot be in the future");
   const sourceUrl = (input.sourceUrl ?? "").trim();
   if (sourceUrl && !httpUrl(sourceUrl)) throw badRequest("The source must be an http(s) link");
   const verifiedBy = input.verifiedBy?.trim() || null;
@@ -216,6 +229,7 @@ export async function appendFact(tx: Queryable, actor: SessionUser | null, input
   if (next && !isoDate(next)) throw badRequest("The re-verification date must be a date (YYYY-MM-DD)");
   if (input.confidence !== "UNCERTAIN" && !next) next = defaultNextVerification(input.evidenceDate);
   if (next && next <= input.evidenceDate) throw badRequest("The re-verification date must be after the evidence date");
+  if (next && next > defaultNextVerification(input.evidenceDate, MAX_REVERIFY_DAYS)) throw badRequest("Evidence must be checked again within two years: set an earlier re-verification date");
   if (input.confidence === "verified") {
     if (!verifiedBy || verifiedBy.length < 2) throw badRequest("Name the person who verified this");
     if (!sourceUrl) throw badRequest("A verified fact needs an http(s) source link");
@@ -223,10 +237,10 @@ export async function appendFact(tx: Queryable, actor: SessionUser | null, input
 
   if (kind === "place") {
     if (!(PLACE_FIELDS as readonly string[]).includes(field)) throw badRequest(`Unknown place field ${field}`);
-    if (!(await tx.query("select 1 from zones where name = $1", [subject])).rows.length) throw notFound(`No place named ${subject}`);
+    if (!(await tx.query("select 1 from zones where name = $1 for update", [subject])).rows.length) throw notFound(`No place named ${subject}`);
   } else if (kind === "authority") {
     if (!(AUTHORITY_FIELDS as readonly string[]).includes(field)) throw badRequest(`Unknown authority field ${field}`);
-    if (!(await tx.query("select 1 from authorities where id = $1", [subject])).rows.length) throw notFound(`No authority ${subject}`);
+    if (!(await tx.query("select 1 from authorities where id = $1 for update", [subject])).rows.length) throw notFound(`No authority ${subject}`);
     if (field === "parent") {
       const parent = String(input.value);
       if (parent === subject) throw badRequest("An authority cannot be its own parent");
@@ -241,6 +255,7 @@ export async function appendFact(tx: Queryable, actor: SessionUser | null, input
     }
   } else if (kind === "rule") {
     if (field !== "rule") throw badRequest("Rule facts record a rule version");
+    if (!(await tx.query("select 1 from scoping_rules where key = $1 for update", [subject])).rows.length) throw notFound(`No rule ${subject}`);
   }
 
   const r = (
@@ -292,7 +307,7 @@ export async function recordFact(tx: Queryable, actor: SessionUser, input: Omit<
 
 /** Every fact recorded for one subject, newest first, each with what it deserves today. */
 export async function factHistory(tx: Queryable, kind: SubjectKind, subject: string) {
-  const asOf = await dbToday(tx);
+  const asOf = await catalogueToday(tx);
   const r = await tx.query<FactRow & { recorded_by_name: string | null }>(
     `select f.id, f.subject_kind, f.subject, f.field, f.value, f.source_url, f.evidence_date::text as evidence_date, f.confidence, f.verified_by,
        f.next_verification::text as next_verification, f.note, f.recorded_at, u.name as recorded_by_name
@@ -322,7 +337,7 @@ export async function factHistory(tx: Queryable, kind: SubjectKind, subject: str
 
 /** Authorities and places, with each place's evidence and what is stale or due within 30 days. */
 export async function catalogueOverview(tx: Queryable) {
-  const asOf = await dbToday(tx);
+  const asOf = await catalogueToday(tx);
   const soon = defaultNextVerification(asOf, 30);
   const authorities = await tx.query<Record<string, unknown>>(
     `select a.*, coalesce((select array_agg(alias order by alias) from authority_aliases x where x.authority_id = a.id), '{}') as aliases
@@ -351,6 +366,7 @@ export async function catalogueOverview(tx: Queryable) {
       authority: p.authority,
       authorityId: p.authorityId,
       active: p.active,
+      placeholder: p.placeholder,
       confidence: p.confidence,
       stale: p.stale,
       evidence: Object.values(p.evidence ?? {}),
@@ -367,9 +383,11 @@ export async function catalogueOverview(tx: Queryable) {
 }
 
 /** Resolve a name a person typed (a place's name, its authority's name, or an alias) to a place. */
-export async function placeByName(tx: Queryable, name: string): Promise<string | null> {
+export async function placeByName(tx: Queryable, name: string, places?: Place[]): Promise<string | null> {
   const n = normaliseName(name);
-  const places = await loadPlaces(tx, undefined, { includeInactive: true });
-  const hit = places.filter((p) => [p.name, p.authority ?? "", ...(p.aliases ?? [])].some((x) => x && normaliseName(x) === n));
+  const all = places ?? (await loadPlaces(tx, undefined, { includeInactive: true }));
+  const exact = all.filter((p) => normaliseName(p.name) === n);
+  if (exact.length === 1) return exact[0]!.name;
+  const hit = all.filter((p) => [p.authority ?? "", ...(p.aliases ?? [])].some((x) => x && normaliseName(x) === n));
   return hit.length === 1 ? hit[0]!.name : null;
 }

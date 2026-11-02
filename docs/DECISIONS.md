@@ -662,9 +662,15 @@ has a test that fails without the fix.
   labelled stale. A place is as confident as the weakest evidence the engine uses; rules are judged the same way.
 - **Nothing invented.**
   - Relationships between authorities are recorded only as facts with a source.
-  - Places added without figures (Umm Al Quwain, Fujairah) stay inactive. They cannot be verified from placeholders,
-    or activated until their figures are recorded.
+  - Places added without figures (Umm Al Quwain, Fujairah) are marked `placeholder`. Each of cost, visas and timeline
+    counts only once it is given or recorded as a fact; a placeholder is never written as a fact, and the place
+    cannot be verified or offered until all three are on record.
   - A spreadsheet alone can never make evidence verified: the importing founder must be named.
+- **Dates.** Evidence is dated and judged on the Gulf day (`gulf(app_now())`), as the rest of the business is. A fact
+  cannot be dated in the future, and no re-verification date may be more than two years after the evidence, so no
+  fact can be made to never go stale. The database enforces both.
+- **Each figure carries its own confidence.** An activity list's or a renewal estimate's confidence travels with it;
+  the engine's activity finding is never more confident than the list it came from.
 
 **D78. Advice records the rules and data it was computed from; approval needs them current.** (E2.)
 - **What is recorded.** Advice carries `dataVersion`: the day, a digest of the effective rules and places it used,

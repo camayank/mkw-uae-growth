@@ -237,9 +237,11 @@ document.addEventListener("click", (ev) => {
       if (!target) return;
       if (target.innerHTML.trim()) {
         target.innerHTML = "";
+        target.parentElement.hidden = true;
         el.setAttribute("aria-expanded", "false");
         return;
       }
+      target.parentElement.hidden = false;
       el.setAttribute("aria-expanded", "true");
       renderFactHistory(el.dataset.kind, el.dataset.subject, target).catch((e) => toast(e.message));
     },

@@ -106,7 +106,7 @@ code change.
 
 | Claim | Evidence |
 | --- | --- |
-| Tests | `pnpm test`: 95 core + 284 API (one PostgreSQL-only test skipped on PGlite) = 379 passing. The API suite passes 285 of 285 on PostgreSQL 16. `pnpm typecheck` is clean |
+| Tests | `pnpm test`: 95 core + 288 API (one PostgreSQL-only test skipped on PGlite) = 383 passing. The API suite passes 289 of 289 on PostgreSQL 16. `pnpm typecheck` is clean |
 | Append-only | `jurisdiction.test.ts`: update and delete are refused through the app role, and also as the table owner, where the trigger refuses. Clients and partners cannot read the tables; ops can read but not record (403) |
 | Verified evidence | A verifier, an http(s) source and a re-verification date (default 180 days) are required. History keeps superseded facts and marks the current one |
 | Staleness | A verified fact past its date counts as rule of thumb and is labelled stale. A verified rule past its date reaches new advice as rule of thumb |
@@ -116,6 +116,21 @@ code change.
 | Importer | Dry run writes nothing; applying twice writes once. Verified rows are skipped without `--as`; unknown places and fields are skipped with the reason; no outbox rows. Empty template: `docs/templates/catalogue-facts.csv` |
 | Smoke | `docs/evidence/E2/smoke-log.txt`: 186 checks OK on a fresh demo (E1: 181). It records a verified activity list from the form, sees it on the place, opens its history, and checks the client's advice shows its data date |
 | Screens | `82-scoping-catalogue.png` (1280 px, full page), `40-mobile-scoping.png` (390 px, no horizontal overflow), `36-client-advice.png` (authority and data date). axe finds zero WCAG 2.1 AA violations on 34 screens (`axe.json`) |
+
+## Independent review
+
+A separate reviewer read the whole diff before the pull request, with throwaway probes and no repository changes. It
+found 2 must-fix problems (both reproduced), 8 should-fix and 10 nits. All must-fix and should-fix items are fixed with
+tests (D77 amended):
+- **Must-fix.** An activity list's own confidence was ignored (an UNCERTAIN list passed as verified on a verified
+  place); a placeholder place could be verified and offered with invented figures once any cost fact existed.
+- **Should-fix.** Future evidence dates and unlimited re-check dates; the old Places table showing raw confidence;
+  renewal estimates without a label; "JAFZA" naming the offshore registry; a recompute/approve race; cache divergence
+  under concurrent writes; untested contract claims (rule history, the database's verified-fact rule, finance
+  reading); days judged in UTC rather than Gulf time.
+- **Nits** fixed: the digest covers rule parameters and the engine version; money parsing is capped at AED 1 billion;
+  the visa cap agrees everywhere; the client no longer receives the digest; the History control and the note field
+  are accessible; exact place names win over aliases. Recorded as gaps: 59 to 62.
 
 ## Could not verify
 

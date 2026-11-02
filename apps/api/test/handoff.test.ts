@@ -99,6 +99,9 @@ describe("the handoff into Tasees", () => {
     expect(await count(env, "outbox")).toBe(outbox);
     // An offer that expires leaves the renewal askable again; an accepted one keeps it in progress until delivery.
     const first = (await env.call("ops", "POST", `/api/ops/requests/${r.body.id}/build-offers`, { tiers: ["standard"] })).body.offerIds[0];
+    // Built but not yet published: the request reads "offered" while the offer is a draft; the renewal is still live.
+    expect((await env.call("client", "POST", `/api/obligations/${obligationId}/renewal-request`)).status).toBe(409);
+    expect((await env.call("client", "GET", "/api/client/compliance")).body.find((o: any) => o.id === obligationId)).toMatchObject({ renewalRequestId: r.body.id, renewalRequestStatus: "offered" });
     expect((await env.call("ops", "POST", `/api/ops/offers/${first}/publish`)).status).toBe(200);
     expect((await env.call("client", "POST", `/api/obligations/${obligationId}/renewal-request`)).status).toBe(409); // a live offer
     await asPlatform(env.db, null, (tx) => tx.query("update offers set valid_to = $2::date where id = $1", [first, new Date(env.clock.now.getTime() - 2 * 86_400_000).toISOString().slice(0, 10)]));

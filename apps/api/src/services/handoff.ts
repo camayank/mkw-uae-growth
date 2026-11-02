@@ -20,7 +20,9 @@ const codeHash = (code: string) => createHash("sha256").update(code.trim().toUpp
 /** A signed-in client starts a request from a saved assessment's code: the answers pre-fill, nothing is re-typed. */
 export async function requestFromAssessment(tx: Queryable, user: SessionUser, code: string, extras: { description?: string; addOns?: string[] } = {}) {
   if (user.orgType !== "client") throw forbidden("A saved result becomes a request for the client who signs in");
-  // The assessment row is locked for the check and the use, so two uses of one code cannot both pass.
+  // Lock order: the audit chain first (the public intake audits before it touches the assessment), then the
+  // assessment row, held for the check and the use so two uses of one code cannot both pass.
+  await lockAuditChain(tx);
   const row = (await tx.query<{ id: string; answers: AdviceInput; created_at: string; recovered: number; source: unknown }>("select id, answers, created_at, recovered, source from assessments where code_hash = $1 and status <> 'anonymised' for update", [codeHash(code)])).rows[0];
   if (!row) throw notFound("No saved result with that code (saved results are kept for a limited time)");
   const already = (await tx.query<{ id: string }>("select id from requests where assessment_id = $1", [row.id])).rows[0];

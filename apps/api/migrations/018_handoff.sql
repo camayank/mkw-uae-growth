@@ -18,3 +18,21 @@ alter table intake_leads add column request_id uuid references requests(id);
 
 -- Clients read the links on their own requests (column grants, as for the other columns they may read).
 grant select (assessment_id, obligation_id) on requests to app_client;
+
+-- Whether a renewal request is still in flight, decided from its pipeline: being scoped or quoted with no accepted
+-- offer; holding an offer built but not yet published (draft or in ops review); holding a published offer that has
+-- not expired; or delivered by an engagement that is not finished. The request's own status says nothing useful: it
+-- reads "offered" from the moment offers are built, closes at acceptance and never moves after an offer expires.
+-- SECURITY DEFINER because the client's calendar must know about a draft offer it may not read; the function only
+-- answers yes or no about a request the caller can already see.
+create function app_renewal_live(req uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from requests r where r.id = req and (
+      (r.status in ('scoped', 'quoting') and not exists (select 1 from offers f where f.request_id = r.id and f.status = 'accepted'))
+      or exists (select 1 from offers f where f.request_id = r.id and f.status in ('draft', 'ops_review'))
+      or exists (select 1 from offers f where f.request_id = r.id and f.status = 'published' and f.valid_to >= app_now()::date)
+      or exists (select 1 from engagements e where e.request_id = r.id and e.status not in ('completed', 'cancelled'))
+    )
+  )
+$$;

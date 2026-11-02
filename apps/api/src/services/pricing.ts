@@ -14,6 +14,7 @@ import { audit, lockAuditChain, type SessionUser } from "../lib/context.ts";
 import { transition, withdrawOffers } from "../lib/transition.ts";
 import { assertQuotable } from "./structure.ts";
 import { num, type Queryable } from "../lib/db.ts";
+import { assertRenewalCurrent } from "./compliance.ts";
 import { badRequest, conflict, notFound } from "../lib/errors.ts";
 import { addDays, dbToday, loadDeliverables, loadGovernmentFees, loadPartners, loadRateCards, loadRfqQuotes, loadRules, loadSettings, type FeeLookup } from "./repo.ts";
 
@@ -42,6 +43,7 @@ export async function buildOffers(
     )
   ).rows[0];
   if (!req) throw notFound("Request not found");
+  await assertRenewalCurrent(tx, requestId);
   const lines = req.scope?.lines ?? [];
   if (lines.length === 0) throw badRequest("The request has no deliverables to price");
 
@@ -196,6 +198,7 @@ export async function publishOffer(tx: Queryable, actor: SessionUser, offerId: s
   // E1: a formation quote is firm only for a settled structure, and only if it prices that structure.
   const codes = (await tx.query<{ code: string }>("select code from offer_lines where offer_id = $1", [offerId])).rows.map((l) => l.code);
   await assertQuotable(tx, o.request_id, codes);
+  await assertRenewalCurrent(tx, o.request_id);
   const flagged = (
     await tx.query<{ code: string; reason: string | null; gov_unit_fils: number; client_unit_fils: number }>(
       "select code, reason, gov_unit_fils, client_unit_fils from offer_lines where offer_id = $1 and status <> 'ok' order by code",

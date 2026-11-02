@@ -113,6 +113,11 @@ describe("the handoff into Tasees", () => {
     expect((await env.call("client", "GET", "/api/client/compliance")).body.find((o: any) => o.id === obligationId).renewalRequestId).toBeNull();
     const again = await env.call("client", "POST", `/api/obligations/${obligationId}/renewal-request`);
     expect(again.status).toBe(200); // the renewal can be asked for again
+    // The superseded request cannot be priced or published again: one renewal per obligation, at every step.
+    const superseded = await env.call("ops", "POST", `/api/ops/requests/${r.body.id}/build-offers`, { tiers: ["standard"] });
+    expect(superseded.status).toBe(409);
+    expect(superseded.body.message).toMatch(/superseded/);
+    expect((await env.call("ops", "POST", `/api/ops/offers/${first}/publish`)).status).toBe(409); // expired anyway, and superseded
     const offer = (await env.call("ops", "POST", `/api/ops/requests/${again.body.id}/build-offers`, { tiers: ["standard"] })).body.offerIds[0];
     expect((await env.call("ops", "POST", `/api/ops/offers/${offer}/publish`)).status).toBe(200);
     expect((await env.call("client", "POST", `/api/client/offers/${offer}/accept`)).status).toBe(200);

@@ -135,6 +135,15 @@ describe("formation quotes wait for a settled structure", () => {
     expect(req.answers.jurisdiction).toBe("mainland");
     expect(req.scope.lines.map((l: any) => l.code).sort()).toEqual(["BANK-ACC", "SET-ML-LIC", "VISA-RES"]);
 
+    // Ops reviewed the add-ons (an approved AI draft replaces the scope): a quantity changed and an add-on removed.
+    // Re-scoping follows only the formation and visas; the reviewed lines stay as they are.
+    const reviewed = await request({ jurisdiction: "not_sure", visas: 1, activity: "trading", customers: "uae_mainland", premises: "retail", addOns: ["BANK-ACC", "PRO-RET"] });
+    await asPlatform(env.db, null, (tx) => tx.query(`update requests set scope = '{"lines":[{"code":"SET-FZ-LIC","qty":1},{"code":"VISA-RES","qty":1},{"code":"BANK-ACC","qty":2}]}'::jsonb where id = $1`, [reviewed]));
+    expect((await env.call("ops", "POST", `/api/ops/requests/${reviewed}/scoping/approve`, {})).status).toBe(200);
+    const [after] = await rows(env, "select scope from requests where id = $1", [reviewed]);
+    expect(after.scope.lines).toEqual(expect.arrayContaining([{ code: "SET-ML-LIC", qty: 1 }, { code: "VISA-RES", qty: 1 }, { code: "BANK-ACC", qty: 2 }]));
+    expect(after.scope.lines).toHaveLength(3);
+
     const sent = await request({ jurisdiction: "not_sure", visas: 1, activity: "trading", customers: "uae_mainland", premises: "retail" });
     expect((await env.call("ops", "POST", `/api/ops/requests/${sent}/rfq`, { codes: ["SET-FZ-LIC"] })).status).toBe(200);
     const late = await env.call("ops", "POST", `/api/ops/requests/${sent}/scoping/approve`, {});

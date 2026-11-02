@@ -594,7 +594,9 @@ a structure, or the client asked for one that the advice (if any) agrees with.
   refused at publishing: the request must be recorded as a new company so its structure is checked.
 - **At approval.** An excluded structure cannot be approved. A different structure re-scopes the request (answers
   and scope sheet, audited with before and after), and offers priced on changed lines are withdrawn.
-  - Re-scoping changes only the formation and its visas; lines ops added after intake are kept.
+  - Re-scoping changes only the formation and its visas. Every other line stays as the scope now has it: lines ops
+    added, quantities ops reviewed, and services ops removed stay removed.
+  - It takes the audit-chain lock before the request row, in the documented lock order.
   - Once partners have been asked to quote (a quote request exists), the structure no longer changes at the
     scoping review. Their sealed quotes are for the scope as sent.
 - **After acceptance.** The structure changes only by a change order.
@@ -642,4 +644,7 @@ has a test that fails without the fix.
 - **Flags are recomputed at approval.** Once ops settles a structure, `noViableOption` is false. `needsVerification`
   is worked out from what the client will see.
 - **Labels on findings.** Every exclusion and condition is shown with its confidence label.
+- **Contradictory premises answers keep the requirement.** "Office needed" together with "no premises" counts as
+  premises until ops resolves it, so a contradiction can never lift the offshore exclusion. (From the pull request's
+  automated review, with the two re-scoping points above.)
 

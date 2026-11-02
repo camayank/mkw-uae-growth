@@ -345,4 +345,12 @@ describe("review regressions", () => {
     const a = advise(base({ jurisdiction: "offshore", activity: "holding", customers: "both", visas: 0 }), rules, zones);
     expect(a.contradictions).toContain("You asked for an offshore company and customers in the UAE; an offshore company cannot trade with customers here.");
   });
+
+  it("contradictory premises answers keep the premises requirement: offshore stays excluded", () => {
+    const a = base({ jurisdiction: "offshore", activity: "holding", customers: "international", visas: 0, officeNeeded: true, premises: "none" });
+    const off = assessStructure("offshore", a, new Rulebook(rules));
+    expect(off.status).toBe("INELIGIBLE");
+    expect(off.findings.some((f) => f.ruleKey === "structure.offshore_no_premises" && f.outcome === "fail")).toBe(true);
+    expect(advise(a, rules, zones).contradictions).toContain("You said you need an office, and also that you need no physical premises.");
+  });
 });

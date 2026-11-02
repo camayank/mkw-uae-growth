@@ -1,6 +1,7 @@
 import { assessStructure, buildScope, FORMATION_CODES, Rulebook, SETUP_CODE, type AdviceInput, type Advice, type IntakeAnswers, type Structure } from "@tasees/core";
 import type { Queryable } from "../lib/db.ts";
 import { conflict } from "../lib/errors.ts";
+import { lockAuditChain } from "../lib/context.ts";
 import { loadScopingRules } from "./scoping.ts";
 import { loadDeliverables } from "./repo.ts";
 
@@ -77,19 +78,22 @@ export async function assertQuotable(tx: Queryable, requestId: string, offerCode
  * follow, so the next offers price the right licence. Returns the scope lines before and after, for the audit.
  */
 export async function rescopeForStructure(tx: Queryable, requestId: string, structure: Structure) {
+  // Lock order (lib/context.ts): the audit chain before any row, as buildOffers and withdrawOffers take it.
+  await lockAuditChain(tx);
   const r = (await tx.query<{ answers: IntakeAnswers; scope: { lines: Array<{ code: string; qty: number }> } }>("select answers, scope from requests where id = $1 for update", [requestId])).rows[0]!;
   if (r.answers.jurisdiction === structure) return null;
   // Once partners have been asked to quote, their sealed quotes are for the scope as sent: the structure then changes
   // through a new request, not a silent re-scope. (Offers built from rate cards are withdrawn instead, below.)
   const rfq = (await tx.query("select 1 from quote_requests where request_id = $1 limit 1", [requestId])).rows.length;
   if (rfq) throw conflict("Partners have already been asked to quote this scope; their sealed quotes are for the structure as sent, so the structure can no longer change at the scoping review");
-  // Lines ops added after intake (an approved AI draft, an add-on) are kept; only the formation and its visas follow
-  // the new structure.
-  const fresh = buildScope({ ...r.answers, jurisdiction: structure }, new Set((await loadDeliverables(tx)).keys()));
+  // Only the formation and its visas follow the new structure. Every other line stays exactly as the scope now has
+  // it: lines ops added, quantities ops reviewed, and services ops removed stay removed (an approved AI draft
+  // replaces the scope, so the intake answers are no longer the record for those lines).
+  const fresh = buildScope({ ...r.answers, jurisdiction: structure, addOns: [], services: [] }, new Set((await loadDeliverables(tx)).keys()));
   const derived = new Set(["VISA-RES", "VISA-FAM", ...FORMATION_CODES]);
-  const kept = (r.scope?.lines ?? []).filter((l) => !derived.has(l.code) && !fresh.lines.some((f) => f.code === l.code));
+  const kept = (r.scope?.lines ?? []).filter((l) => !derived.has(l.code));
   const answers = { ...r.answers, jurisdiction: structure };
-  const scope = { lines: [...fresh.lines, ...kept], notes: fresh.notes };
+  const scope = { lines: [...fresh.lines.filter((l) => derived.has(l.code)), ...kept], notes: fresh.notes };
   await tx.query("update requests set answers = $2, scope = $3 where id = $1", [requestId, JSON.stringify(answers), JSON.stringify({ lines: scope.lines })]);
   return { before: r.scope?.lines ?? [], after: scope.lines, notes: scope.notes, from: r.answers.jurisdiction ?? null };
 }

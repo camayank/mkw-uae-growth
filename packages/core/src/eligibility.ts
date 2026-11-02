@@ -79,6 +79,9 @@ const PREMISES_ACTIVITIES: Activity[] = ["food", "health", "construction", "manu
 
 /** Whether the founder needs a physical place of business in the UAE (shop, clinic, site, plant, warehouse, office). */
 function needsPremises(a: AdviceInput): boolean | null {
+  // Conflicting answers keep the requirement until ops resolves them: either answer saying premises means premises,
+  // so a contradiction can never lift an exclusion.
+  if (a.officeNeeded === true) return true;
   if (a.premises) return a.premises !== "none" && a.premises !== "virtual";
   if (a.officeNeeded !== undefined) return a.officeNeeded;
   if (a.activity && PREMISES_ACTIVITIES.includes(a.activity)) return true;

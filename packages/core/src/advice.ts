@@ -142,7 +142,7 @@ function preferredStructure(a: AdviceInput, rules: ScopingRule[]): { structure: 
     if ((a.visas ?? 0) > 0) {
       return {
         structure: common ? "difc_adgm" : "free_zone",
-        reasons: [say(rules, "structure.holding", common ? "A holding vehicle that also needs residence visas fits DIFC or ADGM, which can sponsor visas, given the budget for a common-law registry." : "A holding vehicle that also needs residence visas needs a company that can sponsor them: a free zone company licensed for holding activity, not an offshore company.")],
+        reasons: [say(rules, "structure.holding", common ? "A holding vehicle that also needs residence visas fits DIFC or ADGM given the budget for a common-law registry, but a holding or special-purpose vehicle there carries no visas on its own: visas need an operating licence and leased office space. Confirm the office the visas need." : "A holding vehicle that also needs residence visas needs a company that can sponsor them: a free zone company licensed for holding activity, not an offshore company.")],
       };
     }
     return {
@@ -156,7 +156,17 @@ function preferredStructure(a: AdviceInput, rules: ScopingRule[]): { structure: 
   if (a.activity === "virtual_assets") {
     return {
       structure: a.emirate === "Abu Dhabi" ? "difc_adgm" : "free_zone",
-      reasons: [say(rules, "structure.virtual_assets_regulated", a.emirate === "Abu Dhabi" ? "Virtual-asset activity in Abu Dhabi is authorised by the FSRA in ADGM." : "Virtual-asset activity in Dubai outside DIFC is licensed by VARA; the company itself is usually set up in a free zone.")],
+      reasons: [
+        say(
+          rules,
+          "structure.virtual_assets_regulated",
+          a.emirate === "Abu Dhabi"
+            ? "Virtual-asset activity in Abu Dhabi is authorised by the FSRA in ADGM."
+            : a.emirate === "Dubai"
+              ? "Virtual-asset activity in Dubai outside DIFC is licensed by VARA; the company itself is usually set up in a free zone."
+              : "Virtual-asset activity outside Dubai and the financial free zones is licensed by the SCA; the company itself is usually set up in a free zone.",
+        ),
+      ],
     };
   }
   if (a.activity === "manufacturing") {
@@ -200,6 +210,8 @@ function contradictions(a: AdviceInput): string[] {
   if (a.taxableSuppliesAed != null && a.expectedTurnoverAed != null && a.taxableSuppliesAed > a.expectedTurnoverAed) c.push("Expected taxable supplies are higher than expected turnover; supplies are part of turnover.");
   if (a.activity === "holding" && (a.customers === "uae_mainland" || a.customers === "both") && a.premises === "retail") c.push("A pure holding company does not sell to customers from a shop; is there an operating business as well?");
   if (a.jurisdiction === "offshore" && (a.visas ?? 0) > 0) c.push(`You asked for an offshore company and ${a.visas} residence visa(s); an offshore company cannot sponsor visas.`);
+  if (a.jurisdiction === "offshore" && (a.officeNeeded === true || (a.premises && !["none", "virtual"].includes(a.premises)))) c.push("You asked for an offshore company and premises in the UAE; an offshore company cannot lease premises or operate a place of business here.");
+  if (a.jurisdiction === "offshore" && (a.customers === "uae_mainland" || a.customers === "both")) c.push("You asked for an offshore company and customers in the UAE; an offshore company cannot trade with customers here.");
   return c;
 }
 
@@ -218,7 +230,15 @@ function missingFacts(a: AdviceInput): string[] {
   return m;
 }
 
-export function advise(a: AdviceInput, rules: ScopingRule[], zones: Zone[]): Advice {
+/** The last day a tax period may end for small business relief to apply (Ministerial Decision 73 of 2023). */
+export const SMALL_BUSINESS_RELIEF_LAST_PERIOD_END = "2026-12-31";
+
+/**
+ * `asOf` is today's date (YYYY-MM-DD) by the application clock. It decides date-bound statements: a company formed
+ * after 30 June 2026 has no tax period ending by 31 December 2026 (a first period runs at least six months), so small
+ * business relief is not offered to it as a possibility. Without a date the engine does not say it may apply.
+ */
+export function advise(a: AdviceInput, rules: ScopingRule[], zones: Zone[], asOf?: string): Advice {
   const licences: Reasoned[] = [];
   const obligations: Reasoned[] = [];
   const crossBorder: Reasoned[] = [];
@@ -248,6 +268,19 @@ export function advise(a: AdviceInput, rules: ScopingRule[], zones: Zone[]): Adv
         reasons.push(say(rules, "structure.no_viable_option", `No structure we can assess fits all the answers: ${why} A specialist needs to look at this case; we will not guess.`));
       }
     }
+    let all = assess(a, rules, zones, recommendation);
+    // A structure that fits on paper but has no place we hold data for that fits every answer (budget, visas,
+    // premises) is not a recommendation the founder can act on: move to the closest structure that has one.
+    if (recommendation && zones.length && all.viable.length && !all.viable.some((p) => p.structure === recommendation)) {
+      const from: Structure = recommendation;
+      const to = all.viable[0]!.structure;
+      const why = [...new Set(all.excluded.filter((p) => p.structure === from).flatMap((p) => p.findings.filter((f) => f.outcome === "fail").map((f) => f.ruleKey)))];
+      const reasonText: Record<string, string> = { "place.budget": "the budget", "place.visa_capacity": "the number of visas", "place.industrial_facilities": "industrial facilities", "place.warehouse_facilities": "warehousing" };
+      const named = why.map((k) => reasonText[k] ?? k).join(", ");
+      reasons.push(say(rules, "structure.no_viable_place", `No ${words(from)} place we hold data for fits ${named ? `the answers on ${named}` : "every answer"}. ${words(to)} is the closest structure with a place that does.`));
+      recommendation = to;
+      all = assess(a, rules, zones, recommendation);
+    }
     const requested = toStructure(a.jurisdiction);
     if (requested && requested !== recommendation) {
       const r = by.get(requested)!;
@@ -262,7 +295,6 @@ export function advise(a: AdviceInput, rules: ScopingRule[], zones: Zone[]): Adv
         ),
       );
     }
-    const all = assess(a, rules, zones, recommendation);
     viable = all.viable;
     excluded = all.excluded;
     if (!noViableOption && viable.length === 0) {
@@ -286,7 +318,9 @@ export function advise(a: AdviceInput, rules: ScopingRule[], zones: Zone[]): Adv
     obligations.push(say(rules, "obligation.ct_qfzp", "A free zone company pays 0% only on qualifying income, and only as a Qualifying Free Zone Person: adequate substance in the zone, qualifying activities, the de minimis test, audited accounts and no election out. Income from mainland customers is generally not qualifying. A tax adviser should confirm."));
   }
   const revenue = a.expectedTurnoverAed ?? null;
-  if (revenue !== null && revenue <= 3_000_000) {
+  // An existing company may still have a period ending by 31 December 2026; a company formed now may not.
+  const reliefOpen = a.mode === "services" ? !asOf || asOf <= SMALL_BUSINESS_RELIEF_LAST_PERIOD_END : !!asOf && asOf <= "2026-06-30";
+  if (revenue !== null && revenue <= 3_000_000 && reliefOpen) {
     obligations.push(say(rules, "obligation.ct_small_business_relief", "Small business relief (revenue up to AED 3 million) may apply, but only to tax periods ending on or before 31 December 2026, and not to qualifying free zone persons. A tax adviser should confirm."));
   }
 
@@ -303,7 +337,9 @@ export function advise(a: AdviceInput, rules: ScopingRule[], zones: Zone[]): Adv
 
   obligations.push(say(rules, "obligation.ubo", "Keep an ultimate beneficial owner register and file it with the registrar."));
   if (["trading", "holding", "finance", "virtual_assets", "other"].includes(a.activity ?? "other")) obligations.push(say(rules, "obligation.goaml_dnfbp", "If the activity is a designated non-financial business (real estate, precious metals, corporate services, audit), register on goAML and run an AML programme."));
-  if ((a.visas ?? 0) > 0 && recommendation !== "offshore") obligations.push(say(rules, "obligation.wps", "Employees on visas must be paid through the Wage Protection System; medical insurance is mandatory."));
+  // WPS is a MOHRE (mainland) obligation; free zones and DIFC/ADGM run their own employment and payroll rules.
+  if ((a.visas ?? 0) > 0 && recommendation === "mainland") obligations.push(say(rules, "obligation.wps", "Employees on visas must be paid through the Wage Protection System; medical insurance is mandatory."));
+  if ((a.visas ?? 0) > 0 && (recommendation === "free_zone" || recommendation === "difc_adgm")) obligations.push(say(rules, "obligation.payroll_zone", "Employees on visas need medical insurance; how salaries are paid and reported follows the zone's own employment rules (DIFC and ADGM have their own employment law). Confirm with the zone."));
 
   // Cross-border: never a conclusion, always a specialist's review.
   if (a.foreignTaxResident) {
@@ -317,7 +353,7 @@ export function advise(a: AdviceInput, rules: ScopingRule[], zones: Zone[]): Adv
   const statements = [...reasons, ...licences, ...obligations, ...crossBorder];
   const places = viable.slice(0, 5).map(asCandidate);
   const hasUncertain = statements.some((r) => r.confidence !== "verified") || places.some((p) => p.confidence !== "verified");
-  const needsVerification = hasUncertain || contradictions(a).length > 0 || places.some((p) => p.status !== "ELIGIBLE_VERIFIED" && p.status !== "ELIGIBLE_CONDITIONAL") || structures.some((s) => s.structure === recommendation && s.status === "REQUIRES_VERIFICATION");
+  const needsVerification = needsVerificationOf({ hasUncertain, contradictions: contradictions(a), places, structures, structure: { recommendation, reasons } });
   return {
     structure: { recommendation, reasons },
     places,
@@ -333,6 +369,16 @@ export function advise(a: AdviceInput, rules: ScopingRule[], zones: Zone[]): Adv
     needsVerification,
     engineVersion: ELIGIBILITY_ENGINE_VERSION,
   };
+}
+
+/** Whether anything in the advice still needs a qualified person's confirmation (recomputed after ops edits). */
+export function needsVerificationOf(a: Pick<Advice, "hasUncertain" | "contradictions" | "places" | "structures" | "structure">): boolean {
+  return (
+    a.hasUncertain ||
+    (a.contradictions?.length ?? 0) > 0 ||
+    a.places.some((p) => p.status !== undefined && p.status !== "ELIGIBLE_VERIFIED" && p.status !== "ELIGIBLE_CONDITIONAL") ||
+    (a.structures ?? []).some((s) => s.structure === a.structure.recommendation && s.status !== "ELIGIBLE_VERIFIED" && s.status !== "ELIGIBLE_CONDITIONAL")
+  );
 }
 
 /** The viable places for one structure, best first (used when ops changes the structure at approval). */

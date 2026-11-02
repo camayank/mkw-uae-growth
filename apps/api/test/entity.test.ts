@@ -18,6 +18,12 @@ describe("formation quotes wait for a settled structure", () => {
   const request = async (answers: Record<string, unknown>) => (await env.call("client", "POST", "/api/requests", { answers: { mode: "new_company", emirate: "Dubai", ...answers } })).body.id as string;
   const build = async (id: string) => (await env.call("ops", "POST", `/api/ops/requests/${id}/build-offers`, { tiers: ["standard"] })).body.offerIds[0] as string;
   const publish = (offerId: string) => env.call("ops", "POST", `/api/ops/offers/${offerId}/publish`);
+  const offerStatus = async (offerId: string) => (await rows<{ status: string }>(env, "select status from offers where id = $1", [offerId]))[0]!.status;
+  const codesOf = async (offerId: string) => (await rows<{ code: string }>(env, "select code from offer_lines where offer_id = $1 order by code", [offerId])).map((r) => r.code);
+  // A partner prices the offshore and DIFC/ADGM formations too, so offers for those structures can be built.
+  beforeAll(async () => {
+    expect((await env.call("setup", "PUT", "/api/partner/rate-cards", { cards: [{ code: "SET-OFF", professionalAed: 4_000, workingDays: 7 }, { code: "SET-DIFC", professionalAed: 15_000, workingDays: 20 }] })).status).toBe(200);
+  });
 
   it("a client who is not sure of the structure gets no published quote until ops settles it", async () => {
     const id = await request({ jurisdiction: "not_sure", visas: 1, activity: "consulting", customers: "international" });
@@ -37,9 +43,12 @@ describe("formation quotes wait for a settled structure", () => {
     expect(scoping.advice.structure.recommendation).toBe("free_zone");
     expect(scoping.advice.structures.find((s: any) => s.structure === "offshore").status).toBe("INELIGIBLE");
     expect(scoping.advice.contradictions[0]).toMatch(/offshore company and 2 residence visa/);
-    // The request still scopes an offshore company with the visas left out (no partner prices SET-OFF yet, so no
-    // offer can be built from it); ops cannot approve the excluded structure.
+    // The request scopes an offshore company with the visas left out; an offer can be built from it as an internal
+    // estimate, but it cannot be published, and ops cannot approve the excluded structure.
     expect((await rows(env, "select scope from requests where id = $1", [id]))[0].scope.lines.map((l: any) => l.code)).toEqual(["SET-OFF"]);
+    const offshoreOffer = await build(id);
+    expect(await codesOf(offshoreOffer)).toEqual(["SET-OFF"]);
+    expect((await publish(offshoreOffer)).status).toBe(409);
     const bad = await env.call("ops", "POST", `/api/ops/requests/${id}/scoping/approve`, { structure: "offshore" });
     expect(bad.status).toBe(409);
     expect(bad.body.message).toMatch(/offshore cannot be approved for this request: An offshore company cannot sponsor residence visas/);
@@ -50,6 +59,8 @@ describe("formation quotes wait for a settled structure", () => {
     expect(req.scope.lines).toEqual(expect.arrayContaining([{ code: "SET-FZ-LIC", qty: 1 }, { code: "VISA-RES", qty: 2 }]));
     const [ev] = await rows(env, "select data from audit_events where action = 'scoping.approved' and entity_id = $1", [id]);
     expect(ev.data.rescoped).toMatchObject({ from: "offshore", after: expect.arrayContaining([{ code: "VISA-RES", qty: 2 }]) });
+    expect(await offerStatus(offshoreOffer)).toBe("withdrawn");
+    expect((await publish(offshoreOffer)).status).toBe(409);
     const fresh = await build(id);
     expect((await publish(fresh)).status).toBe(200);
   });
@@ -85,6 +96,69 @@ describe("formation quotes wait for a settled structure", () => {
     expect(refused.body.message).toMatch(/free zone does not fit this request: A regulated financial activity needs a regulator-specific licence/);
   });
 
+  it("a DIFC/ADGM formation has its own code: a free zone estimate is withdrawn, never published as the DIFC/ADGM quote", async () => {
+    const id = await request({ jurisdiction: "not_sure", visas: 1, activity: "finance", customers: "international", budgetAed: 100_000 });
+    const estimate = await build(id);
+    expect(await codesOf(estimate)).toContain("SET-FZ-LIC");
+    expect((await env.call("ops", "POST", `/api/ops/requests/${id}/scoping/approve`, { note: "Regulated: DIFC or ADGM" })).status).toBe(200);
+    const [req] = await rows(env, "select answers, scope from requests where id = $1", [id]);
+    expect(req.answers.jurisdiction).toBe("difc_adgm");
+    expect(req.scope.lines.map((l: any) => l.code)).toEqual(expect.arrayContaining(["SET-DIFC", "VISA-RES"]));
+    expect(req.scope.lines.map((l: any) => l.code)).not.toContain("SET-FZ-LIC");
+    expect(await offerStatus(estimate)).toBe("withdrawn");
+    expect((await publish(estimate)).status).toBe(409);
+    const fresh = await build(id);
+    expect(await codesOf(fresh)).toContain("SET-DIFC");
+    expect((await publish(fresh)).status).toBe(200);
+  });
+
+  it("a company formation priced as a service or add-on has no structure check behind it, so it is refused", async () => {
+    const svc = (await env.call("client", "POST", "/api/requests", { answers: { mode: "services", emirate: "Dubai", services: ["SET-ML-LIC"] } })).body.id;
+    const refused = await publish(await build(svc));
+    expect(refused.status).toBe(409);
+    expect(refused.body.message).toMatch(/prices a company formation \(SET-ML-LIC\) but the request is not for a new company/);
+    // Two formations on one offer (a free zone with a mainland licence added on) are refused too.
+    const two = await request({ jurisdiction: "free_zone", visas: 1, addOns: ["SET-ML-LIC"] });
+    const offer = await build(two);
+    expect(await codesOf(offer)).toEqual(expect.arrayContaining(["SET-FZ-LIC", "SET-ML-LIC"]));
+    const both = await publish(offer);
+    expect(both.status).toBe(409);
+    expect(both.body.message).toMatch(/prices more than one company formation \(SET-FZ-LIC, SET-ML-LIC\)/);
+  });
+
+  it("re-scoping keeps the lines ops added, and stops once partners have been asked to quote", async () => {
+    const id = await request({ jurisdiction: "not_sure", visas: 1, activity: "trading", customers: "uae_mainland", premises: "retail" });
+    // Ops added a bank account to the scope after intake (as an approved AI draft would).
+    await asPlatform(env.db, null, (tx) => tx.query(`update requests set scope = jsonb_set(scope, '{lines}', (scope->'lines') || '[{"code":"BANK-ACC","qty":1}]'::jsonb) where id = $1`, [id]));
+    expect((await env.call("ops", "POST", `/api/ops/requests/${id}/scoping/approve`, {})).status).toBe(200);
+    const [req] = await rows(env, "select answers, scope from requests where id = $1", [id]);
+    expect(req.answers.jurisdiction).toBe("mainland");
+    expect(req.scope.lines.map((l: any) => l.code).sort()).toEqual(["BANK-ACC", "SET-ML-LIC", "VISA-RES"]);
+
+    const sent = await request({ jurisdiction: "not_sure", visas: 1, activity: "trading", customers: "uae_mainland", premises: "retail" });
+    expect((await env.call("ops", "POST", `/api/ops/requests/${sent}/rfq`, { codes: ["SET-FZ-LIC"] })).status).toBe(200);
+    const late = await env.call("ops", "POST", `/api/ops/requests/${sent}/scoping/approve`, {});
+    expect(late.status).toBe(409);
+    expect(late.body.message).toMatch(/sealed quotes are for the structure as sent/);
+  });
+
+  it("a statement ops removes is gone from everything the client sees, findings included; flags are recomputed", async () => {
+    const id = await request({ jurisdiction: "free_zone", visas: 1, activity: "tech", customers: "both" });
+    const before = (await env.call("ops", "GET", `/api/ops/requests/${id}/scoping`)).body.advice;
+    expect(JSON.stringify(before)).toContain("structure.free_zone_mainland_sales");
+    expect((await env.call("ops", "POST", `/api/ops/requests/${id}/scoping/approve`, { removeRuleKeys: ["structure.free_zone_mainland_sales"] })).status).toBe(200);
+    const mine = (await env.call("client", "GET", "/api/client/home")).body.requests.find((r: any) => r.id === id);
+    expect(JSON.stringify(mine.advice)).not.toContain("structure.free_zone_mainland_sales");
+    expect(mine.advice.needsVerification).toBe(true); // UNCERTAIN rules remain
+
+    // No place fits a budget of AED 1,000: the engine says no option fits; once ops settles a structure, it does not.
+    const poor = await request({ jurisdiction: "not_sure", visas: 0, activity: "consulting", customers: "international", budgetAed: 1_000 });
+    expect((await env.call("ops", "GET", `/api/ops/requests/${poor}/scoping`)).body.advice.noViableOption).toBe(true);
+    expect((await env.call("ops", "POST", `/api/ops/requests/${poor}/scoping/approve`, { structure: "free_zone", note: "Founder raises the budget" })).status).toBe(200);
+    const approved = (await env.call("client", "GET", "/api/client/home")).body.requests.find((r: any) => r.id === poor);
+    expect(approved.advice.noViableOption).toBe(false);
+  });
+
   it("once an offer is accepted, the structure changes only through a change order", async () => {
     const id = await request({ jurisdiction: "free_zone", visas: 1, activity: "tech", customers: "international" });
     const offer = await build(id);
@@ -107,6 +181,15 @@ describe("formation quotes wait for a settled structure", () => {
     const mine = (await env.call("client", "GET", "/api/client/home")).body.requests.find((r: any) => r.id === id);
     expect(mine.advice.structure.recommendation).toBe("mainland");
     expect(mine.advice.crossBorder.map((r: any) => r.ruleKey)).toEqual(expect.arrayContaining(["crossborder.corporate_shareholder", "crossborder.founder_residence"]));
-    expect(JSON.stringify(mine.advice)).not.toMatch(/margin|partner_unit|partnerUnit|payout|rate_card/i);
+    // Every key and value, at any depth: no partner, cost, price list, margin or payout field.
+    const seen: string[] = [];
+    const walk = (v: unknown): void => {
+      if (Array.isArray(v)) v.forEach(walk);
+      else if (v && typeof v === "object") for (const [k, x] of Object.entries(v)) (seen.push(k), walk(x));
+      else if (typeof v === "string") seen.push(v);
+    };
+    walk(mine.advice);
+    expect(seen.length).toBeGreaterThan(50);
+    for (const s of seen) expect(s, s).not.toMatch(/margin|partner_?(unit|cost|org|id)|payout|rate_?card|professional_?fils|commission/i);
   });
 });

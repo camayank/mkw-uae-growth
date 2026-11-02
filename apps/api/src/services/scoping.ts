@@ -1,4 +1,5 @@
-import { advise, assessStructure, rankPlaces, Rulebook, type Advice, type AdviceInput, type ScopingRule, type Structure, type Zone } from "@tasees/core";
+import { advise, assessStructure, needsVerificationOf, rankPlaces, Rulebook, statusOf, type Advice, type AdviceInput, type EligibilityStatus, type Finding, type ScopingRule, type Structure, type Zone } from "@tasees/core";
+import { dbToday } from "./repo.ts";
 import { rescopeForStructure } from "./structure.ts";
 import { withdrawOffers } from "../lib/transition.ts";
 import { audit, type SessionUser } from "../lib/context.ts";
@@ -113,7 +114,7 @@ export async function recomputeAdvice(tx: Queryable, actor: SessionUser, request
   if (!["ops", "founder"].includes(actor.role)) throw forbidden("Only ops recomputes advice");
   const r = (await tx.query<{ answers: AdviceInput; advice_status: string }>("select answers, advice_status from requests where id = $1", [requestId])).rows[0];
   if (!r) throw notFound("Request not found");
-  const advice = advise(r.answers, await loadScopingRules(tx), await loadZones(tx));
+  const advice = advise(r.answers, await loadScopingRules(tx), await loadZones(tx), await dbToday(tx));
   await tx.query("update requests set advice = $2, advice_status = 'pending_review', advice_reviewed_by = null, advice_reviewed_at = null where id = $1", [requestId, JSON.stringify(advice)]);
   await audit(tx, actor, "scoping.recomputed", "request", requestId, { hasUncertain: advice.hasUncertain, previousStatus: r.advice_status });
   return advice;
@@ -132,6 +133,14 @@ export async function approveAdvice(tx: Queryable, actor: SessionUser, requestId
   const drop = new Set(edits.removeRuleKeys ?? []);
   const dropPlaces = new Set(edits.removePlaces ?? []);
   const keep = <T extends { ruleKey?: string }>(items: T[]) => items.filter((i) => !i.ruleKey || !drop.has(i.ruleKey));
+  // A statement ops removes is removed everywhere the client could read it, findings included; a status shown is
+  // the one the remaining findings support (the quote gate re-checks the structure against the rules regardless).
+  const keepFindings = <T extends { findings?: Finding[]; status?: EligibilityStatus }>(items: T[]): T[] =>
+    items.map((i) => {
+      if (!i.findings) return i;
+      const findings = keep(i.findings);
+      return findings.length === i.findings.length ? i : { ...i, findings, status: statusOf(findings) };
+    });
   const recommendation = edits.structure && edits.structure !== "not_sure" ? edits.structure : r.advice.structure.recommendation;
   const rules = await loadScopingRules(tx);
   // E1: a structure the rules exclude (offshore for a founder who needs visas) cannot be approved, whoever picks it.
@@ -149,13 +158,18 @@ export async function approveAdvice(tx: Queryable, actor: SessionUser, requestId
   const approved: Advice = {
     ...r.advice,
     structure: { recommendation, reasons: keep(r.advice.structure.reasons) },
-    places: places.filter((p) => !dropPlaces.has(p.zone)),
+    places: keepFindings(places.filter((p) => !dropPlaces.has(p.zone))),
+    ...(r.advice.structures ? { structures: keepFindings(r.advice.structures) } : {}),
+    ...(r.advice.excluded ? { excluded: keepFindings(r.advice.excluded) } : {}),
     licences: keep(r.advice.licences),
     obligations: keep(r.advice.obligations),
     ...(r.advice.crossBorder ? { crossBorder: keep(r.advice.crossBorder) } : {}),
     hasUncertain: false,
   };
   approved.hasUncertain = [...approved.structure.reasons, ...approved.licences, ...approved.obligations, ...(approved.crossBorder ?? [])].some((x) => x.confidence !== "verified") || approved.places.some((p) => p.confidence !== "verified");
+  // Once a structure is approved there is an option; what still needs confirming is worked out from what is shown.
+  if (r.advice.noViableOption !== undefined) approved.noViableOption = !recommendation;
+  if (r.advice.needsVerification !== undefined) approved.needsVerification = needsVerificationOf(approved);
   // E1: the approved structure settles the request: answers and scope follow, and offers priced for another
   // structure are withdrawn so none of them can be published. An accepted offer cannot be re-scoped here.
   let rescoped: Awaited<ReturnType<typeof rescopeForStructure>> = null;

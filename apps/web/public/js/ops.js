@@ -328,6 +328,11 @@ export const STATUS_LABEL = {
 };
 const statusBadge = (s) => (s && STATUS_LABEL[s] ? badge(STATUS_LABEL[s][0], STATUS_LABEL[s][1]) : "");
 const firstText = (findings, outcomes) => (findings ?? []).find((f) => outcomes.includes(f.outcome))?.text ?? "";
+// The first finding of these outcomes, with its confidence: no exclusion or condition is shown without its label.
+const firstFinding = (findings, outcomes) => {
+  const f = (findings ?? []).find((x) => outcomes.includes(x.outcome));
+  return f ? `<span data-no-i18n>${esc(f.text)}</span> ${confBadge(f.confidence)}` : "";
+};
 
 export function adviceHtml(a, opts = {}) {
   const item = (r) => `<li>${opts.editable && r.ruleKey ? `<label><input type="checkbox" name="keep" value="${esc(r.ruleKey)}" checked /> ` : ""}<span data-no-i18n>${esc(r.text)}</span> ${confBadge(r.confidence)}${opts.editable && r.ruleKey ? "</label>" : ""}</li>`;
@@ -338,7 +343,7 @@ export function adviceHtml(a, opts = {}) {
     const checks = (p.findings ?? []).filter((f) => f.outcome === "unknown");
     if (!conditions.length && !checks.length) return "";
     return `<details class="small"><summary>${conditions.length} condition(s), ${checks.length} point(s) to confirm</summary><ul class="plain">${[...conditions, ...checks]
-      .map((f) => `<li><span data-no-i18n>${esc(f.text)}</span> ${f.outcome === "condition" ? badge("info", "condition") : badge("pending", f.missing === "data" ? "data missing" : "to confirm")}</li>`)
+      .map((f) => `<li><span data-no-i18n>${esc(f.text)}</span> ${f.outcome === "condition" ? badge("info", "condition") : badge("pending", f.missing === "data" ? "data missing" : "to confirm")} ${confBadge(f.confidence)}</li>`)
       .join("")}</ul></details>`;
   };
   return `
@@ -352,7 +357,7 @@ export function adviceHtml(a, opts = {}) {
       ${
         a.structures?.length
           ? `<h3>Every structure compared</h3><ul class="plain">${a.structures
-              .map((s) => `<li><b>${esc(STRUCTURE_LABEL[s.structure] ?? s.structure)}</b> ${statusBadge(s.status)}${firstText(s.findings, ["fail", "condition"]) ? `<br><span class="small muted" data-no-i18n>${esc(firstText(s.findings, s.status === "INELIGIBLE" ? ["fail"] : ["condition", "fail"]))}</span>` : ""}</li>`)
+              .map((s) => `<li><b>${esc(STRUCTURE_LABEL[s.structure] ?? s.structure)}</b> ${statusBadge(s.status)}${firstText(s.findings, ["fail", "condition"]) ? `<br><span class="small muted">${firstFinding(s.findings, s.status === "INELIGIBLE" ? ["fail"] : ["condition", "fail"])}</span>` : ""}</li>`)
               .join("")}</ul>`
           : ""
       }
@@ -361,7 +366,7 @@ export function adviceHtml(a, opts = {}) {
       ${a.places.length ? `<ul class="plain">${a.places.map((p) => `<li>${opts.editable ? `<label><input type="checkbox" name="keepPlace" value="${esc(p.zone)}" checked /> ` : ""}<b>${esc(p.zone)}</b> (${esc(p.emirate)}) ${statusBadge(p.status)} · ${cost(p)} · ${p.visaQuota} visa(s) in the standard package · about ${p.timelineDays} working days ${confBadge(p.confidence)}<br><span class="small muted">${esc(p.why.join("; "))}</span>${opts.editable ? "</label>" : ""}${placeFindings(p)}</li>`).join("")}</ul>` : `<p class="muted">No place fits every answer yet.</p>`}
       ${
         a.excluded?.length
-          ? `<details><summary class="small">${a.excluded.length} other place(s) do not fit, and why</summary><ul class="plain small">${a.excluded.map((p) => `<li><b>${esc(p.zone)}</b>: <span data-no-i18n>${esc(firstText(p.findings, ["fail"]))}</span></li>`).join("")}</ul></details>`
+          ? `<details><summary class="small">${a.excluded.length} other place(s) do not fit, and why</summary><ul class="plain small">${a.excluded.map((p) => `<li><b>${esc(p.zone)}</b>: ${firstFinding(p.findings, ["fail"])}</li>`).join("")}</ul></details>`
           : ""
       }
       <h3>What follows after setup</h3><ul class="plain">${a.obligations.map(item).join("")}</ul>

@@ -10,7 +10,7 @@
  */
 import type { Activity, AdviceInput, Confidence, ScopingRule, Zone } from "./advice.ts";
 
-export const ELIGIBILITY_ENGINE_VERSION = "e1.1";
+export const ELIGIBILITY_ENGINE_VERSION = "e1.2";
 
 export type EligibilityStatus = "ELIGIBLE_VERIFIED" | "ELIGIBLE_CONDITIONAL" | "REQUIRES_VERIFICATION" | "INELIGIBLE" | "DATA_UNAVAILABLE";
 export type Structure = "free_zone" | "mainland" | "offshore" | "difc_adgm";
@@ -55,6 +55,10 @@ export interface PlaceAssessment {
 const ORDER: EligibilityStatus[] = ["ELIGIBLE_VERIFIED", "ELIGIBLE_CONDITIONAL", "REQUIRES_VERIFICATION", "DATA_UNAVAILABLE", "INELIGIBLE"];
 export const statusRank = (s: EligibilityStatus) => ORDER.indexOf(s);
 export const isViable = (s: EligibilityStatus) => s !== "INELIGIBLE";
+
+const CONFIDENCE_ORDER: Confidence[] = ["UNCERTAIN", "rule_of_thumb", "verified"];
+/** The weaker of two confidences: a statement is never more certain than the least certain thing behind it. */
+export const weaker = (x: Confidence, y: Confidence): Confidence => (CONFIDENCE_ORDER.indexOf(x) <= CONFIDENCE_ORDER.indexOf(y) ? x : y);
 
 /**
  * The status a set of findings supports. An exclusion wins; then missing data; then anything unconfirmed (a missing
@@ -113,8 +117,11 @@ export function assessStructure(s: Structure, a: AdviceInput, book: Rulebook): S
   }
 
   if (s === "free_zone") {
-    if (act === "finance") out.push(book.f("structure.financial_regulated", "fail", "A regulated financial activity needs a regulator-specific licence (DFSA, FSRA, SCA or the Central Bank); a commercial free zone licence is not enough."));
-    if (act === "virtual_assets") out.push(book.f("structure.virtual_assets_regulated", "condition", "Virtual-asset activities need the regulator's licence (VARA in Dubai outside DIFC, or FSRA in ADGM) on top of the company licence."));
+    // The "finance" answer is regulated financial services (banking, lending, investment, insurance, payments; the
+    // question says so); accounting and bookkeeping are "consulting". A regulated activity cannot run on a commercial
+    // free zone licence.
+    if (act === "finance") out.push(book.f("structure.financial_regulated", "fail", "A regulated financial activity needs a regulator-specific licence (DFSA in DIFC, FSRA in ADGM, or the Central Bank or SCA onshore); a commercial free zone licence is not enough."));
+    if (act === "virtual_assets") out.push(book.f("structure.virtual_assets_regulated", "condition", "Virtual-asset activities need the regulator's licence on top of the company licence: VARA in Dubai, the SCA in the other emirates."));
     if (onshore) out.push(book.f("structure.free_zone_mainland_sales", "condition", "Selling to customers on the mainland from a free zone needs a distributor, a mainland branch or an activity-specific permit; which applies depends on the activity and emirate."));
     if (premises && onshore) out.push(book.f("structure.free_zone_onshore_premises", "condition", "A shop, clinic or site outside the zone needs a mainland licence or branch; the free zone licence covers premises inside the zone only."));
     if (act === "health") out.push(book.f("licence.health", "condition", "Health activities need DHA, DoH or MOHAP approval and licensed premises."));
@@ -162,7 +169,7 @@ export function assessPlace(z: Zone, structure: StructureAssessment, a: AdviceIn
     outcome,
     text,
     // A place finding is as confident as the weaker of its rule and the place's own data.
-    confidence: book.confidence(ruleKey) === "verified" && z.confidence === "verified" ? "verified" : book.confidence(ruleKey) === "verified" ? z.confidence : book.confidence(ruleKey),
+    confidence: weaker(book.confidence(ruleKey), z.confidence),
     ...(missing ? { missing } : {}),
   });
   const visas = a.visas ?? 0;
@@ -241,10 +248,11 @@ export function assess(a: AdviceInput, rules: ScopingRule[], zones: Zone[], pref
   const viable = places
     .filter((p) => isViable(p.status))
     .sort((x, y) => group(x) - group(y) || statusRank(x.status) - statusRank(y.status) || preference(y, a, preferred) - preference(x, a, preferred) || x.costMinFils - y.costMinFils || x.zone.localeCompare(y.zone));
-  // When the founder named a place, keep it first if it is viable, whatever its status rank.
+  // When the founder named a place, keep it first if it is viable and of the recommended structure (a place of
+  // another structure never jumps ahead of the recommendation), whatever its status rank.
   if (a.freeZone) {
     const i = viable.findIndex((p) => p.zone.toLowerCase() === a.freeZone!.toLowerCase());
-    if (i > 0) viable.unshift(...viable.splice(i, 1));
+    if (i > 0 && (!preferred || viable[i]!.structure === preferred)) viable.unshift(...viable.splice(i, 1));
   }
   const excluded = places.filter((p) => !isViable(p.status)).sort((x, y) => x.zone.localeCompare(y.zone));
   return { version: ELIGIBILITY_ENGINE_VERSION, structures, viable, excluded };

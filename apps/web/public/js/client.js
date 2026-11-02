@@ -138,16 +138,18 @@ export async function renderClientOffer(id) {
 
 const EMIRATES = ["Dubai", "Abu Dhabi", "Sharjah", "Ajman", "Ras Al Khaimah", "Umm Al Quwain", "Fujairah"];
 const ACTIVITIES = [
-  ["consulting", "Consulting or professional services"],
+  ["consulting", "Consulting or professional services (incl. accounting and bookkeeping)"],
   ["trading", "Trading goods"],
   ["ecommerce", "Selling online"],
   ["tech", "Software or technology"],
   ["holding", "Holding company"],
-  ["finance", "Finance or investment"],
+  ["finance", "Regulated financial services (banking, lending, investment, insurance, payments)"],
+  ["virtual_assets", "Virtual assets or crypto"],
   ["health", "Health or medical"],
   ["education", "Education or training"],
   ["food", "Food and restaurants"],
   ["construction", "Construction or real estate"],
+  ["manufacturing", "Manufacturing"],
   ["other", "Something else"],
 ];
 

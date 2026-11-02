@@ -1,4 +1,4 @@
-import { assessStructure, buildScope, Rulebook, SETUP_CODE, type AdviceInput, type Advice, type IntakeAnswers, type Structure } from "@tasees/core";
+import { assessStructure, buildScope, FORMATION_CODES, Rulebook, SETUP_CODE, type AdviceInput, type Advice, type IntakeAnswers, type Structure } from "@tasees/core";
 import type { Queryable } from "../lib/db.ts";
 import { conflict } from "../lib/errors.ts";
 import { loadScopingRules } from "./scoping.ts";
@@ -52,15 +52,23 @@ export async function structureSettlement(tx: Queryable, requestId: string): Pro
   return { ok: true, structure, reason: `Structure settled: ${words(structure)}` };
 }
 
-/** Refuse to publish a formation offer until its structure is settled and the offer prices that structure. */
+/**
+ * Refuse to publish a formation offer until its structure is settled and the offer prices that structure, once. A
+ * company formation priced on a request that is not a new-company request (as a service or an add-on) has no
+ * structure check behind it, so it is refused too.
+ */
 export async function assertQuotable(tx: Queryable, requestId: string, offerCodes: string[]): Promise<void> {
+  const setup = offerCodes.filter((c) => FORMATION_CODES.has(c));
   const s = await structureSettlement(tx, requestId);
   if (!s.ok) throw conflict(`This offer cannot go to the client yet. ${s.reason}`);
-  if (!s.structure) return;
-  const expected = SETUP_CODE[s.structure];
-  const setup = offerCodes.filter((c) => Object.values(SETUP_CODE).includes(c));
-  if (expected && setup.length && !setup.includes(expected)) {
-    throw conflict(`This offer prices ${setup.join(", ")} but the settled structure is ${words(s.structure)} (${expected}). Build the offers again.`);
+  if (!s.structure) {
+    if (setup.length) throw conflict(`This offer prices a company formation (${setup.join(", ")}) but the request is not for a new company: record it as a new-company request so its structure is checked before quoting.`);
+    return;
+  }
+  const expected = SETUP_CODE[s.structure]!;
+  if (setup.length > 1) throw conflict(`This offer prices more than one company formation (${setup.join(", ")}); the settled structure is ${words(s.structure)} (${expected}). Build the offers again.`);
+  if (setup.length === 1 && setup[0] !== expected) {
+    throw conflict(`This offer prices ${setup[0]} but the settled structure is ${words(s.structure)} (${expected}). Build the offers again.`);
   }
 }
 
@@ -69,10 +77,19 @@ export async function assertQuotable(tx: Queryable, requestId: string, offerCode
  * follow, so the next offers price the right licence. Returns the scope lines before and after, for the audit.
  */
 export async function rescopeForStructure(tx: Queryable, requestId: string, structure: Structure) {
-  const r = (await tx.query<{ answers: IntakeAnswers; scope: { lines: Array<{ code: string; qty: number }> } }>("select answers, scope from requests where id = $1", [requestId])).rows[0]!;
+  const r = (await tx.query<{ answers: IntakeAnswers; scope: { lines: Array<{ code: string; qty: number }> } }>("select answers, scope from requests where id = $1 for update", [requestId])).rows[0]!;
   if (r.answers.jurisdiction === structure) return null;
+  // Once partners have been asked to quote, their sealed quotes are for the scope as sent: the structure then changes
+  // through a new request, not a silent re-scope. (Offers built from rate cards are withdrawn instead, below.)
+  const rfq = (await tx.query("select 1 from quote_requests where request_id = $1 limit 1", [requestId])).rows.length;
+  if (rfq) throw conflict("Partners have already been asked to quote this scope; their sealed quotes are for the structure as sent, so the structure can no longer change at the scoping review");
+  // Lines ops added after intake (an approved AI draft, an add-on) are kept; only the formation and its visas follow
+  // the new structure.
+  const fresh = buildScope({ ...r.answers, jurisdiction: structure }, new Set((await loadDeliverables(tx)).keys()));
+  const derived = new Set(["VISA-RES", "VISA-FAM", ...FORMATION_CODES]);
+  const kept = (r.scope?.lines ?? []).filter((l) => !derived.has(l.code) && !fresh.lines.some((f) => f.code === l.code));
   const answers = { ...r.answers, jurisdiction: structure };
-  const scope = buildScope(answers, new Set((await loadDeliverables(tx)).keys()));
+  const scope = { lines: [...fresh.lines, ...kept], notes: fresh.notes };
   await tx.query("update requests set answers = $2, scope = $3 where id = $1", [requestId, JSON.stringify(answers), JSON.stringify({ lines: scope.lines })]);
   return { before: r.scope?.lines ?? [], after: scope.lines, notes: scope.notes, from: r.answers.jurisdiction ?? null };
 }

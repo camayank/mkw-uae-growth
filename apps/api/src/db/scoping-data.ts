@@ -23,7 +23,8 @@ export const SCOPING_RULES: Array<[string, "structure" | "zone" | "licence" | "o
   ["obligation.vat_watch", "obligation", "Watch the VAT thresholds (AED 375,000 mandatory, AED 187,500 voluntary).", { mandatoryAed: 375000, voluntaryAed: 187500 }, ""],
   ["obligation.ubo", "obligation", "Keep an ultimate beneficial owner register and file it with the registrar.", {}, ""],
   ["obligation.goaml_dnfbp", "obligation", "Designated non-financial businesses must register on goAML and run an AML programme.", {}, ""],
-  ["obligation.wps", "obligation", "Employees must be paid through the Wage Protection System; medical insurance is mandatory.", {}, ""],
+  ["obligation.wps", "obligation", "Mainland employees must be paid through the Wage Protection System (MOHRE); medical insurance is mandatory.", {}, ""],
+  ["obligation.payroll_zone", "obligation", "Free zone and DIFC/ADGM employees need medical insurance; salary payment and reporting follow the zone's own employment rules.", {}, ""],
   // E1: eligibility before recommendation. Exclusions, conditions and checks the engine applies; UNCERTAIN until verified.
   ["structure.offshore_no_premises", "structure", "An offshore company cannot lease premises or operate a place of business in the UAE.", {}, ""],
   ["structure.offshore_no_onshore_trade", "structure", "An offshore company cannot trade with customers in the UAE.", {}, ""],
@@ -36,6 +37,7 @@ export const SCOPING_RULES: Array<[string, "structure" | "zone" | "licence" | "o
   ["structure.mainland_foreign_ownership", "structure", "Full foreign ownership is allowed for most mainland activities; strategic activities may need approvals or a UAE national shareholder.", {}, ""],
   ["structure.financial_zone_non_financial", "structure", "DIFC and ADGM license some non-financial businesses; each activity is confirmed.", {}, ""],
   ["structure.preferred_excluded", "structure", "When the structure the answers point to is excluded by a rule, the closest structure that remains is shown with the reason.", {}, ""],
+  ["structure.no_viable_place", "structure", "When no place of the structure the answers point to fits every answer (budget, visas, facilities), the closest structure with a place that does is shown with the reason.", {}, ""],
   ["structure.no_viable_option", "structure", "When no structure or place survives the checks, no recommendation is made and a specialist assesses the case.", {}, ""],
   ["place.visa_capacity", "zone", "A place's maximum visa allocation, where known, is a hard limit.", {}, ""],
   ["place.visa_package", "zone", "Visas beyond the standard package need a larger package or more office space, at extra cost.", {}, ""],

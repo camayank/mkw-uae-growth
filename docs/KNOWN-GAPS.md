@@ -123,6 +123,13 @@ in a browser; everything listed here is not.
     place until the catalogue holds facilities (E2).
 51. **The public selector, leads and handoff are later phases** (E3–E5). The public assessment needs the owner's
     decision on rule 5 (programme section 3).
+52. **The fallback when the preferred structure is excluded is a fixed order** (free zone, mainland, DIFC/ADGM,
+    offshore), applied among structures of equal status. While every rule is UNCERTAIN, the statuses rarely tell
+    structures apart, so the order decides: for example, an offshore holding with mainland customers falls back to a
+    free zone, not the mainland. Ops sees every structure's findings and can approve another. A fact-weighted
+    fallback needs verified rules (E2).
+53. **The scorecard is not comparable across the E1 change.** Scorecard figures computed before E1 counted repeat
+    submissions and repeat disputes; figures after E1 count each step once (D74).
 
 ## O7: launch-gate preparation
 

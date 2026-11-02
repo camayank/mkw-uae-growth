@@ -85,11 +85,36 @@ Revert the branch. Migrations 013 and 014 only add columns and widen a check con
 | Claim | Evidence |
 | --- | --- |
 | Baseline | `docs/evidence/E1/baseline-main-tests.txt`: `main` at `a9274f4` failed 3 API tests on 2 Nov 2026 (date dependent). Its last CI run on 25 Oct passed: [run 45](https://github.com/camayank/mkw-uae-growth/actions/runs/40231959467) |
-| Tests | `pnpm test`: 82 core + 272 API (one PostgreSQL-only test skipped on PGlite) = 355 passing on PGlite. The API suite passes 273 of 273 on PostgreSQL 16. `pnpm typecheck` is clean |
-| Invariants | For 4,160 combinations of activity, customers, visas, budget and premises, all hold: no recommended structure is excluded; offshore is never offered with visas, premises or onshore customers; finance never gets a generic free zone; no offered place has an exclusion or exceeds the budget; at most five options; none verified while the rules are not; no places means "no viable option" |
-| Gates | not sure → refused until settled; offshore with visas → approval refused, the advice's free zone re-scopes the request (`SET-FZ-LIC`, `VISA-RES ×2`) and the audit records it; mismatch → refused until reviewed; an offer on the old licence → refused; facts changed after approval → refused; accepted → change order only; services-only requests are not held |
+| Tests | `pnpm test`: 89 core + 276 API (one PostgreSQL-only test skipped on PGlite) = 365 passing on PGlite. The API suite passes 277 of 277 on PostgreSQL 16. `pnpm typecheck` is clean |
+| Invariants | For 4,160 combinations of activity, customers, visas, budget and premises, all hold: no recommended structure is excluded; offshore is never offered with visas, premises or onshore customers; finance never gets a generic free zone; no offered place has an exclusion or exceeds the budget; the first place offered is of the recommended structure; at most five options; none verified while the rules are not; no places means "no viable option". Commercial terms attached to places change nothing in the output |
+| Gates | not sure → refused until settled; offshore with visas → approval refused, the advice's free zone re-scopes the request (`SET-FZ-LIC`, `VISA-RES ×2`) and the audit records it; mismatch → refused until reviewed; an offer on the old licence → refused; facts changed after approval → refused; accepted → change order only; services-only requests are not held. After review: a free zone estimate for a finance client is withdrawn when DIFC/ADGM is settled (`SET-DIFC`); a formation priced as a service, or two formations on one offer, are refused; re-scoping keeps lines ops added and stops once a quote request is out; a statement ops removes is gone from every finding the client sees |
 | Smoke | `docs/evidence/E1/smoke-log.txt`: 181 checks OK on a fresh demo (S1: 174), including every structure compared, the excluded structure disabled at review, and the client's eligibility view |
 | Screens | `35-ops-scoping-review.png`, `36-client-advice.png` (1280 px), `81-mobile-client-advice.png` (390 px); axe shows zero WCAG 2.1 AA violations on all 33 screens checked (`axe.json`) |
+
+## Independent review
+
+A separate reviewer read the whole diff against `main` before the pull request, with throwaway probes and no repository
+changes. It reported 5 must-fix and 8 should-fix findings plus nits. All were fixed with tests, and each new gate test
+was shown to fail with its fix removed (DECISIONS D76; D73 and D74 amended):
+- **Must-fix:**
+  - DIFC/ADGM shared the free zone formation code;
+  - a formation could be priced as a service;
+  - an offer could price two formations;
+  - a place finding could be more confident than its place data;
+  - statements ops removed still reached the client inside findings.
+- **Should-fix:**
+  - a recommendation could have no place of its structure;
+  - a named place could jump structures;
+  - `noViableOption` was kept after approval;
+  - re-scoping dropped lines ops had added and ignored an open quote request;
+  - findings were shown without confidence labels;
+  - domain wording: "finance" is now regulated financial services, virtual-asset regulators are named per emirate,
+    small business relief is dated, the Wage Protection System applies to the mainland only, and DIFC/ADGM holding
+    vehicles carry no visas;
+  - the scorecard's changed meaning is now recorded;
+  - four tests passed for the wrong reason.
+- **Kept as known gaps** (KNOWN-GAPS 52 and 53): the fixed fallback order, and scorecards that are not comparable
+  across the change.
 
 ## Could not verify
 

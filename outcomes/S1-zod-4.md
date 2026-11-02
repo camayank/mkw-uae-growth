@@ -1,6 +1,6 @@
 # S1 zod 4 migration
 
-Status: verified-pending-merge (branch `outcome/S1-zod-4` from `main` after O7's preparation merged as camayank/mkw-uae-growth#15;
+Status: merged (pull request camayank/mkw-uae-growth#16, 25 Oct 2026; was: branch `outcome/S1-zod-4` from `main` after O7's preparation merged as camayank/mkw-uae-growth#15;
 released by the owner 25 Oct 2026: "do the zod 4 migration")
 
 ## Business result

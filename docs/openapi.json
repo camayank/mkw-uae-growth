@@ -7489,10 +7489,12 @@
                           "tech",
                           "holding",
                           "finance",
+                          "virtual_assets",
                           "health",
                           "education",
                           "food",
                           "construction",
+                          "manufacturing",
                           "other"
                         ]
                       },
@@ -7506,6 +7508,18 @@
                       },
                       "officeNeeded": {
                         "type": "boolean"
+                      },
+                      "premises": {
+                        "type": "string",
+                        "enum": [
+                          "none",
+                          "virtual",
+                          "office",
+                          "retail",
+                          "warehouse",
+                          "industrial",
+                          "clinic"
+                        ]
                       },
                       "budgetAed": {
                         "anyOf": [
@@ -7530,6 +7544,28 @@
                             "type": "null"
                           }
                         ]
+                      },
+                      "taxableSuppliesAed": {
+                        "anyOf": [
+                          {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 10000000000
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "ownerType": {
+                        "type": "string",
+                        "enum": [
+                          "individuals",
+                          "company"
+                        ]
+                      },
+                      "foreignTaxResident": {
+                        "type": "boolean"
                       },
                       "description": {
                         "type": "string",
@@ -7665,10 +7701,12 @@
                           "tech",
                           "holding",
                           "finance",
+                          "virtual_assets",
                           "health",
                           "education",
                           "food",
                           "construction",
+                          "manufacturing",
                           "other"
                         ]
                       },
@@ -7682,6 +7720,18 @@
                       },
                       "officeNeeded": {
                         "type": "boolean"
+                      },
+                      "premises": {
+                        "type": "string",
+                        "enum": [
+                          "none",
+                          "virtual",
+                          "office",
+                          "retail",
+                          "warehouse",
+                          "industrial",
+                          "clinic"
+                        ]
                       },
                       "budgetAed": {
                         "anyOf": [
@@ -7706,6 +7756,28 @@
                             "type": "null"
                           }
                         ]
+                      },
+                      "taxableSuppliesAed": {
+                        "anyOf": [
+                          {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 10000000000
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "ownerType": {
+                        "type": "string",
+                        "enum": [
+                          "individuals",
+                          "company"
+                        ]
+                      },
+                      "foreignTaxResident": {
+                        "type": "boolean"
                       },
                       "description": {
                         "type": "string",
@@ -7853,10 +7925,12 @@
                           "tech",
                           "holding",
                           "finance",
+                          "virtual_assets",
                           "health",
                           "education",
                           "food",
                           "construction",
+                          "manufacturing",
                           "other"
                         ]
                       },
@@ -7870,6 +7944,18 @@
                       },
                       "officeNeeded": {
                         "type": "boolean"
+                      },
+                      "premises": {
+                        "type": "string",
+                        "enum": [
+                          "none",
+                          "virtual",
+                          "office",
+                          "retail",
+                          "warehouse",
+                          "industrial",
+                          "clinic"
+                        ]
                       },
                       "budgetAed": {
                         "anyOf": [
@@ -7894,6 +7980,28 @@
                             "type": "null"
                           }
                         ]
+                      },
+                      "taxableSuppliesAed": {
+                        "anyOf": [
+                          {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 10000000000
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "ownerType": {
+                        "type": "string",
+                        "enum": [
+                          "individuals",
+                          "company"
+                        ]
+                      },
+                      "foreignTaxResident": {
+                        "type": "boolean"
                       },
                       "description": {
                         "type": "string",

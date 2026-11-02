@@ -12,6 +12,7 @@ import {
 } from "@tasees/core";
 import { audit, lockAuditChain, type SessionUser } from "../lib/context.ts";
 import { transition, withdrawOffers } from "../lib/transition.ts";
+import { assertQuotable } from "./structure.ts";
 import { num, type Queryable } from "../lib/db.ts";
 import { badRequest, conflict, notFound } from "../lib/errors.ts";
 import { addDays, dbToday, loadDeliverables, loadGovernmentFees, loadPartners, loadRateCards, loadRfqQuotes, loadRules, loadSettings, type FeeLookup } from "./repo.ts";
@@ -189,9 +190,12 @@ function dedupeByPartner(quotes: CostQuote[]): CostQuote[] {
  */
 export async function publishOffer(tx: Queryable, actor: SessionUser, offerId: string, acknowledgeReview = false): Promise<void> {
   await lockAuditChain(tx);
-  const o = (await tx.query<{ status: OfferStatus }>("select status from offers where id = $1 for update", [offerId])).rows[0];
+  const o = (await tx.query<{ status: OfferStatus; request_id: string }>("select status, request_id from offers where id = $1 for update", [offerId])).rows[0];
   if (!o) throw notFound("Offer not found");
   assertOffer(o.status, "published", "platform");
+  // E1: a formation quote is firm only for a settled structure, and only if it prices that structure.
+  const codes = (await tx.query<{ code: string }>("select code from offer_lines where offer_id = $1", [offerId])).rows.map((l) => l.code);
+  await assertQuotable(tx, o.request_id, codes);
   const flagged = (
     await tx.query<{ code: string; reason: string | null; gov_unit_fils: number; client_unit_fils: number }>(
       "select code, reason, gov_unit_fils, client_unit_fils from offer_lines where offer_id = $1 and status <> 'ok' order by code",

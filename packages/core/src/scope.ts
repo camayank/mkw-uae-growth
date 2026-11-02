@@ -24,13 +24,21 @@ export interface ScopeSheet {
   notes: string[];
 }
 
-const SETUP_CODE: Record<string, string> = {
+/**
+ * The formation deliverable each structure is priced with (E1: a published offer must price the settled one, and only
+ * that one). Each structure has its own code, so a quote for one can never pass as a quote for another. "Not sure" is
+ * estimated as a free zone and cannot be published until the structure is settled.
+ */
+export const SETUP_CODE: Record<string, string> = {
   free_zone: "SET-FZ-LIC",
   mainland: "SET-ML-LIC",
   offshore: "SET-OFF",
-  difc_adgm: "SET-FZ-LIC",
+  difc_adgm: "SET-DIFC",
   not_sure: "SET-FZ-LIC",
 };
+
+/** The company formation codes: an offer carrying any of them is a formation quote. */
+export const FORMATION_CODES: ReadonlySet<string> = new Set(["SET-FZ-LIC", "SET-ML-LIC", "SET-OFF", "SET-DIFC"]);
 
 export function buildScope(a: IntakeAnswers, knownCodes: Set<string>): ScopeSheet {
   const lines: ScopeLine[] = [];

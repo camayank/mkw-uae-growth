@@ -556,3 +556,95 @@ validating oversized constrained collections. `pnpm audit --prod` now reports no
 - **The contract.** `docs/openapi.json` keeps the same 140 operations and fields. It adds only what zod 4 now states:
   the UUID and email patterns, safe-integer bounds, and the key type of the one record.
 - **Body caps.** The 1 MB cap (D70) stays as defence in depth.
+
+**D72. Eligibility before recommendation.** (E1, `packages/core/src/eligibility.ts`.) Every structure and place is checked
+against named rules before anything is ranked. Each check yields one of four outcomes:
+- **fail**: excludes the option;
+- **condition**: something the founder must obtain;
+- **unknown**: a missing fact, a point to confirm, or missing data;
+- **pass**.
+
+The status follows in this order:
+1. Any fail makes it `INELIGIBLE`.
+2. Else missing data makes it `DATA_UNAVAILABLE`.
+3. Else anything unconfirmed makes it `REQUIRES_VERIFICATION`. This covers an unknown fact or point, and any rule
+   or data row not verified.
+4. Else conditions make it `ELIGIBLE_CONDITIONAL`.
+5. Else `ELIGIBLE_VERIFIED`.
+
+Nothing checked is not verified: no findings is `REQUIRES_VERIFICATION`.
+- **Exclusions apply even when their rule is unverified.** Excluding is the safe direction. The finding carries the
+  rule's confidence, and ops can see it.
+- **A place finding is never more confident than the weaker of its rule and the place's data.**
+- **Ranking:** the recommended structure's places first, then by status, then the founder's preferences, then the
+  lower estimate, then the name. No partner, rate card or margin is an input.
+- **No fit:** when nothing survives, there is no recommendation and the advice says a specialist will look.
+- **Structure choice:** the structure the founder's facts point to is kept only if viable. Otherwise the closest
+  viable one is shown with the reason.
+
+**D73. A formation quote waits for a settled structure.** (E1, `services/structure.ts`.) Building offers stays open (an
+internal estimate), but publishing a new-company offer needs a settled structure. Either ops approved the advice with
+a structure, or the client asked for one that the advice (if any) agrees with.
+- **Re-checked today.** The structure is checked again against today's rules, so a change in facts or rules after
+  approval cannot carry an excluded structure into a quote.
+- **Priced correctly.** The offer must price that structure's formation line, and only that one. Each structure
+  has its own code (`SET-FZ-LIC`, `SET-ML-LIC`, `SET-OFF`, `SET-DIFC`), so a quote for one structure cannot pass as
+  a quote for another. "Not sure" is estimated as a free zone and cannot be published until the structure is settled.
+- **No formation without a structure check.** A formation code priced on a services request or as an add-on is
+  refused at publishing: the request must be recorded as a new company so its structure is checked.
+- **At approval.** An excluded structure cannot be approved. A different structure re-scopes the request (answers
+  and scope sheet, audited with before and after), and offers priced on changed lines are withdrawn.
+  - Re-scoping changes only the formation and its visas. Every other line stays as the scope now has it: lines ops
+    added, quantities ops reviewed, and services ops removed stay removed.
+  - It takes the audit-chain lock before the request row, in the documented lock order.
+  - Once partners have been asked to quote (a quote request exists), the structure no longer changes at the
+    scoping review. Their sealed quotes are for the scope as sent.
+- **After acceptance.** The structure changes only by a change order.
+- **Unaffected.** Services-only requests are not held.
+
+**D74. Reporting reads step dates, not audit timestamps.** (E1, migration 013.) A step's approval date and first-dispute
+date are columns on the step, set by `transition()` on the application clock and backfilled from the audit trail.
+- **Why.** Audit events keep the database's real clock, which an audit trail must. Reporting by them put steps in
+  the wrong month whenever the two clocks differed, which is what broke three tests on 2 Nov 2026.
+- **Partner scorecards.** These now count by the step's own dates, which changes three figures:
+  - **Submitted:** a step counts once, in the window of its first submission. A resubmission in a later window does
+    not count again; the scorecard measures first-time quality.
+  - **Rejected:** a step first submitted in the window counts as rejected if QA ever rejected it.
+  - **Disputed:** a step counts once, in the window of its first dispute.
+  These replace counts of audit events, which counted repeats and used the database's clock.
+- **Backfill.** Migration 013 dates existing steps from their audit events (database clock); new steps are dated
+  by `transition()` (application clock). The two agree in production, where no test clock is set.
+
+**D75. The advice says what it does not know.** (E1.) Missing facts are listed in the founder's words, contradictory
+answers are named rather than resolved by guessing, and cross-border points are always a specialist's review. All
+three travel with the approved advice, and ops can remove a statement but not reword it (D30).
+
+**D76. Corrections from the E1 review.** (E1, before merge.) An independent review of the E1 change found these; each
+has a test that fails without the fix.
+- **"Finance" means regulated financial services.** The question now says so (banking, lending, investment,
+  insurance, payments). Accounting and bookkeeping are consulting. A regulated activity stays a hard exclusion for a
+  commercial free zone and for offshore.
+- **Virtual assets name the right regulator.** VARA in Dubai, the SCA in the other emirates, and the FSRA in ADGM.
+  Free zone findings no longer mention the FSRA.
+- **Small business relief is dated.** It covers tax periods ending on or before 31 December 2026. A company formed
+  after 30 June 2026 cannot have one, so it is not offered as a possibility. An existing company still sees it
+  until the end of 2026. The engine takes today's date from the application clock.
+- **The Wage Protection System is a mainland obligation.** Free zone and DIFC/ADGM recommendations get a payroll
+  point that defers to the zone's own employment rules.
+- **A holding vehicle in DIFC or ADGM carries no visas on its own.** Visas need an operating licence and office
+  space; the advice says so.
+- **A recommendation always has a place.** If no place of the recommended structure fits the budget, visas or
+  facilities, the closest structure with a place that fits is recommended, with the reason
+  (`structure.no_viable_place`).
+- **Places the founder names stay within the structure.** A named place is promoted only if it belongs to the
+  recommended structure.
+- **Removed means removed everywhere.** A statement ops removes is also removed from every structure, place and
+  excluded-place finding. The status shown is the one the remaining findings support; the quote gate re-checks
+  against the rules regardless.
+- **Flags are recomputed at approval.** Once ops settles a structure, `noViableOption` is false. `needsVerification`
+  is worked out from what the client will see.
+- **Labels on findings.** Every exclusion and condition is shown with its confidence label.
+- **Contradictory premises answers keep the requirement.** "Office needed" together with "no premises" counts as
+  premises until ops resolves it, so a contradiction can never lift the offshore exclusion. (From the pull request's
+  automated review, with the two re-scoping points above.)
+

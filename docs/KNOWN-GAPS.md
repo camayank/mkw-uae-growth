@@ -109,6 +109,28 @@ in a browser; everything listed here is not.
 42. **Allocation decisions queue behind one lock** (D68). Fine at tens of decisions a second (the load test runs 50
     engagements a second); a much larger network would lock per partner instead.
 
+## E1: entity correctness (programme: docs/ENTITY-PROGRAMME.md)
+
+46. **Every scoping rule and place is UNCERTAIN.** The engine's statuses are honest about it: nothing is
+    `ELIGIBLE_VERIFIED` until a named, qualified person verifies the rules and place data with sources.
+47. **Activity permission per place is always "to confirm".** It needs each authority's activity list (E2). Until
+    then no place is verified for an exact activity.
+48. **One activity and one entity per assessment.** Several independently regulated activities, and holding plus
+    operating structures, are not modelled yet (E2, E3).
+49. **Seven emirates are not all covered.** There are no places for Umm Al Quwain or Fujairah; there are no coordinates
+    and no renewal costs (E2).
+50. **Facilities are not on record for any place yet.** Manufacturing therefore shows `DATA_UNAVAILABLE` on every
+    place until the catalogue holds facilities (E2).
+51. **The public selector, leads and handoff are later phases** (E3–E5). The public assessment needs the owner's
+    decision on rule 5 (programme section 3).
+52. **The fallback when the preferred structure is excluded is a fixed order** (free zone, mainland, DIFC/ADGM,
+    offshore), applied among structures of equal status. While every rule is UNCERTAIN, the statuses rarely tell
+    structures apart, so the order decides: for example, an offshore holding with mainland customers falls back to a
+    free zone, not the mainland. Ops sees every structure's findings and can approve another. A fact-weighted
+    fallback needs verified rules (E2).
+53. **The scorecard is not comparable across the E1 change.** Scorecard figures computed before E1 counted repeat
+    submissions and repeat disputes; figures after E1 count each step once (D74).
+
 ## O7: launch-gate preparation
 
 43. ~~zod 3 has a memory-exhaustion advisory.~~ Closed by S1: zod 4.6.7 (D71); the body caps stay as defence in depth.

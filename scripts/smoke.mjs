@@ -482,7 +482,11 @@ await ops.goto(BASE + "/" + requestHref);
 await ops.waitForSelector('form[data-form="approve-advice"]');
 const scopingText = await ops.locator("main").innerText();
 check("ops sees the structure advice with UNCERTAIN labels:", /Structure: Free zone/.test(scopingText) && /UNCERTAIN/.test(scopingText));
+// E1: every structure is compared with its eligibility; one the rules exclude cannot be picked.
+check("ops sees every structure compared with its eligibility:", /Every structure compared/.test(scopingText) && /(to be verified|does not fit)/.test(scopingText));
+check("a structure the rules exclude cannot be chosen at the review:", (await ops.locator('form[data-form="approve-advice"] select[name="structure"] option[disabled]').count()) >= 1);
 await shot(ops, "35-ops-scoping-review");
+await axeCheck(ops, "ops scoping review with eligibility (E1)");
 await ops.locator('input[name="keep"][value="obligation.goaml_dnfbp"]').uncheck().catch(() => {});
 await ops.locator('form[data-form="approve-advice"] button[type="submit"]').click();
 await ops.waitForTimeout(800);
@@ -493,7 +497,21 @@ await client.locator('a[href^="#/request/"]').first().click();
 await client.waitForSelector('main h1:text-is("Our advice for your request")');
 const clientAdvice = await client.locator("main").innerText();
 check("client sees the approved advice with confidence labels and no money internals:", /Free zone/.test(clientAdvice) && /UNCERTAIN/.test(clientAdvice) && !/margin|partner cost/i.test(clientAdvice));
+check("client sees each option's eligibility and why other places do not fit:", /to be verified/.test(clientAdvice) && /Every structure compared/.test(clientAdvice) && /Costs are estimates/.test(clientAdvice));
 await shot(client, "36-client-advice");
+await axeCheck(client, "client advice with eligibility (E1)");
+{
+  const mctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, storageState: await client.context().storageState() });
+  const m = await mctx.newPage();
+  m.on("pageerror", (e) => errors.push(`E1 mobile: ${e.message}`));
+  await m.goto(BASE + "/" + (await client.evaluate(() => location.hash)));
+  await m.waitForSelector('main h1:text-is("Our advice for your request")');
+  check("client advice at 390 px has no horizontal overflow (E1):", !(await m.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
+  await m.screenshot({ path: `${OUT}/81-mobile-client-advice.png`, fullPage: true });
+  log.push("81-mobile-client-advice");
+  await axeCheck(m, "client advice at 390 px (E1)");
+  await mctx.close();
+}
 await ops.goto(BASE + "/#/agent"); await ops.reload();
 await ops.waitForSelector('main h1:text-is("AI review queue")');
 check("AI queue shows the draft as UNCERTAIN with its lines:", (await ops.locator('form[data-form="draft"]').count()) >= 1 && /software company/.test(await ops.locator("main").innerText()));

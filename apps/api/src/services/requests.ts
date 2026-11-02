@@ -4,7 +4,7 @@ import { z } from "zod";
 import { audit, type SessionUser } from "../lib/context.ts";
 import type { Queryable } from "../lib/db.ts";
 import { badRequest, forbidden } from "../lib/errors.ts";
-import { loadDeliverables } from "./repo.ts";
+import { dbToday, loadDeliverables } from "./repo.ts";
 
 export const IntakeSchema = z.object({
   mode: z.enum(["new_company", "services"]),
@@ -16,11 +16,16 @@ export const IntakeSchema = z.object({
   addOns: z.array(z.string().max(20)).max(20).optional(),
   services: z.array(z.string().max(20)).max(20).optional(),
   // Scoping intelligence (O5)
-  activity: z.enum(["trading", "consulting", "ecommerce", "tech", "holding", "finance", "health", "education", "food", "construction", "other"]).optional(),
+  activity: z.enum(["trading", "consulting", "ecommerce", "tech", "holding", "finance", "virtual_assets", "health", "education", "food", "construction", "manufacturing", "other"]).optional(),
   customers: z.enum(["uae_mainland", "international", "both"]).optional(),
   officeNeeded: z.boolean().optional(),
+  // E1: facts the eligibility checks use; all optional, and "not given" is a state the advice says out loud.
+  premises: z.enum(["none", "virtual", "office", "retail", "warehouse", "industrial", "clinic"]).optional(),
   budgetAed: z.number().min(0).max(100_000_000).nullish(),
   expectedTurnoverAed: z.number().min(0).max(10_000_000_000).nullish(),
+  taxableSuppliesAed: z.number().min(0).max(10_000_000_000).nullish(),
+  ownerType: z.enum(["individuals", "company"]).optional(),
+  foreignTaxResident: z.boolean().optional(),
   description: z.string().max(2000).optional(),
 });
 
@@ -69,7 +74,7 @@ export async function createRequest(
   // Scoping advice: computed from the rules and zones as they stand, stored with their confidence, and shown
   // to the client only once ops has approved it. A request with no scoping questions answered gets none.
   const hasScopingAnswers = parsed.data.mode === "new_company" && (parsed.data.activity || parsed.data.customers || parsed.data.expectedTurnoverAed != null);
-  const advice = hasScopingAnswers ? advise(parsed.data as AdviceInput, await loadScopingRules(tx), await loadZones(tx)) : null;
+  const advice = hasScopingAnswers ? advise(parsed.data as AdviceInput, await loadScopingRules(tx), await loadZones(tx), await dbToday(tx)) : null;
   const r = (
     await tx.query<{ id: string }>(
       `insert into requests (client_org_id, answers, scope, notes, status, sourced_by_partner_id, created_by, advice, advice_status, source)

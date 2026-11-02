@@ -18,6 +18,8 @@ const STAMPS: Record<MachineName, Record<string, string>> = {
     "*": "updated_at = app_now()",
     evidence_submitted: "first_submitted_at = coalesce(first_submitted_at, app_now())",
     qa_passed: "qa_passed_at = app_now()",
+    client_approved: "approved_at = app_now()",
+    disputed: "first_disputed_at = coalesce(first_disputed_at, app_now())",
   },
   offer: { published: "published_at = app_now()", accepted: "accepted_at = app_now()" },
   engagement: { completed: "completed_at = app_now()" },

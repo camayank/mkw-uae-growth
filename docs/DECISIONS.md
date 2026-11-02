@@ -758,7 +758,10 @@ reviewed" and "structures only, no figures". This is the documented resolution o
   request with the renewal line, linked both ways, priced by partners and the margin rule like any line. One renewal
   is in progress per obligation; "in progress" is read from the pipeline (being scoped or quoted with no accepted
   offer, a published offer that has not expired, or an engagement not finished), never from the request's status,
-  which closes at acceptance. When an engagement that carries the renewal line completes, the obligation is met by
+  which closes at acceptance. A renewal asked for again after an expiry supersedes the earlier request for good
+  (`requests.superseded_by`): it is never priced, sent to partners or published again, and no offer is built, sent
+  out or published for a request whose obligation has another request in progress, so one obligation can never end
+  in two renewal engagements. When an engagement that carries the renewal line completes, the obligation is met by
   that delivery (its evidence is on the engagement) and the next occurrence rolls forward as it would after a filing;
   an engagement re-scoped to something else leaves the obligation open and is audited.
 - **A code links only its own person's lead.** When a saved result becomes a request, a lead is linked to it only if

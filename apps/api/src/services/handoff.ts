@@ -104,7 +104,10 @@ export async function renewalRequest(tx: Queryable, actor: SessionUser, obligati
   const answers: IntakeAnswers = { mode: "services", emirate, ...(freeZone ? { freeZone } : {}), services: ["SET-RENEW"] };
   const created = await createRequest(tx, actor, answers, ops ? o.client_org_id : undefined, null, { channel: own ? "client" : "console", from: "obligation", obligationId });
   await tx.query("update requests set obligation_id = $2 where id = $1", [created.id, obligationId]);
-  await audit(tx, actor, "obligation.renewal_requested", "obligation", obligationId, { requestId: created.id });
+  // Earlier requests for this obligation (none is live, as checked above) are retired for good: never priced, quoted
+  // or shown as in progress again.
+  const superseded = (await tx.query<{ id: string }>("update requests set superseded_by = $2 where obligation_id = $1 and id <> $2 and superseded_by is null returning id", [obligationId, created.id])).rows.map((x) => x.id);
+  await audit(tx, actor, "obligation.renewal_requested", "obligation", obligationId, { requestId: created.id, ...(superseded.length ? { superseded } : {}) });
   return created;
 }
 

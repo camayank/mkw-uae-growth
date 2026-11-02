@@ -24,7 +24,7 @@ import type { Notifier } from "../lib/notify.ts";
 import type { PaymentProvider } from "../lib/payments.ts";
 import type { Storage } from "../lib/storage.ts";
 import { issueInvoiceForPayment } from "./invoices.ts";
-import { generateObligations } from "./compliance.ts";
+import { assertRenewalCurrent, generateObligations } from "./compliance.ts";
 import { completeRenewal } from "./handoff.ts";
 import { loadCalendar } from "./calendar.ts";
 import { requiredTermsVersion } from "./legal.ts";
@@ -671,6 +671,7 @@ export async function postMessage(tx: Queryable, user: SessionUser, engagementId
 // Requests for quote -----------------------------------------------------------------
 
 export async function openQuoteRequest(tx: Queryable, user: SessionUser, requestId: string, codes: string[], deps: Deps) {
+  await assertRenewalCurrent(tx, requestId); // a superseded renewal is never reopened
   const partners = await loadPartners(tx);
   const invited = [...partners.values()]
     .filter((p) => (p.status === "signed" || p.status === "pilot") && p.licenceActive && codes.some((c) => p.codes.includes(c)))

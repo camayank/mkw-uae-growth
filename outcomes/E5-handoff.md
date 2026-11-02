@@ -31,7 +31,9 @@ Tasees like any other work.
    the request's state, then the engagement's; completing an engagement that carries the renewal line marks the
    obligation met and the next one is generated as today. One renewal in progress per obligation, where "in
    progress" is decided from the pipeline (being quoted, a live offer, or an engagement not finished), never from
-   the request's status, which closes at acceptance.
+   the request's status, which closes at acceptance. A renewal asked for again after an expiry supersedes the earlier
+   request for good; a superseded request, or one whose obligation has another request in progress, is never priced,
+   sent to partners or published.
 5. **Leads follow.** A request created by handoff or conversion sets the lead's `request_id`; conversion to a client
    still means an accepted offer (D81).
 
@@ -89,6 +91,10 @@ should-fix items; all are fixed with tests (D82 amended):
 - **Must-fix.** "One open renewal per obligation" was keyed on the request's status, which closes at acceptance and
   never moves after an offer expires: a second renewal could be asked for mid-delivery, and none after an expiry.
   Liveness is now decided from the pipeline.
+- **Codex, on the pull request (four rounds).** Lock order in the handoff and renewal paths; liveness while offers
+  were drafts (now `app_renewal_live`, a definer function so the client's calendar sees it); the free zone lost on a
+  renewal; a superseded renewal request that could be priced, sent to partners or published again (now retired for
+  good, `requests.superseded_by`, and guarded where offers are built, sent out and published). All fixed with tests.
 - **Should-fix.** A stranger's lead that quoted the same code was linked to the signing-in client; the client's
   request page did not say where the request came from, and the renewal landed on a dead-end page; the contract's
   wording on who may use a code was wrong and the anonymised case untested; the queue status disagreed; a renewal

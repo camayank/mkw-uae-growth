@@ -14,19 +14,22 @@ import { dbToday } from "./repo.ts";
 export const RENEWAL_LIVE = "app_renewal_live(r.id)";
 
 /**
- * One renewal in play per obligation, at every step: a renewal request that another request for the same obligation
- * has superseded (asked for again after its offer expired) cannot be priced or published again, so two renewal
- * engagements can never come out of one obligation. Called where offers are built and published.
+ * One renewal in play per obligation, at every step: a renewal request that a later one for the same obligation
+ * superseded (asked for again after its offer expired) is retired for good (`requests.superseded_by`), and one whose
+ * obligation has another request in progress cannot be priced, quoted or published, so two renewal engagements can
+ * never come out of one obligation. Called where offers are built and published and where partners are asked to quote.
  */
 export async function assertRenewalCurrent(tx: Queryable, requestId: string): Promise<void> {
   const r = (
-    await tx.query<{ obligation_id: string | null; other: string | null }>(
-      `select r.obligation_id, (select o.id from requests o where o.obligation_id = r.obligation_id and o.id <> r.id and app_renewal_live(o.id) limit 1) as other
+    await tx.query<{ obligation_id: string | null; superseded_by: string | null; other: string | null }>(
+      `select r.obligation_id, r.superseded_by, (select o.id from requests o where o.obligation_id = r.obligation_id and o.id <> r.id and app_renewal_live(o.id) limit 1) as other
        from requests r where r.id = $1`,
       [requestId],
     )
   ).rows[0];
-  if (r?.obligation_id && r.other) throw conflict("Another renewal request for this obligation is in progress (being quoted, offered or delivered); this one was superseded");
+  if (!r?.obligation_id) return;
+  if (r.superseded_by) throw conflict("This renewal request was superseded by a later one for the same obligation; work on that one");
+  if (r.other) throw conflict("Another renewal request for this obligation is in progress (being quoted, offered or delivered)");
 }
 
 /**

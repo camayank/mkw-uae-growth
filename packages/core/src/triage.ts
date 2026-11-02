@@ -27,6 +27,9 @@ export type QueueKind =
   | "ai_draft"
   | "document_check"
   | "lead"
+  | "new_lead"
+  | "consultation"
+  | "lead_followup"
   | "partner_review";
 
 export interface QueuePolicy {
@@ -59,6 +62,9 @@ export const QUEUE_POLICY: Record<QueueKind, QueuePolicy> = {
   ai_draft: { targetHours: 9, weight: 10, label: "AI draft to decide" },
   document_check: { targetHours: 9, weight: 10, label: "Document check to confirm" },
   lead: { targetHours: 9, weight: 5, label: "Public lead for an existing account" },
+  new_lead: { targetHours: 9, weight: 10, label: "Lead to contact" },
+  consultation: { targetHours: 4, weight: 15, label: "Call requested" },
+  lead_followup: { targetHours: 4, weight: 10, label: "Follow-up due" },
   partner_review: { targetHours: 27, weight: 5, label: "Partner application to review" },
 };
 

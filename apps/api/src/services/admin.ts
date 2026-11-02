@@ -3,6 +3,7 @@ import { audit, type SessionUser } from "../lib/context.ts";
 import type { Queryable } from "../lib/db.ts";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.ts";
 import type { Notification } from "../lib/notify.ts";
+import { eraseLeadsForEmail, leadsForEmail } from "./leads.ts";
 
 /**
  * Console administration: partner organisations, people and their roles, and UAE PDPL data requests.
@@ -217,6 +218,7 @@ export async function exportPerson(tx: Queryable, actor: SessionUser, userId: st
     evidenceUploaded: await q("select id, engagement_id, milestone_id, type, file_name, created_at from evidence where uploaded_by = $1 order by created_at"),
     requestsCreated: await q("select id, client_org_id, answers, source, created_at from requests where created_by = $1 order by created_at"),
     leadsHeld: await q("select id, company, name, answers, consent, source, created_at from intake_leads where email = $1 order by created_at", [user.email]),
+    ...(await leadsForEmail(tx, user.email)),
     ratingsGiven: await q("select id, engagement_id, stars, comment_original as comment, created_at from ratings where author_user_id = $1 order by created_at"),
     documentsUploaded: await q("select id, engagement_id, kind, file_name, status, uploaded_at from document_requests where uploaded_by = $1 order by uploaded_at"),
     obligationEvidenceUploaded: await q("select id, kind, title, evidence_name, evidence_uploaded_at from obligations where evidence_uploaded_by = $1 order by evidence_uploaded_at"),
@@ -294,6 +296,7 @@ export async function erasePerson(tx: Queryable, actor: SessionUser, userId: str
     [userId, TOMBSTONE_TEXT],
   );
   const leads = await tx.query("update intake_leads set email = $2, name = $3, company = $3, answers = '{}'::jsonb, ip = null where email = $1 returning id", [user.email, tombstoneEmail(userId), TOMBSTONE_NAME]);
+  const leadRows = await eraseLeadsForEmail(tx, user.email, tombstoneEmail(userId));
   // Their words in ratings go; the stars stay (the partner's scorecard already counted them).
   const ratings = await tx.query("update ratings set comment_original = '', comment_shown = '' where author_user_id = $1 returning id", [userId]);
   // Identity documents they uploaded: the rows are detached from the files (name tombstoned, key cleared) and
@@ -316,6 +319,7 @@ export async function erasePerson(tx: Queryable, actor: SessionUser, userId: str
     notificationsTombstoned: notices.rows.length,
     outboxTombstoned: outbox.rows.length,
     leadsTombstoned: leads.rows.length,
+    leadRecordsTombstoned: leadRows,
     ratingCommentsCleared: ratings.rows.length,
     documentFilesDetached: docKeys.length,
     documentFilesToPurge: docKeys,

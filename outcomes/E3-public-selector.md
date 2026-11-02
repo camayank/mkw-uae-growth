@@ -1,7 +1,7 @@
 # E3 Public Right UAE Entity selector
 
-Status: verified-pending-merge (branch `outcome/E3-public-selector`, built on E2 and rebased onto `main` once
-camayank/mkw-uae-growth#18 merges; released by the owner on 2 Nov 2026 with the Right UAE Entity programme,
+Status: merged (camayank/mkw-uae-growth#19; branch `outcome/E3-public-selector`, built on E2 and rebased onto `main` once
+camayank/mkw-uae-growth#18 merged; released by the owner on 2 Nov 2026 with the Right UAE Entity programme,
 `docs/ENTITY-PROGRAMME.md`)
 
 ## Owner authorisation (rule 5)

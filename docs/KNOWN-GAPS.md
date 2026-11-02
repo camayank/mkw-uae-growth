@@ -165,6 +165,20 @@ in a browser; everything listed here is not.
     Sessions, recovery, separate consents, attribution and scoring are E4.
 66. **The disclaimer is a default** (D80), for the owner and a lawyer to settle.
 
+## E4: lead intelligence
+
+67. **The marketing and partner-disclosure consent texts are defaults** (`CONSENT_TEXTS`), labelled UNCERTAIN on
+    Settings, for the owner and a lawyer to settle. A new text is a new version.
+68. **Retention of leads and saved assessments is not applied until the founder confirms the periods.** The job
+    counts what it would anonymise and changes nothing; the default is 365 days.
+69. **No booking integration.** A call request is a queue item a person books by hand; a calendar provider is an
+    external service and an owner decision.
+70. **Lead scores are heuristics**, tuned by reasoning, not by data. They order attention and decide nothing; they
+    should be reviewed against real conversions after the pilot.
+71. **Partner disclosure consent is recorded but not yet enforced in the partner views**: partners already see a
+    request without the client's name until an offer is accepted; naming a client earlier, with this consent, is
+    not built.
+
 ## O7: launch-gate preparation
 
 43. ~~zod 3 has a memory-exhaustion advisory.~~ Closed by S1: zod 4.6.7 (D71); the body caps stay as defence in depth.

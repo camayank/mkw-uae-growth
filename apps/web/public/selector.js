@@ -51,6 +51,18 @@ const EMIRATES = ["Dubai", "Abu Dhabi", "Sharjah", "Ajman", "Ras Al Khaimah", "U
 
 const $ = (id) => document.getElementById(id);
 let i = 0;
+// Attribution (E4): the UTM fields, the referrer and the landing page, read once and kept for the session.
+const params = new URLSearchParams(location.search);
+const attribution = {
+  source: params.get("utm_source") || undefined, medium: params.get("utm_medium") || undefined, campaign: params.get("utm_campaign") || params.get("campaign") || undefined,
+  term: params.get("utm_term") || undefined, content: params.get("utm_content") || undefined, referrer: document.referrer || undefined,
+  // The landing page without the recovery code: the code is a key to the saved answers and is never recorded.
+  landing: (() => { const p = new URLSearchParams(location.search); p.delete("code"); return (location.pathname + (p.toString() ? `?${p}` : "")).slice(0, 200); })(),
+};
+let savedCode = null;
+let lastResult = null;
+// The consent texts come from the platform, so the page and the record always carry the same version.
+fetch("/api/public/consent-texts").then((r) => r.json()).then((t) => { $("marketing-text").textContent = t.marketing.text; $("partner-text").textContent = t.partner_disclosure.text; }).catch(() => {});
 const visible = () => QUESTIONS.filter((q) => !q.when || q.when());
 
 function render() {
@@ -135,7 +147,8 @@ function place(p) {
   </div>`;
 }
 
-function showResult(p) {
+function showResult(p, recovered = null) {
+  lastResult = p;
   const rec = p.structure.recommendation;
   const head = rec && p.structure.confirmed ? `Structure: ${STRUCTURE[rec] ?? words(rec)}` : p.noViableOption ? "No structure fits every answer yet" : "The structure is to be confirmed by a person";
   $("result").innerHTML = `
@@ -150,11 +163,26 @@ function showResult(p) {
     <div class="card"><h2>Licences, approvals and what follows after setup</h2>${list([...p.licences, ...p.obligations], "Nothing to show yet.")}
       ${p.crossBorder.length ? `<h3>For a cross-border specialist</h3>${list(p.crossBorder, "")}` : ""}
       ${p.missingFacts.length ? `<h3>What would sharpen this</h3><ul class="plain small">${p.missingFacts.map((m) => `<li>${esc(m)}</li>`).join("")}</ul>` : ""}</div>
-    <div class="row noprint" style="margin-top:12px"><button type="button" class="sm" id="print">Print or save this page</button><button type="button" class="sm" id="restart">Start again</button></div>`;
+    ${recovered ? `<p class="small muted">Saved ${esc(recovered.savedAt.slice(0, 10))}, opened ${recovered.recovered} time(s); shown again on today's rules.</p>` : ""}
+    <div class="row noprint" style="margin-top:12px"><button type="button" class="sm" id="print">Print or save this page</button><button type="button" class="sm" id="save">${savedCode ? "Saved: code " + esc(savedCode) : "Save my result"}</button><button type="button" class="sm" id="restart">Start again</button></div>
+    <p class="small muted noprint" id="save-msg" hidden></p>`;
   $("result").hidden = false;
   $("review").hidden = false;
   $("print").addEventListener("click", () => window.print());
-  $("restart").addEventListener("click", () => { for (const k of Object.keys(answers)) delete answers[k]; answers.emirate = "Dubai"; i = 0; $("result").hidden = true; $("review").hidden = true; $("review").reset(); $("review").querySelector("button[type=submit]").disabled = false; $("rmsg").hidden = true; $("questions").hidden = false; render(); });
+  $("save").addEventListener("click", async () => {
+    if (savedCode) return;
+    $("save").disabled = true;
+    try {
+      const res = await fetch("/api/public/assessments", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ answers: body(), attribution }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Could not save");
+      savedCode = data.code;
+      $("save").textContent = `Saved: code ${savedCode}`;
+      $("save-msg").hidden = false;
+      $("save-msg").textContent = `Keep this code to come back to your result: ${savedCode}. It holds your answers only, no contact details, and is kept for a limited time.`;
+    } catch (e) { $("save-msg").hidden = false; $("save-msg").textContent = e.message; $("save").disabled = false; }
+  });
+  $("restart").addEventListener("click", () => { for (const k of Object.keys(answers)) delete answers[k]; answers.emirate = "Dubai"; i = 0; savedCode = null; lastResult = null; $("result").hidden = true; $("review").hidden = true; $("review").reset(); $("review").querySelector("button[type=submit]").disabled = false; $("rmsg").hidden = true; $("questions").hidden = false; render(); });
   if (isAr()) translateTree($("result"));
   $("result").scrollIntoView({ block: "start" });
   $("result-head").focus();
@@ -176,17 +204,38 @@ $("next").addEventListener("click", async () => {
   } catch (e) { $("qmsg").textContent = e.message; } finally { $("next").disabled = false; }
 });
 
+// Recovery by code: from the box, the ?code= parameter, or the code this browser saved last.
+async function recover(code) {
+  const msg = $("recover-msg");
+  msg.textContent = "Opening…";
+  try {
+    const res = await fetch(`/api/public/assessments/${encodeURIComponent(code.trim().toUpperCase())}`);
+    const data = await res.json();
+    if (!res.ok || !data.found) { msg.textContent = "No saved result with that code (saved results are kept for a limited time)."; return; }
+    Object.assign(answers, data.answers, { owners: data.answers.ownerType, foreignTaxResident: data.answers.foreignTaxResident === true ? "yes" : data.answers.foreignTaxResident === false ? "no" : undefined });
+    savedCode = code.trim().toUpperCase();
+    $("questions").hidden = true;
+    msg.textContent = "";
+    showResult(data.result, { savedAt: data.savedAt, recovered: data.recovered });
+  } catch (e) { msg.textContent = e.message; }
+}
+$("recover").addEventListener("submit", (ev) => { ev.preventDefault(); const c = $("code").value.trim(); if (c) recover(c); });
+if (params.get("code")) recover(params.get("code"));
+$("call").addEventListener("change", () => { $("times-field").hidden = !$("call").checked; });
+
 const review = $("review");
 review.addEventListener("submit", async (ev) => {
   ev.preventDefault();
   if (!review.reportValidity()) return;
   const fd = new FormData(review);
-  const params = new URLSearchParams(location.search);
   const msg = $("rmsg");
   const payload = {
     company: String(fd.get("company")), name: String(fd.get("name")), email: String(fd.get("email")), phone: String(fd.get("phone") || "") || undefined,
     consent: fd.get("consent") === "on", consentVersion: String(fd.get("consentVersion")), website: String(fd.get("website") || ""),
-    campaign: params.get("utm_campaign") || params.get("campaign") || "selector", referrer: document.referrer || undefined,
+    campaign: attribution.campaign || "selector", referrer: attribution.referrer, attribution,
+    marketingConsent: fd.get("marketing") === "on", partnerDisclosureConsent: fd.get("partner") === "on",
+    consultation: fd.get("call") === "on" ? { wanted: true, times: String(fd.get("times") || "") } : undefined,
+    ...(savedCode ? { assessmentCode: savedCode } : {}),
     answers: { mode: "new_company", ...body() },
   };
   msg.hidden = false; msg.textContent = "Sending…";

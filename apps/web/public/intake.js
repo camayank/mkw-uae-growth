@@ -12,6 +12,7 @@ import { translateTree } from "./i18n-ar.js";
     translateTree(document.body);
   } catch {}
 })();
+    fetch("/api/public/consent-texts").then((r) => r.json()).then((t) => { document.getElementById("marketing-text").textContent = t.marketing.text; document.getElementById("partner-text").textContent = t.partner_disclosure.text; }).catch(() => {});
     const form = document.getElementById("intake");
     const msg = document.getElementById("msg");
     const params = new URLSearchParams(location.search);
@@ -23,6 +24,8 @@ import { translateTree } from "./i18n-ar.js";
         company: String(fd.get("company")), name: String(fd.get("name")), email: String(fd.get("email")), phone: String(fd.get("phone") || "") || undefined,
         consent: fd.get("consent") === "on", consentVersion: String(fd.get("consentVersion")), website: String(fd.get("website") || ""),
         campaign: params.get("utm_campaign") || params.get("campaign") || undefined, referrer: document.referrer || undefined,
+        attribution: { source: params.get("utm_source") || undefined, medium: params.get("utm_medium") || undefined, campaign: params.get("utm_campaign") || params.get("campaign") || undefined, term: params.get("utm_term") || undefined, content: params.get("utm_content") || undefined, referrer: document.referrer || undefined, landing: (location.pathname + location.search).slice(0, 200) },
+        marketingConsent: fd.get("marketing") === "on", partnerDisclosureConsent: fd.get("partner") === "on",
         answers: {
           mode: "new_company", emirate: String(fd.get("emirate")), jurisdiction: String(fd.get("jurisdiction")), visas: Number(fd.get("visas") || 0),
           ...(fd.get("activity") ? { activity: String(fd.get("activity")) } : {}), ...(fd.get("customers") ? { customers: String(fd.get("customers")) } : {}),

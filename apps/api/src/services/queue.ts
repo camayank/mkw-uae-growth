@@ -116,6 +116,19 @@ select 'lead', l.id::text, l.id::text, null, null, 'Public lead for an email tha
        jsonb_build_object('company', l.company), false, false, false
   from intake_leads l where l.status = 'held'
 union all
+select 'new_lead', l.id::text, l.id::text, null, null, 'Lead to contact: ' || l.company || ' (' || replace(l.segment, '_', ' ') || ')', l.created_at,
+       jsonb_build_object('company', l.company, 'segment', l.segment, 'intent', l.intent, 'complexity', l.complexity, 'owner', u.name), false, false, false
+  from leads l left join users u on u.id = l.owner_user_id where l.status in ('new', 'routed') and l.consultation is null and l.intake_lead_id is null
+union all
+select 'consultation', l.id::text, l.id::text, null, null, 'Call requested: ' || l.company || ' (' || replace(l.segment, '_', ' ') || ')', l.created_at,
+       jsonb_build_object('company', l.company, 'segment', l.segment, 'times', l.consultation->>'times', 'owner', u.name), true, false, false
+  from leads l left join users u on u.id = l.owner_user_id where l.status in ('new', 'routed') and l.consultation is not null and l.intake_lead_id is null
+union all
+select 'lead_followup', n.id::text, n.id::text, null, null, 'Follow-up due: ' || l.company || case when n.body <> '' then ' (' || n.body || ')' else '' end, n.due_at,
+       jsonb_build_object('company', l.company, 'owner', u.name, 'leadId', l.id), false, false, false
+  from lead_notes n join leads l on l.id = n.lead_id left join users u on u.id = l.owner_user_id
+ where n.kind = 'followup' and n.done_at is null and n.due_at <= app_now() and l.status <> 'anonymised'
+union all
 select 'delay', d.id::text, d.id::text, m.engagement_id::text, m.partner_org_id::text, 'Late step to attribute: ' || m.name, d.noticed_at,
        jsonb_build_object('step', m.name), false, false, false
   from delays d join milestones m on m.id = d.milestone_id where d.cause is null and m.status <> 'client_approved'
@@ -184,6 +197,12 @@ function why(r: Row): string {
       return `The document checker read ${q(str(i.file))}${i.kind ? ` for ${q(str(i.kind))}` : ""}: ${str(i.summary)} Agree or disagree so the record shows a person looked.`;
     case "lead":
       return `A public enquiry for ${str(i.company)} came from an email that already has an account; it was held so nobody gets a second account.`;
+    case "new_lead":
+      return `${str(i.company)} asked MKW to review their case (${str(i.segment).replace("_", " ")} lead, intent ${str(i.intent)}, complexity ${str(i.complexity)})${i.owner ? `; it is routed to ${str(i.owner)}` : "; no owner is set for this kind of lead"}. A person contacts them; nothing is sent automatically.`;
+    case "consultation":
+      return `${str(i.company)} asked for a call${i.times ? ` (${str(i.times)})` : ""}${i.owner ? `; routed to ${str(i.owner)}` : ""}. A person books it; nothing is sent automatically.`;
+    case "lead_followup":
+      return `A follow-up a person set on ${str(i.company)} is due${i.owner ? ` (owner ${str(i.owner)})` : ""}.`;
     case "delay":
       return `${q(str(i.step))} passed its due date; the cause decides whether the client gets a service guarantee credit and whether it counts against the partner.`;
     case "credit":
@@ -219,6 +238,11 @@ function linkFor(r: Row): string {
     case "ai_draft":
     case "lead":
       return "#/agent";
+    case "new_lead":
+    case "consultation":
+      return `#/leads/${r.ref}`;
+    case "lead_followup":
+      return `#/leads/${String((r.info as Record<string, unknown>).leadId ?? "")}`;
     case "delay":
     case "credit":
       return "#/delays";
@@ -262,6 +286,11 @@ function actionsFor(r: Row): QueueAction[] {
       return review(id);
     case "lead":
       return [{ label: "Mark handled", method: "POST", path: `/api/ops/leads/${id}/handle`, body: {}, primary: true }];
+    case "new_lead":
+    case "consultation":
+      return [{ label: "Mark contacted", method: "POST", path: `/api/ops/pipeline/leads/${id}/status`, body: { status: "contacted" }, prompt: "What happened? (optional)", primary: true }];
+    case "lead_followup":
+      return [{ label: "Done", method: "POST", path: `/api/ops/pipeline/followups/${id}/done`, body: {}, prompt: "What was done? (optional)", primary: true }];
     case "delay":
       return (["partner", "client", "government", "mkw"] as const).map((cause, n) => ({
         label: cause === "mkw" ? "MKW's delay" : `${cause[0]!.toUpperCase()}${cause.slice(1)}'s delay`,

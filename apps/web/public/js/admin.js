@@ -231,7 +231,7 @@ export async function renderSettings() {
     ["Record", founder ? "Period (edit)" : "Period", "Basis", "Confidence"],
     Object.entries(r.periods).map(
       ([k, p]) => `<tr><td>${esc(RETENTION_LABEL[k] ?? k)}</td>
-        <td>${founder && (p.years != null || p.days != null) ? `<input name="${k}" type="number" min="0" max="${p.years != null ? 100 : 36500}" value="${p.years ?? p.days}" style="width:90px" /> ${p.years != null ? "years" : "days"}` : esc(periodText(p))}</td>
+        <td>${founder && (p.years != null || p.days != null) ? `<input name="${k}" type="number" min="0" max="${p.years != null ? 100 : 36500}" value="${p.years ?? p.days}" data-unit="${p.years != null ? "years" : "days"}" style="width:90px" /> ${p.years != null ? "years" : "days"}` : esc(periodText(p))}</td>
         <td class="small">${esc(p.basis)}</td><td>${badge(p.confidence)}</td></tr>`,
     ),
   )}
@@ -241,12 +241,27 @@ export async function renderSettings() {
         <button class="primary" type="submit">Confirm retention periods</button></div>`
       : `<p class="small muted pad">Only the founder can confirm these periods.</p>`
   }</form>
+  ${await renderLeadRoutingSection()}
   ${await renderLegalSection()}
   ${await renderHolidaySection()}
   ${await renderCompany()}
   ${await renderArabicSection()}
   ${["ops", "finance", "founder"].includes(role()) ? await renderExportLog() : ""}
   ${await renderDeliveryLog()}`;
+}
+
+/** E4: who owns each kind of lead, and the consent texts the public pages show. */
+export async function renderLeadRoutingSection() {
+  const r = await api("GET", "/api/admin/settings/lead-routing");
+  const founder = role() === "founder";
+  const SEG = { starter: "Starter", standard: "Standard", complex: "Complex", regulated: "Regulated", cross_border: "Cross-border" };
+  return `<h2 style="margin-top:24px">Lead routing</h2>
+  <p class="muted">Each kind of lead from the public pages goes to one person's queue; unmapped kinds stay with ops. Routing assigns and records; it sends nothing.</p>
+  <form class="card" data-form="lead-routing"><div class="grid cols-2">${r.segments.map((s) => `<div class="field"><label for="route-${s}">${esc(SEG[s] ?? s)}</label><select id="route-${s}" name="${s}" ${founder ? "" : "disabled"}><option value="">Ops queue (nobody in particular)</option>${r.owners.map((o) => `<option value="${o.id}" ${r.routing[s] === o.id ? "selected" : ""}>${esc(o.name)} (${esc(o.role)})</option>`).join("")}</select></div>`).join("")}</div>
+  ${founder ? `<button class="primary" type="submit">Save routing</button>` : `<p class="small muted">Only the founder changes routing.</p>`}</form>
+  <h3 style="margin-top:16px">Consent texts on the public pages ${badge("UNCERTAIN", "default wording")}</h3>
+  <ul class="plain small">${Object.entries(r.consentTexts).map(([k, t]) => `<li><b>${esc(k.replace("_", " "))}</b> (${esc(t.version)}): <span data-no-i18n>${esc(t.text)}</span></li>`).join("")}</ul>
+  <p class="small muted">The owner settles this wording with a lawyer; a new text is a new version, and every consent record names the version shown.</p>`;
 }
 
 export const LEGAL_TITLE = { client_terms: "Tasees client terms", partner_agreement: "MKW Partner Network Agreement" };

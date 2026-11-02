@@ -16,11 +16,16 @@ export const IntakeSchema = z.object({
   addOns: z.array(z.string().max(20)).max(20).optional(),
   services: z.array(z.string().max(20)).max(20).optional(),
   // Scoping intelligence (O5)
-  activity: z.enum(["trading", "consulting", "ecommerce", "tech", "holding", "finance", "health", "education", "food", "construction", "other"]).optional(),
+  activity: z.enum(["trading", "consulting", "ecommerce", "tech", "holding", "finance", "virtual_assets", "health", "education", "food", "construction", "manufacturing", "other"]).optional(),
   customers: z.enum(["uae_mainland", "international", "both"]).optional(),
   officeNeeded: z.boolean().optional(),
+  // E1: facts the eligibility checks use; all optional, and "not given" is a state the advice says out loud.
+  premises: z.enum(["none", "virtual", "office", "retail", "warehouse", "industrial", "clinic"]).optional(),
   budgetAed: z.number().min(0).max(100_000_000).nullish(),
   expectedTurnoverAed: z.number().min(0).max(10_000_000_000).nullish(),
+  taxableSuppliesAed: z.number().min(0).max(10_000_000_000).nullish(),
+  ownerType: z.enum(["individuals", "company"]).optional(),
+  foreignTaxResident: z.boolean().optional(),
   description: z.string().max(2000).optional(),
 });
 

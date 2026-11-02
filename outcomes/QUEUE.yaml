@@ -92,10 +92,47 @@ outcomes:
     needs_from_owner: [alerting destination (ALERT_EMAIL and the staging alarm email)]
   - id: S1
     title: zod 4 migration (clears the last production advisory, gap 43)
-    status: verified-pending-merge
+    status: merged
     contract: outcomes/S1-zod-4.md
     depends_on: [O13]
     needs_from_owner: []
+  # Right UAE Entity programme, released by the owner on 2 Nov 2026 (docs/ENTITY-PROGRAMME.md), in order.
+  - id: E1
+    title: Entity correctness (baseline repaired, eligibility before recommendation, quotes wait for a settled structure)
+    status: verified-pending-merge
+    contract: outcomes/E1-entity-correctness.md
+    depends_on: [S1]
+    needs_from_owner: [named verifier for scoping rules and place data]
+  - id: E2
+    title: Jurisdiction catalogue and evidence (versioned authorities, places, activities, packages and fees)
+    status: released
+    contract: docs/ENTITY-PROGRAMME.md
+    depends_on: [E1]
+    needs_from_owner: [authoritative data per authority, named verifier]
+  - id: E3
+    title: Public Right UAE Entity selector (adaptive questions, comparison, report)
+    status: planned
+    contract: docs/ENTITY-PROGRAMME.md
+    depends_on: [E2]
+    needs_from_owner: [decision on public display under rule 5, report wording, disclaimer]
+  - id: E4
+    title: Lead intelligence (sessions, consents, attribution, scoring, routing, consultations)
+    status: planned
+    contract: docs/ENTITY-PROGRAMME.md
+    depends_on: [E3]
+    needs_from_owner: [routing owners, marketing consent text, lead retention]
+  - id: E5
+    title: Assessment to Tasees handoff
+    status: planned
+    contract: docs/ENTITY-PROGRAMME.md
+    depends_on: [E4]
+    needs_from_owner: []
+  - id: E6
+    title: Verification and pilot readiness for the entity platform
+    status: planned
+    contract: docs/ENTITY-PROGRAMME.md
+    depends_on: [E5]
+    needs_from_owner: [staging account]
 
 # Roadmap from docs/VISION.md (18 Oct 2026). Order of work: O11, O12, O13 before the pilot; then O7 (launch gate);
 # then O14, O15, O16. Renumbered on 18 Oct 2026 when the owner released O10 as Real data and staging.

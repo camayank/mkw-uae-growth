@@ -214,7 +214,7 @@ export async function sweepLicences(tx: Queryable, notify: Notifier): Promise<nu
 const WINDOW_DAYS = 90;
 
 export async function scorecardInputs(tx: Queryable, partnerId: string, from: string, to: string): Promise<ScorecardInputs> {
-  // "Done" = approved by the client in the window (by the approval event's time, which later writes never move);
+  // "Done" = approved by the client in the window (by the step's own approval time on the application clock);
   // "on time" = the partner first submitted its evidence on or before the due date, since approval waits on
   // MKW and the client, which the partner does not control.
   const done = (
@@ -222,22 +222,22 @@ export async function scorecardInputs(tx: Queryable, partnerId: string, from: st
       `select count(*)::int as n,
          count(*) filter (where (m.first_submitted_at at time zone 'Asia/Dubai')::date <= m.due_date)::int as on_time
        from milestones m where m.partner_org_id = $1 and m.status = 'client_approved'
-         and (select max(a.at) from audit_events a where a.entity = 'milestone' and a.entity_id = m.id::text and a.action in ('milestone.approved', 'milestone.dispute_approve'))::date between $2 and $3`,
+         and (m.approved_at at time zone 'Asia/Dubai')::date between $2 and $3`,
       [partnerId, from, to],
     )
   ).rows[0]!;
   const qa = (
     await tx.query<{ submitted: number; rejected: number }>(
-      `select count(distinct a.entity_id)::int as submitted,
-         count(distinct a.entity_id) filter (where exists (select 1 from audit_events r where r.entity_id = a.entity_id and r.action = 'milestone.qa_rejected'))::int as rejected
-       from audit_events a join milestones m on m.id::text = a.entity_id where a.action = 'milestone.submitted' and m.partner_org_id = $1 and a.at::date between $2 and $3`,
+      `select count(*)::int as submitted,
+         count(*) filter (where exists (select 1 from audit_events r where r.entity = 'milestone' and r.entity_id = m.id::text and r.action = 'milestone.qa_rejected'))::int as rejected
+       from milestones m where m.partner_org_id = $1 and (m.first_submitted_at at time zone 'Asia/Dubai')::date between $2 and $3`,
       [partnerId, from, to],
     )
   ).rows[0]!;
   const disputes = (
     await tx.query<{ n: number }>(
-      `select count(distinct a.entity_id)::int as n from audit_events a join milestones m on m.id::text = a.entity_id
-       where a.action = 'milestone.disputed' and m.partner_org_id = $1 and a.at::date between $2 and $3`,
+      `select count(*)::int as n from milestones m
+       where m.partner_org_id = $1 and (m.first_disputed_at at time zone 'Asia/Dubai')::date between $2 and $3`,
       [partnerId, from, to],
     )
   ).rows[0]!;

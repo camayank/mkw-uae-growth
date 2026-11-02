@@ -3,6 +3,31 @@
 // sign-off; MKW staff can preview it before. Numbers, amounts, references, emails and codes are never
 // translated (the translator leaves any text with digits or @ alone unless a pattern below matches it).
 export const AR = {
+  // E1 eligibility in the advice (draft until the Arabic reviewer signs it off)
+  "Every structure compared": "مقارنة بين جميع الهياكل",
+  "No option fits every answer yet": "لا يوجد خيار يناسب جميع الإجابات حتى الآن",
+  "We will not guess. A specialist at MKW Advisors looks at this case and tells you what would make it work.": "لن نخمّن. يدرس مختص في MKW Advisors هذه الحالة ويخبرك بما يجعلها ممكنة.",
+  "Answers to check": "إجابات تحتاج إلى مراجعة",
+  "For a cross-border specialist": "لمختص في المسائل العابرة للحدود",
+  "What would sharpen this": "ما الذي يجعل هذا أدق",
+  "No place fits every answer yet.": "لا يوجد مكان يناسب جميع الإجابات حتى الآن.",
+  "eligible": "مؤهل",
+  "eligible, with conditions": "مؤهل بشروط",
+  "to be verified": "قيد التحقق",
+  "data missing": "بيانات ناقصة",
+  "does not fit": "غير مناسب",
+  "condition": "شرط",
+  "to confirm": "للتأكيد",
+  "no cost estimate held": "لا يوجد تقدير للتكلفة",
+  "Costs are estimates until a partner firm quotes.": "التكاليف تقديرية إلى أن تقدّم شركة شريكة عرض سعر.",
+  "What the business will do (its main activity)": "ما الذي ستقوم به الشركة (نشاطها الرئيسي)",
+  "Who the customers are: on the UAE mainland, abroad, or both": "من هم العملاء: في البر الرئيسي للإمارات، أم في الخارج، أم كلاهما",
+  "How many residence visas are needed": "عدد تأشيرات الإقامة المطلوبة",
+  "Whether the business needs premises (office, shop, warehouse, plant)": "هل تحتاج الشركة إلى مقر (مكتب، متجر، مستودع، مصنع)",
+  "The setup budget": "ميزانية التأسيس",
+  "Expected taxable supplies in the first twelve months (for VAT)": "التوريدات الخاضعة للضريبة المتوقعة في أول اثني عشر شهراً (لضريبة القيمة المضافة)",
+  "Whether the owners are individuals or a company": "هل المالكون أفراد أم شركة",
+  "Whether any owner is tax resident outside the UAE": "هل أي من المالكين مقيم ضريبياً خارج الإمارات",
   // O12 client experience (draft until the Arabic reviewer signs it off)
   "You approved a change to the scope; it is delivered once paid.": "وافقت على تغيير في النطاق؛ يُنفّذ بعد الدفع.",
   "The partner firm proposed extra work and MKW Advisors priced it. Nothing extra is done or charged until your account owner approves it.":
@@ -427,6 +452,8 @@ export const AR_PATTERNS = [
   [/^Your engagement · (.+)$/, (m) => `عملك · ${m[1]}`],
   [/^(\d+) more things? to do$/, (m) => `${m[1]} أمور أخرى للقيام بها`],
   [/^About (\d+) working days$/, (m) => `نحو ${m[1]} يوم عمل`],
+  [/^(\d+) condition\(s\), (\d+) point\(s\) to confirm$/, (m) => `${m[1]} شرط، و${m[2]} نقطة للتأكيد`],
+  [/^(\d+) other place\(s\) do not fit, and why$/, (m) => `${m[1]} أماكن أخرى غير مناسبة، والسبب`],
   [/^by working day (\d+)$/, (m) => `بحلول يوم العمل ${m[1]}`],
   [/^(\d+) of (\d+) steps approved(.*)$/, (m) => `اعتُمدت ${m[1]} من ${m[2]} خطوات${m[3]}`],
   [/^(\d+) of (\d+) steps$/, (m) => `${m[1]} من ${m[2]} خطوات`],

@@ -24,7 +24,8 @@ export interface ScopeSheet {
   notes: string[];
 }
 
-const SETUP_CODE: Record<string, string> = {
+/** The formation deliverable each structure is priced with (E1: a published offer must price the settled one). */
+export const SETUP_CODE: Record<string, string> = {
   free_zone: "SET-FZ-LIC",
   mainland: "SET-ML-LIC",
   offshore: "SET-OFF",

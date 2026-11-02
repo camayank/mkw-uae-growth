@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { asPlatform, asUser } from "../src/lib/context.ts";
+import { withClock } from "../src/lib/db.ts";
 import { makeEnv, type TestEnv } from "./helpers.ts";
 
 /** O6 delivery: client document requests, delay watch and guarantee, ratings, fairness by category, manual allocation, offer PDF. */
@@ -220,7 +221,8 @@ describe("fairness by category and manual allocation", () => {
     const { categoryOf, monthShares } = await import("../src/services/engagements.ts");
     const { loadDeliverables } = await import("../src/services/repo.ts");
     await paidEngagement(env, { mode: "new_company", jurisdiction: "free_zone", emirate: "Dubai", visas: 0 });
-    const shares = await asPlatform(env.db, null, async (tx) => {
+    // On the test's clock: "this month" is the month the allocations were made in, not the real one.
+    const shares = await asPlatform(withClock(env.db, () => env.clock.now), null, async (tx) => {
       const d = await loadDeliverables(tx);
       const setupCat = categoryOf(["SET-FZ-LIC"], d);
       const taxCat = categoryOf(["VAT-RET"], d);

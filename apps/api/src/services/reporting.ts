@@ -67,8 +67,7 @@ async function figures(tx: Queryable, p: Period, withMargin: boolean): Promise<F
     `select count(*)::int as done,
             count(*) filter (where (m.first_submitted_at at time zone 'Asia/Dubai')::date <= m.due_date)::int as on_time
      from milestones m where m.status = 'client_approved'
-       and gulf((select max(a.at) from audit_events a where a.entity = 'milestone' and a.entity_id = m.id::text and a.action in ('milestone.approved', 'milestone.dispute_approve'))) >= $1::date
-       and gulf((select max(a.at) from audit_events a where a.entity = 'milestone' and a.entity_id = m.id::text and a.action in ('milestone.approved', 'milestone.dispute_approve'))) < $2::date`,
+       and gulf(m.approved_at) >= $1::date and gulf(m.approved_at) < $2::date`,
   );
   const share = (
     await tx.query<{ category: string; partner: string; n: number }>(

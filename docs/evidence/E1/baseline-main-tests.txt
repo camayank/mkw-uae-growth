@@ -1,0 +1,123 @@
+
+> tasees-platform@0.1.0 test /home/user/mkw-uae-growth
+> pnpm -r test
+
+Scope: 2 of 3 workspace projects
+packages/core test$ vitest run
+packages/core test:  RUN  v2.1.8 /home/user/mkw-uae-growth/packages/core
+packages/core test:  ✓ test/rules.test.ts (16 tests) 9ms
+packages/core test:  ✓ test/pricing.test.ts (14 tests) 7ms
+packages/core test:  ✓ test/allocation.test.ts (10 tests) 10ms
+packages/core test:  ✓ test/scorecard.test.ts (5 tests) 4ms
+packages/core test:  ✓ test/reporting.test.ts (6 tests) 5ms
+packages/core test:  ✓ test/triage.test.ts (6 tests) 54ms
+packages/core test:  Test Files  6 passed (6)
+packages/core test:       Tests  57 passed (57)
+packages/core test:    Start at  15:57:04
+packages/core test:    Duration  721ms (transform 290ms, setup 0ms, collect 645ms, tests 89ms, environment 1ms, prepare 316ms)
+packages/core test: Done
+apps/api test$ vitest run
+apps/api test:  RUN  v2.1.8 /home/user/mkw-uae-growth/apps/api
+apps/api test:  ✓ test/import.test.ts (30 tests) 4766ms
+apps/api test:  ✓ test/scoping.test.ts (30 tests) 8342ms
+apps/api test:    ✓ public intake > honours X-Forwarded-For only when a proxy is trusted 2417ms
+apps/api test:  ✓ test/payments.test.ts (12 tests) 9804ms
+apps/api test:    ✓ tax invoices, credit notes and statements > holds invoices while MKW's TRN is missing, then issues them in sequence once it is entered 391ms
+apps/api test:    ✓ tax invoices, credit notes and statements > adds up to the fils when prices are not round, and a held credit note is numbered as a credit note after its invoice 659ms
+apps/api test:    ✓ partner invoices and payout runs > a payout needs the partner's invoice for the exact amount, and bank details, before it is payable 318ms
+apps/api test:  ✓ test/catalogue.test.ts (13 tests) 8386ms
+apps/api test:    ✓ margin rules with effective dates > applies a scheduled rule only from its date, and earlier offers keep their figures 475ms
+apps/api test:    ✓ Offer Builder rule reproduced for ten sample requests > prices every line of every sample by the rule, to the fils 431ms
+apps/api test:  ✓ test/hardening.test.ts (23 tests | 1 skipped) 6686ms
+apps/api test:  ✓ test/notifications.test.ts (14 tests) 4791ms
+apps/api test:    ✓ ops digest rule > goes once to ops and the founder on a working morning, then not again that day 400ms
+apps/api test:    ✓ ops digest rule > stays silent outside the window, on Friday evening and on Saturday 392ms
+apps/api test:  ❯ test/delivery.test.ts (8 tests | 2 failed) 11442ms
+apps/api test:    ✓ client document requests > asks the client for the checklist on acceptance, tells the partner when complete, keeps files to the parties 946ms
+apps/api test:    ✓ delay watch, service guarantee and ratings > notices a late step once, tells both sides with a new date, and asks ops to attribute it 507ms
+apps/api test:    ✓ delay watch, service guarantee and ratings > creates the credit by rule after five working days, finance applies it to the balance and reduces the partner's completion payout 331ms
+apps/api test:    × delay watch, service guarantee and ratings > lets the owner rate once after completion; the partner sees stars and a masked comment, never the author 515ms
+apps/api test:      → expected 0 to be greater than 0
+apps/api test:    × fairness by category and manual allocation > measures the month share within the lines' service category 182ms
+apps/api test:      → expected +0 to be close to 1, received difference is 1, but expected 0.005
+apps/api test:    ✓ fairness by category and manual allocation > lets ops allocate by hand with a reason, within eligibility and the priced cost 392ms
+apps/api test:    ✓ guarantee credit against a balance already linked for card payment > re-issues the card link for the reduced amount and tells the client 1006ms
+apps/api test:  ❯ test/reporting.test.ts (4 tests | 1 failed) 4313ms
+apps/api test:    × dashboards and accounting export > founder figures equal the database rows; ops sees the same without margin 39ms
+apps/api test:      → expected +0 to be 8 // Object.is equality
+apps/api test:    ✓ dashboards and accounting export > compliance calendar: generated pending review, confirmed by ops before the client sees it, met only with checked evidence, rolled forward, reminded 1077ms
+apps/api test:  ✓ test/outbox.test.ts (10 tests) 2294ms
+apps/api test:  ✓ test/queue.test.ts (11 tests) 7426ms
+apps/api test:    ✓ replacement uploads > a document uploaded again closes the earlier upload's check, so no verdict is shown against the wrong file 411ms
+apps/api test:    ✓ document checker failures > a model failure leaves no draft and never blocks the step 380ms
+apps/api test:  ✓ test/journey.test.ts (13 tests) 6562ms
+apps/api test:    ✓ client journey > documents asked for, then a step to approve with its automatic approval date, which a holiday moves 469ms
+apps/api test:    ✓ client journey > when nothing is needed, says what is happening and when 338ms
+apps/api test:    ✓ journey edges > people's own words travel beside the sentence, never inside it 381ms
+apps/api test:  ✓ test/pdpl.test.ts (9 tests) 4210ms
+apps/api test:  ✓ test/partners.test.ts (5 tests) 3261ms
+apps/api test:    ✓ partner onboarding > gates pilot on a verified unexpired licence and signed on the agreement and insurance 430ms
+apps/api test:    ✓ partner onboarding > warns 30 days before the licence expires and pauses the firm on expiry; a new verified licence lifts the pause 747ms
+apps/api test:  ✓ test/storage.test.ts (12 tests) 81ms
+apps/api test:  ✓ test/concurrency.test.ts (11 tests) 5916ms
+apps/api test:    ✓ at the same moment > two tiers of one request accepted at once: one engagement, the other refused, no deadlock 1089ms
+apps/api test:    ✓ at the same moment > a deposit on one engagement and a reallocation on another, at once, never deadlock 1850ms
+apps/api test:  ✓ test/exceptions.test.ts (7 tests) 4306ms
+apps/api test:    ✓ exceptions > re-routes after the 4 working hour acceptance window lapses 370ms
+apps/api test:    ✓ exceptions > prices a change order with the same margin rule and pays the partner only after the client pays 352ms
+apps/api test:    ✓ exceptions > lets the client dispute a milestone and ops send it back for rework 421ms
+apps/api test:    ✓ exceptions > auto-approves milestones the client has not reviewed within 5 working days 600ms
+apps/api test:    ✓ exceptions > never offers a partner more than the cost the client's price was built on, whoever ends up with the work 608ms
+apps/api test:  ✓ test/flow.test.ts (13 tests) 3361ms
+apps/api test:    ✓ managed engagement lifecycle > requires evidence, QA, then client approval, and releases payouts in stages 1194ms
+apps/api test:  ✓ test/admin.test.ts (10 tests) 2347ms
+apps/api test:  ✓ test/transitions.test.ts (7 tests) 2438ms
+apps/api test:  ✓ test/locale.test.ts (3 tests) 2412ms
+apps/api test:    ✓ language on the account > sends Arabic emails to an Arabic-speaking client, English to partners, and records the language 335ms
+apps/api test:  ✓ test/security.test.ts (8 tests) 2383ms
+apps/api test:  ✓ test/legal.test.ts (6 tests) 3797ms
+apps/api test:  ✓ test/contract.test.ts (6 tests) 1764ms
+apps/api test: ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+apps/api test:  FAIL  test/delivery.test.ts > delay watch, service guarantee and ratings > lets the owner rate once after completion; the partner sees stars and a masked comment, never the author
+apps/api test: AssertionError: expected 0 to be greater than 0
+apps/api test:  ❯ test/delivery.test.ts:205:40
+apps/api test:     203|     const card = (await env.call(who, "GET", `/api/partners/${partnerO…
+apps/api test:     204|     expect(card.inputs.rating).toBe(4);
+apps/api test:     205|     expect(card.inputs.milestonesDone).toBeGreaterThan(0);
+apps/api test:        |                                        ^
+apps/api test:     206|     expect(card.provisional).toBe(false);
+apps/api test:     207|   });
+apps/api test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+apps/api test:  FAIL  test/delivery.test.ts > fairness by category and manual allocation > measures the month share within the lines' service category
+apps/api test: AssertionError: expected +0 to be close to 1, received difference is 1, but expected 0.005
+apps/api test:  ❯ test/delivery.test.ts:230:67
+apps/api test:     228|       return { setup: await monthShares(tx, setupCat), tax: await mont…
+apps/api test:     229|     });
+apps/api test:     230|     expect([...shares.setup.values()].reduce((a, b) => a + b, 0)).toBe…
+apps/api test:        |                                                                   ^
+apps/api test:     231|     expect(shares.tax.size).toBe(0); // no accounting work this month:…
+apps/api test:     232|   });
+apps/api test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+apps/api test:  FAIL  test/reporting.test.ts > dashboards and accounting export > founder figures equal the database rows; ops sees the same without margin
+apps/api test: AssertionError: expected +0 to be 8 // Object.is equality
+apps/api test: - Expected
+apps/api test: + Received
+apps/api test: - 8
+apps/api test: + 0
+apps/api test:  ❯ test/reporting.test.ts:69:30
+apps/api test:      67|     expect(c.marginFils).toBe(Number(db.margin));
+apps/api test:      68|     expect(c.marginBp).toBeGreaterThan(0);
+apps/api test:      69|     expect(c.milestonesDone).toBe(db.done);
+apps/api test:        |                              ^
+apps/api test:      70|     expect(c.onTimeRate).toBe(1);
+apps/api test:      71|     expect(c.requests).toBe(1);
+apps/api test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+apps/api test:  Test Files  2 failed | 21 passed (23)
+apps/api test:       Tests  3 failed | 261 passed | 1 skipped (265)
+apps/api test:    Start at  15:57:05
+apps/api test:    Duration  41.74s (transform 1.12s, setup 0ms, collect 7.96s, tests 111.09s, environment 3ms, prepare 1.18s)
+apps/api test: Failed
+/home/user/mkw-uae-growth/apps/api:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @tasees/api@0.1.0 test: `vitest run`
+Exit status 1
+ ELIFECYCLE  Test failed. See above for more details.

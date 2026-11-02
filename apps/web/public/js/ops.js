@@ -318,21 +318,58 @@ export const CONF_LABEL = { verified: "verified rule", rule_of_thumb: "rule of t
 export const confBadge = (c) => badge(c === "verified" ? "ok" : c === "rule_of_thumb" ? "pending" : "UNCERTAIN", CONF_LABEL[c] ?? c);
 export const STRUCTURE_LABEL = { free_zone: "Free zone", mainland: "Mainland", offshore: "Offshore", difc_adgm: "DIFC or ADGM" };
 
+// E1: eligibility statuses, as the client and ops read them. Advice stored before E1 has none and renders as before.
+export const STATUS_LABEL = {
+  ELIGIBLE_VERIFIED: ["ok", "eligible"],
+  ELIGIBLE_CONDITIONAL: ["info", "eligible, with conditions"],
+  REQUIRES_VERIFICATION: ["pending", "to be verified"],
+  DATA_UNAVAILABLE: ["UNCERTAIN", "data missing"],
+  INELIGIBLE: ["rejected", "does not fit"],
+};
+const statusBadge = (s) => (s && STATUS_LABEL[s] ? badge(STATUS_LABEL[s][0], STATUS_LABEL[s][1]) : "");
+const firstText = (findings, outcomes) => (findings ?? []).find((f) => outcomes.includes(f.outcome))?.text ?? "";
+
 export function adviceHtml(a, opts = {}) {
   const item = (r) => `<li>${opts.editable && r.ruleKey ? `<label><input type="checkbox" name="keep" value="${esc(r.ruleKey)}" checked /> ` : ""}<span data-no-i18n>${esc(r.text)}</span> ${confBadge(r.confidence)}${opts.editable && r.ruleKey ? "</label>" : ""}</li>`;
+  const excludedStructures = new Set((a.structures ?? []).filter((s) => s.status === "INELIGIBLE").map((s) => s.structure));
+  const cost = (p) => (p.costMinFils ? `${aed(p.costMinFils)} to ${aed(p.costMaxFils)}${p.confidence === "verified" ? "" : " (estimate)"}` : "no cost estimate held");
+  const placeFindings = (p) => {
+    const conditions = (p.findings ?? []).filter((f) => f.outcome === "condition");
+    const checks = (p.findings ?? []).filter((f) => f.outcome === "unknown");
+    if (!conditions.length && !checks.length) return "";
+    return `<details class="small"><summary>${conditions.length} condition(s), ${checks.length} point(s) to confirm</summary><ul class="plain">${[...conditions, ...checks]
+      .map((f) => `<li><span data-no-i18n>${esc(f.text)}</span> ${f.outcome === "condition" ? badge("info", "condition") : badge("pending", f.missing === "data" ? "data missing" : "to confirm")}</li>`)
+      .join("")}</ul></details>`;
+  };
   return `
+  ${a.noViableOption ? `<div class="card" role="status"><h2>No option fits every answer yet</h2><p>We will not guess. A specialist at MKW Advisors looks at this case and tells you what would make it work.</p></div>` : ""}
+  ${a.contradictions?.length ? `<div class="card"><h2>Answers to check</h2><ul class="plain">${a.contradictions.map((c) => `<li><span data-no-i18n>${esc(c)}</span></li>`).join("")}</ul></div>` : ""}
   <div class="grid cols-2">
     <div class="card"><h2>Structure: ${esc(STRUCTURE_LABEL[a.structure.recommendation] ?? "to be confirmed")}</h2>
-      ${opts.editable ? `<div class="field"><label>Set the structure the client sees</label><select name="structure">${Object.entries(STRUCTURE_LABEL).map(([k, v]) => `<option value="${k}" ${a.structure.recommendation === k ? "selected" : ""}>${v}</option>`).join("")}</select></div>` : ""}
+      ${opts.editable ? `<div class="field"><label>Set the structure the client sees</label><select name="structure">${Object.entries(STRUCTURE_LABEL).map(([k, v]) => `<option value="${k}" ${a.structure.recommendation === k ? "selected" : ""} ${excludedStructures.has(k) ? "disabled" : ""}>${v}${excludedStructures.has(k) ? " (does not fit)" : ""}</option>`).join("")}</select></div>` : ""}
       <ul class="plain">${a.structure.reasons.map(item).join("")}</ul>
       ${a.licences.length ? `<h3>Licences and approvals</h3><ul class="plain">${a.licences.map(item).join("")}</ul>` : ""}
+      ${
+        a.structures?.length
+          ? `<h3>Every structure compared</h3><ul class="plain">${a.structures
+              .map((s) => `<li><b>${esc(STRUCTURE_LABEL[s.structure] ?? s.structure)}</b> ${statusBadge(s.status)}${firstText(s.findings, ["fail", "condition"]) ? `<br><span class="small muted" data-no-i18n>${esc(firstText(s.findings, s.status === "INELIGIBLE" ? ["fail"] : ["condition", "fail"]))}</span>` : ""}</li>`)
+              .join("")}</ul>`
+          : ""
+      }
     </div>
     <div class="card"><h2>Where to register</h2>
-      ${a.places.length ? `<ul class="plain">${a.places.map((p) => `<li>${opts.editable ? `<label><input type="checkbox" name="keepPlace" value="${esc(p.zone)}" checked /> ` : ""}<b>${esc(p.zone)}</b> (${esc(p.emirate)}) · ${aed(p.costMinFils)} to ${aed(p.costMaxFils)} · ${p.visaQuota} visa(s) · about ${p.timelineDays} working days ${confBadge(p.confidence)}<br><span class="small muted">${esc(p.why.join("; "))}</span>${opts.editable ? "</label>" : ""}</li>`).join("")}</ul>` : `<p class="muted">No candidate places for this structure yet.</p>`}
+      ${a.places.length ? `<ul class="plain">${a.places.map((p) => `<li>${opts.editable ? `<label><input type="checkbox" name="keepPlace" value="${esc(p.zone)}" checked /> ` : ""}<b>${esc(p.zone)}</b> (${esc(p.emirate)}) ${statusBadge(p.status)} · ${cost(p)} · ${p.visaQuota} visa(s) in the standard package · about ${p.timelineDays} working days ${confBadge(p.confidence)}<br><span class="small muted">${esc(p.why.join("; "))}</span>${opts.editable ? "</label>" : ""}${placeFindings(p)}</li>`).join("")}</ul>` : `<p class="muted">No place fits every answer yet.</p>`}
+      ${
+        a.excluded?.length
+          ? `<details><summary class="small">${a.excluded.length} other place(s) do not fit, and why</summary><ul class="plain small">${a.excluded.map((p) => `<li><b>${esc(p.zone)}</b>: <span data-no-i18n>${esc(firstText(p.findings, ["fail"]))}</span></li>`).join("")}</ul></details>`
+          : ""
+      }
       <h3>What follows after setup</h3><ul class="plain">${a.obligations.map(item).join("")}</ul>
+      ${a.crossBorder?.length ? `<h3>For a cross-border specialist</h3><ul class="plain">${a.crossBorder.map(item).join("")}</ul>` : ""}
+      ${a.missingFacts?.length ? `<h3>What would sharpen this</h3><ul class="plain small">${a.missingFacts.map((m) => `<li>${esc(m)}</li>`).join("")}</ul>` : ""}
     </div>
   </div>
-  <p class="small muted">${a.hasUncertain ? "Items marked UNCERTAIN or rule of thumb have not yet been verified by a qualified person; MKW Advisors confirms them before anything is filed." : "Every item above is a verified rule with a named sign-off."} Nothing is filed automatically: a person at MKW Advisors handles every registration.</p>`;
+  <p class="small muted">${a.hasUncertain ? "Items marked UNCERTAIN or rule of thumb have not yet been verified by a qualified person; MKW Advisors confirms them before anything is filed." : "Every item above is a verified rule with a named sign-off."} Costs are estimates until a partner firm quotes. Nothing is filed automatically: a person at MKW Advisors handles every registration.</p>`;
 }
 
 export async function renderRequest(id) {

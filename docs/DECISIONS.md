@@ -556,3 +556,49 @@ validating oversized constrained collections. `pnpm audit --prod` now reports no
 - **The contract.** `docs/openapi.json` keeps the same 140 operations and fields. It adds only what zod 4 now states:
   the UUID and email patterns, safe-integer bounds, and the key type of the one record.
 - **Body caps.** The 1 MB cap (D70) stays as defence in depth.
+
+**D72. Eligibility before recommendation.** (E1, `packages/core/src/eligibility.ts`.) Every structure and place is checked
+against named rules before anything is ranked. Each check yields one of four outcomes:
+- **fail**: excludes the option;
+- **condition**: something the founder must obtain;
+- **unknown**: a missing fact, a point to confirm, or missing data;
+- **pass**.
+
+The status follows in this order:
+1. Any fail makes it `INELIGIBLE`.
+2. Else missing data makes it `DATA_UNAVAILABLE`.
+3. Else anything unconfirmed makes it `REQUIRES_VERIFICATION`. This covers an unknown fact or point, and any rule
+   or data row not verified.
+4. Else conditions make it `ELIGIBLE_CONDITIONAL`.
+5. Else `ELIGIBLE_VERIFIED`.
+
+Nothing checked is not verified: no findings is `REQUIRES_VERIFICATION`.
+- **Exclusions apply even when their rule is unverified.** Excluding is the safe direction. The finding carries the
+  rule's confidence, and ops can see it.
+- **A place finding is never more confident than the weaker of its rule and the place's data.**
+- **Ranking:** the recommended structure's places first, then by status, then the founder's preferences, then the
+  lower estimate, then the name. No partner, rate card or margin is an input.
+- **No fit:** when nothing survives, there is no recommendation and the advice says a specialist will look.
+- **Structure choice:** the structure the founder's facts point to is kept only if viable. Otherwise the closest
+  viable one is shown with the reason.
+
+**D73. A formation quote waits for a settled structure.** (E1, `services/structure.ts`.) Building offers stays open (an
+internal estimate), but publishing a new-company offer needs a settled structure. Either ops approved the advice with
+a structure, or the client asked for one that the advice (if any) agrees with.
+- **Re-checked today.** The structure is checked again against today's rules, so a change in facts or rules after
+  approval cannot carry an excluded structure into a quote.
+- **Priced correctly.** The offer must price that structure's formation line.
+- **At approval.** An excluded structure cannot be approved. A different structure re-scopes the request (answers
+  and scope sheet, audited with before and after), and offers priced on changed lines are withdrawn.
+- **After acceptance.** The structure changes only by a change order.
+- **Unaffected.** Services-only requests are not held.
+
+**D74. Reporting reads step dates, not audit timestamps.** (E1, migration 013.) A step's approval date and first-dispute
+date are columns on the step, set by `transition()` on the application clock and backfilled from the audit trail.
+- **Why.** Audit events keep the database's real clock, which an audit trail must. Reporting by them put steps in
+  the wrong month whenever the two clocks differed, which is what broke three tests on 2 Nov 2026.
+- **Partner scorecards.** These also count submissions by first submission and disputes by first dispute.
+
+**D75. The advice says what it does not know.** (E1.) Missing facts are listed in the founder's words, contradictory
+answers are named rather than resolved by guessing, and cross-border points are always a specialist's review. All
+three travel with the approved advice, and ops can remove a statement but not reword it (D30).

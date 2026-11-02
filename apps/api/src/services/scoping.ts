@@ -2,7 +2,7 @@ import { advise, assessStructure, needsVerificationOf, rankPlaces, Rulebook, sta
 import { appendFact, catalogueToday, engineInputs, engineZone, loadPlaces, loadRules } from "./catalogue.ts";
 import { rescopeForStructure } from "./structure.ts";
 import { withdrawOffers } from "../lib/transition.ts";
-import { audit, type SessionUser } from "../lib/context.ts";
+import { audit, lockAuditChain, type SessionUser } from "../lib/context.ts";
 import { num, type Queryable } from "../lib/db.ts";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.ts";
 
@@ -149,6 +149,8 @@ export async function adviseNow(tx: Queryable, answers: AdviceInput): Promise<Ad
 
 export async function recomputeAdvice(tx: Queryable, actor: SessionUser, requestId: string) {
   if (!["ops", "founder"].includes(actor.role)) throw forbidden("Only ops recomputes advice");
+  // Lock order (lib/context.ts): the audit chain first, then rows.
+  await lockAuditChain(tx);
   const r = (await tx.query<{ answers: AdviceInput; advice_status: string }>("select answers, advice_status from requests where id = $1 for update", [requestId])).rows[0];
   if (!r) throw notFound("Request not found");
   const advice = await adviseNow(tx, r.answers);
@@ -164,7 +166,9 @@ export async function recomputeAdvice(tx: Queryable, actor: SessionUser, request
  */
 export async function approveAdvice(tx: Queryable, actor: SessionUser, requestId: string, edits: { removeRuleKeys?: string[]; structure?: AdviceInput["jurisdiction"]; removePlaces?: string[]; note?: string }) {
   if (!["ops", "founder"].includes(actor.role)) throw forbidden("Only ops approves scoping advice");
-  // The row lock orders this against a concurrent recompute (and the audit lock is taken before any offer lock below).
+  // Lock order (lib/context.ts): the audit chain first, then the request row, which orders this against a concurrent
+  // recompute or draft approval of the same request.
+  await lockAuditChain(tx);
   const r = (await tx.query<{ advice: Advice | null; advice_status: string; answers: AdviceInput }>("select advice, advice_status, answers from requests where id = $1 for update", [requestId])).rows[0];
   if (!r) throw notFound("Request not found");
   if (!r.advice) throw conflict("This request has no scoping advice to approve");

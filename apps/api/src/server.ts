@@ -25,6 +25,7 @@ import { registerDeliveryRoutes } from "./routes/delivery.ts";
 import { registerReportingRoutes } from "./routes/reporting.ts";
 import { registerScopingRoutes } from "./routes/scoping.ts";
 import { registerLeadRoutes } from "./routes/leads.ts";
+import { registerHandoffRoutes } from "./routes/handoff.ts";
 import { registerMoneyRoutes } from "./routes/money.ts";
 import { registerSystemRoutes } from "./routes/system.ts";
 
@@ -165,6 +166,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   registerReportingRoutes(ctx);
   registerScopingRoutes(ctx);
   registerLeadRoutes(ctx);
+  registerHandoffRoutes(ctx);
   registerMoneyRoutes(ctx);
   registerSystemRoutes(ctx);
 

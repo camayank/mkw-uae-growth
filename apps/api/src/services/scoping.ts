@@ -1,5 +1,6 @@
 import { advise, assessStructure, needsVerificationOf, rankPlaces, Rulebook, statusOf, type Advice, type AdviceInput, type EligibilityStatus, type Finding, type ScopingRule, type Structure, type Zone } from "@tasees/core";
 import { appendFact, catalogueToday, engineInputs, engineZone, loadPlaces, loadRules } from "./catalogue.ts";
+import { assessmentContext } from "./handoff.ts";
 import { rescopeForStructure } from "./structure.ts";
 import { withdrawOffers } from "../lib/transition.ts";
 import { audit, lockAuditChain, type SessionUser } from "../lib/context.ts";
@@ -130,7 +131,9 @@ export async function requestScoping(tx: Queryable, requestId: string) {
   // stale) must be recomputed before approval; the review says so.
   const advice = r.advice as Advice | null;
   const dataChanged = !!advice && r.advice_status !== "approved" ? advice.dataVersion?.digest !== (await engineInputs(tx)).dataVersion.digest : false;
-  return { ...r, drafts, dataChanged };
+  // E5: a request that came from a saved public assessment shows then against now.
+  const assessment = await assessmentContext(tx, requestId);
+  return { ...r, drafts, dataChanged, assessment };
 }
 
 /** Why advice cannot be approved as it stands, or null: its rules and data must be the ones in force now (E2). */

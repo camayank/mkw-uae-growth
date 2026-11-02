@@ -25,6 +25,7 @@ import type { PaymentProvider } from "../lib/payments.ts";
 import type { Storage } from "../lib/storage.ts";
 import { issueInvoiceForPayment } from "./invoices.ts";
 import { generateObligations } from "./compliance.ts";
+import { completeRenewal } from "./handoff.ts";
 import { loadCalendar } from "./calendar.ts";
 import { requiredTermsVersion } from "./legal.ts";
 import { loadDeliverables, loadPartners, loadRateCards, loadRules, loadSettings, today } from "./repo.ts";
@@ -564,6 +565,8 @@ async function refreshPayouts(tx: Queryable, engagementId: string, deps: Deps) {
     await audit(tx, null, "engagement.completed", "engagement", engagementId);
     // The client's compliance calendar (O8): obligations the delivered services imply, pending a person's confirmation.
     await generateObligations(tx, engagementId);
+    // E5: a renewal delivered through Tasees meets the obligation it was asked for, and the next one rolls forward.
+    await completeRenewal(tx, engagementId);
     if (balance) {
       // Completion is the tested rule that makes the balance due: link it and tell the client.
       const payUrl = await attachPaymentLink(tx, deps, balance.id, engagementId, "balance", num(balance.amount_fils));

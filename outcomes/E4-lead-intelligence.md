@@ -1,6 +1,6 @@
 # E4 Lead intelligence
 
-Status: verified-pending-merge (branch `outcome/E4-lead-intelligence`, built on E3 and rebased onto `main` after
+Status: merged (camayank/mkw-uae-growth#20; branch `outcome/E4-lead-intelligence`, built on E3 and rebased onto `main` after
 camayank/mkw-uae-growth#19 merged; released by the owner on 2 Nov 2026 with the Right UAE Entity programme,
 `docs/ENTITY-PROGRAMME.md`)
 

@@ -106,9 +106,11 @@ Added in E1:
 - Approving a different structure re-scopes the request.
 - An excluded structure cannot be approved or quoted.
 
-Missing:
-- An assessment handed into a request without duplicating the customer (E5).
-- Renewals as a product (E5).
+Added in E5:
+- A saved public result becomes a request for the signed-in client without re-typing, and a held enquiry becomes a
+  request for the existing client on ops' action; the review shows then against now.
+- A trade licence renewal is asked for from the obligation that is due, quoted and delivered through Tasees, and its
+  delivery meets the obligation.
 
 ## 3. Conflicts with the existing contracts (recorded, not worked around)
 

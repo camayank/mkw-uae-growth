@@ -744,3 +744,23 @@ reviewed" and "structures only, no figures". This is the documented resolution o
   the retention period only once the founder has confirmed the periods; until then the job counts and changes
   nothing. Counts stay for analytics.
 
+**D82. Handoff is a person's action, and the request is always re-checked.** (E5, migration 018.)
+- **From a saved result.** A signed-in client enters the recovery code; the answers pre-fill and the request is
+  created for that client with `assessment_id` recorded and the assessment marked `request`. The advice is computed
+  on the day's rules and data (E2); nothing from the public result is copied. A code is used once. A code opens
+  answers only, so a mistyped or shared code can leak nothing personal.
+- **From a held enquiry.** When the public page's email already has an account, the enquiry is held (O5). Ops
+  converts it into a request for that client with one action; the enquiry is handled with the request recorded, and
+  the lead (E4) points at the request. No automatic conversion, and no message.
+- **Then against now.** The review shows when the result was saved, what the public saw (only what was approved
+  for display) and what the engine says today.
+- **Renewals.** A trade licence renewal is asked for by the client or ops from the open obligation; it is a services
+  request with the renewal line, linked both ways, priced by partners and the margin rule like any line. One renewal
+  is in progress per obligation; "in progress" is read from the pipeline (being scoped or quoted with no accepted
+  offer, a published offer that has not expired, or an engagement not finished), never from the request's status,
+  which closes at acceptance. When an engagement that carries the renewal line completes, the obligation is met by
+  that delivery (its evidence is on the engagement) and the next occurrence rolls forward as it would after a filing;
+  an engagement re-scoped to something else leaves the obligation open and is audited.
+- **A code links only its own person's lead.** When a saved result becomes a request, a lead is linked to it only if
+  its email belongs to the signing-in client; a stranger who quoted the same code is left alone.
+

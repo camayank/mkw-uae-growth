@@ -123,16 +123,16 @@ outcomes:
     needs_from_owner: [routing owners, marketing consent text, lead retention]
   - id: E5
     title: Assessment to Tasees handoff
-    status: verified-pending-merge
+    status: merged
     contract: outcomes/E5-handoff.md
     depends_on: [E4]
     needs_from_owner: []
   - id: E6
     title: Verification and pilot readiness for the entity platform
-    status: planned
-    contract: docs/ENTITY-PROGRAMME.md
+    status: verified-pending-merge
+    contract: outcomes/E6-pilot-readiness.md
     depends_on: [E5]
-    needs_from_owner: [staging account]
+    needs_from_owner: [staging account]  # for the blocked checks only; released by the owner on 2 Nov 2026 with the programme
 
 # Roadmap from docs/VISION.md (18 Oct 2026). Order of work: O11, O12, O13 before the pilot; then O7 (launch gate);
 # then O14, O15, O16. Renumbered on 18 Oct 2026 when the owner released O10 as Real data and staging.

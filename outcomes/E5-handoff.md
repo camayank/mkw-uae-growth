@@ -1,6 +1,6 @@
 # E5 Assessment to Tasees handoff, and renewals as a product
 
-Status: verified-pending-merge (branch `outcome/E5-handoff`, built on E4 and rebased onto `main` after camayank/mkw-uae-growth#20
+Status: merged (camayank/mkw-uae-growth#21, 2 Nov 2026; branch `outcome/E5-handoff`, built on E4 and rebased onto `main` after camayank/mkw-uae-growth#20
 merged; released by the owner on 2 Nov 2026 with the Right UAE Entity programme, `docs/ENTITY-PROGRAMME.md`)
 
 ## Business result

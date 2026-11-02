@@ -188,6 +188,25 @@ in a browser; everything listed here is not.
 74. **The renewal's emirate is taken from the original engagement**, or the client's latest request; a client with
     companies in two emirates should check it at scoping.
 
+## E6: verification and pilot readiness
+
+75. **One activity per assessment.** A business with several independently regulated activities (scenario 17) is
+    assessed on the one it names; the rest reaches a person through the description and the AI draft queue, and no
+    quote is published until ops settles it. Several activities per assessment need the authorities' activity lists (E2).
+76. **One entity per assessment.** Holding-plus-operating structures (scenario 18) are not modelled; the engine
+    assesses one entity, verifies nothing, and a person decides. Multi-entity architecture is a later outcome.
+77. **No renewal comparison for an existing licence.** Renewal estimates per place carry their own confidence
+    (scenario 14), but comparing a client's current licence against alternatives is not a product; a client who wants
+    that asks for a review.
+78. **Facilities are not on record for any seeded place.** Manufacturing and storage needs (scenarios 6 and 8)
+    return "data missing" everywhere until the founder records each place's facilities as facts (E2); the engine never
+    passes or excludes a place on a guess.
+79. **The public "no option fits" conclusion waits for the budget rule's approval.** By design (D80): until a named
+    person approves `place.budget` for public display, a founder whose budget no option meets sees no recommendation
+    and no figure, not the conclusion. Recorded so it is not read as a defect.
+80. **Staging checks were not run.** No cloud account exists (gap 6a); `docs/evidence/E6/VERIFICATION.md` lists each
+    blocked check and what unblocks it. The container image build is verified by CI only.
+
 ## O7: launch-gate preparation
 
 43. ~~zod 3 has a memory-exhaustion advisory.~~ Closed by S1: zod 4.6.7 (D71); the body caps stay as defence in depth.
@@ -243,6 +262,12 @@ in a browser; everything listed here is not.
 
 ## Verified so far
 
+- E6: the 26 contract scenarios end to end over HTTP on the seeded (unverified) catalogue, each asserting the
+  checks that apply (status, exclusion or escalation, reasons, confidence, no invented price, no unauthorised
+  reading, no irreversible action, screens agree with the API); the full suites on PGlite and PostgreSQL 16; the
+  browser smoke test with the selector, mobile and axe; the load test; the audit chain of the smoke run; the
+  infrastructure synth. Executed, CI-only and blocked checks are separated in `docs/evidence/E6/VERIFICATION.md`;
+  the traceability table is `docs/evidence/E6/SCENARIOS.md`.
 - O13: 57 domain tests and the API suite, all passing on PGlite and on PostgreSQL 16, including a brand-new server
   (CI runs both); the race tests fail without the locks they prove; a 200-engagement load test holds every invariant
   (`docs/evidence/O13/`).

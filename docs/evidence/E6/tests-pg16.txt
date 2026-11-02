@@ -1,0 +1,40 @@
+   ✓ a lost database connection (PostgreSQL only) > is logged and replaced, and the process keeps serving 1966ms
+ ✓ test/delivery.test.ts (8 tests) 10261ms
+   ✓ client document requests > asks the client for the checklist on acceptance, tells the partner when complete, keeps files to the parties 472ms
+   ✓ delay watch, service guarantee and ratings > notices a late step once, tells both sides with a new date, and asks ops to attribute it 371ms
+   ✓ delay watch, service guarantee and ratings > lets the owner rate once after completion; the partner sees stars and a masked comment, never the author 350ms
+   ✓ guarantee credit against a balance already linked for card payment > re-issues the card link for the reduced amount and tells the client 528ms
+ ✓ test/jurisdiction.test.ts (12 tests) 2072ms
+ ✓ test/notifications.test.ts (14 tests) 3344ms
+ ✓ test/reporting.test.ts (4 tests) 3168ms
+   ✓ dashboards and accounting export > compliance calendar: generated pending review, confirmed by ops before the client sees it, met only with checked evidence, rolled forward, reminded 575ms
+ ✓ test/handoff.test.ts (3 tests) 2795ms
+   ✓ the handoff into Tasees > a signed-in client starts a request from a saved result: the answers pre-fill, the advice is today's, the link is recorded 742ms
+   ✓ the handoff into Tasees > a renewal is asked for from an open licence-renewal obligation, once; its delivery meets the obligation and rolls it forward 415ms
+ ✓ test/queue.test.ts (11 tests) 6994ms
+ ✓ test/journey.test.ts (13 tests) 5209ms
+ ✓ test/outbox.test.ts (10 tests) 2248ms
+ ✓ test/entity.test.ts (12 tests) 2224ms
+ ✓ test/pdpl.test.ts (9 tests) 3461ms
+ ✓ test/concurrency.test.ts (11 tests) 3757ms
+   ✓ at the same moment > two tiers of one request accepted at once: one engagement, the other refused, no deadlock 666ms
+   ✓ at the same moment > a deposit on one engagement and a reallocation on another, at once, never deadlock 1073ms
+ ✓ test/public-selector.test.ts (8 tests) 3008ms
+   ✓ public display and the public selector > with nothing approved the public result carries no rule text and no figure, and nothing is written 750ms
+ ✓ test/storage.test.ts (12 tests) 77ms
+ ✓ test/partners.test.ts (5 tests) 2465ms
+   ✓ partner onboarding > warns 30 days before the licence expires and pauses the firm on expiry; a new verified licence lifts the pause 352ms
+ ✓ test/exceptions.test.ts (7 tests) 3219ms
+   ✓ exceptions > never offers a partner more than the cost the client's price was built on, whoever ends up with the work 500ms
+ ✓ test/admin.test.ts (10 tests) 1694ms
+ ✓ test/flow.test.ts (13 tests) 3278ms
+   ✓ managed engagement lifecycle > requires evidence, QA, then client approval, and releases payouts in stages 717ms
+ ✓ test/transitions.test.ts (7 tests) 1692ms
+ ✓ test/locale.test.ts (3 tests) 1848ms
+ ✓ test/security.test.ts (8 tests) 1945ms
+ ✓ test/contract.test.ts (6 tests) 2115ms
+ ✓ test/legal.test.ts (6 tests) 3716ms
+ Test Files  29 passed (29)
+      Tests  334 passed (334)
+   Start at  21:07:40
+   Duration  51.70s (transform 1.60s, setup 0ms, collect 10.69s, tests 138.32s, environment 4ms, prepare 1.49s)

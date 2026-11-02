@@ -137,9 +137,25 @@ Added in E5:
 | 3 | **E3** Public Right UAE Entity selector | Adaptive questions, comparison, report, consultation request, mobile-first | Decision on section 3.1; report wording; legal disclaimer text |
 | 4 | **E4** Lead intelligence | Sessions, separate consents, attribution, two scores, routing, consultations, CRM pipeline, analytics | Routing owners per segment; marketing consent text; retention for leads |
 | 5 | **E5** Assessment to Tasees handoff | An assessment becomes a request for the same customer, re-checked against current rules, and is quoted, bought and delivered through Tasees | None beyond E2–E4 |
-| 6 | **E6** Verification and pilot readiness | Regression, security, browser and staging checks; the 26 contract scenarios end to end | Staging account (O7) |
+| 6 | **E6** Verification and pilot readiness (`outcomes/E6-pilot-readiness.md`) | The 26 contract scenarios end to end as a permanent suite; regression, security, browser, load and audit checks executed and reported; staging checks named as blocked | Staging account (O7) for the blocked checks |
 
 **Rollback.**
 - Each phase reverts on its own.
 - Migrations only add tables and columns.
 - E1's engine change is in pure functions, guarded by the founder-case tests.
+
+## 5. Pilot readiness (E6, 2 Nov 2026)
+
+What the pilot starts with, in one place: `docs/evidence/E6/VERIFICATION.md` (every check: executed, CI-only or
+blocked) and `docs/evidence/E6/SCENARIOS.md` (every contract scenario and check mapped to its test). In short:
+
+- **Engine and catalogue.** Every scenario gives the contract's status, exclusion and reasons on the seeded
+  catalogue, with nothing verified: no place is ever `ELIGIBLE_VERIFIED`, no estimate is ever shown as a price, and a
+  missing record is named rather than assumed. Lifting the UNCERTAIN labels is the owner's data and verifier (E2).
+- **Public, leads, handoff.** The public selector shows only what a named person approved for display; leads carry
+  separate consents and withdrawals; a saved result or held enquiry becomes a request on a person's action and is
+  re-checked; renewals are quoted and delivered through Tasees.
+- **Not modelled yet** (gaps 75–77): several activities per assessment, holding-plus-operating structures, a
+  renewal comparison for an existing licence. Each is tested for honest behaviour: a person decides.
+- **Blocked** (gap 80): staging and every live check, until the owner's AWS account, domain and SES exist (O7).
+

@@ -114,6 +114,10 @@ describe("the contract's scenarios", () => {
     expect(a.excluded!.some((p) => p.zone === "IFZA" && p.findings!.some((f) => f.ruleKey === "place.warehouse_facilities"))).toBe(true);
     expect(a.places.some((p) => p.zone === "DMCC")).toBe(true);
     expect(keysOf(a)).toContain("obligation.vat_designated_zone");
+    // A place with no facilities on record is neither excluded nor passed: the data is missing, as for industrial land.
+    const shams = a.places.find((p) => p.zone === "SHAMS")!;
+    expect(shams.status).toBe("DATA_UNAVAILABLE");
+    expect(shams.findings!.find((f) => f.ruleKey === "place.warehouse_facilities")!.missing).toBe("data");
   });
 
   it("9. regulated financial services: a generic free zone is excluded; the regulator pathway is a condition, never verified outright", () => {

@@ -215,8 +215,9 @@ export function assessPlace(z: Zone, structure: StructureAssessment, a: AdviceIn
     if (z.facilities && !z.facilities.includes("industrial")) out.push(placeFinding("place.industrial_facilities", "fail", `${z.name} has no industrial plots or units on record.`));
     else if (!z.facilities) out.push(placeFinding("place.industrial_facilities", "unknown", `Industrial land and utilities at ${z.name} are not on record.`, "data"));
   }
-  if (a.premises === "warehouse" && z.facilities && !z.facilities.includes("warehouse")) {
-    out.push(placeFinding("place.warehouse_facilities", "fail", `${z.name} has no warehousing on record.`));
+  if (a.premises === "warehouse") {
+    if (z.facilities && !z.facilities.includes("warehouse")) out.push(placeFinding("place.warehouse_facilities", "fail", `${z.name} has no warehousing on record.`));
+    else if (!z.facilities) out.push(placeFinding("place.warehouse_facilities", "unknown", `Warehousing at ${z.name} is not on record.`, "data"));
   }
 
   const why: string[] = [];

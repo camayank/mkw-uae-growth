@@ -767,3 +767,15 @@ reviewed" and "structures only, no figures". This is the documented resolution o
 - **A code links only its own person's lead.** When a saved result becomes a request, a lead is linked to it only if
   its email belongs to the signing-in client; a stranger who quoted the same code is left alone.
 
+**D83. The contract's scenarios are the acceptance suite, and a missing record is said, never assumed.** (E6.)
+- `apps/api/test/scenarios.test.ts` holds one end-to-end test per scenario in the owner's contract (section 11), on
+  the seeded catalogue as it stands on the pilot's first day: every rule and place UNCERTAIN. Each test names the
+  checks it covers; `docs/evidence/E6/SCENARIOS.md` maps every scenario and check to its tests, and names the gap
+  where the platform does not model the case. A later change that breaks a scenario fails the suite.
+- Where a check needs a fact the catalogue does not hold, the engine says the data is missing and ranks the place
+  below those with a record, in both directions: it neither passes nor excludes on a guess. E6 closes the one place
+  this was uneven: a storage need at a place with no facilities on record now says so, as industrial land did.
+- Verification is reported in three states only: executed here (command and result), verified by CI only, or
+  blocked with what unblocks it (`docs/evidence/E6/VERIFICATION.md`). No staging or live readiness is claimed
+  without the owner's accounts.
+

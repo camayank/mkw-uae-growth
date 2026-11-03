@@ -202,11 +202,19 @@ outcomes:
     # Released by the owner on 3 Nov 2026 ("restyle the homepage like the canvas too").
   - id: E12
     title: The emirates map on the Arabic page (geography kept left to right, each name once)
-    status: verified-pending-merge
+    status: merged  # camayank/mkw-uae-growth#33, 3 Nov 2026
     contract: outcomes/E12-arabic-map.md
     depends_on: [E11]
     needs_from_owner: []
     # Released by the owner on 3 Nov 2026 ("yes fix them and merge when green").
+  - id: E13
+    title: Recommendation trust (the public order on approved facts only; a lead only for an approved place)
+    status: verified-pending-merge
+    contract: outcomes/E13-recommendation-trust.md
+    depends_on: [E8, E11]
+    needs_from_owner: [Arabic wording]
+    # Released by the owner on 3 Nov 2026 ("yes", to E13 as proposed after the portal assessment), with the decision
+    # "Approved facts only" (D95).
 
 # Roadmap from docs/VISION.md (18 Oct 2026). Order of work: O11, O12, O13 before the pilot; then O7 (launch gate);
 # then O14, O15, O16. Renumbered on 18 Oct 2026 when the owner released O10 as Real data and staging.

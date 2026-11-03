@@ -1,6 +1,6 @@
 # E12 The emirates map on the Arabic page
 
-Status: verified-pending-merge (branch `outcome/E12-arabic-map`, on `main` at 2282009 with E11 merged; released by
+Status: merged (camayank/mkw-uae-growth#33, 3 Nov 2026; previously verified-pending-merge, branch `outcome/E12-arabic-map`, on `main` at 2282009 with E11 merged; released by
 the owner on 3 Nov 2026: "yes fix them and merge when green", after the Arabic screenshots of the new homepage)
 
 ## Business result

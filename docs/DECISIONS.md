@@ -1044,3 +1044,34 @@ canvas of 3 Nov 2026 and its review round.)
   translated there and would show twice.
 - On a phone the map is a two-column list rather than a map, so there it follows the page's direction.
 
+**D95. The public order of places uses approved facts and the founder's answers only.** (E13, the owner's decision of
+3 Nov 2026: "Approved facts only".)
+
+- Before, the public list and the quick match followed the engine's order, which uses every status and estimate on
+  record, approved or not. An unapproved condition or a lower unapproved estimate could put one place ahead of another
+  while the public saw neither, and the quick match made that order a headline ("the place to look at first").
+- Now `publicOrder` (`packages/core/src/public.ts`) is the engine's order computed on what the public may see: the
+  confirmed structure, the public status, the founder's answers (the place they named, the emirate) and, for an
+  approved place only, its approved record (activities, visa package) and lowest estimate; then the name. With
+  everything approved (and an estimate on every place) it equals the engine's order; with nothing approved it is the
+  answers, then the name. Core tests hold both, and that changing an unapproved place's estimates, activities,
+  facilities or visa limits moves neither the order, nor a status, nor the confirmed structure.
+- A place no one approved reads "to be verified" unless an approved rule excludes it: never a fit or "data
+  unavailable", since which place checks ran, and what its record lacks, come from its unapproved record.
+- While any place is unapproved, the structure the public sees is the one the structure rules reach on the answers
+  alone (`structureOnRules`). The engine's move to another structure when no place of the first one fits
+  (`structure.no_viable_place`), and "no place fits every answer", rest on the places' own figures: the public sees them
+  only when every place is approved. Found by the independent review of E13: an unapproved estimate could switch the
+  confirmed structure and with it the order. The licences, obligations and cross-border points are then stated for
+  that structure too (`statementsFor`, extracted from `advise`; Codex review of E13), so an approved free zone tax
+  point is not lost because unchecked figures moved the engine to the mainland.
+- An approved place with no estimate on record sorts with the places that have none, not as the cheapest.
+- The place the founder named is recognised by its name, its authority or an alias, as in the engine: it is the
+  founder's own answer, and the alias only recognises it.
+- The public assessment now runs over every place on record (`publicAssessment`), not the advice's first five, which
+  the engine chose on everything it holds. The preliminary report and the saved result read the same order.
+- The quick match presents a place as "a place worth reviewing first" only when a named person approved it for public
+  display; otherwise it shows "places to review", three side by side, with no lead. Counts say "not yet ruled out",
+  never that places fit, because a count falls only on an approved exclusion.
+- Staff (the review, the offers, allocation) keep the engine's full order. The page's "No preference: show me the best
+  value anywhere" became "No preference: anywhere in the UAE".

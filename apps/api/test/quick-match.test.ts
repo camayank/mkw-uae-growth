@@ -3,7 +3,7 @@ import { asPlatform } from "../src/lib/context.ts";
 import { makeEnv, type TestEnv } from "./helpers.ts";
 
 /**
- * E8 over HTTP: the quick match answers four questions with the place to look at first and live counts, through the
+ * E8 over HTTP: the quick match answers four questions with the places worth reviewing and live counts, through the
  * same public filter as the full assessment (D80). It writes nothing, carries no money internals, refuses bad input
  * and is rate-limited per IP.
  */
@@ -25,7 +25,7 @@ describe("the quick match (E8)", () => {
   const quick = (body: Record<string, unknown>) => env.call("anon", "POST", "/api/public/quick", body);
   const tech = { activity: "tech", emirate: "Dubai", visas: 1 };
 
-  it("with nothing approved it names places to look at, with no figure, no rule text and no exclusion, and writes nothing", async () => {
+  it("with nothing approved it lists places to review, with no lead, no figure, no rule text and no exclusion, and writes nothing", async () => {
     const before = { requests: await count(env, "requests"), leads: await count(env, "intake_leads"), audit: await count(env, "audit_events"), outbox: await count(env, "outbox"), funnel: await count(env, "funnel_events") };
     const r = await quick(tech);
     expect(r.status).toBe(200);
@@ -35,6 +35,10 @@ describe("the quick match (E8)", () => {
     expect(m.options).toBeGreaterThan(0);
     expect(m.best).toMatchObject({ emirate: "Dubai", toBeVerified: true });
     expect(m.best.figures).toBeUndefined();
+    // E13 (D95): nothing approved, so no place is presented as the one to review first, and the places come by name.
+    expect(m.lead).toBe(false);
+    const listed = [m.best, ...m.alternatives].map((p: any) => p.zone);
+    expect(listed).toEqual([...listed].sort((x, y) => x.localeCompare(y)));
     expect(m.structure).toEqual({ recommendation: null, confirmed: false });
     expect(m.byBudget.map((b: any) => b.id)).toEqual(["up_to_15k", "up_to_25k", "up_to_50k", "open"]);
     expect(m.byBudget.every((b: any) => b.options === m.options)).toBe(true);
@@ -62,6 +66,9 @@ describe("the quick match (E8)", () => {
     const ifza = [open.best, ...open.alternatives].find((p: any) => p.zone === "IFZA");
     expect(ifza).toMatchObject({ toBeVerified: false, figures: { costMinFils: 1_600_000, costMaxFils: 2_000_000 }, sourceUrl: "https://ifza.com/" });
     expect(open.approved.places).toBe(1);
+    // E13: the approved IFZA, with its checked estimate, now comes first in Dubai and is named as the place to review first.
+    expect(open.best.zone).toBe("IFZA");
+    expect(open.lead).toBe(true);
     expect(open.byType.free_zone).toMatchObject({ fromFils: 1_600_000, fromZone: "IFZA" }); // E11: only the approved IFZA, named
     // Under 15,000 IFZA fails the budget, but the rule saying so is not approved: it stays open, to be verified.
     const low = (await quick({ ...tech, budget: "up_to_15k" })).body;

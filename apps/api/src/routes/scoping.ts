@@ -140,7 +140,7 @@ export function registerScopingRoutes(ctx: RouteContext) {
     return asPlatform(db, null, (tx) => publicAssess(tx, { ...answers, mode: "new_company" } as AdviceInput));
   });
 
-  // E8: the quick match, four answers to the place to look at first; the same limits as the assessment, and a
+  // E8: the quick match, four answers to the places worth reviewing (E13); the same limits as the assessment, and a
   // higher allowance because the page asks again after each answer to keep its counts live.
   const PublicQuickBody = z.object({
     activity: z.enum(ACTIVITIES as [Activity, ...Activity[]]).optional(),

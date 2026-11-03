@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
-import { advise, ENGINE_FIELDS, ENGINE_TEXTS_VERSION, engineTextsByRule, GUIDES, publicView, quickMatch, selectGuides, type AdviceInput, type Guide, type PublicAssessment, type QuickAnswers, type QuickMatch, type ScopingRule } from "@tasees/core";
+import { ENGINE_FIELDS, ENGINE_TEXTS_VERSION, engineTextsByRule, GUIDES, publicAssessment, quickMatch, selectGuides, type AdviceInput, type Guide, type PublicAssessment, type QuickAnswers, type QuickMatch, type ScopingRule } from "@tasees/core";
 import { audit, type SessionUser } from "../lib/context.ts";
 import { num, type Queryable } from "../lib/db.ts";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.ts";
-import { engineInputs, engineZone, loadPlaces, loadRules, type Place } from "./catalogue.ts";
+import { engineZone, loadPlaces, loadRules, type Place } from "./catalogue.ts";
 
 /**
  * Public display (E3, D80): what the public selector may show. A named person approves a rule (by its version) or a
@@ -158,7 +158,7 @@ async function publicInputs(tx: Queryable) {
 }
 
 /**
- * The quick match (E8): four answers to the place to look at first, with the counts of places still open. The same
+ * The quick match (E8): four answers to the places worth reviewing (E13), with the counts of places not yet ruled out. The same
  * engine and the same public filter as the full assessment; nothing is written and the answers are not kept.
  */
 export async function publicQuick(tx: Queryable, answers: QuickAnswers): Promise<QuickMatch> {
@@ -172,9 +172,8 @@ export async function publicQuick(tx: Queryable, answers: QuickAnswers): Promise
  */
 export async function publicAssess(tx: Queryable, answers: AdviceInput): Promise<PublicAssessment> {
   const { asOf, rules, places, ok } = await publicInputs(tx);
-  const { dataVersion } = await engineInputs(tx);
-  const advice = { ...advise({ ...answers, mode: "new_company" }, rules, places.map(engineZone), asOf), dataVersion };
-  const view = publicView(advice, ok.rules, ok.places, asOf);
+  // E13: every place on record, in the public order (approved facts and the founder's answers only).
+  const view = publicAssessment({ ...answers, mode: "new_company" }, rules, places.map(engineZone), ok.rules, ok.places, asOf);
   // E7A: general guidance chosen from the answers and what the public may see of the engine's conclusions; only
   // notes the founder approved are included, and they carry no figure (a core test enforces the wording).
   const guidance = selectGuides({

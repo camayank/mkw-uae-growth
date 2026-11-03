@@ -279,7 +279,7 @@ function showResult(p, recovered = null) {
   lastResult = p;
   const rec = p.structure.recommendation;
   const head = p.noViableOption ? "No structure fits every answer yet" : rec && p.structure.confirmed ? `Structure: ${STRUCTURE[rec] ?? words(rec)}` : "The structure is to be confirmed by a person";
-  // Compared by default: the place the founder named, then the best-ranked places that fit, three in all.
+  // Compared by default: the place the founder named, then the first places in the public order (E13), three in all.
   const fitting = p.places.filter((x) => x.status !== "INELIGIBLE");
   const named = answers.freeZone ? fitting.filter((x) => x.zone.toLowerCase() === answers.freeZone.toLowerCase() || (x.authority ?? "").toLowerCase() === answers.freeZone.toLowerCase()) : [];
   compared = [...new Set([...named, ...fitting].slice(0, 3))].map((x) => p.places.indexOf(x));
@@ -452,8 +452,8 @@ async function renderHome() {
 $("nav-start").addEventListener("click", (ev) => { ev.preventDefault(); startQuick(); });
 for (const b of document.querySelectorAll(".industry")) b.addEventListener("click", () => startQuick(b.dataset.activity));
 
-// E8 quick match: four answers (what the business does, the emirate, the visas, a budget band) to the place to look
-// at first, with the count of places still open after each answer. The platform runs the same engine and public
+// E8 quick match: four answers (what the business does, the emirate, the visas, a budget band) to the places worth
+// reviewing (a lead only for an approved place, E13), with the count of places not yet ruled out after each answer. The platform runs the same engine and public
 // filter as the full assessment (D80): a count falls only on an exclusion a named person approved, and a figure shows
 // only for an approved place. The answers stay in memory; "see the full comparison" carries them into the questions.
 const QUICK_LABELS = ["Activity", "Location", "Visas", "Budget", "Your match"];
@@ -505,13 +505,18 @@ const fresh = () => (quick.data && quick.dataFor === JSON.stringify(quickBody())
 const quickBody = () => ({ ...(quick.activity ? { activity: quick.activity } : {}), ...(quick.emirate !== undefined ? { emirate: quick.emirate } : {}), ...(quick.visas != null ? { visas: quick.visas } : quick.step === 3 ? { visas: 1 } : {}), ...(quick.budget ? { budget: quick.budget } : {}) });
 
 // The quick answers as the full questionnaire and the review request read them. Once the match is shown, the request
-// is about the place shown first: its emirate (also when the founder said "anywhere" or skipped the question) and the
-// place itself, as the place they have in mind. No emirate is ever invented: pricing and allocation read it.
+// is about the place shown first: its emirate (also when the founder said "anywhere" or skipped the question) and, only
+// when it is presented as the place to review first (an approved place, E13), the place itself, as the place they have
+// in mind. A place listed first only by name is not one the founder chose. No emirate is ever invented: pricing and
+// allocation read it.
+let quickZone = null;
 function syncAnswers() {
   if (quick.activity) answers.activity = quick.activity;
   if (quick.emirate) answers.emirate = quick.emirate;
-  const best = quick.step === 5 ? fresh()?.best : null;
-  if (best) { answers.emirate = best.emirate; answers.freeZone = best.zone; }
+  const d = quick.step === 5 ? fresh() : null;
+  if (d?.best) answers.emirate = d.best.emirate;
+  if (d?.best && d.lead) answers.freeZone = quickZone = d.best.zone;
+  else if (d && quickZone && answers.freeZone === quickZone) { delete answers.freeZone; quickZone = null; }
   if (quick.visas != null) answers.visas = quick.visas;
   const band = BANDS.find((b) => b[0] === quick.budget);
   if (band) { if (band[2] != null) answers.budgetAed = band[2]; else delete answers.budgetAed; }
@@ -548,7 +553,7 @@ function quickPanel() {
   const d = quick.data;
   const n = d ? d.options : null;
   $("quick-count").textContent = n == null ? "–" : String(n);
-  $("quick-count-word").textContent = n === 1 ? "place still fits" : "places still fit";
+  $("quick-count-word").textContent = n === 1 ? "place not yet ruled out" : "places not yet ruled out";
   const top = d ? [d.best, ...d.alternatives].filter(Boolean) : [];
   $("quick-top").innerHTML = top.map((p) => `<li><span data-no-i18n>${esc(p.zone)}</span><span>${p.figures ? `from ${esc(aed(p.figures.costMinFils))}` : "to be verified"}</span></li>`).join("");
   const pct = answeredCount() * 25;
@@ -575,11 +580,11 @@ function quickStepHtml() {
     const n = (e) => (d ? d.byEmirate[e] ?? 0 : null);
     const none = (e) => d && !d.onRecord?.[e];
     const any = d ? d.everywhere : null;
-    return head(2, "Where would you like to be based?", "Tap an emirate. The number is how many places there still fit your answers.") +
+    return head(2, "Where would you like to be based?", "Tap an emirate. The number is how many places there are not yet ruled out by your answers.") +
       `<div class="uaemap" role="group" aria-labelledby="quick-title"><span class="sea" style="grid-column:1 / 4;grid-row:1 / 3">Arabian Gulf</span><span class="sea" style="grid-column:5 / 6;grid-row:5 / 6;text-align:center">Gulf of Oman</span>
         ${MAP.map(([e, ar, , col, row]) => `<button type="button" class="em${n(e) === 0 ? " none" : ""}" data-em="${esc(e)}" aria-pressed="${quick.emirate === e}" aria-label="${esc(e)}${n(e) == null ? "" : none(e) ? ", no places on record yet" : `, ${esc(n(e))} place(s)`}" style="grid-column:${col};grid-row:${row}"><span class="top-row">${flagOf(e)}<span class="n">${none(e) ? "–" : esc(n(e) ?? "·")}</span></span><span><b>${esc(e)}</b><br><span class="ar" lang="ar" data-no-i18n>${ar}</span></span></button>`).join("")}</div>
       <p class="small muted" style="margin:6px 0 10px">Schematic map, not to scale. A dash: we hold no places on record there yet.</p>
-      <button type="button" class="anyplace" data-em="" aria-pressed="${quick.emirate === null}"><span><b>No preference: show me the best value anywhere</b><br><small class="muted">All seven emirates compared.</small></span><span class="badge general">${esc(any ?? "·")} places</span></button>`;
+      <button type="button" class="anyplace" data-em="" aria-pressed="${quick.emirate === null}"><span><b>No preference: anywhere in the UAE</b><br><small class="muted">All seven emirates compared.</small></span><span class="badge general">${esc(any ?? "·")} places</span></button>`;
   }
   if (quick.step === 3) {
     const v = quick.visas ?? 1; // shown as the starting point; recorded when the founder changes it or moves on
@@ -590,7 +595,7 @@ function quickStepHtml() {
   }
   if (quick.step === 4) {
     return head(4, "What would you like to spend on set-up?", "Licence, registration and your first visas. You see the exact price from MKW Advisors before you pay anything.") +
-      `<div class="bands" role="group" aria-labelledby="quick-title">${BANDS.map(([id, label]) => { const c = d?.byBudget.find((b) => b.id === id)?.options; const empty = d && quick.emirate && !d.onRecord?.[quick.emirate]; return `<button type="button" class="tile" data-band="${id}" aria-pressed="${quick.budget === id}"><b>${esc(label)}</b><span class="fit${c === 0 ? " zero" : ""}">${c == null ? "" : empty ? "No places on record in this emirate yet" : c === 0 ? "No place fits yet" : `${esc(c)} place(s) fit`}</span></button>`; }).join("")}</div>`;
+      `<div class="bands" role="group" aria-labelledby="quick-title">${BANDS.map(([id, label]) => { const c = d?.byBudget.find((b) => b.id === id)?.options; const empty = d && quick.emirate && !d.onRecord?.[quick.emirate]; return `<button type="button" class="tile" data-band="${id}" aria-pressed="${quick.budget === id}"><b>${esc(label)}</b><span class="fit${c === 0 ? " zero" : ""}">${c == null ? "" : empty ? "No places on record in this emirate yet" : c === 0 ? "No place fits yet" : `${esc(c)} not yet ruled out`}</span></button>`; }).join("")}</div>`;
   }
   return quickResultHtml();
 }
@@ -600,7 +605,7 @@ function quickResultHtml() {
   if (!d) return `<div class="qhead"><p class="eyebrow">Your match</p><h2 id="quick-title" tabindex="-1">${quick.failed ? "Your match could not be loaded" : "Finding your match…"}</h2>${quick.failed ? `<button type="button" class="btn" id="quick-retry">Try again</button>` : ""}</div>`;
   const where = quick.emirate ?? "the UAE";
   const legend = `<div class="notice small" role="note"><b>Preliminary, general information, not advice.</b> <span data-no-i18n>${esc(d.disclaimer)}</span>${d.asOf ? ` Rules and place data as of ${esc(d.asOf)}.` : ""}</div>
-    <p class="small muted">${esc(d.approved.places)} of ${esc(d.approved.ofPlaces)} places that fit have figures checked by a named person; the rest show "to be verified".</p>`;
+    <p class="small muted">${esc(d.approved.places)} of ${esc(d.approved.ofPlaces)} places not yet ruled out have figures checked by a named person; the rest show "to be verified".</p>`;
   if (!d.best) {
     return `<div class="qhead"><p class="eyebrow">Your match</p><h2 id="quick-title" tabindex="-1">No place on record fits these four answers yet</h2><p class="small muted">An adviser can usually find a way: a different package, budget or emirate. Ask, free of charge.</p></div>
       <div class="row"><a class="btn gold" href="#review">Ask an adviser</a><button type="button" class="sm" data-go="4">Change my budget</button></div>${legend}`;
@@ -611,15 +616,33 @@ function quickResultHtml() {
     : `<div><span class="price" style="font-size:1.3rem">Price to be verified by a person</span><p class="small muted" style="margin:4px 0 0">No figure is shown until a named person at MKW Advisors has checked it against the official source.</p></div>`;
   const facts = fig ? [`${fig.visaQuota} visa(s) in the standard package`, `About ${fig.timelineDays} working days`, fig.renewalMinFils ? `Renews at about ${aed(fig.renewalMinFils)} a year` : null, b.authority ? `Licensed by ${b.authority}` : null].filter(Boolean) : [];
   const alt = (p) => `<div class="card"><span><span class="row" style="gap:8px">${flagOf(p.emirate)}<b data-no-i18n>${esc(p.zone)}</b></span><small class="muted" data-no-i18n>${esc(p.emirate)} · ${esc(TYPE[p.type] ?? words(p.type))}</small></span><span class="small">${p.figures ? `from ${esc(aed(p.figures.costMinFils))}` : '<span class="verify">to be verified</span>'}</span></div>`;
-  return `<div class="qhead"><p class="eyebrow">Your match</p><h2 id="quick-title" tabindex="-1">The place to look at first in <span data-no-i18n>${esc(quick.emirate && !d.bestElsewhere ? where : b.emirate)}</span></h2>
-      ${d.bestElsewhere ? `<p class="notice small">${d.onRecord?.[quick.emirate] ? `No place in ${esc(quick.emirate)} fits these answers yet; this is the closest place elsewhere.` : `We hold no places on record in ${esc(quick.emirate)} yet; this is the closest place elsewhere.`}</p>` : ""}</div>
+  const shownIn = quick.emirate && !d.bestElsewhere ? where : d.lead ? b.emirate : "the UAE";
+  const elsewhere = d.bestElsewhere ? `<p class="notice small">${d.onRecord?.[quick.emirate] ? `No place in ${esc(quick.emirate)} fits these answers yet; ${d.lead ? "this is the closest place elsewhere." : "these are places elsewhere."}` : `We hold no places on record in ${esc(quick.emirate)} yet; ${d.lead ? "this is the closest place elsewhere." : "these are places elsewhere."}`}</p>` : "";
+  const cta = `<div class="cta noprint"><a class="btn gold" href="#review" id="quick-price">Get my exact price</a><button type="button" class="btn" id="quick-full">See the full comparison</button></div>`;
+  // E13 (D95): a place is presented as the one to review first only when a named person approved it for public
+  // display; otherwise the places are listed side by side, by the founder's answers and then by name, with no lead.
+  if (!d.lead) {
+    return `<div class="qhead"><p class="eyebrow">Your shortlist</p><h2 id="quick-title" tabindex="-1">${shownIn === "the UAE" ? "Places to review across the UAE" : `Places to review in <span data-no-i18n>${esc(shownIn)}</span>`}</h2>
+      <p class="small muted">None of these places has been checked by a named person yet, so none is put first: they are listed by your answers, then by name.</p>
+      ${elsewhere}</div>
+    <div class="alts" id="quick-places">${[b, ...d.alternatives].map(alt).join("")}</div>
+    <div class="card best">
+      <p style="margin:0"><b>A person at MKW Advisors checks which of these fits, and the exact price.</b></p>
+      ${cta}
+      <p class="small muted" style="margin:0">No payment now. A person checks your case and sends priced offers, usually within one working day.</p>
+    </div>
+    ${legend}`;
+  }
+  return `<div class="qhead"><p class="eyebrow">Your match</p><h2 id="quick-title" tabindex="-1">A place worth reviewing first in <span data-no-i18n>${esc(shownIn)}</span></h2>
+      <p class="small muted">Put first on what a named person has checked and on your answers. A person confirms it fits before anything is priced.</p>
+      ${elsewhere}</div>
     <div class="card best">
       <div class="row" style="gap:8px">${flagOf(b.emirate)}<span class="badge general">${esc(TYPE[b.type] ?? words(b.type))}</span>${qbadge(b.status)}${d.structure.confirmed ? `<span class="badge ok">structure: ${esc(STRUCTURE[d.structure.recommendation] ?? words(d.structure.recommendation))}</span>` : ""}</div>
       <h3 data-no-i18n>${esc(b.zone)}</h3>
       ${price}
       ${facts.length ? `<ul class="facts">${facts.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>` : ""}
       ${b.conditions || b.toConfirm ? `<p class="small muted">${esc([b.conditions ? `${b.conditions} condition(s)` : "", b.toConfirm ? `${b.toConfirm} point(s) a person confirms` : ""].filter(Boolean).join(", "))} before anything is priced.</p>` : ""}
-      <div class="cta noprint"><a class="btn gold" href="#review" id="quick-price">Get my exact price</a><button type="button" class="btn" id="quick-full">See the full comparison</button></div>
+      ${cta}
       <p class="small muted" style="margin:0">No payment now. A person at MKW Advisors checks your case and sends priced offers, usually within one working day.${b.sourceUrl ? ` <a href="${esc(b.sourceUrl)}" target="_blank" rel="noopener noreferrer">Official source</a>` : ""}</p>
     </div>
     ${d.alternatives.length ? `<h3 style="margin:8px 0 0;font-size:1.05rem">Also worth a look</h3><div class="alts">${d.alternatives.map(alt).join("")}</div>` : ""}

@@ -102,7 +102,9 @@ describe("funnel measurement, qualification and the conversion dashboard (E7C)",
     let d = (await env.call("ops", "GET", `/api/ops/pipeline/leads/${l.id}`)).body;
     expect(d.nextActionOverride).toMatchObject({ action: "Wait for their documents", reason: "They are travelling until the 20th" });
     expect(d.nextAction.action).toBe("Assign an owner"); // the rule's suggestion stays visible beside the override
-    expect((await asPlatform(env.db, null, (tx) => tx.query("select data from audit_events where action = 'lead.next_action'"))).rows).toHaveLength(1);
+    const au = (await asPlatform(env.db, null, (tx) => tx.query<{ data: any }>("select data from audit_events where action = 'lead.next_action'"))).rows;
+    expect(au).toHaveLength(1);
+    expect(au[0]!.data).toEqual({ overridden: true }); // the adviser's wording never reaches the immutable audit row
     expect((await env.call("ops", "POST", `/api/ops/pipeline/leads/${l.id}/next-action`, { action: null, reason: "" })).status).toBe(200);
     d = (await env.call("ops", "GET", `/api/ops/pipeline/leads/${l.id}`)).body;
     expect(d.nextActionOverride).toBeNull();

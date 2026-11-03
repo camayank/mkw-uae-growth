@@ -482,7 +482,8 @@ export async function setNextAction(tx: Queryable, actor: SessionUser, id: strin
   if (a && reason.trim().length < 3) throw badRequest("Say why the action is different from the suggested one");
   await tx.query("update leads set next_action_override = $2::text, next_action_reason = $3::text, next_action_by = $4::uuid, next_action_at = case when $2::text is null then null else app_now() end, updated_at = app_now() where id = $1", [id, a, a ? reason.trim().slice(0, 500) : null, a ? actor.id : null]);
   await tx.query("insert into lead_notes (lead_id, author_user_id, kind, body) values ($1, $2, 'note', $3)", [id, actor.id, a ? `Next action set by hand: ${a} (${reason.trim()})` : "Next action override cleared"]);
-  await audit(tx, actor, "lead.next_action", "lead", id, { action: a, reason: a ? reason.trim() : null });
+  // The audit records that the override changed, never its wording: free text stays in the erasable lead fields and notes.
+  await audit(tx, actor, "lead.next_action", "lead", id, { overridden: a !== null });
   return { ok: true };
 }
 

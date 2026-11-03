@@ -1004,3 +1004,14 @@ canvas of 3 Nov 2026 and its review round.)
   shows the T for an instant, until the session is read.
 - System fonts stay (no web font: no new dependency, nothing loaded from a third party on a client's screen).
 
+**D92. Partners see the same look, branded MKW Advisors, with their scorecard first.** (E10, 3 Nov 2026.)
+
+- The partner workspace takes the E9 look: the dark MKW Advisors bar (the phone tab bar stays light, as in U1), the M
+  mark, icon tiles, flags beside each emirate, a steps progress bar on the engagement, and one gold action per screen
+  (the first offer's Accept on Work, Submit for checking on the next step).
+- Performance leads with the quality score on the dark panel, because it decides who gets work (O3 scorecard); the
+  on-time rate carries a progress bar; Payouts sums the partner's own payouts by state (due now, paid, not yet
+  payable, withheld). Every figure is one the partner already saw; nothing about clients' prices, margins or other
+  partners is added (rule 1).
+- At 1024 px and wider the partner's menu never wraps either (the rule D91 set for staff).
+

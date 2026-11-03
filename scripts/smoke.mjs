@@ -265,6 +265,7 @@ for (const p of partnerPages) {
   await p.waitForTimeout(700);
   const txt = await p.locator("main").innerText();
   check("partner page shows no client price or margin:", !/client price|margin|AED 4,200/i.test(txt));
+  check("the partner's engagement carries the emirate's flag and the steps approved as a progress bar (E10):", (await p.locator("main h1 .flag svg").count()) === 1 && (await p.locator('main > .progress[role="progressbar"]').count()) === 1);
   await shot(p, "11-partner-engagement");
   worked = true;
 }
@@ -1243,6 +1244,25 @@ await eventually("the next obligation rolled forward:", async () => (await ops.l
 await partnerPages[0].goto(BASE + "/#/performance"); await partnerPages[0].reload();
 await partnerPages[0].waitForSelector('main h1:text-is("Your performance")');
 check("partner performance page has no client or margin figures:", !/margin|client price/i.test(await partnerPages[0].locator("main").innerText()));
+// E10: the partner's screens in the shared look: the dark MKW Advisors bar, icon tiles with the quality score on the
+// dark panel first, the payouts summed by state, flags beside each emirate, and never Tasees.
+{
+  const pg = partnerPages[0];
+  check("the partner's menu stays on one row at 1280 px (E10):", await pg.evaluate(() => { const t = [...document.querySelectorAll("#nav > a")].map((e) => e.getBoundingClientRect().top); return t.length === 5 && Math.max(...t) - Math.min(...t) < 4; }));
+  check("the partner's bar is dark with the M mark and the scorecard leads the performance tiles (E10):", (await pg.evaluate(() => getComputedStyle(document.querySelector(".top")).backgroundColor)) === "rgb(22, 32, 28)" && (await pg.locator(".brand .mark").innerText()) === "M" && /Quality score/.test(await pg.locator(".kpis.lead-kpis .kpi").first().innerText()) && (await pg.locator(".kpis .kpi .ico").count()) === 8 && !/Tasees/.test(await pg.locator("body").innerText()));
+  await pg.screenshot({ path: `${OUT}/108-partner-performance.png`, fullPage: false });
+  log.push("108-partner-performance");
+  await axeCheck(pg, "partner performance with the scorecard tiles (E10)");
+  await pg.goto(BASE + "/#/payouts"); await pg.reload();
+  await pg.waitForSelector('main h1:text-is("Payouts")');
+  check("the partner's payouts are summed by state on tiles, due now first (E10):", /Due now: invoice us/.test(await pg.locator(".kpis.lead-kpis .kpi").first().innerText()) && /Paid to you/.test(await pg.locator(".kpis").innerText()));
+  await pg.goto(BASE + "/#/home"); await pg.reload();
+  await pg.waitForSelector('main h1:text-is("Work from MKW Advisors")');
+  check("the partner's work shows a flag beside each emirate in delivery and icon tiles (E10):", (await pg.locator("main table .flag svg").count()) >= 1 && (await pg.locator(".kpis.lead-kpis .kpi .ico").count()) === 5);
+  await pg.screenshot({ path: `${OUT}/109-partner-work.png`, fullPage: false });
+  log.push("109-partner-work");
+  await axeCheck(pg, "partner work with icon tiles and flags (E10)");
+}
 await shot(partnerPages[0], "52-partner-performance");
 
 // Arabic and accessibility (O9): sign-off gate, Arabic client screens, axe-core on key screens, keyboard-only path

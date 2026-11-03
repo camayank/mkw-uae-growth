@@ -1,6 +1,6 @@
 # E9 Workspace look: the restyled client and staff screens
 
-Status: verified-pending-merge (branch `outcome/E9-workspace-look`, on `main` at 1ca2778 with E8 merged; released by
+Status: merged (camayank/mkw-uae-growth#30, 3 Nov 2026; previously verified-pending-merge, branch `outcome/E9-workspace-look`, on `main` at 1ca2778 with E8 merged; released by
 the owner on 3 Nov 2026: "now build the restyled client and staff screens into the app", after the design canvas
 "Tasees App Redesign" was restyled)
 

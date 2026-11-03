@@ -54,7 +54,7 @@ new, add a token or a pattern here first.
 | Dark panel (E9) | `.panel-dark` on a card: white text, gold figures (`dd`, `.num`), gold links | Client money, the first KPI tile on staff screens (`.kpis.lead-kpis`) |
 | KPI tile (E9) | `kpiTile(label, value, sub, icon)` in `js/core.js`: `.kpi` with `.ico`, the figure, the label | Staff dashboard and queue |
 | Emirate flag (E9) | `flag(emirate)` in `js/core.js`: an inline simplified flag, nothing for an unknown name | Client engagements, staff request and lead pages, advice places |
-| Staff bar (E9) | `body[data-audience="platform"] .top` dark, entries with icons, the open entry underlined in gold; the M mark (MKW Advisors) for staff and partners, T for clients | Console |
+| Staff bar (E9) | `body[data-audience="platform"] .top` dark, entries with icons, the open entry underlined in gold; the M mark (MKW Advisors) for staff and partners, T for clients | Console; partners too from E10 (above 640 px; their phone tab bar stays light) |
 | Report download | `a.btn[download]` to `/report.pdf` on the client advice page; `#report` button on the selector (saves first, then downloads) | Selector, client advice (E7D) |
 | Funnel | `.kpis` from visitors to revenue, a stage table with the share of visitors, the by-source table, segment and lost-reason tables, and the attention list linking to each lead | Console Funnel (E7C) |
 | Next best action | `form.next-action[data-form="lead-next-action"]` with the rule's action, its reason, the override and its reason; `nextActionCell` in the leads list ("today" badge when urgent) | Leads (E7C) |

@@ -319,9 +319,9 @@ in a browser; everything listed here is not.
 
 113. ~~**The staff console's sidebar from the canvas is not built.**~~ Decided by the owner on 3 Nov 2026: staff keep
      the grouped one-row menu (O10), on the dark bar (D91).
-114. **The partner screens get the shared look only** (the bar, the flag colours, gold progress, the M mark); the
-     canvas's partner scorecard and evidence-progress panels are not built, and neither are the canvas's invented
-     figures on any screen (D91).
+114. ~~**The partner screens get the shared look only.**~~ Closed by E10 (D92): the dark MKW Advisors bar, the
+     scorecard on the dark panel, payouts by state, flags and the steps progress, from the platform's own figures. The
+     canvas's invented partner figures (an on-time streak of the last twelve steps) are still not built.
 115. **The journey tracker reads one piece of work**: the newest live engagement, else the newest open request. A
      client with several at once sees the others in their cards below it, not in the tracker.
 116. **The new Arabic labels for the journey are drafts** until the Arabic reviewer signs them off (with gap 111).

@@ -370,22 +370,27 @@ nav#nav > a, .navbtn { display: inline-flex; align-items: center; font-weight: 5
 .navmenu a { display: flex; align-items: center; }
 .navbtn > svg:first-child { width: 16px; height: 16px; margin-inline-end: 5px; }
 .search input { width: 180px; }
-body[data-audience="platform"] .top { background: var(--ink-panel); border-bottom-color: var(--ink-panel); color: var(--ink-panel-text); }
-body[data-audience="platform"] .brand, body[data-audience="platform"] .brand small, body[data-audience="platform"] .who { color: var(--ink-panel-muted); }
-body[data-audience="platform"] .brand { color: var(--ink-panel-text); }
-body[data-audience="platform"] .mark { background: var(--ink-panel-text); color: var(--ink-panel); }
+/* E10: partners get the same dark MKW Advisors bar; their phone tab bar stays light (below 641 px). */
+body:is([data-audience="platform"], [data-audience="partner"]) .top { background: var(--ink-panel); border-bottom-color: var(--ink-panel); color: var(--ink-panel-text); }
+body:is([data-audience="platform"], [data-audience="partner"]) .brand, body:is([data-audience="platform"], [data-audience="partner"]) .brand small, body:is([data-audience="platform"], [data-audience="partner"]) .who { color: var(--ink-panel-muted); }
+body:is([data-audience="platform"], [data-audience="partner"]) .brand { color: var(--ink-panel-text); }
+body:is([data-audience="platform"], [data-audience="partner"]) .mark { background: var(--ink-panel-text); color: var(--ink-panel); }
+@media (min-width: 641px) {
+  body[data-audience="partner"] nav a { color: var(--ink-panel-muted); }
+  body[data-audience="partner"] nav > a.on, body[data-audience="partner"] nav > a:hover { background: var(--ink-panel-2); color: var(--ink-panel-text); box-shadow: inset 0 -3px 0 var(--gold); }
+}
 body[data-audience="platform"] nav a, body[data-audience="platform"] .navbtn { color: var(--ink-panel-muted); }
 body[data-audience="platform"] nav > a.on, body[data-audience="platform"] nav > a:hover, body[data-audience="platform"] .navbtn.on, body[data-audience="platform"] .navbtn:hover, body[data-audience="platform"] .navbtn[aria-expanded="true"] { background: var(--ink-panel-2); color: var(--ink-panel-text); box-shadow: inset 0 -3px 0 var(--gold); }
 /* The staff menu stays on one row (O10) whatever the font: at desktop width it never wraps; the name, search and
    buttons move to their own line first when the bar is short of room. */
 @media (min-width: 1024px) {
-  body[data-audience="platform"] nav#nav { flex: 0 0 auto; flex-wrap: nowrap; }
-  body[data-audience="platform"] .who { margin-inline-start: auto; }
+  body:is([data-audience="platform"], [data-audience="partner"]) nav#nav { flex: 0 0 auto; flex-wrap: nowrap; }
+  body:is([data-audience="platform"], [data-audience="partner"]) .who { margin-inline-start: auto; }
 }
 body[data-audience="platform"] .navmenu a { color: var(--text); }
 body[data-audience="platform"] .navmenu a.on { background: var(--surface-2); box-shadow: inset 3px 0 0 var(--gold); }
-body[data-audience="platform"] .bell, body[data-audience="platform"] .who button, body[data-audience="platform"] .search input { color: var(--ink-panel-text); background: var(--ink-panel-2); border-color: #3a4842; }
-body[data-audience="platform"] .bell.on, body[data-audience="platform"] .bell:hover { background: #3a4842; color: var(--ink-panel-text); }
+body:is([data-audience="platform"], [data-audience="partner"]) .bell, body:is([data-audience="platform"], [data-audience="partner"]) .who button, body[data-audience="platform"] .search input { color: var(--ink-panel-text); background: var(--ink-panel-2); border-color: #3a4842; }
+body:is([data-audience="platform"], [data-audience="partner"]) .bell.on, body:is([data-audience="platform"], [data-audience="partner"]) .bell:hover { background: #3a4842; color: var(--ink-panel-text); }
 body[data-audience="platform"] .search input::placeholder { color: var(--ink-panel-muted); }
 /* The dark summary panel: what matters most on a screen, with its figures in gold. */
 .panel-dark { background: var(--ink-panel); color: var(--ink-panel-text); border-color: var(--ink-panel); }

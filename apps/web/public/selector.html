@@ -78,8 +78,90 @@
     .guide { padding: 12px; border-radius: 12px; background: var(--surface-2); }
     .guide h3 { margin: 0 0 6px; font-size: 1rem; }
     .guide p { margin: 0; font-size: 0.92rem; }
+    /* E8 quick match: four questions to the place to look at first, with live counts */
+    .flagbar { display: flex; height: 6px; }
+    .flagbar span:nth-child(1) { flex: 1; background: #ce1126; } .flagbar span:nth-child(2) { flex: 3; background: #00732f; }
+    .flagbar span:nth-child(3) { flex: 3; background: #fff; } .flagbar span:nth-child(4) { flex: 3; background: #16201c; }
+    .selector.wide { max-width: 1120px; }
+    .hero .actions .gold, button.gold, .btn.gold { background: #c8964a; color: #16201c; border-color: #c8964a; font-weight: 700; }
+    .btn.gold:hover, button.gold:hover { background: #b9853a; color: #16201c; }
+    #quick, #questions, #result, #review { scroll-margin-top: 84px; }
+    .hero .actions .gold { font-size: 1.05rem; padding: 13px 22px; }
+    .quick { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; padding: 8px 0 0; }
+    .quick .qmain { flex: 999 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+    .quick .qside { flex: 1 1 280px; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+    .track { list-style: none; margin: 0; padding: 0; display: flex; gap: 6px; align-items: center; }
+    .track li { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; font-size: 0.82rem; color: var(--muted); }
+    .track li::after { content: ""; flex: 1; height: 3px; border-radius: 3px; background: var(--line); min-width: 8px; }
+    .track li:last-child::after { display: none; }
+    .track li.done::after { background: var(--brand); }
+    .track .dot { flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; background: var(--surface-2); color: var(--muted); }
+    .track li.done .dot { background: var(--brand); color: var(--brand-ink); }
+    .track li.now .dot { background: var(--surface); color: var(--brand); box-shadow: inset 0 0 0 2px var(--brand); }
+    .track li.now, .track li.done { color: var(--text); font-weight: 600; }
+    .qhead h2 { font-size: clamp(1.4rem, 3.6vw, 2rem); line-height: 1.15; margin: 4px 0 6px; }
+    .qhead .eyebrow { color: var(--brand); font-weight: 700; font-size: 0.78rem; letter-spacing: 0.06em; text-transform: uppercase; margin: 0; }
+    .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+    .tile { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 14px; min-height: 112px; border: 2px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--text); font: inherit; text-align: start; cursor: pointer; transition: transform var(--motion-fast, .12s) var(--ease, ease), border-color .12s, box-shadow .12s; }
+    .tile:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+    .tile[aria-pressed="true"] { border-color: var(--brand); background: var(--brand-soft); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 18%, transparent); }
+    .tile .ico { width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center; background: var(--surface-2); color: var(--brand); }
+    .tile[aria-pressed="true"] .ico { background: var(--brand); color: var(--brand-ink); }
+    .tile b { font-size: 0.98rem; } .tile small { color: var(--muted); font-size: 0.82rem; }
+    .uaemap { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; padding: 14px; border-radius: 16px; background: linear-gradient(180deg, #e4eef1, #eef2ec); border: 1px solid var(--line); }
+    .uaemap .sea { align-self: center; font-size: 0.8rem; font-style: italic; color: #4b6a7a; }
+    .em { display: flex; flex-direction: column; justify-content: space-between; gap: 4px; padding: 9px; min-height: 72px; border: 2px solid #c9d3cc; border-radius: 12px; background: #fff; color: #16201c; font: inherit; text-align: start; cursor: pointer; transition: transform .12s; }
+    .em:hover { transform: scale(1.03); }
+    .em[aria-pressed="true"] { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); box-shadow: 0 8px 20px rgba(14, 91, 76, 0.28); }
+    .em.none:not([aria-pressed="true"]) { opacity: 0.6; }
+    .em .top-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 6px; width: 100%; }
+    .em .n { font-size: 0.75rem; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: var(--brand-soft); color: var(--brand); font-variant-numeric: tabular-nums; }
+    .em[aria-pressed="true"] .n { background: #c8964a; color: #16201c; }
+    .em b { font-size: 0.86rem; line-height: 1.15; } .em .ar { font-size: 0.75rem; opacity: 0.8; font-family: var(--font-arabic, inherit); }
+    .flag { display: inline-flex; border-radius: 3px; overflow: hidden; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.14); flex: none; }
+    .anyplace { display: flex; justify-content: space-between; gap: 12px; align-items: center; width: 100%; padding: 12px 14px; border: 2px solid var(--line); border-radius: 14px; background: var(--surface); font: inherit; color: var(--text); text-align: start; cursor: pointer; }
+    .anyplace[aria-pressed="true"] { border-color: var(--brand); background: var(--brand-soft); }
+    .stepper { display: flex; align-items: center; justify-content: center; gap: 18px; padding: 18px; }
+    .stepper button { width: 54px; height: 54px; border-radius: 50%; font-size: 1.6rem; font-weight: 700; padding: 0; }
+    .stepper input { width: 96px; text-align: center; font-size: 2.6rem; font-weight: 600; border: 0; background: transparent; font-variant-numeric: tabular-nums; -moz-appearance: textfield; }
+    .stepper input::-webkit-inner-spin-button { appearance: none; }
+    .people { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; min-height: 34px; color: var(--brand); }
+    .bands { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+    .bands .tile { min-height: 92px; }
+    .bands .fit { font-size: 0.86rem; font-weight: 600; color: var(--ok); } .bands .fit.zero { color: var(--warn); }
+    .qnav { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: 14px; }
+    .qnav .primary { min-width: 180px; padding: 12px 20px; font-size: 1rem; }
+    .panel { background: #16201c; color: #fff; border-radius: 16px; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+    .panel .eyebrow { color: #a9b6af; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; margin: 0; }
+    .panel .big { font-size: 2.8rem; line-height: 1; font-variant-numeric: tabular-nums; color: #fff; }
+    .panel .sub { color: #c9d3ce; }
+    .panel ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+    .panel li { display: flex; justify-content: space-between; gap: 8px; font-size: 0.88rem; padding: 7px 10px; border-radius: 10px; background: #24302b; }
+    .panel li span:last-child { color: #e3c38f; white-space: nowrap; }
+    .meter { height: 8px; border-radius: 999px; background: #2f3b36; overflow: hidden; } .meter i { display: block; height: 100%; background: #c8964a; border-radius: 999px; transition: width .3s; }
+    .answers { display: flex; flex-direction: column; }
+    .answers button { display: flex; justify-content: space-between; gap: 8px; align-items: center; min-height: 46px; padding: 4px 2px; border: 0; border-bottom: 1px solid var(--line); background: transparent; font: inherit; color: var(--text); text-align: start; cursor: pointer; border-radius: 0; }
+    .answers small { display: block; color: var(--muted); font-size: 0.78rem; } .answers .act { color: var(--brand); font-weight: 600; font-size: 0.85rem; }
+    .best { border: 2px solid var(--brand); box-shadow: 0 18px 40px rgba(14, 91, 76, 0.14); display: flex; flex-direction: column; gap: 12px; }
+    .best h3 { font-size: 1.5rem; margin: 0; }
+    .best .price { font-size: 2rem; font-variant-numeric: tabular-nums; }
+    .best .facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; margin: 0; padding: 0; list-style: none; }
+    .best .facts li { padding: 8px 10px; border-radius: 10px; background: var(--surface-2); font-size: 0.9rem; }
+    .best .cta { display: flex; flex-wrap: wrap; gap: 10px; }
+    .best .cta .primary, .best .cta .gold { padding: 13px 22px; font-size: 1.02rem; }
+    .alts { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+    .alts .card { display: flex; justify-content: space-between; gap: 10px; align-items: center; margin: 0; }
+    .trust { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 0.85rem; color: var(--muted); }
+    .trust li::before { content: "✓"; color: var(--ok); font-weight: 700; margin-inline-end: 8px; }
+    @media (max-width: 600px) {
+      .track li span.lbl, .em .ar, .uaemap .sea { display: none; }
+      .uaemap { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .uaemap .em { grid-column: auto !important; grid-row: auto !important; min-height: 64px; }
+      .tile { min-height: 96px; padding: 12px; }
+    }
+    @media (prefers-reduced-motion: reduce) { .tile, .em, .meter i { transition: none; } .tile:hover, .em:hover { transform: none; } }
     @media print {
-      .top, .noprint, form, .landing { display: none !important; }
+      .top, .noprint, form, .landing, .quick, .flagbar { display: none !important; }
       body { background: #fff; }
       .card { border: 0; box-shadow: none; padding: 0; }
       .compare thead th { position: static; }
@@ -88,18 +170,20 @@
 </head>
 <body>
   <a class="skip" href="#main">Skip to content</a>
+  <div class="flagbar" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
   <header class="top">
     <a class="brand" href="/selector.html"><span class="mark">T</span><span class="brand-text">Tasees <small>by MKW Advisors</small></span></a>
-    <nav class="links noprint" aria-label="Site"><a href="/selector.html#start" id="nav-start">Start</a><a href="/" id="nav-signin">Sign in to Tasees</a></nav>
+    <nav class="links noprint" aria-label="Site"><a href="/selector.html#quick" id="nav-start">Start</a><a href="/" id="nav-signin">Sign in to Tasees</a></nav>
   </header>
   <main class="selector" id="main">
     <section id="landing" class="landing">
       <div class="hero">
         <p class="eyebrow">Right UAE Entity</p>
         <h1>Find the right UAE entity for your business</h1>
-        <p class="lead">Answer a few questions and see which structures and places fit your business, which do not and why. Every figure is labelled: checked by a named person, or to be verified. No sign-up. Then ask a person at MKW Advisors to review it.</p>
+        <p class="lead">Four quick questions: what you do, where, how many visas and your budget. See the place to look at first and how many places still fit, with every figure labelled checked by a named person or to be verified. No sign-up. Then ask a person at MKW Advisors for your exact price.</p>
         <div class="actions">
-          <button type="button" class="primary" id="start">Find the Right UAE Entity</button>
+          <button type="button" class="gold" id="quick-start">Find my set-up in four questions</button>
+          <button type="button" class="btn" id="start">Find the Right UAE Entity: all eleven questions</button>
           <a class="btn" href="#recover">Open a saved result</a>
         </div>
       </div>
@@ -115,7 +199,7 @@
       </div>
       <h2>How it works</h2>
       <div class="steps">
-        <div><h3>Answer what applies</h3><p class="small muted">Up to ten questions, each with the reason we ask. Only the ones relevant to your industry appear.</p></div>
+        <div><h3>Four quick questions</h3><p class="small muted">What you do, the emirate, the visas and a budget. The count of places that still fit changes as you answer. Up to seven more questions sharpen it when you want the full comparison.</p></div>
         <div><h3>Compare what fits</h3><p class="small muted">Structures and places side by side, with what is checked, what is conditional and what a person still verifies.</p></div>
         <div><h3>Ask for a review</h3><p class="small muted">Save your result, print it, or send it to MKW Advisors with your consent. A person confirms what applies and sends priced offers from vetted partner firms.</p></div>
       </div>
@@ -125,6 +209,28 @@
         <div class="card"><b>We do not</b><ul class="small"><li>State a fee, a rule or a benefit nobody has checked: it says "to be verified"</li><li>Guess when the data is missing: it says so</li><li>Give advice or a statutory conclusion on this page: a person reviews your case first</li><li>Take your contact details before you ask for that review</li></ul></div>
       </div>
       <p class="small muted" style="margin-top:16px">Already a client? <a href="/">Sign in to the Tasees workspace</a>.</p>
+    </section>
+
+    <section id="quick" class="quick" hidden aria-labelledby="quick-title">
+      <div class="qmain">
+        <ol class="track" id="quick-track" aria-label="Progress"></ol>
+        <div class="card" id="quick-step" style="margin:0"></div>
+        <div class="qnav noprint">
+          <button type="button" class="sm" id="quick-back">Back</button>
+          <button type="button" class="primary" id="quick-next">Next</button>
+        </div>
+        <p class="notice small" id="quick-msg" aria-live="polite" hidden></p>
+      </div>
+      <aside class="qside" aria-label="Your match so far">
+        <div class="panel">
+          <p class="eyebrow">Places that still fit</p>
+          <div><span class="big" id="quick-count" aria-live="polite">–</span> <span class="sub" id="quick-count-word">places on record</span></div>
+          <ul id="quick-top"></ul>
+          <div><div class="row between small" style="color:#c9d3ce"><span>Profile complete</span><span id="quick-pct">0%</span></div><div class="meter" aria-hidden="true"><i id="quick-meter" style="width:0%"></i></div></div>
+        </div>
+        <div class="card" style="margin:0"><h2 class="small muted" style="margin:0 0 4px;text-transform:uppercase;letter-spacing:.06em;font-size:.75rem">Your answers</h2><div class="answers" id="quick-answers"></div></div>
+        <ul class="trust"><li>Only figures a named person checked are shown</li><li>No payment until you accept a fixed price</li><li>Nothing is filed from this page</li></ul>
+      </aside>
     </section>
 
     <form class="card noprint" id="recover" novalidate>

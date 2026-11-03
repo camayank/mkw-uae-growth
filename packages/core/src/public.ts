@@ -93,24 +93,29 @@ const CONTRADICTION_RULES: Array<[RegExp, string]> = [
   [/pure holding company does not sell/, "structure.holding"],
 ];
 
+/** A finding the public may read: its rule approved and, for a place rule (it carries the place's figures), the place too. */
+export const publicFindingOk = (f: Finding, placeApproved: boolean, approvedRules: ReadonlySet<string>): boolean =>
+  !!f.ruleKey && approvedRules.has(f.ruleKey) && (placeApproved || !f.ruleKey.startsWith("place."));
+
+/** The status the public sees: an exclusion needs its failing rule approved; a fit needs every finding approved. */
+export function publicStatus(status: EligibilityStatus, findings: Finding[], placeApproved: boolean, approvedRules: ReadonlySet<string>): EligibilityStatus {
+  if (status === "INELIGIBLE") return findings.some((f) => f.outcome === "fail" && publicFindingOk(f, placeApproved, approvedRules)) ? "INELIGIBLE" : "REQUIRES_VERIFICATION";
+  if (status === "ELIGIBLE_VERIFIED" || status === "ELIGIBLE_CONDITIONAL") return findings.every((f) => publicFindingOk(f, placeApproved, approvedRules)) ? status : "REQUIRES_VERIFICATION";
+  return status;
+}
+
 export function publicView(a: Advice, approvedRules: ReadonlySet<string>, approvedPlaces: ReadonlySet<string>, asOf?: string): PublicAssessment {
   const ruleOk = (key: string | undefined) => !!key && approvedRules.has(key);
   const statement = (r: Reasoned): PublicStatement => {
     const ok = ruleOk(r.ruleKey) && (r.basedOn ?? []).every((k) => approvedRules.has(k));
     return { topic: topicOf(r.ruleKey ?? ""), ...(ok ? { ruleKey: r.ruleKey, text: r.text } : {}), toBeVerified: !ok };
   };
-  // A finding on a place that comes from a place rule carries that place's figures, so it needs the place approved too.
-  const findingOk = (f: Finding, placeApproved: boolean) => ruleOk(f.ruleKey) && (placeApproved || !f.ruleKey.startsWith("place."));
+  const findingOk = (f: Finding, placeApproved: boolean) => publicFindingOk(f, placeApproved, approvedRules);
   const finding = (f: Finding, placeApproved: boolean): PublicFinding => {
     const ok = findingOk(f, placeApproved);
     return { topic: topicOf(f.ruleKey), ...(ok ? { ruleKey: f.ruleKey, text: f.text, outcome: f.outcome } : {}), toBeVerified: !ok };
   };
-  // An exclusion the public may see needs its failing rule approved; a fit needs every finding approved.
-  const softStatus = (status: EligibilityStatus, findings: Finding[], placeApproved: boolean): EligibilityStatus => {
-    if (status === "INELIGIBLE") return findings.some((f) => f.outcome === "fail" && findingOk(f, placeApproved)) ? "INELIGIBLE" : "REQUIRES_VERIFICATION";
-    if (status === "ELIGIBLE_VERIFIED" || status === "ELIGIBLE_CONDITIONAL") return findings.every((f) => findingOk(f, placeApproved)) ? status : "REQUIRES_VERIFICATION";
-    return status;
-  };
+  const softStatus = (status: EligibilityStatus, findings: Finding[], placeApproved: boolean): EligibilityStatus => publicStatus(status, findings, placeApproved, approvedRules);
   const place = (p: Candidate): PublicPlace => {
     const ok = approvedPlaces.has(p.zone);
     const findings = (p.findings ?? []).map((f) => finding(f, ok));

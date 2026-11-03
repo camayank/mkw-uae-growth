@@ -951,3 +951,26 @@ canvas of 3 Nov 2026 and its review round.)
 - A test that builds a second whole environment (the trusted-proxy test) gets a 30-second budget on PostgreSQL: the
   5-second default timed out when two suites shared the server, which is a budget problem, not a defect.
 
+**D90. The quick match is the selector's front door, on the same engine and the same public filter.** (E8, 3 Nov 2026.)
+
+- Four answers (activity, emirate, visas, a budget band) lead to the place to look at first, two alternatives and
+  live counts; the eleven-question assessment stays, one click away and prefilled. The owner asked for a simple,
+  conversion-first start ("the initial inputs should be simple and helpful ... so that conversion chances are
+  high"); the engine needs no new input for it, because the unanswered questions are simply unanswered, as they
+  are in the full assessment.
+- A count falls only on a conclusion the public may see: a place counts as open unless an approved rule (and, for
+  a place rule, the approved place) excludes it. The rule that decides that is the public view's own, now one
+  function (`publicStatus` in `packages/core/src/public.ts`) used by both. In the pilot, with few approvals, the
+  counts move little; that is the honest reading of D80, not a defect.
+- The counts come from the eligibility check over every place on record, not from the advice (which keeps its
+  first five fits); the place shown first is the advice's own ranking within the chosen emirate, so the quick match
+  and the full assessment never disagree about which place leads.
+- No match percentage: the engine gives statuses, so the page shows the status ("fits your answers", "fits, with
+  conditions", "to be verified by a person"). The canvas's percentage ring was a design figure.
+- Budget bands are AED 15,000, 25,000 and 50,000 and "more, or not sure yet" (`QUICK_BUDGETS`): defaults for the
+  owner to change in one place; the full assessment still takes any figure.
+- The endpoint allows 240 requests per IP per window (the assessment allows 60), because the page asks again after
+  each answer to keep the counts live. It writes nothing; the funnel records the quick steps under the existing
+  step stage with `quick_` keys.
+- The emirate flags are simplified inline drawings for recognition (no image files, no library), and the map is a
+  labelled schematic, "not to scale"; the flags are to be checked against official artwork before launch (gap 107).

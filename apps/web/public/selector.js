@@ -52,7 +52,7 @@ const QUESTIONS = {
   structure: { title: "Do you already have a structure in mind?", why: "If your answers point elsewhere, the result says so and a person confirms which fits.", type: "choice", options: [["not_sure", "Not yet", "show me what fits"], ["free_zone", "A free zone company"], ["mainland", "A mainland company"], ["offshore", "An offshore company"], ["difc_adgm", "DIFC or ADGM"]] },
   emirate: { title: "Which emirate, and is there a place you have in mind?", why: "The emirate narrows the places; naming one puts it at the top of the comparison.", type: "emirate" },
 };
-const EMIRATES = ["Dubai", "Abu Dhabi", "Sharjah", "Ajman", "Ras Al Khaimah", "Umm Al Quwain", "Fujairah"];
+const EMIRATES = ["Dubai", "Abu Dhabi", "Sharjah", "Ajman", "Ras Al Khaimah", "Umm Al Quwain", "Fujairah", "No preference"];
 // The order follows what matters first for the industry chosen: premises for manufacturing, owners for a holding
 // company, the customers and owners for regulated activity. The engine reads the same answers whatever the order.
 const DEFAULT_ORDER = ["activity", "customers", "visas", "premises", "budgetAed", "owners", "foreignTaxResident", "turnover", "structure", "startWithin", "emirate"];
@@ -109,13 +109,15 @@ track("visited");
 // The consent texts come from the platform, so the page and the record always carry the same version.
 fetch("/api/public/consent-texts").then((r) => r.json()).then((t) => { $("marketing-text").textContent = t.marketing.text; $("partner-text").textContent = t.partner_disclosure.text; }).catch(() => {});
 
-// Which of the three views is on: the homepage, the questions or the result.
+// Which view is on: the homepage, the quick match (E8), the questions or the result.
 function show(view) {
   $("landing").hidden = view !== "landing";
+  $("quick").hidden = view !== "quick";
   $("questions").hidden = view !== "questions";
   $("result").hidden = view !== "result";
-  $("review").hidden = view !== "result";
-  $("recover").hidden = view === "questions";
+  $("review").hidden = !(view === "result" || (view === "quick" && quick.step === 5));
+  $("recover").hidden = view === "questions" || view === "quick";
+  $("main").classList.toggle("wide", view === "quick");
 }
 
 function render() {
@@ -342,7 +344,7 @@ function showResult(p, recovered = null) {
     $("save").disabled = true;
     try { await save(); } catch (e) { $("save-msg").hidden = false; $("save-msg").textContent = e.message; $("save").disabled = false; }
   });
-  $("restart").addEventListener("click", () => { for (const k of Object.keys(answers)) delete answers[k]; answers.emirate = "Dubai"; i = 0; savedCode = null; lastResult = null; $("review").reset(); $("review").querySelector("button[type=submit]").disabled = false; $("rmsg").hidden = true; show("landing"); window.scrollTo(0, 0); $("start").focus(); });
+  $("restart").addEventListener("click", restartAll);
   if (isAr()) translateTree($("result"));
   $("result").scrollIntoView({ block: "start" });
   $("result-head").focus();
@@ -380,6 +382,15 @@ $("next").addEventListener("click", async () => {
 });
 $("to-landing").addEventListener("click", () => { savedCode = null; show("landing"); window.scrollTo(0, 0); $("start").focus(); });
 
+// Start again, from the result or the quick match: every answer, the saved code and the review form are cleared.
+function restartAll() {
+  for (const k of Object.keys(answers)) delete answers[k];
+  answers.emirate = "Dubai"; i = 0; savedCode = null; lastResult = null;
+  Object.assign(quick, { step: 1, activity: null, emirate: undefined, visas: null, budget: null, data: null });
+  $("review").reset(); $("review").querySelector("button[type=submit]").disabled = false; $("rmsg").hidden = true;
+  show("landing"); window.scrollTo(0, 0); $("quick-start").focus();
+}
+
 // The homepage: the call to action starts at question one; an industry starts at question two with the activity set.
 // Regulated finance covers two activities the engine treats differently (financial services, virtual assets), so that
 // card preselects the first and keeps question one on screen for the founder to confirm or change.
@@ -393,8 +404,235 @@ function start(activity) {
   $("questions").scrollIntoView({ block: "start" });
 }
 $("start").addEventListener("click", () => start());
-$("nav-start").addEventListener("click", (ev) => { ev.preventDefault(); start(); });
-for (const b of document.querySelectorAll(".industry")) b.addEventListener("click", () => start(b.dataset.activity));
+$("quick-start").addEventListener("click", () => startQuick());
+$("nav-start").addEventListener("click", (ev) => { ev.preventDefault(); startQuick(); });
+for (const b of document.querySelectorAll(".industry")) b.addEventListener("click", () => startQuick(b.dataset.activity));
+
+// E8 quick match: four answers (what the business does, the emirate, the visas, a budget band) to the place to look
+// at first, with the count of places still open after each answer. The platform runs the same engine and public
+// filter as the full assessment (D80): a count falls only on an exclusion a named person approved, and a figure shows
+// only for an approved place. The answers stay in memory; "see the full comparison" carries them into the questions.
+const QUICK_LABELS = ["Activity", "Location", "Visas", "Budget", "Your match"];
+const QUICK_KEYS = ["activity", "emirate", "visas", "budget"];
+const ICONS = {
+  consulting: "M3 7h18v13H3zM8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 13h18",
+  trading: "M3 7l9-4 9 4-9 4zM3 7v10l9 4 9-4V7M12 11v10",
+  ecommerce: "M4 7h16l-1.5 11a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2zM9 10V6a3 3 0 0 1 6 0v4",
+  tech: "M3 4h18v12H3zM8 20h8M12 16v4M9 9l-2 2 2 2M15 9l2 2-2 2",
+  holding: "M3 9l9-5 9 5M5 9v9M10 9v9M14 9v9M19 9v9M3 21h18",
+  finance: "M12 3v18M17 7H9.5a2.5 2.5 0 0 0 0 5h5a2.5 2.5 0 0 1 0 5H7",
+  virtual_assets: "M12 2l8 4.5v9L12 20l-8-4.5v-9zM9 12h6M12 9v6",
+  health: "M9 3h6v6h6v6h-6v6H9v-6H3V9h6z",
+  education: "M2 9l10-5 10 5-10 5zM6 11v5c3 2 9 2 12 0v-5",
+  food: "M7 3v8a2 2 0 0 0 4 0V3M9 11v10M17 3c-2 2-2 6 0 8v10",
+  construction: "M4 21V8l6-4v17M10 21h10V10l-10-2M14 13h2M14 17h2",
+  manufacturing: "M3 21V10l6 4V10l6 4V6h6v15zM3 21h18",
+  other: "M5 12h.01M12 12h.01M19 12h.01",
+};
+const icon = (id) => `<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="${id === "other" ? 3.5 : 1.8}" stroke-linecap="round" stroke-linejoin="round"><path d="${ICONS[id] ?? ICONS.other}"/></svg>`;
+// Simplified emirate flags, drawn for recognition only (gap 107: checked against official artwork before launch).
+const FLAG = {
+  auh: '<rect width="30" height="20" fill="#CE1126"/><rect width="11" height="8" fill="#fff"/>',
+  band: '<rect width="30" height="20" fill="#CE1126"/><rect width="7" height="20" fill="#fff"/>',
+  border: '<rect width="30" height="20" fill="#fff"/><rect x="2.5" y="2.5" width="25" height="15" fill="#CE1126"/>',
+  uaq: '<rect width="30" height="20" fill="#CE1126"/><rect width="7" height="20" fill="#fff"/><circle cx="17" cy="10" r="4.2" fill="#fff"/><circle cx="18.6" cy="10" r="3.5" fill="#CE1126"/><circle cx="22.6" cy="10" r="1.3" fill="#fff"/>',
+  uae: '<rect width="30" height="20" fill="#fff"/><rect x="8" width="22" height="6.67" fill="#00732F"/><rect x="8" y="13.33" width="22" height="6.67" fill="#16201C"/><rect width="8" height="20" fill="#CE1126"/>',
+};
+// The seven emirates on a schematic map (not to scale): grid column and row, the flag and the Arabic name.
+const MAP = [
+  ["Abu Dhabi", "أبوظبي", "auh", "1 / 4", "4 / 6"], ["Dubai", "دبي", "band", "3 / 5", "3 / 4"], ["Sharjah", "الشارقة", "border", "4 / 5", "2 / 3"],
+  ["Ajman", "عجمان", "band", "5 / 6", "2 / 3"], ["Umm Al Quwain", "أم القيوين", "uaq", "5 / 6", "1 / 2"], ["Ras Al Khaimah", "رأس الخيمة", "border", "6 / 7", "1 / 3"],
+  ["Fujairah", "الفجيرة", "uae", "6 / 7", "3 / 5"],
+];
+const flagOf = (emirate) => { const m = MAP.find((x) => x[0] === emirate); return m ? `<span class="flag"><svg width="30" height="20" viewBox="0 0 30 20" aria-hidden="true">${FLAG[m[2]]}</svg></span>` : ""; };
+const BANDS = [["up_to_15k", "Up to AED 15,000", 15_000], ["up_to_25k", "Up to AED 25,000", 25_000], ["up_to_50k", "Up to AED 50,000", 50_000], ["open", "More, or not sure yet", null]];
+const TYPE = { free_zone: "Free zone company", mainland: "Mainland company", offshore: "Offshore company", financial: "Financial centre company" };
+const QSTATUS = { ELIGIBLE_VERIFIED: ["ok", "fits your answers"], ELIGIBLE_CONDITIONAL: ["info", "fits, with conditions"], REQUIRES_VERIFICATION: ["", "to be verified by a person"], DATA_UNAVAILABLE: ["warn", "data missing"] };
+const qbadge = (s) => `<span class="badge ${QSTATUS[s]?.[0] ?? ""}">${esc(QSTATUS[s]?.[1] ?? words(s))}</span>`;
+
+// The quick answers: emirate undefined is unanswered, null is "anywhere".
+const quick = { step: 1, activity: null, emirate: undefined, visas: null, budget: null, data: null };
+let quickSeq = 0;
+const answeredCount = () => [quick.activity, quick.emirate !== undefined, quick.visas != null, quick.budget].filter(Boolean).length;
+const activityLabel = (id) => QUESTIONS.activity.options.find((o) => o[0] === id)?.[1] ?? words(id);
+const quickBody = () => ({ ...(quick.activity ? { activity: quick.activity } : {}), ...(quick.emirate !== undefined ? { emirate: quick.emirate } : {}), ...(quick.visas != null ? { visas: quick.visas } : {}), ...(quick.budget ? { budget: quick.budget } : {}) });
+
+// The quick answers as the full questionnaire and the review request read them.
+function syncAnswers() {
+  if (quick.activity) answers.activity = quick.activity;
+  if (quick.emirate !== undefined) answers.emirate = quick.emirate ?? "No preference";
+  if (quick.visas != null) answers.visas = quick.visas;
+  const band = BANDS.find((b) => b[0] === quick.budget);
+  if (band) { if (band[2] != null) answers.budgetAed = band[2]; else delete answers.budgetAed; }
+}
+
+async function refreshQuick() {
+  const seq = ++quickSeq;
+  try {
+    const res = await fetch("/api/public/quick", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(quickBody()) });
+    const data = await res.json();
+    if (seq !== quickSeq) return; // a later answer already asked again
+    if (!res.ok) throw new Error(data.message || "Something went wrong");
+    quick.data = data;
+    $("quick-msg").hidden = true;
+    renderQuick({ keepFocus: true });
+  } catch (e) { if (seq === quickSeq) { $("quick-msg").hidden = false; $("quick-msg").textContent = `${e.message}. Check your connection; your answers are still here.`; } }
+}
+
+function quickPanel() {
+  const d = quick.data;
+  const n = d ? d.options : null;
+  $("quick-count").textContent = n == null ? "–" : String(n);
+  $("quick-count-word").textContent = n === 1 ? "place still fits" : "places still fit";
+  const top = d ? [d.best, ...d.alternatives].filter(Boolean) : [];
+  $("quick-top").innerHTML = top.map((p) => `<li><span data-no-i18n>${esc(p.zone)}</span><span>${p.figures ? `from ${esc(aed(p.figures.costMinFils))}` : "to be verified"}</span></li>`).join("");
+  const pct = answeredCount() * 25;
+  $("quick-pct").textContent = `${pct}%`;
+  $("quick-meter").style.width = `${pct}%`;
+  const rows = [
+    ["Activity", quick.activity ? activityLabel(quick.activity) : null, 1],
+    ["Location", quick.emirate === undefined ? null : quick.emirate ?? "Anywhere in the UAE", 2],
+    ["Visas", quick.visas == null ? null : String(quick.visas), 3],
+    ["Budget", BANDS.find((b) => b[0] === quick.budget)?.[1] ?? null, 4],
+  ];
+  $("quick-answers").innerHTML = rows.map(([label, value, step]) => `<button type="button" data-go="${step}"><span><small>${esc(label)}</small><b${value ? " data-no-i18n" : ""}>${esc(value ?? "Not answered")}</b></span><span class="act">${value ? "Change" : "Answer"}</span></button>`).join("");
+  for (const b of $("quick-answers").querySelectorAll("button")) b.addEventListener("click", () => { quick.step = Number(b.dataset.go); renderQuick(); });
+}
+
+function quickStepHtml() {
+  const d = quick.data;
+  const head = (n, title, sub) => `<div class="qhead"><p class="eyebrow">Question ${n} of 4</p><h2 id="quick-title" tabindex="-1">${esc(title)}</h2><p class="small muted">${esc(sub)}</p></div>`;
+  if (quick.step === 1) {
+    return head(1, "What will your company do?", "Pick the closest. Each place licenses different activities, so this narrows things fast.") +
+      `<div class="tiles" role="group" aria-labelledby="quick-title">${QUESTIONS.activity.options.map(([id, label, sub]) => `<button type="button" class="tile" data-act="${esc(id)}" aria-pressed="${quick.activity === id}"><span class="ico">${icon(id)}</span><span><b>${esc(label)}</b>${sub ? `<br><small>${esc(sub)}</small>` : ""}</span></button>`).join("")}</div>`;
+  }
+  if (quick.step === 2) {
+    const n = (e) => (d ? d.byEmirate[e] ?? 0 : null);
+    const any = d ? d.everywhere : null;
+    return head(2, "Where would you like to be based?", "Tap an emirate. The number is how many places there still fit your answers.") +
+      `<div class="uaemap" role="group" aria-labelledby="quick-title"><span class="sea" style="grid-column:1 / 4;grid-row:1 / 3">Arabian Gulf</span><span class="sea" style="grid-column:5 / 6;grid-row:5 / 6;text-align:center">Gulf of Oman</span>
+        ${MAP.map(([e, ar, , col, row]) => `<button type="button" class="em${n(e) === 0 ? " none" : ""}" data-em="${esc(e)}" aria-pressed="${quick.emirate === e}" aria-label="${esc(e)}${n(e) == null ? "" : `, ${n(e)} place(s)`}" style="grid-column:${col};grid-row:${row}"><span class="top-row">${flagOf(e)}<span class="n">${n(e) ?? "·"}</span></span><span><b>${esc(e)}</b><br><span class="ar" lang="ar" data-no-i18n>${ar}</span></span></button>`).join("")}</div>
+      <p class="small muted" style="margin:6px 0 10px">Schematic map, not to scale.</p>
+      <button type="button" class="anyplace" data-em="" aria-pressed="${quick.emirate === null}"><span><b>No preference: show me the best value anywhere</b><br><small class="muted">All seven emirates compared.</small></span><span class="badge general">${any ?? "·"} places</span></button>`;
+  }
+  if (quick.step === 3) {
+    const v = quick.visas ?? 1;
+    const people = Array.from({ length: Math.min(v, 8) }, () => '<svg width="26" height="32" viewBox="0 0 30 36" aria-hidden="true"><circle cx="15" cy="9" r="7" fill="currentColor"/><path d="M2 36c0-9 6-14 13-14s13 5 13 14z" fill="currentColor"/></svg>').join("") + (v > 8 ? `<b style="align-self:center">+${v - 8}</b>` : "");
+    return head(3, "How many residence visas do you need?", "Count yourself and anyone who will live and work in the UAE in the first year. Zero is fine.") +
+      `<div class="stepper"><button type="button" id="visa-dec" aria-label="One visa fewer">−</button><label class="sr-only" for="quick-visas">Residence visas</label><input id="quick-visas" type="number" inputmode="numeric" min="0" max="50" value="${v}" /><button type="button" id="visa-inc" aria-label="One visa more">+</button></div>
+      <div class="people" aria-hidden="true">${people}</div>`;
+  }
+  if (quick.step === 4) {
+    return head(4, "What would you like to spend on set-up?", "Licence, registration and your first visas. You see the exact price from MKW Advisors before you pay anything.") +
+      `<div class="bands" role="group" aria-labelledby="quick-title">${BANDS.map(([id, label]) => { const c = d?.byBudget.find((b) => b.id === id)?.options; return `<button type="button" class="tile" data-band="${id}" aria-pressed="${quick.budget === id}"><b>${esc(label)}</b><span class="fit${c === 0 ? " zero" : ""}">${c == null ? "" : c === 0 ? "No place fits yet" : `${c} place(s) fit`}</span></button>`; }).join("")}</div>`;
+  }
+  return quickResultHtml();
+}
+
+function quickResultHtml() {
+  const d = quick.data;
+  if (!d) return `<p class="small muted">Finding your match…</p>`;
+  const where = quick.emirate ?? "the UAE";
+  const legend = `<div class="notice small" role="note"><b>Preliminary, general information, not advice.</b> <span data-no-i18n>${esc(d.disclaimer)}</span>${d.asOf ? ` Rules and place data as of ${esc(d.asOf)}.` : ""}</div>
+    <p class="small muted">${d.approved.places} of ${d.approved.ofPlaces} places that fit have figures checked by a named person; the rest show "to be verified".</p>`;
+  if (!d.best) {
+    return `<div class="qhead"><p class="eyebrow">Your match</p><h2 id="quick-title" tabindex="-1">No place on record fits these four answers yet</h2><p class="small muted">An adviser can usually find a way: a different package, budget or emirate. Ask, free of charge.</p></div>
+      <div class="row"><a class="btn gold" href="#review">Ask an adviser</a><button type="button" class="sm" data-go="4">Change my budget</button></div>${legend}`;
+  }
+  const b = d.best;
+  const fig = b.figures;
+  const price = fig ? `<div><span class="muted">From</span> <span class="price">${esc(aed(fig.costMinFils))}</span> <span class="muted">to ${esc(aed(fig.costMaxFils))} to set up (estimate)</span> <span class="badge ok">figures checked</span></div>`
+    : `<div><span class="price" style="font-size:1.3rem">Price to be verified by a person</span><p class="small muted" style="margin:4px 0 0">No figure is shown until a named person at MKW Advisors has checked it against the official source.</p></div>`;
+  const facts = fig ? [`${fig.visaQuota} visa(s) in the standard package`, `About ${fig.timelineDays} working days`, fig.renewalMinFils ? `Renews at about ${aed(fig.renewalMinFils)} a year` : null, b.authority ? `Licensed by ${b.authority}` : null].filter(Boolean) : [];
+  const alt = (p) => `<div class="card"><span><span class="row" style="gap:8px">${flagOf(p.emirate)}<b data-no-i18n>${esc(p.zone)}</b></span><small class="muted" data-no-i18n>${esc(p.emirate)} · ${esc(TYPE[p.type] ?? words(p.type))}</small></span><span class="small">${p.figures ? `from ${esc(aed(p.figures.costMinFils))}` : '<span class="verify">to be verified</span>'}</span></div>`;
+  return `<div class="qhead"><p class="eyebrow">Your match</p><h2 id="quick-title" tabindex="-1">The place to look at first in <span data-no-i18n>${esc(quick.emirate && !d.bestElsewhere ? where : b.emirate)}</span></h2>
+      ${d.bestElsewhere ? `<p class="notice small">Nothing in <span data-no-i18n>${esc(quick.emirate)}</span> fits these answers yet; this is the closest place elsewhere.</p>` : ""}</div>
+    <div class="card best">
+      <div class="row" style="gap:8px">${flagOf(b.emirate)}<span class="badge general">${esc(TYPE[b.type] ?? words(b.type))}</span>${qbadge(b.status)}${d.structure.confirmed ? `<span class="badge ok">structure: ${esc(STRUCTURE[d.structure.recommendation] ?? words(d.structure.recommendation))}</span>` : ""}</div>
+      <h3 data-no-i18n>${esc(b.zone)}</h3>
+      ${price}
+      ${facts.length ? `<ul class="facts">${facts.map((f) => `<li data-no-i18n>${esc(f)}</li>`).join("")}</ul>` : ""}
+      ${b.conditions || b.toConfirm ? `<p class="small muted">${[b.conditions ? `${b.conditions} condition(s)` : "", b.toConfirm ? `${b.toConfirm} point(s) a person confirms` : ""].filter(Boolean).join(", ")} before anything is priced.</p>` : ""}
+      <div class="cta noprint"><a class="btn gold" href="#review" id="quick-price">Get my exact price</a><button type="button" class="btn" id="quick-full">See the full comparison</button></div>
+      <p class="small muted" style="margin:0">No payment now. A person at MKW Advisors checks your case and sends one fixed price, usually within one working day.${b.sourceUrl ? ` <a href="${esc(b.sourceUrl)}" target="_blank" rel="noopener noreferrer">Official source</a>` : ""}</p>
+    </div>
+    ${d.alternatives.length ? `<h3 style="margin:8px 0 0;font-size:1.05rem">Also worth a look</h3><div class="alts">${d.alternatives.map(alt).join("")}</div>` : ""}
+    ${legend}`;
+}
+
+function renderQuick({ keepFocus = false } = {}) {
+  const active = document.activeElement;
+  const activeKey = active?.dataset ? Object.entries(active.dataset).map(([k, v]) => `[data-${k.replace(/[A-Z]/g, (c) => "-" + c.toLowerCase())}="${CSS.escape(v)}"]`).join("") : "";
+  const activeId = active?.id;
+  $("quick-track").innerHTML = QUICK_LABELS.map((label, idx) => { const n = idx + 1; const cls = n < quick.step ? "done" : n === quick.step ? "now" : ""; return `<li class="${cls}"${n === quick.step ? ' aria-current="step"' : ""}><span class="dot">${n < quick.step ? "✓" : n}</span><span class="lbl">${esc(label)}</span></li>`; }).join("");
+  $("quick-step").innerHTML = quickStepHtml();
+  const answered = [quick.activity, quick.emirate !== undefined, quick.visas != null || quick.step === 3, quick.budget][quick.step - 1];
+  $("quick-back").disabled = quick.step === 1;
+  $("quick-next").hidden = quick.step === 5;
+  $("quick-next").disabled = !answered;
+  $("quick-next").textContent = quick.step === 4 ? "See my match" : "Next";
+  $("quick-back").textContent = quick.step === 5 ? "Change my answers" : "Back";
+  $("review").hidden = quick.step !== 5;
+  quickPanel();
+  bindQuick();
+  if (isAr()) { translateTree($("quick")); if (quick.step === 5) translateTree($("review")); }
+  if (keepFocus) {
+    // A refreshed count must not move the founder's place on the page.
+    (activeId && $(activeId)) ? $(activeId).focus() : activeKey && $("quick").querySelector(activeKey)?.focus();
+  }
+}
+
+function bindQuick() {
+  const step = $("quick-step");
+  for (const b of step.querySelectorAll("[data-act]")) b.addEventListener("click", () => { quick.activity = b.dataset.act; syncAnswers(); goQuick(2); });
+  for (const b of step.querySelectorAll("[data-em]")) b.addEventListener("click", () => { quick.emirate = b.dataset.em || null; syncAnswers(); renderQuick(); b.isConnected || step.querySelector(`[data-em="${CSS.escape(b.dataset.em)}"]`)?.focus(); refreshQuick(); });
+  for (const b of step.querySelectorAll("[data-band]")) b.addEventListener("click", () => { quick.budget = b.dataset.band; syncAnswers(); renderQuick(); step.querySelector(`[data-band="${b.dataset.band}"]`)?.focus(); refreshQuick(); });
+  for (const b of step.querySelectorAll("[data-go]")) b.addEventListener("click", () => goQuick(Number(b.dataset.go)));
+  const input = $("quick-visas");
+  if (input) {
+    const setV = (v) => { quick.visas = Math.max(0, Math.min(50, Number.isFinite(v) ? v : 0)); syncAnswers(); refreshQuick(); };
+    if (quick.visas == null) { quick.visas = 1; syncAnswers(); }
+    $("visa-dec").addEventListener("click", () => { setV((quick.visas ?? 1) - 1); renderQuick(); $("visa-dec").focus(); });
+    $("visa-inc").addEventListener("click", () => { setV((quick.visas ?? 1) + 1); renderQuick(); $("visa-inc").focus(); });
+    input.addEventListener("change", () => { setV(Math.round(Number(input.value))); renderQuick(); $("quick-visas").focus(); });
+    input.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); setV(Math.round(Number(input.value))); goQuick(4); } });
+  }
+  $("quick-price")?.addEventListener("click", (ev) => { ev.preventDefault(); $("review").scrollIntoView({ block: "start" }); $("company").focus(); });
+  step.querySelector('a[href="#review"]:not(#quick-price)')?.addEventListener("click", (ev) => { ev.preventDefault(); $("review").scrollIntoView({ block: "start" }); $("company").focus(); });
+  $("quick-full")?.addEventListener("click", toFullQuestions);
+}
+
+function goQuick(step) {
+  quick.step = step;
+  if (step <= 4) track("step_reached", `quick_${QUICK_KEYS[step - 1]}`);
+  if (step === 5) { track("assessment_completed"); track("result_viewed"); }
+  renderQuick();
+  $("quick").scrollIntoView({ block: "start" });
+  ($("quick-step").querySelector('[aria-pressed="true"]') ?? $("quick-title"))?.focus();
+  refreshQuick();
+}
+
+// The full comparison: the questionnaire opens at the first question the quick match did not ask, answers kept.
+function toFullQuestions() {
+  syncAnswers();
+  savedCode = null;
+  const qs = visible();
+  const firstOpen = qs.findIndex((q) => q.key !== "emirate" && answers[q.key] == null);
+  i = firstOpen < 0 ? qs.length - 1 : firstOpen;
+  show("questions");
+  render();
+  $("questions").scrollIntoView({ block: "start" });
+}
+
+function startQuick(activity) {
+  savedCode = null;
+  track("assessment_started");
+  show("quick");
+  if (activity && QUESTIONS.activity.options.some((o) => o[0] === activity)) { quick.activity = activity; syncAnswers(); goQuick(CONFIRM_ACTIVITY.has(activity) ? 1 : 2); }
+  else goQuick(quick.step || 1);
+}
+$("quick-back").addEventListener("click", () => goQuick(quick.step === 5 ? 1 : Math.max(1, quick.step - 1)));
+$("quick-next").addEventListener("click", () => { if (quick.step === 3 && quick.visas == null) { quick.visas = 1; syncAnswers(); } goQuick(Math.min(5, quick.step + 1)); });
 
 // Recovery by code: from the box, the ?code= parameter, or the code this browser saved last.
 async function recover(code) {
@@ -443,6 +681,7 @@ review.addEventListener("submit", async (ev) => {
 
 // Where to open: a saved code, a deep link to the questions or an industry, else the homepage.
 if (params.get("code")) { show("landing"); recover(params.get("code")); }
-else if (params.get("industry")) start(params.get("industry"));
+else if (params.get("industry")) startQuick(params.get("industry"));
 else if (location.hash === "#start") start();
+else if (location.hash === "#quick") startQuick();
 else show("landing");

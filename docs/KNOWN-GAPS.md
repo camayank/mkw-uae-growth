@@ -296,6 +296,20 @@ in a browser; everything listed here is not.
 106. **The journeys' names A to F are the build's reading of the contract** (six people, six paths); the owner
      confirms or renames them (D89).
 
+## E8: quick match
+
+107. **The emirate flags are simplified drawings** (proportions and the Umm Al Quwain crescent are approximate) and
+     the map is a schematic. Check the flags against official artwork, or replace them with approved files, before
+     the page goes public (D90).
+108. **The quick match's counts move only on approved exclusions**, so with few rules approved for public display
+     they barely change as the founder answers. Approving the place and budget rules (Scoping, public display) is
+     what makes them move; nothing is estimated in between.
+109. **The budget bands are defaults** (15,000, 25,000, 50,000, more): an owner decision, changed in
+     `QUICK_BUDGETS`.
+110. **The canvas restyle is built for the selector only.** The homepage's package cards and map teaser, and the
+     client, partner and staff screens in the new look, are on the design canvas and not yet in the app.
+111. **The new Arabic strings are drafts** until the Arabic reviewer signs them off, like the rest of the dictionary.
+
 ## O7: launch-gate preparation
 
 43. ~~zod 3 has a memory-exhaustion advisory.~~ Closed by S1: zod 4.6.7 (D71); the body caps stay as defence in depth.

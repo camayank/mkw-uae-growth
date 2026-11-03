@@ -9864,6 +9864,103 @@
         "security": []
       }
     },
+    "/api/public/quick": {
+      "post": {
+        "operationId": "postApiPublicQuick",
+        "tags": [
+          "public"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "activity": {
+                    "type": "string",
+                    "enum": [
+                      "trading",
+                      "consulting",
+                      "ecommerce",
+                      "tech",
+                      "holding",
+                      "finance",
+                      "virtual_assets",
+                      "health",
+                      "education",
+                      "food",
+                      "construction",
+                      "manufacturing",
+                      "other"
+                    ]
+                  },
+                  "emirate": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "Abu Dhabi",
+                          "Dubai",
+                          "Sharjah",
+                          "Ajman",
+                          "Umm Al Quwain",
+                          "Ras Al Khaimah",
+                          "Fujairah"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "visas": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 50
+                  },
+                  "budget": {
+                    "type": "string",
+                    "enum": [
+                      "up_to_15k",
+                      "up_to_25k",
+                      "up_to_50k",
+                      "open"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "4XX": {
+            "description": "Refused: the message says why",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Server error, with a request id to quote",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
     "/api/requests": {
       "post": {
         "operationId": "postApiRequests",

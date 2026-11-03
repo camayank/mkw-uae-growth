@@ -217,15 +217,17 @@ for (const p of partnerPages) {
   await p.goto(engagementUrl); await p.reload();
   await p.waitForTimeout(800);
   if (worked || !(await p.locator('form[data-form="evidence"]').count())) continue;
-  const first = p.locator("ul.milestones li").first();
+  // U1: the partner's next step is pinned at the top with its evidence form; the steps list below carries no second form.
+  const first = p.locator('form[data-form="evidence"]').first();
+  check("the partner's next step is pinned with its evidence upload (U1):", (await p.locator(".nextaction h2").count()) === 1 && (await p.locator(".nextaction form[data-form=\"evidence\"]").count()) === 1 && (await p.locator('form[data-form="evidence"]').count()) === 1);
   const types = await first.locator('select[name="type"] option').evaluateAll((os) => os.map((o) => o.value).filter((v) => v !== "other"));
   for (const t of types) {
-    await p.locator("ul.milestones li").first().locator('select[name="type"]').selectOption(t);
-    await p.locator("ul.milestones li").first().locator('input[type="file"]').setInputFiles({ name: `${t}.pdf`, mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 demo") });
-    await p.locator("ul.milestones li").first().locator('form[data-form="evidence"] button').click();
+    await p.locator('form[data-form="evidence"]').first().locator('select[name="type"]').selectOption(t);
+    await p.locator('form[data-form="evidence"]').first().locator('input[type="file"]').setInputFiles({ name: `${t}.pdf`, mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 demo") });
+    await p.locator('form[data-form="evidence"]').first().locator("button").click();
     await p.waitForTimeout(700);
   }
-  await p.locator("ul.milestones li").first().locator('button[data-act="ms-submit"]').click();
+  await p.locator('button[data-act="ms-submit"]').first().click();
   await p.waitForTimeout(700);
   log.push("submit: " + (await toastText(p)));
   await p.fill('textarea[name="body"]', "Please send passport copies. You can reach me on +971 50 123 4567 or ali@example.com");

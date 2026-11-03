@@ -1,6 +1,10 @@
 // Tasees workspace: client module (split from app.js in O12; plain ES modules, no build step).
 import { STRUCTURE_LABEL } from "./ops.js";
-import { $app, aed, api, badge, date, deliverables, dropzone, esc, isPlatform, legalBlock, nameOf, obligationLabel, obligationTone, role, table, translatePage, words } from "./core.js";
+import { $app, aed, api, badge, date, deliverables, dropzone, esc, isPlatform, legalBlock, nameOf, obligationLabel, obligationTone, panel, role, table, translatePage, words } from "./core.js";
+
+/** How an offer's tier reads to the client (U1): the priority tier is the same scope at a faster pace. */
+export const TIER_LABEL = { essential: "Essential", standard: "Standard", priority: "Faster" };
+export const tierLabel = (t) => TIER_LABEL[t] ?? words(t);
 
 // What each kind of next action asks the client to do, as a button.
 const ACTION_BUTTON = { offer: "Review the offer", payment: "Pay now", change: "Review the change", approve: "Review and approve", documents: "Upload documents", filing: "Upload the confirmation" };
@@ -29,7 +33,8 @@ const progress = (done, total) =>
   `<div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${done}" aria-label="${done} of ${total} steps approved"><span style="width:${total ? Math.round((done / total) * 100) : 0}%"></span></div>`;
 
 export async function renderClientHome() {
-  const h = await api("GET", "/api/client/home");
+  // The statement and the calendar are the client's own too; a failure in either leaves the overview standing.
+  const [h, st, cal] = await Promise.all([api("GET", "/api/client/home"), api("GET", "/api/client/statement").catch(() => null), api("GET", "/api/client/compliance").catch(() => [])]);
   const offersByRequest = new Map();
   for (const o of h.offers) offersByRequest.set(o.requestId, [...(offersByRequest.get(o.requestId) ?? []), o]);
   const open = h.requests.filter((r) => r.status !== "closed");
@@ -46,14 +51,29 @@ export async function renderClientHome() {
     const what = (r.scope?.lines ?? []).map((l) => `${nameOf(l.code)}${l.qty > 1 ? ` ×${l.qty}` : ""}`).join(", ");
     return `<div class="card"><div class="row between"><b>Request of ${date(r.createdAt)}</b>${badge(r.status)}</div>
       <p class="small">${esc(what)}</p>
-      ${offers.length ? `<div class="row">${offers.map((o) => `<a class="btn sm${o.status === "published" ? " primary" : ""}" href="#/offer/${o.id}"><span style="text-transform:capitalize">${esc(o.tier)}</span> · ${aed(o.clientTotal)}</a>`).join("")}</div>` : `<p class="small muted">Being priced: partner firms quote sealed prices and MKW Advisors checks them.</p>`}
+      ${offers.length ? `<div class="row">${offers.map((o) => `<a class="btn sm${o.status === "published" ? " primary" : ""}" href="#/offer/${o.id}">${esc(tierLabel(o.tier))} · ${aed(o.clientTotal)}</a>`).join("")}${offers.some((o) => o.status === "published") ? `<span class="small muted">valid until ${date(offers.find((o) => o.status === "published").validTo)}</span>` : ""}</div>` : `<p class="small muted">Being priced: partner firms quote sealed prices and MKW Advisors checks them.</p>`}
       ${r.adviceStatus === "approved" ? `<p class="small"><a href="#/request/${r.id}">Our advice on structure and place</a></p>` : r.adviceStatus === "pending_review" ? `<p class="small muted">Advice on structure and place: being checked by a person</p>` : ""}</div>`;
   };
+  // Money, from the statement the client already reads; the next dates, from the compliance calendar.
+  const moneyCard = st
+    ? `<section class="card money" aria-labelledby="money-h"><h2 id="money-h">Money</h2>
+      <dl><dt>Paid to date</dt><dd class="num">${aed(st.totals.paid)}</dd><dt>Invoiced, net of credit notes</dt><dd class="num">${aed(st.totals.invoiced)}</dd><dt class="total">Due now</dt><dd class="num total">${aed(st.totals.due)}</dd></dl>
+      <p class="small muted">Government fees are passed on at cost; a tax invoice is issued for every payment.</p><p class="small"><a href="#/statement">Statement and invoices</a></p></section>`
+    : "";
+  const upcoming = cal.filter((o) => !["met", "waived"].includes(o.status)).slice(0, 3);
+  const calendarCard = upcoming.length
+    ? `<h2 class="section">Compliance calendar</h2><div class="card flush">${table(
+        ["Due", "Obligation", "Status"],
+        upcoming.map((o) => `<tr><td><b>${date(o.dueDate)}</b></td><td>${esc(o.title)}${o.confidence !== "confirmed" ? ` ${badge("UNCERTAIN")}` : ""}</td><td>${badge(obligationTone(o), obligationLabel(o))}</td></tr>`),
+      )}<p class="small muted pad" style="padding-top:8px">Dates confirmed by a person at MKW Advisors; nothing is filed for you unless it is part of an offer. <a href="#/compliance">Full calendar</a></p></div>`
+    : "";
   $app.innerHTML = `
   <div class="row between"><h1>Your company with Tasees</h1><a class="btn" href="#/new">Start a new request</a></div>
   ${nextActionCard(h.nextActions, h.whatsNext)}
-  <h2 class="section">Engagements</h2>
-  ${live.length ? `<div class="grid cols-2">${live.map(engagementCard).join("")}</div>` : `<p class="muted">No engagement in progress. Accept an offer to start one.</p>`}
+  <div class="grid cols-2">
+    ${live.length ? live.map(engagementCard).join("") : `<section class="card" aria-labelledby="eng-h"><h2 id="eng-h">Engagements</h2><p class="muted">No engagement in progress. Accept an offer to start one.</p></section>`}
+    ${moneyCard}
+  </div>
   ${done.length ? `<details class="more"><summary>${done.length} completed engagement${done.length > 1 ? "s" : ""}</summary><div class="grid cols-2" style="margin-top:12px">${done.map(engagementCard).join("")}</div></details>` : ""}
   <h2 class="section">Requests and offers</h2>
   ${open.length ? `<div class="grid cols-2">${open.map(requestCard).join("")}</div>` : `<p class="muted">No open requests. <a href="#/new">Tell us what you need</a> and we come back with offers.</p>`}
@@ -67,7 +87,8 @@ export async function renderClientHome() {
           ),
         )}</div>`
       : ""
-  }`;
+  }
+  ${calendarCard}`;
 }
 
 export async function renderClientOffer(id) {
@@ -84,13 +105,14 @@ export async function renderClientOffer(id) {
   <p class="lead">A proposal from MKW Advisors for ${esc(o.lines.map((l) => l.name).join(", "))}. Vetted partner firms do the work; MKW Advisors manages the scope, the price, the quality and the payments.</p>
   ${
     siblings.length > 1
-      ? `<nav class="tiers" aria-label="Choose an option">${siblings
-          .map(
-            (s) => `<a class="tier ${s.id === o.id ? "best" : ""}" href="#/offer/${s.id}"${s.id === o.id ? ' aria-current="page"' : ""}>
-              <span class="row between"><b style="text-transform:capitalize">${esc(s.tier)}</b>${s.id === o.id ? badge("ok", "shown") : ""}</span>
-              <span class="price">${aed(s.clientTotal)}</span></a>`,
-          )
-          .join("")}</nav>`
+      ? `<section class="card" aria-labelledby="pick-h"><div class="row between"><h2 id="pick-h">One offer, with ${siblings.length === 2 ? "a faster option" : "other options"}</h2><span class="small muted">The same scope and the same partner standard either way; only the pace differs.</span></div>
+          <nav class="tiers" aria-label="Choose an option">${siblings
+            .map((s) =>
+              s.id === o.id
+                ? `<div class="tier best" aria-current="page"><span class="row between"><b>${esc(tierLabel(s.tier))}</b>${badge("ok", "selected")}</span><span class="price">${aed(s.clientTotal)}</span>${s.tier === o.tier ? `<span class="small muted">about ${p.estimateWorkingDays} working days</span>` : ""}</div>`
+                : `<a class="tier" href="#/offer/${s.id}"><span class="row between"><b>${esc(tierLabel(s.tier))}</b></span><span class="price">${aed(s.clientTotal)}</span><span class="switch small">Switch to ${esc(tierLabel(s.tier))}</span></a>`,
+            )
+            .join("")}</nav></section>`
       : ""
   }
   <div class="proposal">
@@ -127,7 +149,7 @@ export async function renderClientOffer(id) {
                   ? `${legalBlock(terms, "Tasees client terms")}
                      <label class="small accept-terms"><input type="checkbox" data-terms-version="${esc(terms.version)}" /> I have read and accept the Tasees client terms, version ${esc(terms.version)}${terms.draft ? " (draft, pending legal review)" : ""}</label>`
                   : ""
-              }<button class="primary big" data-act="accept-offer" data-id="${o.id}">Accept this offer</button>`
+              }<button class="primary big" data-act="accept-offer" data-id="${o.id}">Accept this offer · ${aed(o.clientTotal)}</button>`
             : `<p class="notice small">Only the account owner can accept an offer.</p>`
           : `<p class="small muted">This offer is ${esc(words(o.status))}.</p>`
       }</section>

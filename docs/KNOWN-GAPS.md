@@ -207,6 +207,18 @@ in a browser; everything listed here is not.
 80. **Staging checks were not run.** No cloud account exists (gap 6a); `docs/evidence/E6/VERIFICATION.md` lists each
     blocked check and what unblocks it. The container image build is verified by CI only.
 
+## U1: client and partner workspace redesign
+
+81. **Partner screens are English only**, including the redesigned work and engagement pages; the Arabic partner
+    wording on the design canvas was not shipped and needs a native reviewer first (O15).
+82. **The "In short" summary is a reading of the advice, not a new judgement.** It takes the recommended structure, the
+    first-ranked place, the first reason and up to two findings to confirm. A case whose most important point is the
+    third finding reads less sharply; the full reasoning is always one panel below.
+83. **The offer switch shows what ops built.** If ops build three tiers the client sees three; the design's "one
+    offer with a faster option" is the two-tier case. Whether to stop building the essential tier is a product decision.
+84. **The partner's offer row does not show the client's document status before acceptance**, because the allocation
+    brief does not carry it; the row says so. Adding it means widening the brief, a later change.
+
 ## O7: launch-gate preparation
 
 43. ~~zod 3 has a memory-exhaustion advisory.~~ Closed by S1: zod 4.6.7 (D71); the body caps stay as defence in depth.

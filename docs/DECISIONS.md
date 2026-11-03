@@ -782,3 +782,19 @@ reviewed" and "structures only, no figures". This is the documented resolution o
   blocked with what unblocks it (`docs/evidence/E6/VERIFICATION.md`). No staging or live readiness is claimed
   without the owner's accounts.
 
+**D84. The workspace is read from the next action down, and what is not needed folds away.** (U1, from the design
+canvas of 3 Nov 2026 and its review round.)
+- A client's overview, engagement and advice, and a partner's work and engagement pages, open on the one thing that
+  needs the reader, with the date something happens if they do nothing; messages sit beside it. Documents, steps,
+  payments, scope and scope changes are folding panels whose headings carry their state, open only while something
+  in them waits on the reader. The timeline of steps stays open: it is the record.
+- The advice gets a two-sentence summary (the recommended structure, the place it points to, the first reason and
+  up to two points to confirm), built only from the engine's own labelled text; the full reasoning follows in one
+  panel. Nothing is added to the advice and nothing is dropped from it.
+- The priority tier is shown to clients as "Faster": the same scope at a faster pace, which is what it is. Ops still
+  decide which tiers to build; the screen handles any number, one shown as selected and the others as a switch.
+- On a phone, clients and partners get a bottom tab bar with icons; MKW staff keep the grouped menu, which carries
+  fifteen pages. The same `nav#nav` element serves both, so nothing about routing or keyboard access changes.
+- Partner screens stay English (O15 covers Arabic for partners and staff); every new client string has an Arabic
+  entry under the existing reviewer gate.
+

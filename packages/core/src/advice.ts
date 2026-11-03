@@ -280,6 +280,49 @@ function missingFacts(a: AdviceInput): string[] {
 export const SMALL_BUSINESS_RELIEF_LAST_PERIOD_END = "2026-12-31";
 
 /**
+ * The structure the rules reach on the answers alone, before any place is looked at (E13): the preferred structure, or
+ * the closest one that survives the structure rules, or "no structure fits". `advise` then moves to another structure
+ * when no place of this one fits (`structure.no_viable_place`), which depends on the places' own figures; the public
+ * view uses this result instead while any place is unapproved (D95).
+ */
+export function structureOnRules(a: AdviceInput, rules: ScopingRule[]): { recommendation: Structure | null; reasons: Reasoned[]; structures: StructureAssessment[]; noViableOption: boolean } {
+  const pref = preferredStructure(a, rules);
+  // Assess every structure first; the preference only chooses among the ones that survive.
+  const structures = assess(a, rules, [], null).structures;
+  const by = new Map(structures.map((s) => [s.structure, s]));
+  const prefAssessment = by.get(pref.structure)!;
+  const reasons = pref.reasons;
+  if (isViable(prefAssessment.status)) return { recommendation: pref.structure, reasons, structures, noViableOption: false };
+  const next = [...FALLBACK].filter((s) => isViable(by.get(s)!.status)).sort((x, y) => statusRank(by.get(x)!.status) - statusRank(by.get(y)!.status) || FALLBACK.indexOf(x) - FALLBACK.indexOf(y))[0];
+  const fails = prefAssessment.findings.filter((f) => f.outcome === "fail");
+  const why = fails.map((f) => f.text).join(" ");
+  const basedOn = fails.map((f) => f.ruleKey);
+  if (next) {
+    reasons.push(say(rules, "structure.preferred_excluded", `${words(pref.structure)} would otherwise fit, but it is excluded: ${why} ${words(next)} is the closest structure that remains.`, basedOn));
+    return { recommendation: next, reasons, structures, noViableOption: false };
+  }
+  reasons.push(say(rules, "structure.no_viable_option", `No structure we can assess fits all the answers: ${why} A specialist needs to look at this case; we will not guess.`, basedOn));
+  return { recommendation: null, reasons, structures, noViableOption: true };
+}
+
+/** When the founder asked for a structure other than the one recommended: why, as a reason. */
+export function requestedDiffers(a: AdviceInput, rules: ScopingRule[], structures: StructureAssessment[], recommendation: Structure | null): Reasoned | null {
+  const requested = toStructure(a.jurisdiction);
+  if (!requested || requested === recommendation) return null;
+  const r = structures.find((s) => s.structure === requested)!;
+  const failing = r.findings.filter((f) => f.outcome === "fail");
+  const fails = failing.map((f) => f.text);
+  return say(
+    rules,
+    "structure.requested_differs",
+    fails.length
+      ? `You asked for ${words(requested)}, which does not fit: ${fails.join(" ")}`
+      : `You asked for ${words(requested)}; the answers above point to ${words(String(recommendation ?? "a specialist review"))}. Ops will confirm which fits before pricing.`,
+    failing.map((f) => f.ruleKey),
+  );
+}
+
+/**
  * `asOf` is today's date (YYYY-MM-DD) by the application clock. It decides date-bound statements: a company formed
  * after 30 June 2026 has no tax period ending by 31 December 2026 (a first period runs at least six months), so small
  * business relief is not offered to it as a possibility. Without a date the engine does not say it may apply.
@@ -296,26 +339,11 @@ export function advise(a: AdviceInput, rules: ScopingRule[], zones: Zone[], asOf
   let noViableOption = false;
 
   if (a.mode === "new_company") {
-    const pref = preferredStructure(a, rules);
-    // Assess every structure first; the preference only chooses among the ones that survive.
-    structures = assess(a, rules, [], null).structures;
-    const by = new Map(structures.map((s) => [s.structure, s]));
-    const prefAssessment = by.get(pref.structure)!;
-    reasons = pref.reasons;
-    if (isViable(prefAssessment.status)) recommendation = pref.structure;
-    else {
-      const next = [...FALLBACK].filter((s) => isViable(by.get(s)!.status)).sort((x, y) => statusRank(by.get(x)!.status) - statusRank(by.get(y)!.status) || FALLBACK.indexOf(x) - FALLBACK.indexOf(y))[0];
-      const fails = prefAssessment.findings.filter((f) => f.outcome === "fail");
-      const why = fails.map((f) => f.text).join(" ");
-      const basedOn = fails.map((f) => f.ruleKey);
-      if (next) {
-        recommendation = next;
-        reasons.push(say(rules, "structure.preferred_excluded", `${words(pref.structure)} would otherwise fit, but it is excluded: ${why} ${words(next)} is the closest structure that remains.`, basedOn));
-      } else {
-        noViableOption = true;
-        reasons.push(say(rules, "structure.no_viable_option", `No structure we can assess fits all the answers: ${why} A specialist needs to look at this case; we will not guess.`, basedOn));
-      }
-    }
+    const onRules = structureOnRules(a, rules);
+    structures = onRules.structures;
+    reasons = onRules.reasons;
+    recommendation = onRules.recommendation;
+    noViableOption = onRules.noViableOption;
     let all = assess(a, rules, zones, recommendation);
     // A structure that fits on paper but has no place we hold data for that fits every answer (budget, visas,
     // premises) is not a recommendation the founder can act on: move to the closest structure that has one.
@@ -329,22 +357,8 @@ export function advise(a: AdviceInput, rules: ScopingRule[], zones: Zone[], asOf
       recommendation = to;
       all = assess(a, rules, zones, recommendation);
     }
-    const requested = toStructure(a.jurisdiction);
-    if (requested && requested !== recommendation) {
-      const r = by.get(requested)!;
-      const failing = r.findings.filter((f) => f.outcome === "fail");
-      const fails = failing.map((f) => f.text);
-      reasons.push(
-        say(
-          rules,
-          "structure.requested_differs",
-          fails.length
-            ? `You asked for ${words(requested)}, which does not fit: ${fails.join(" ")}`
-            : `You asked for ${words(requested)}; the answers above point to ${words(String(recommendation ?? "a specialist review"))}. Ops will confirm which fits before pricing.`,
-          failing.map((f) => f.ruleKey),
-        ),
-      );
-    }
+    const requested = requestedDiffers(a, rules, structures, recommendation);
+    if (requested) reasons.push(requested);
     viable = all.viable;
     excluded = all.excluded;
     if (!noViableOption && viable.length === 0) {

@@ -121,7 +121,7 @@ describe("the public view (E3, D80)", () => {
     expect(JSON.stringify(p)).not.toMatch(/partner|margin|payout|rate_?card/i);
   });
 
-  it("a conclusion drawn from place rules (no option fits) is public only when those rules are approved", () => {
+  it("a conclusion drawn from place rules (no option fits) is public only when those rules and every place are approved", () => {
     const a = advise(base({ activity: "consulting", customers: "international", visas: 1, budgetAed: 5_000 }), rules, zones, "2026-05-01");
     expect(a.noViableOption).toBe(true);
     const hidden = publicView(a, new Set(["structure.no_viable_option", "structure.free_zone_default"]), new Set(), "2026-05-01");
@@ -133,9 +133,12 @@ describe("the public view (E3, D80)", () => {
     expect(partly.noViableOption).toBe(false);
     // The offshore registry fails on visas twice over (the structure rule and the place's visa limit): both count.
     const all = new Set(["structure.no_viable_option", "structure.free_zone_default", "place.budget", "structure.offshore_no_visas", "place.visa_capacity"]);
-    const shown = publicView(a, all, new Set(), "2026-05-01");
-    expect(shown.noViableOption).toBe(true);
-    expect(shown.excluded.map((x) => x.zone)).toEqual(["RAK ICC"]); // excluded by a structure rule; the place rules still need each place approved
+    // E13: the conclusion judges the places' own figures, so with the rules approved but no place it stays hidden.
+    const noPlaces = publicView(a, all, new Set(), "2026-05-01");
+    expect(noPlaces.noViableOption).toBe(false);
+    expect(noPlaces.excluded.map((x) => x.zone)).toEqual(["RAK ICC"]); // excluded by a structure rule; the place rules still need each place approved
+    expect(publicView(a, all, new Set(zones.map((x) => x.name).filter((x) => x !== "IFZA")), "2026-05-01").noViableOption).toBe(false);
+    expect(publicView(a, all, ALL_PLACES, "2026-05-01").noViableOption).toBe(true);
     const named = publicView(a, all, new Set(["IFZA"]), "2026-05-01");
     expect(named.excluded.map((x) => x.zone).sort()).toEqual(["IFZA", "RAK ICC"]);
   });

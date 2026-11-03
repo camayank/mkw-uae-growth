@@ -20,9 +20,12 @@ out", which is what they measure, instead of how many "fit".
      place they named, the emirate), and an approved place's record (activities, visa package) and lowest estimate.
      The name breaks ties. For an unapproved place, "data unavailable" orders like "to be verified", since it comes
      from the place's unapproved record.
-   - `publicView` lists places in that order.
+   - `publicStatus`: a place no one approved reads "to be verified" unless an approved rule excludes it.
+   - `publicView` lists places in that order, and a conclusion resting on place rules ("no place of this structure
+     fits", "no place fits") is public only when every place is approved.
    - `publicAssessment(input, …)`: the engine over every place on record (not only the advice's first five), filtered
-     and ordered for the public.
+     and ordered for the public. While any place is unapproved, the structure is the one the rules reach on the
+     answers alone (`structureOnRules`, extracted from `advise` with `requestedDiffers`; the engine is unchanged).
 2. **Quick match** (`packages/core/src/quick.ts`): it takes its first three places from the public assessment (in the
    chosen emirate when it has an open place there). It returns `lead`: true only when the first place is approved
    for public display.
@@ -49,10 +52,14 @@ out", which is what they measure, instead of how many "fit".
 ## Acceptance evidence
 
 - Core (`packages/core/test/public-order.test.ts`, new):
-  - With everything approved, the public order equals the engine's order, over 648 founders (activity, emirate, visas,
+  - With everything approved, the public order equals the engine's order, over 972 founders (activity, emirate, visas,
     budget, a named place, premises).
   - With nothing approved, the order is the founder's answers, then the name.
-  - Changing an unapproved place's estimate, activities, facilities or visa package never moves the order.
+  - Changing an unapproved place's estimates, activities, facilities or visa limits never moves the order, a status,
+    the confirmed structure or "no option fits": with and without approved places, budgets included, two or more
+    places of each kind.
+  - An unapproved estimate cannot switch the confirmed structure; with every place approved the engine's move shows.
+- Core (`public.test.ts`): "no option fits" is public only when its rules and every place are approved.
   - An approved place with a checked estimate comes ahead, and approving it moves nothing else.
   - The quick match has no lead with nothing approved, and has one when the first place is approved.
 - Core (`quick.test.ts`): the quick match's first place, count, structure and conclusion equal the full public
@@ -68,7 +75,7 @@ out", which is what they measure, instead of how many "fit".
 
 Evidence recorded on 3 Nov 2026 (`docs/evidence/E13/`):
 
-- Tests (`tests-pglite.txt`): core 146 passed (16 files); API 359 passed, 1 skipped (35 files), on PGlite.
+- Tests (`tests-pglite.txt`): core 147 passed (16 files); API 359 passed, 1 skipped (35 files), on PGlite.
 - Typecheck: `pnpm typecheck` clean (`typecheck.txt`).
 - `scripts/smoke.mjs` against a fresh demo: 313 checks OK, 0 failed (`smoke-log.txt`; 310 after E12).
 - Screenshots:
@@ -76,6 +83,23 @@ Evidence recorded on 3 Nov 2026 (`docs/evidence/E13/`):
   - `105-quick-match-phone.png` (no lead, 390 px);
   - `115-quick-match-lead.png` (IFZA approved, 1280 px);
   - `95-public-home.png` (the homepage copy).
+
+## Independent review
+
+One blocking finding, fixed with a test. Through the structure switch (`structure.no_viable_place`), an unapproved
+estimate or visa limit could change the structure the public sees as confirmed, and with it the order.
+
+Also fixed:
+- An unapproved place could read as a fit, or as "data unavailable", from its unapproved facilities record.
+- The perturbation test missed budgets, visa limits and kinds with one place.
+- An approved place with no estimate could lead.
+- A stale named place could reach a later review request.
+- Leftover wording ("the place to look at first"), and "Your match" over a list with no lead.
+
+Recorded rather than changed:
+- The named place is still matched by authority and alias, since that is the founder's own answer (D95).
+- The engine still runs about six times per answer (gap 121).
+- The review request's emirate for "anywhere" (gap 120).
 
 ## Dependencies
 

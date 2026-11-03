@@ -322,9 +322,13 @@ in a browser; everything listed here is not.
      name") and names no lead. Approving the structure and place rules and the first-wave places (gap 92) is what
      gives the public order meaning; nothing is estimated in between.
 119. **The new Arabic strings for E13 are drafts** until the Arabic reviewer signs them off (with gaps 111 and 116).
-120. **A review request sent from a quick match without a lead names no place**, only the emirate of the first place
-     listed (as before when the founder chose "anywhere"): the founder did not choose that place, so the reviewer
-     picks. With a lead, the approved place is sent as the place they have in mind, as in E8.
+120. **A review request sent from a quick match without a lead names no place.** It carries the emirate the founder
+     chose or, for "anywhere", the emirate of the first place listed (first by name while nothing is approved), so the
+     reviewer confirms the emirate before pricing. With a lead, the approved place is sent as the place they have in
+     mind, as in E8.
+121. **A quick match runs the engine about six times per answer** (the counts per budget band, the full public
+     assessment and the structure on the rules alone). Each run is linear in places and rules; at the first wave's
+     size this is milliseconds. Reusing one run across them is an optimisation for a larger catalogue.
 
 ## E9: workspace look
 

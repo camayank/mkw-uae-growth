@@ -28,6 +28,10 @@ const zones: Zone[] = [
   z("Dubai DET mainland", "Dubai", "mainland", 2, 15_000, ["trading", "food"]),
   z("RAK ICC", "Ras Al Khaimah", "offshore", 0, 8_000, ["holding"], { visaMax: 0 }),
   z("DIFC", "Dubai", "financial", 2, 30_000, ["finance", "holding"]),
+  // A second place of each other kind, so a status flip inside a kind could reorder it (independent review of E13).
+  z("Ajman DED", "Ajman", "mainland", 2, 11_000, ["trading", "consulting"]),
+  z("ADGM", "Abu Dhabi", "financial", 2, 25_000, ["finance"]),
+  z("Ajman Offshore", "Ajman", "offshore", 0, 7_000, ["holding"], { visaMax: 0 }),
 ];
 const NONE = new Set<string>();
 const ALL_RULES = new Set(KEYS);
@@ -37,7 +41,7 @@ const AS_OF = "2026-11-03";
 const inputs: AdviceInput[] = [];
 for (const activity of ["trading", "consulting", "tech", "holding", "finance", "manufacturing"] as const)
   for (const emirate of ["Dubai", "Sharjah", ""])
-    for (const visas of [0, 2, 8]) for (const budgetAed of [null, 15_000]) for (const freeZone of [undefined, "Meydan", "RAK ICC"]) for (const premises of [undefined, "warehouse"] as const)
+    for (const visas of [0, 2, 8]) for (const budgetAed of [null, 10_000, 15_000]) for (const freeZone of [undefined, "Meydan", "RAK ICC"]) for (const premises of [undefined, "warehouse"] as const)
       inputs.push({ mode: "new_company", emirate, activity, visas, budgetAed, ...(freeZone ? { freeZone } : {}), ...(premises ? { premises } : {}) });
 
 const order = (input: AdviceInput, zs: Zone[], approvedRules: ReadonlySet<string>, approvedPlaces: ReadonlySet<string>) =>
@@ -65,20 +69,42 @@ describe("the public order of places (E13, D95)", () => {
     }
   });
 
-  it("an unapproved place's estimate, activities, facilities or visa package never moves the order", () => {
-    const approved = new Set(["IFZA", "SHAMS"]);
+  it("an unapproved place's estimates, activities, facilities or visa limits never move the order, the confirmed structure or a status", () => {
     let seed = 7;
     const rnd = () => ((seed = (seed * 48271) % 2147483647) / 2147483647);
-    for (const input of inputs.filter((x) => x.budgetAed === null)) {
-      const base = order(input, zones, ALL_RULES, approved);
-      for (let k = 0; k < 4; k++) {
-        const shaken = zones.map((x) => (approved.has(x.name) ? x : { ...x, costMinFils: Math.round(rnd() * 5_000_000), activities: rnd() < 0.5 ? [] : [input.activity!, "other"], visaQuota: x.type === "offshore" ? 0 : 1 + Math.floor(rnd() * 3), facilities: rnd() < 0.5 ? undefined : ["office", "warehouse", "industrial"], activitiesListed: rnd() < 0.5 ? undefined : [input.activity!], activitiesListedConfidence: "verified" as const }));
-        const label = JSON.stringify({ input, k });
-        // Viability can change with the visa package, but only through a place rule, which the public cannot see for an
-        // unapproved place: the same places are listed, in the same order.
-        expect(order(input, shaken, ALL_RULES, approved), label).toEqual(base);
+    const view = (input: AdviceInput, zs: Zone[], approved: ReadonlySet<string>) => {
+      const v = publicAssessment(input, rules, zs, ALL_RULES, approved, AS_OF);
+      return { places: v.places.map((p) => `${p.zone}:${p.status}`), excluded: v.excluded.map((p) => p.zone), structure: v.structure.confirmed ? v.structure.recommendation : null, noViable: v.noViableOption };
+    };
+    for (const approved of [NONE, new Set(["IFZA", "SHAMS"])])
+      for (const input of inputs.filter((_, i) => i % 2 === 0)) {
+        const base = view(input, zones, approved);
+        for (let k = 0; k < 3; k++) {
+          const shaken = zones.map((x) => {
+            if (approved.has(x.name)) return x;
+            const min = Math.round(rnd() * 5_000_000);
+            return { ...x, costMinFils: min, costMaxFils: min + Math.round(rnd() * 2_000_000), activities: rnd() < 0.5 ? [] : [input.activity!, "other"], visaQuota: x.type === "offshore" ? 0 : Math.floor(rnd() * 4), visaMax: x.type === "offshore" ? 0 : rnd() < 0.3 ? undefined : Math.floor(rnd() * 10), facilities: rnd() < 0.5 ? undefined : rnd() < 0.5 ? ["office"] : ["office", "warehouse", "industrial"], activitiesListed: rnd() < 0.5 ? undefined : [input.activity!], activitiesListedConfidence: "verified" as const };
+          });
+          expect(view(input, shaken, approved), JSON.stringify({ input, approved: [...approved], k })).toEqual(base);
+        }
       }
-    }
+  });
+
+  it("an unapproved estimate cannot switch the structure the public sees as confirmed (independent review of E13)", () => {
+    // Consulting on AED 12,000 with every rule approved and no place: raising the free zones' unapproved estimates
+    // above the budget makes the engine move to the mainland, but the public sees no confirmed structure either way.
+    const input: AdviceInput = { mode: "new_company", emirate: "Dubai", activity: "consulting", visas: 1, budgetAed: 12_000 };
+    const dear = zones.map((x) => (x.type === "free_zone" ? { ...x, costMinFils: 5_000_000, costMaxFils: 6_000_000 } : x));
+    expect(advise(input, rules, dear, AS_OF).structure.recommendation).not.toBe(advise(input, rules, zones, AS_OF).structure.recommendation);
+    const before = publicAssessment(input, rules, zones, ALL_RULES, NONE, AS_OF);
+    const after = publicAssessment(input, rules, dear, ALL_RULES, NONE, AS_OF);
+    expect(after.structure).toEqual(before.structure);
+    expect(before.structure).toMatchObject({ recommendation: "free_zone", confirmed: true }); // what the structure rules say
+    expect(after.places.map((p) => p.zone)).toEqual(before.places.map((p) => p.zone));
+    // With every place approved the public sees the engine's move, and its reason.
+    const approvedAll = publicAssessment(input, rules, dear, ALL_RULES, new Set(dear.map((x) => x.name)), AS_OF);
+    expect(approvedAll.structure).toMatchObject({ recommendation: "mainland", confirmed: true });
+    expect(approvedAll.structure.reasons.some((r) => r.ruleKey === "structure.no_viable_place")).toBe(true);
   });
 
   it("an approved place with a lower checked estimate comes ahead of an unapproved one; approving it changes nothing else", () => {

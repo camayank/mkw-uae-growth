@@ -255,6 +255,7 @@ export const AR = {
   // E13 (draft until the Arabic reviewer signs it off)
   "A place worth reviewing first in": "جهة جديرة بالمراجعة أولاً في",
   "Places to review in": "جهات للمراجعة في",
+  "Your shortlist": "قائمتك المختصرة",
   "Places to review across the UAE": "جهات للمراجعة في أنحاء الإمارات",
   "None of these places has been checked by a named person yet, so none is put first: they are listed by your answers, then by name.": "لم يتحقق شخص مسمّى من أي من هذه الجهات بعد، لذا لا تُقدَّم إحداها على غيرها: هي مرتبة حسب إجاباتك ثم حسب الاسم.",
   "Put first on what a named person has checked and on your answers. A person confirms it fits before anything is priced.": "قُدّمت بناءً على ما تحقق منه شخص مسمّى وعلى إجاباتك. يؤكد شخص أنها مناسبة قبل أي تسعير.",

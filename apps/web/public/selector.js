@@ -452,8 +452,8 @@ async function renderHome() {
 $("nav-start").addEventListener("click", (ev) => { ev.preventDefault(); startQuick(); });
 for (const b of document.querySelectorAll(".industry")) b.addEventListener("click", () => startQuick(b.dataset.activity));
 
-// E8 quick match: four answers (what the business does, the emirate, the visas, a budget band) to the place to look
-// at first, with the count of places still open after each answer. The platform runs the same engine and public
+// E8 quick match: four answers (what the business does, the emirate, the visas, a budget band) to the places worth
+// reviewing (a lead only for an approved place, E13), with the count of places not yet ruled out after each answer. The platform runs the same engine and public
 // filter as the full assessment (D80): a count falls only on an exclusion a named person approved, and a figure shows
 // only for an approved place. The answers stay in memory; "see the full comparison" carries them into the questions.
 const QUICK_LABELS = ["Activity", "Location", "Visas", "Budget", "Your match"];
@@ -514,11 +514,9 @@ function syncAnswers() {
   if (quick.activity) answers.activity = quick.activity;
   if (quick.emirate) answers.emirate = quick.emirate;
   const d = quick.step === 5 ? fresh() : null;
-  if (d?.best) {
-    answers.emirate = d.best.emirate;
-    if (d.lead) answers.freeZone = quickZone = d.best.zone;
-    else if (quickZone && answers.freeZone === quickZone) { delete answers.freeZone; quickZone = null; }
-  }
+  if (d?.best) answers.emirate = d.best.emirate;
+  if (d?.best && d.lead) answers.freeZone = quickZone = d.best.zone;
+  else if (d && quickZone && answers.freeZone === quickZone) { delete answers.freeZone; quickZone = null; }
   if (quick.visas != null) answers.visas = quick.visas;
   const band = BANDS.find((b) => b[0] === quick.budget);
   if (band) { if (band[2] != null) answers.budgetAed = band[2]; else delete answers.budgetAed; }
@@ -624,7 +622,7 @@ function quickResultHtml() {
   // E13 (D95): a place is presented as the one to review first only when a named person approved it for public
   // display; otherwise the places are listed side by side, by the founder's answers and then by name, with no lead.
   if (!d.lead) {
-    return `<div class="qhead"><p class="eyebrow">Your match</p><h2 id="quick-title" tabindex="-1">${shownIn === "the UAE" ? "Places to review across the UAE" : `Places to review in <span data-no-i18n>${esc(shownIn)}</span>`}</h2>
+    return `<div class="qhead"><p class="eyebrow">Your shortlist</p><h2 id="quick-title" tabindex="-1">${shownIn === "the UAE" ? "Places to review across the UAE" : `Places to review in <span data-no-i18n>${esc(shownIn)}</span>`}</h2>
       <p class="small muted">None of these places has been checked by a named person yet, so none is put first: they are listed by your answers, then by name.</p>
       ${elsewhere}</div>
     <div class="alts" id="quick-places">${[b, ...d.alternatives].map(alt).join("")}</div>

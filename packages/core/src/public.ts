@@ -8,7 +8,7 @@
  *
  * Pure. It never reads the rules or places itself; the caller decides what is approved.
  */
-import { advise, asCandidate, type Advice, type AdviceInput, type Candidate, type Reasoned, type ScopingRule, type Zone } from "./advice.ts";
+import { advise, asCandidate, requestedDiffers, structureOnRules, type Advice, type AdviceInput, type Candidate, type Reasoned, type ScopingRule, type Zone } from "./advice.ts";
 import { assess, ELIGIBILITY_ENGINE_VERSION, statusRank, type EligibilityStatus, type Finding, type Structure } from "./eligibility.ts";
 
 export const PUBLIC_DISCLAIMER =
@@ -97,9 +97,14 @@ const CONTRADICTION_RULES: Array<[RegExp, string]> = [
 export const publicFindingOk = (f: Finding, placeApproved: boolean, approvedRules: ReadonlySet<string>): boolean =>
   !!f.ruleKey && approvedRules.has(f.ruleKey) && (placeApproved || !f.ruleKey.startsWith("place."));
 
-/** The status the public sees: an exclusion needs its failing rule approved; a fit needs every finding approved. */
+/**
+ * The status the public sees: an exclusion needs its failing rule approved; a fit needs every finding approved. A place
+ * no one approved is never a fit nor "data unavailable" (E13): which place checks ran, and what its record lacks, come
+ * from its unapproved record, so it reads "to be verified" unless an approved rule excludes it.
+ */
 export function publicStatus(status: EligibilityStatus, findings: Finding[], placeApproved: boolean, approvedRules: ReadonlySet<string>): EligibilityStatus {
   if (status === "INELIGIBLE") return findings.some((f) => f.outcome === "fail" && publicFindingOk(f, placeApproved, approvedRules)) ? "INELIGIBLE" : "REQUIRES_VERIFICATION";
+  if (!placeApproved) return "REQUIRES_VERIFICATION";
   if (status === "ELIGIBLE_VERIFIED" || status === "ELIGIBLE_CONDITIONAL") return findings.every((f) => publicFindingOk(f, placeApproved, approvedRules)) ? status : "REQUIRES_VERIFICATION";
   return status;
 }
@@ -112,15 +117,18 @@ const structureOfType = (t: Candidate["type"]): Structure => (t === "financial" 
  * stays hidden:
  * 1. the structure, when the public may see it is the recommended one, then the other structures by the status the
  *    public sees;
- * 2. the place's status as the public sees it (`publicStatus`; for an unapproved place "data unavailable" orders like
- *    "to be verified", since it comes from the place's unapproved record);
+ * 2. the place's status as the public sees it (`publicStatus`: "to be verified" for every unapproved place it does not
+ *    exclude on an approved rule);
  * 3. the founder's own answers (the place they named, the emirate they chose) and, for an approved place only, what
  *    its approved record says (it lists the activity; its standard package covers the visas), with the engine's weights;
- * 4. an approved place's lowest setup estimate, ahead of places with no approved estimate;
+ * 4. an approved place's lowest setup estimate, ahead of places with no approved estimate (an approved place with no
+ *    estimate on record, 0, sorts with them rather than as the cheapest, where the engine would put it first);
  * 5. the name.
  * The place the founder named leads, as in the engine, unless it is of another structure than the confirmed one.
- * With nothing approved this is the founder's answers, then the name. With everything approved it is the engine's
- * order exactly (a core test holds both). Staff keep the engine's order, which uses everything on record.
+ * With nothing approved this is the founder's answers, then the name. With everything approved (and an estimate on
+ * every place) it is the engine's order exactly; core tests hold both. The structure counts as confirmed only when
+ * every reason behind it is public, and a reason resting on place rules is public only when the places are approved
+ * (`publicView`). Staff keep the engine's order, which uses everything on record.
  */
 export function publicOrder(places: Candidate[], approvedRules: ReadonlySet<string>, approvedPlaces: ReadonlySet<string>, confirmed: Structure | null, structureStatus: ReadonlyMap<Structure, EligibilityStatus>): Candidate[] {
   const named = (p: Candidate) => p.why.includes("the place you named");
@@ -128,13 +136,10 @@ export function publicOrder(places: Candidate[], approvedRules: ReadonlySet<stri
     const ok = approvedPlaces.has(p.zone);
     const structure = structureOfType(p.type);
     const group = confirmed && structure === confirmed ? -1 : statusRank(structureStatus.get(structure) ?? "REQUIRES_VERIFICATION");
-    // "Data unavailable" on an unapproved place comes from its unapproved record (what it lists, its facilities): it
-    // orders like "to be verified", so no unchecked record moves a place.
-    const shown = publicStatus(p.status ?? "REQUIRES_VERIFICATION", p.findings ?? [], ok, approvedRules);
-    const status = statusRank(!ok && shown === "DATA_UNAVAILABLE" ? "REQUIRES_VERIFICATION" : shown);
+    const status = statusRank(publicStatus(p.status ?? "REQUIRES_VERIFICATION", p.findings ?? [], ok, approvedRules));
     const has = (f: (w: string) => boolean) => p.why.some(f);
     const score = (named(p) ? 5 : 0) + (has((w) => w.startsWith("in ")) ? 3 : 0) + (ok ? (has((w) => w.startsWith("known for")) ? 2 : 0) + (has((w) => w.endsWith("visa(s) in the standard package")) ? 1 : 0) : 0);
-    const cost = ok ? p.costMinFils : Number.POSITIVE_INFINITY;
+    const cost = ok && p.costMinFils > 0 ? p.costMinFils : Number.POSITIVE_INFINITY;
     return { p, group, status, score, cost };
   });
   keyed.sort((x, y) => x.group - y.group || x.status - y.status || y.score - x.score || (x.cost === y.cost ? 0 : x.cost < y.cost ? -1 : 1) || x.p.zone.localeCompare(y.p.zone));
@@ -150,13 +155,25 @@ export function publicOrder(places: Candidate[], approvedRules: ReadonlySet<stri
  */
 export function publicAssessment(input: AdviceInput, rules: ScopingRule[], zones: Zone[], approvedRules: ReadonlySet<string>, approvedPlaces: ReadonlySet<string>, asOf?: string): PublicAssessment {
   const advice = advise(input, rules, zones, asOf);
-  return publicView({ ...advice, places: assess(input, rules, zones, null).viable.map(asCandidate) }, approvedRules, approvedPlaces, asOf);
+  // While any place is unapproved, the structure is the one the rules reach on the answers alone: the engine's move to
+  // another structure when no place of this one fits rests on the places' own figures (D95).
+  const structure = zones.every((z) => approvedPlaces.has(z.name)) ? advice.structure : (() => {
+    const s = structureOnRules(input, rules);
+    const requested = requestedDiffers(input, rules, s.structures, s.recommendation);
+    return { recommendation: s.recommendation, reasons: requested ? [...s.reasons, requested] : s.reasons };
+  })();
+  return publicView({ ...advice, structure, places: assess(input, rules, zones, null).viable.map(asCandidate) }, approvedRules, approvedPlaces, asOf);
 }
 
 export function publicView(a: Advice, approvedRules: ReadonlySet<string>, approvedPlaces: ReadonlySet<string>, asOf?: string): PublicAssessment {
   const ruleOk = (key: string | undefined) => !!key && approvedRules.has(key);
+  // E13: a conclusion resting on place rules (no place of a structure fits; no place fits at all) judges the places'
+  // own figures, so it is public only when every place it judged is approved too; otherwise an unapproved estimate or
+  // visa cap could switch the structure the public sees as confirmed, and with it the public order.
+  const everyPlaceApproved = [...a.places, ...(a.excluded ?? [])].every((p) => approvedPlaces.has(p.zone));
   const statement = (r: Reasoned): PublicStatement => {
-    const ok = ruleOk(r.ruleKey) && (r.basedOn ?? []).every((k) => approvedRules.has(k));
+    const keys = [r.ruleKey ?? "", ...(r.basedOn ?? [])];
+    const ok = ruleOk(r.ruleKey) && (r.basedOn ?? []).every((k) => approvedRules.has(k)) && (everyPlaceApproved || !keys.some((k) => k.startsWith("place.")));
     return { topic: topicOf(r.ruleKey ?? ""), ...(ok ? { ruleKey: r.ruleKey, text: r.text } : {}), toBeVerified: !ok };
   };
   const findingOk = (f: Finding, placeApproved: boolean) => publicFindingOk(f, placeApproved, approvedRules);

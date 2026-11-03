@@ -77,3 +77,14 @@ package or relationship is invented: a place without evidence stays "not on reco
 ## Rollback
 
 - Revert the pull request. Migration 020 adds columns and widens checks only.
+
+## Evidence
+
+| Claim | Evidence |
+| --- | --- |
+| Tests | `pnpm typecheck` clean; `pnpm test`: 125 core + 338 API (1 PostgreSQL-only test skipped on PGlite) = 463 (E7A: 108 + 334). New: `packages/core/test/coverage.test.ts` (counted once, sub-zone under its parent, historical excluded, tasks first wave first, CSV layout), `packages/core/test/engine-cases.test.ts` (one test per 2D case), `apps/api/test/coverage.test.ts` (reference, effective date and source kind on a fact; an intermediary cannot be verified in the service or the database; the matrix over the seed; the backlog CSV imports back and writes nothing; founder-only classification, audited, historical leaves the counts and the engine) |
+| Smoke | `docs/evidence/E7B/smoke-log.txt`: 242 checks OK on a fresh demo (E7A: 234), 8 marked E7B: the fact's reference and effective date in the history; the Coverage page's counts, matrix, backlog and classification forms; approvals outstanding and expiring evidence; the backlog CSV in the importer's layout; a place marked historical leaves the counts; the page at 390 px without overflow; axe at both widths |
+| Accessibility | `axe.json`: 45 screens at 1280 and 390 px, 0 violations (E7A: 43) |
+| Screens | `96-coverage.png` (1280 px, full page), `97-mobile-coverage.png` (390 px), `82-scoping-catalogue.png` (the record-evidence form with reference, effective date and source kind, and the history) |
+| Records | D86; KNOWN-GAPS 92–95; `docs/DESIGN.md` row; `docs/ENTITY-PROGRAMME.md` (directory row and E7B paragraph); `docs/DEPLOY.md` importer note; `docs/templates/catalogue-facts.csv` |
+

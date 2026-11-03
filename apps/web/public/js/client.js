@@ -2,8 +2,9 @@
 import { STRUCTURE_LABEL } from "./ops.js";
 import { $app, aed, api, badge, date, deliverables, dropzone, esc, isPlatform, legalBlock, nameOf, obligationLabel, obligationTone, panel, role, table, translatePage, words } from "./core.js";
 
-/** How an offer's tier reads to the client (U1): the priority tier is the same scope at a faster pace. */
-export const TIER_LABEL = { essential: "Essential", standard: "Standard", priority: "Faster" };
+/** How an offer's tier reads to the client (U1). The priority tier is priced on the quickest partner quote, but the proposal's
+ * estimate and the delivery plan come from the scope templates, so the screen makes no pace promise (gap 85). */
+export const TIER_LABEL = { essential: "Essential", standard: "Standard", priority: "Priority" };
 export const tierLabel = (t) => TIER_LABEL[t] ?? words(t);
 
 // What each kind of next action asks the client to do, as a button.
@@ -105,7 +106,7 @@ export async function renderClientOffer(id) {
   <p class="lead">A proposal from MKW Advisors for ${esc(o.lines.map((l) => l.name).join(", "))}. Vetted partner firms do the work; MKW Advisors manages the scope, the price, the quality and the payments.</p>
   ${
     siblings.length > 1
-      ? `<section class="card" aria-labelledby="pick-h"><div class="row between"><h2 id="pick-h">One offer, with ${siblings.length === 2 ? "a faster option" : "other options"}</h2><span class="small muted">The same scope and the same partner standard either way; only the pace differs.</span></div>
+      ? `<section class="card" aria-labelledby="pick-h"><div class="row between"><h2 id="pick-h">One offer, with ${siblings.length === 2 ? "another option" : "other options"}</h2><span class="small muted">The same scope and the same partner standard either way; the price and the partner firm differ.</span></div>
           <nav class="tiers" aria-label="Choose an option">${siblings
             .map((s) =>
               s.id === o.id

@@ -341,12 +341,16 @@ export function inShort(a) {
   const rec = a.structure.recommendation;
   const place = a.places[0];
   const structureFindings = (a.structures ?? []).find((s) => s.structure === rec)?.findings ?? [];
-  const toConfirm = [...(place?.findings ?? []).filter((f) => f.outcome === "condition" || f.outcome === "unknown"), ...structureFindings.filter((f) => f.outcome === "condition")].slice(0, 2);
+  const allToConfirm = [...(place?.findings ?? []).filter((f) => f.outcome === "condition" || f.outcome === "unknown"), ...structureFindings.filter((f) => f.outcome === "condition")];
+  const toConfirm = allToConfirm.slice(0, 2);
   const none = a.noViableOption || !rec || !STRUCTURE_NOUN[rec];
   const headline = none
     ? "No option fits every answer yet; a specialist at MKW Advisors looks at your case."
-    : `${/^[aeiou]/i.test(STRUCTURE_NOUN[rec]) ? "An" : "A"} ${STRUCTURE_NOUN[rec]}${place?.emirate ? ` in ${place.emirate}` : ""} fits what you told us.${toConfirm.length ? ` ${toConfirm.length === 1 ? "One thing needs" : `${toConfirm.length} things need`} confirming before we quote.` : ""}`;
-  const why = a.structure.reasons[0];
+    : `${/^[aeiou]/i.test(STRUCTURE_NOUN[rec]) ? "An" : "A"} ${STRUCTURE_NOUN[rec]}${place?.emirate ? ` in ${place.emirate}` : ""} fits what you told us.${allToConfirm.length ? ` ${allToConfirm.length === 1 ? "One thing needs" : `${allToConfirm.length} things need`} confirming before we quote.` : ""}`;
+  // When the engine moved away from the preferred or requested structure, the reason that says so is the one that
+  // explains the headline; otherwise the first reason argues for the structure named.
+  const turning = ["structure.preferred_excluded", "structure.no_viable_place", "structure.requested_differs", "structure.no_viable_option"];
+  const why = [...a.structure.reasons].reverse().find((r) => turning.includes(r.ruleKey)) ?? a.structure.reasons[0];
   return `<section class="summary" aria-labelledby="short-h"><p class="eyebrow">In short</p><h2 id="short-h">${esc(headline)}</h2>
     ${why ? `<p><span data-no-i18n>${esc(why.text)}</span> ${confBadge(why.confidence)}</p>` : ""}
     ${toConfirm.length ? `<div class="confirm">${toConfirm.map((f) => `<div>${badge("pending", "to confirm")}<span data-no-i18n>${esc(f.text)}</span></div>`).join("")}</div>` : ""}

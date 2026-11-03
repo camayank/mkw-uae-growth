@@ -150,7 +150,7 @@ legend { padding: 0 6px; color: var(--muted); font-size: 0.85rem; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.82rem; word-break: break-all; }
 
 #toast {
-  position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); max-width: calc(100% - 32px);
+  position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); max-width: calc(100% - 32px); z-index: 30;
   background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 8px; opacity: 0;
   pointer-events: none; transition: opacity 0.2s;
 }
@@ -337,6 +337,8 @@ nav#nav a svg { display: none; }
     min-height: 48px; padding: 4px 2px; font-size: 0.68rem; font-weight: 600; border-radius: 8px; color: var(--muted); text-align: center; line-height: 1.15;
   }
   body[data-audience="client"] nav#nav a.on, body[data-audience="partner"] nav#nav a.on { background: transparent; color: var(--brand); }
+  /* Confirmations sit above the tab bar, not under it. */
+  body[data-audience="client"] #toast, body[data-audience="partner"] #toast { bottom: calc(84px + env(safe-area-inset-bottom)); }
   body[data-audience="client"] nav#nav a svg, body[data-audience="partner"] nav#nav a svg { display: block; }
   body[data-audience="client"] main, body[data-audience="partner"] main { padding-bottom: 96px; }
   .summary { padding: var(--space-4); }

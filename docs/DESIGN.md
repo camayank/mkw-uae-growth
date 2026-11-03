@@ -43,7 +43,7 @@ new, add a token or a pattern here first.
 | Status chip | `.badge.{ok,warn,bad,info}` via `badge(status, label)` | Everywhere |
 | In short | `section.summary` with `.eyebrow`, one plain `h2`, the first reason with its label, `.confirm` cards for the points to confirm | The client's advice (`inShort` in `js/ops.js`), above `details.reasoning` holding the full advice (U1) |
 | Folding panel | `details.panel > summary > h2 + .state` then `.panel-body`, via `panel(title, body, {state, open, id})` in `js/core.js`; the heading carries the state so a closed panel still says what is in it; a jump opens it first | Client and partner engagement pages; open only while something needs the reader (U1) |
-| Offer switch | `section.card` with `nav.tiers`: the shown tier as `div.tier.best` marked selected, the others as `a.tier` with `.switch`; the priority tier reads "Faster" (`TIER_LABEL` in `js/client.js`) | Client offer (U1) |
+| Offer switch | `section.card` with `nav.tiers`: the shown tier as `div.tier.best` marked selected, the others as `a.tier` with `.switch`; tier names from `TIER_LABEL` in `js/client.js`; no tier claims a pace (gap 85) | Client offer (U1) |
 | Pinned next step | `section.nextaction` reused for the partner: the open step's evidence form inside it, `ul.todo` for what waits on others | Partner engagement (U1) |
 | Tab bar | At 640 px and below, for `body[data-audience="client"|"partner"]`, `nav#nav` becomes a fixed bottom bar; each link carries an inline icon (`ICON` in `js/shell.js`) shown only there | Client and partner phones (U1); MKW staff keep the grouped menu |
 | Progress | `.progress[role=progressbar] > span` | Engagement cards |

@@ -172,8 +172,8 @@ check("client terms show the draft note until the lawyer's review is recorded:",
   check("the proposal states the working-day estimate, the deposit now and the balance later:", /About \d+ working days/.test(proposal) && /On acceptance/.test(proposal) && /When every step is approved/.test(proposal));
   check("the proposal says the rules where the client acts:", /valid until/.test(proposal) && /approved automatically/.test(proposal) && /We do not file returns or notifications/.test(proposal));
   check("the proposal shows no partner cost or margin:", !/partner cost|margin|payout/i.test(proposal));
-  // U1: one offer shown as selected, the others as a switch; the priority tier reads "Faster".
-  if ((await client.locator(".tiers .tier").count()) > 1) check("the offer shows one selected tier and the others as a switch (U1):", (await client.locator(".tiers .tier.best").count()) === 1 && /Switch to/.test(proposal) && !/priority/i.test(await client.locator(".tiers").innerText()));
+  // U1: one offer shown as selected, the others as a switch; no tier promises a pace (gap 85).
+  if ((await client.locator(".tiers .tier").count()) > 1) check("the offer shows one selected tier and the others as a switch (U1):", (await client.locator(".tiers .tier.best").count()) === 1 && /Switch to/.test(proposal) && !/faster|quicker|sooner/i.test(await client.locator(".tiers").innerText()));
   await shot(client, "72-client-proposal");
 }
 await client.locator('button[data-act="accept-offer"]').click();
@@ -206,7 +206,7 @@ for (const email of ["admin@setup-partner.test", "admin@corporate-services.test"
   await p.waitForTimeout(500);
   const n = await p.locator('button[data-act="alloc"][data-decision="accept"]').count();
   if (n && !log.some((l) => l.startsWith("shot-partner"))) {
-    check("the partner's offer row carries a reply countdown and no client price (U1):", /min left|reply time passed/.test(await p.locator("main").innerText()) && !/client price|margin/i.test(await p.locator("main").innerText()));
+    check("the partner's offer row carries a reply countdown, the payout, and no client price (U1):", /min left|reply time passed/.test(await p.locator("main").innerText()) && /your fees; government fees not included/.test(await p.locator("main").innerText()) && !/client price|margin|clientTotal|AED 0\.00/i.test(await p.locator("main").innerText()));
     await shot(p, "10-partner-offered-work"); log.push("shot-partner");
   }
   for (let i = 0; i < n; i++) {
@@ -523,7 +523,7 @@ check("client sees the approved advice with confidence labels and no money inter
 check("client sees each option's eligibility and why other places do not fit:", /to be verified/.test(clientAdvice) && /Every structure compared/.test(clientAdvice) && /Costs are estimates/.test(clientAdvice));
 check("client sees the date the advice's rules and data stand at (E2):", /Rules and place data as of \d/.test(clientAdvice) && /licensed by /.test(clientAdvice));
 // U1: two sentences before the reasoning, built from the engine's own labelled text; the full advice folds below, open.
-check("the advice opens with a plain summary and the points to confirm before the reasoning (U1):", /fits what you told us|No option fits/.test(await client.locator("main .summary h2").innerText()) && (await client.locator("main .confirm > div").count()) <= 2 && (await client.locator("main details.reasoning[open]").count()) === 1);
+check("the advice opens with a plain summary and the points to confirm before the reasoning (U1):", /fits what you told us|No option fits/.test(await client.locator("main .summary h2").innerText()) && (await client.locator("main .confirm > div").count()) >= 1 && (await client.locator("main .confirm > div").count()) <= 2 && (await client.locator("main details.reasoning[open]").count()) === 1);
 await shot(client, "36-client-advice");
 await axeCheck(client, "client advice with eligibility (E1)");
 {
@@ -1119,6 +1119,17 @@ check("the Arabic document title follows the heading:", /تأسيس/.test(await 
 await ap3.goto(engagementUrl); await ap3.reload(); await ap3.waitForSelector(".msg");
 const msgs = await ap3.locator(".msg div[data-no-i18n]").allInnerTexts();
 check("people's own words are left untranslated:", msgs.length >= 1 && msgs.every((m) => !/[\u0600-\u06FF]/.test(m)));
+// U1: the gap list the Arabic reviewer sees (strings seen on client screens without an entry) holds none of the
+// strings U1 added. The list also carries service names, amounts, file names and older strings, which are logged.
+{
+  await ap3.waitForTimeout(800);
+  const gaps = await founder.evaluate(async () => (await (await fetch("/api/admin/arabic")).json()).gaps ?? []);
+  const u1 = ["Money", "Invoiced, net of credit notes", "Statement and invoices", "Compliance calendar", "Full calendar", "One offer, with another option", "One offer, with other options", "Choose an option", "Priority", "Standard", "Essential", "selected", "In short", "nothing due", "All steps"];
+  const u1Shapes = [/^(Priority|Standard|Essential) · AED/, /^Switch to /, /fits what you told us/, /needs? confirming before we quote/, /^Accept this offer/, / due now$/, /^about \d+ working days$/, /^No option fits/, /^The reasoning:/, /^The setup estimate for/, /^\d+ of \d+ approved$/];
+  const leaked = gaps.filter((g) => u1.includes(g) || u1Shapes.some((re) => re.test(g)));
+  log.push(`arabic gaps reported by the client screens (${gaps.length}): ${gaps.join(" | ")}`);
+  check("no string U1 added appears untranslated on the client screens visited in Arabic (U1):", leaked.length === 0 && gaps.length > 0);
+}
 await ap3.goto(BASE + "/intake.html?lang=ar"); await ap3.waitForSelector('html[dir="rtl"]');
 await axeCheck(ap3, "public intake (ar)");
 // O10: legal texts and holidays on Settings, the grouped console menu, the partner agreement, an imported prospect.

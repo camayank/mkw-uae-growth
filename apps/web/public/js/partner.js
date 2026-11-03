@@ -43,12 +43,12 @@ export async function renderPartnerHome() {
         offered.map(
           (a) => `<tr><td><b>${esc(a.brief?.emirate ?? "")}</b>${a.brief?.freeZone ? `<br><span class="small muted">${esc(a.brief.freeZone)}</span>` : ""}</td>
           <td>${esc((a.brief?.lines ?? a.codes.map((c) => ({ code: c, qty: 1 }))).map((l) => `${l.name ?? nameOf(l.code)}${l.qty > 1 ? ` ×${l.qty}` : ""}`).join(", "))}<br><span class="small muted">Step dates and the client's documents are in the brief once you accept.</span></td>
-          <td class="num"><b>${aed(a.payoutTotal)}</b><br><span class="small muted">plus government fees at cost</span></td><td><b>${dateTime(a.deadline)}</b><br>${timeLeft(a.deadline)}</td>
+          <td class="num"><b>${aed(a.payoutTotal)}</b><br><span class="small muted">your fees; government fees not included</span></td><td><b>${dateTime(a.deadline)}</b><br>${timeLeft(a.deadline)}</td>
           <td style="white-space:nowrap">${admin ? `<button class="primary" data-act="alloc" data-id="${a.id}" data-decision="accept">Accept</button> <button data-act="alloc" data-id="${a.id}" data-decision="decline">Decline</button>` : `<span class="small muted">Your admin replies</span>`}</td></tr>`,
         ),
         "Nothing waiting. New work arrives here and by email; you have 4 working hours to reply.",
       )}
-      ${offered.length ? `<p class="small muted pad" style="padding-top:0">Accepting commits your firm to the step dates in the brief. The client's name and contact details are shown once the deposit is paid and the engagement opens.</p>` : ""}
+      ${offered.length ? `<p class="small muted pad" style="padding-top:0">Accepting commits your firm to the step dates in the brief. The brief and the steps open once the deposit is paid; the client's contact details stay hidden and messages go through the engagement page.</p>` : ""}
     </div>
     <div class="card flush"><h2>Requests for a price</h2>
       ${

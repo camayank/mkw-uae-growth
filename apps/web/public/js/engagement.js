@@ -380,7 +380,7 @@ function renderPartnerEngagement(e, parts) {
   $app.innerHTML = `
   <p><a href="#/">← Work</a></p>
   <div class="row between"><h1>Engagement · ${esc(e.engagement.emirate)}${e.engagement.freeZone ? ` · ${esc(e.engagement.freeZone)}` : ""}</h1>${badge(e.engagement.status)}</div>
-  <p class="muted">${parts.done} of ${ms.length} steps approved · accepted ${date(e.engagement.createdAt)} · the client's contact details are hidden; message through this page</p>
+  <p class="muted">${parts.done} of ${ms.length} steps approved · opened ${date(e.engagement.createdAt)} · the client's contact details are hidden; message through this page</p>
   <div class="grid cols-2 eng">
     <div class="stack">
       ${nextCard}
@@ -390,7 +390,7 @@ function renderPartnerEngagement(e, parts) {
     <div class="stack">
       ${panel("All steps", stepsList, { state: `${parts.done} of ${ms.length} approved${next ? " · 1 yours now" : ""}`, open: true })}
       ${parts.docsCard() ? panel(`Documents from the client ${toReceive ? badge("warn", `${toReceive} to confirm`) : docsOpen ? badge("pending", `${docsOpen} outstanding`) : badge("ok", "complete")}`, stripCard(parts.docsCard()).replace(/^[^]*?<\/h2>/, ""), { id: "docs", open: toReceive > 0 }) : ""}
-      ${panel("Scope and your fees", `${stripCard(parts.linesCard())}<p class="small muted">Your own rate card as accepted. Government fees are reimbursed at cost against the receipt. The client's price is set by MKW Advisors and is not shown here.</p>`, { state: e.lines.some((l) => l.partnerUnitCost != null) ? `${aed(fees)} + government fees at cost` : "" })}
+      ${panel("Scope and your fees", `${stripCard(parts.linesCard())}<p class="small muted">Your own rate card as accepted; government fees are not part of this figure. The client's price is set by MKW Advisors and is not shown here.</p>`, { state: e.lines.some((l) => l.partnerUnitCost != null) ? `${aed(fees)} your fees` : "" })}
       ${parts.moneyCard()}
       ${parts.creditsCard()}
       ${parts.changeOrders()}

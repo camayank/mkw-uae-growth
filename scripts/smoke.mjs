@@ -1279,7 +1279,15 @@ check("partner performance page has no client or margin figures:", !/margin|clie
   ph.on("pageerror", (e) => errors.push(`E10 partner phone: ${e.message}`));
   for (const [route, ready, name] of [["#/performance", 'main h1:text-is("Your performance")', "111-mobile-partner-performance"], ["#/payouts", 'main h1:text-is("Payouts")', "112-mobile-partner-payouts"], [engagementUrl.slice(engagementUrl.indexOf("#")), "main h1", "113-mobile-partner-engagement"]]) {
     await ph.goto(BASE + "/" + route); await ph.reload(); await ph.waitForSelector(ready); await ph.waitForTimeout(400);
-    check(`${name} at 390 px has no horizontal overflow and a light tab bar under the dark top bar (E10):`, !(await ph.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)) && (await ph.evaluate(() => getComputedStyle(document.getElementById("nav")).backgroundColor)) !== "rgb(22, 32, 28)" && (await ph.evaluate(() => getComputedStyle(document.querySelector(".top")).backgroundColor)) === "rgb(22, 32, 28)");
+    if (process.env.SMOKE_WIDE_FONT) await ph.addStyleTag({ content: "body { letter-spacing: 0.06em !important; }" });
+    // Name what sticks out, so a failure on another machine's fonts says where to look.
+    const state = await ph.evaluate(() => {
+      const inScroller = (e) => { for (let x = e.parentElement; x; x = x.parentElement) if (/auto|scroll|hidden/.test(getComputedStyle(x).overflowX)) return true; return false; };
+      const sticking = [...new Set([...document.querySelectorAll("main *")].filter((e) => e.getBoundingClientRect().right > innerWidth + 1 && !inScroller(e)).map((e) => `${e.tagName.toLowerCase()}.${String(e.className).replace(/ /g, ".")}${e.getAttribute("type") ? `[${e.getAttribute("type")}]` : ""}`))].slice(0, 6);
+      return { scroll: document.documentElement.scrollWidth, width: innerWidth, nav: getComputedStyle(document.getElementById("nav")).backgroundColor, top: getComputedStyle(document.querySelector(".top")).backgroundColor, sticking };
+    });
+    log.push(`${name}: page ${state.scroll}/${state.width} px, tab bar ${state.nav}, top bar ${state.top}${state.sticking.length ? `, wider than the screen: ${state.sticking.join(", ")}` : ""}`);
+    check(`${name} at 390 px has no horizontal overflow and a light tab bar under the dark top bar (E10):`, state.scroll <= state.width + 1 && state.nav !== "rgb(22, 32, 28)" && state.top === "rgb(22, 32, 28)");
     await ph.screenshot({ path: `${OUT}/${name}.png`, fullPage: false }); log.push(name);
   }
   await axeCheck(ph, "partner engagement at 390 px (E10)");

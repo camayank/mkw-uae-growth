@@ -162,7 +162,7 @@ outcomes:
     needs_from_owner: [consent wording for measurement]
   - id: E7D
     title: Reporting and advisory experiences (assessment report, specialist consultation)
-    status: released
+    status: verified-pending-merge
     contract: outcomes/E7D-reports.md
     depends_on: [E7A, E7B]
     needs_from_owner: [report wording, adviser review status]

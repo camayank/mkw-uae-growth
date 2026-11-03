@@ -1,6 +1,6 @@
 # E7D Reporting and advisory experiences: the assessment report and the consultation workflow
 
-Status: in-progress (branch `outcome/E7D-reports`, built on E7C; released by the owner on 3 Nov 2026 with the E7
+Status: verified-pending-merge (branch `outcome/E7D-reports`, built on E7C; released by the owner on 3 Nov 2026 with the E7
 contract, phase 4 "Customer trust and professional reporting")
 
 ## Business result
@@ -52,6 +52,20 @@ the call a lead asked for from the lead's page, and the booking lands in the que
   creates the follow-up and removes the call request from the queue.
 - Smoke: the report downloads from the selector and from the client's advice page; the booking from the lead page;
   axe clean on the changed screens.
+
+Evidence recorded on 3 Nov 2026 (E7C's final head e85942c merged in):
+
+- `pnpm test`: core 131 passed (14 files); api 350 passed, 1 skipped (33 files). `pnpm typecheck` clean.
+- `scripts/smoke.mjs` against a fresh demo: 257 checks OK, 0 failed; `docs/evidence/E7D/smoke-log.txt`.
+- axe on 48 screens, 0 violations (incl. "lead page with the call booked (E7D)"): `docs/evidence/E7D/axe.json`.
+- `pnpm verify:audit` after the smoke: chain intact, 112 events.
+- Screens, desktop and phone width: `docs/evidence/E7D/36-client-advice.png` and `81-mobile-client-advice.png`
+  (reviewed report download), `84-public-selector-approved.png` and `92-mobile-saved-result.png` (report button on
+  the public result), `87-lead-detail.png`, `101-lead-booked.png` and `102-mobile-lead-booked.png` (booking form,
+  the booked call in the history).
+- Independent review (agent, 3 Nov): two must-fixes (booking time zone; docs said the download counted a
+  recovery) and seven should-fixes applied in commit "E7D review fixes"; its notes confirm D80 (1,296-founder
+  no-approval matrix: no unapproved text or figure in the preliminary report) and rule 1 (no money field reachable).
 
 ## Dependencies and risks
 

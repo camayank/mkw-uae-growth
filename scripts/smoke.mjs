@@ -792,6 +792,8 @@ const pp = await pub.newPage();
   await ops.waitForTimeout(700);
   log.push("booking: " + (await toastText(ops)));
   await eventually("the call is booked: the lead is in consultation with a follow-up for that time (E7D):", async () => /Booked for 12 Jan, \d\d:\d\d GST/.test(await ops.locator("main").innerText()) && /Call booked for/.test(await ops.locator("main").innerText()));
+  await shot(ops, "101-lead-booked");
+  await axeCheck(ops, "lead page with the call booked (E7D)");
 
   const mlead = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, storageState: await ops.context().storageState() });
   const ml = await mlead.newPage();
@@ -801,6 +803,12 @@ const pp = await pub.newPage();
   check("the leads page at 390 px has no horizontal overflow (E4):", !(await ml.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
   await ml.screenshot({ path: `${OUT}/88-mobile-leads.png`, fullPage: false });
   log.push("88-mobile-leads");
+  // E7D: the booked lead at phone width.
+  await ml.locator('a[href^="#/leads/"]').first().click();
+  await ml.waitForSelector('form[data-form="lead-consultation"]');
+  check("the lead page at 390 px has no horizontal overflow (E7D):", !(await ml.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
+  await ml.screenshot({ path: `${OUT}/102-mobile-lead-booked.png`, fullPage: true });
+  log.push("102-mobile-lead-booked");
   await mlead.close();
   const m3 = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
   const mp = await m3.newPage();

@@ -190,6 +190,16 @@ await shot(client, "08-client-engagement-awaiting-payment");
 await client.goto(BASE + "/#/"); await client.reload();
 await client.waitForSelector("ol.journey");
 check("the client's journey marks the request and the offer done and the deposit as the step now (E9):", await client.evaluate(() => { const li = [...document.querySelectorAll("ol.journey li")]; const st = (n) => li.find((x) => x.textContent.includes(n))?.className; return st("Request") === "done" && st("Offer accepted") === "done" && st("Deposit") === "now" && st("Complete") === "upcoming" && document.querySelector('ol.journey li[aria-current="step"]')?.textContent.includes("Deposit"); }));
+{
+  // E9 (Codex review): a services request stores advice "none" and has no Advice step; a new company's does.
+  const steps = await client.evaluate(async () => {
+    const { clientJourney } = await import("/js/client.js");
+    const names = (h) => clientJourney(h).map(([n, st]) => `${n}:${st}`).join(",");
+    const req = (adviceStatus) => ({ engagements: [], offers: [], requests: [{ id: "r1", status: "quoting", adviceStatus, mode: adviceStatus === "none" ? "services" : "new_company" }] });
+    return { services: names(req("none")), pending: names(req("pending_review")), approved: names(req("approved")) };
+  });
+  check("a services request shows no Advice step and is being priced; advice shows only when there is some to review (E9):", steps.services === "Request:done,Offer:now,Deposit:todo,Delivery:todo,Complete:todo" && steps.pending.startsWith("Request:done,Advice:now,Offer:todo") && steps.approved.startsWith("Request:done,Advice:done,Offer:now"));
+}
 check("the workspace carries the UAE colours above the bar and the client's mark is T (E9):", (await client.locator(".flagbar span").count()) === 4 && (await client.locator(".brand .mark").innerText()) === "T" && (await client.locator(".nextaction .btn.gold").count()) === 1);
 await client.goto(engagementUrl); await client.reload();
 await client.waitForSelector(".nextaction");

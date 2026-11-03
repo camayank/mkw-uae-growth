@@ -35,7 +35,7 @@ const progress = (done, total) =>
 
 /**
  * E9: where the client's most advanced piece of work stands, from what the platform holds (no estimate, no invented
- * step): a live engagement first, else the newest open request. Advice is a step only for a new company.
+ * step): a live engagement first, else the newest open request. Advice is a step only when advice exists.
  */
 export function clientJourney(h) {
   const live = h.engagements.filter((e) => !["completed", "cancelled"].includes(e.status));
@@ -58,7 +58,8 @@ export function clientJourney(h) {
   const offers = h.offers.filter((o) => o.requestId === r.id && o.status !== "withdrawn");
   const published = offers.some((o) => o.status === "published");
   const accepted = offers.some((o) => o.status === "accepted");
-  const advice = r.mode === "new_company" || r.adviceStatus;
+  // Advice is a step only when there is advice to review ("none" is stored for a services request: no advice at all).
+  const advice = r.adviceStatus === "pending_review" || r.adviceStatus === "approved";
   const adviceDone = r.adviceStatus === "approved";
   return [
     ["Request", "done"],

@@ -992,7 +992,7 @@ canvas of 3 Nov 2026 and its review round.)
   a screen still comes from the platform.
 - The journey is derived from states the platform already holds (a live engagement's status and approved steps, else
   the newest open request with its advice and offers); a step the platform cannot see is never marked done. Advice
-  is a step only for a new company.
+  is a step only when the request has advice to review (pending or approved), never for a services request.
 - The staff console keeps the grouped one-row menu decided in O10 (four entries, menus by keyboard), now on a dark
   bar with icons and a gold marker. The owner chose this over the canvas's sidebar on 3 Nov 2026 ("keep the grouped
   staff menu").

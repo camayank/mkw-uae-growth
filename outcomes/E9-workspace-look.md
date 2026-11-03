@@ -19,7 +19,7 @@ dark console bar for staff. Nothing a screen says changes, and every number on i
    partners and staff.
 2. **Helpers** (`js/core.js`): `flag(emirate)`, `journey(steps, label)`, `kpiTile(label, value, sub, icon)`.
 3. **Client**: the home's journey (`clientJourney` in `js/client.js`, from the engagement's status and approved steps,
-   else the newest open request with its advice and offers), the next action's button in gold, the money card as a
+   else the newest open request with its advice, when it has any, and offers), the next action's button in gold, the money card as a
    dark panel, the flag on engagement cards; the offer's accept button in gold; the engagement page's flag, steps
    progress bar and gold approve.
 4. **Staff**: icons on every menu entry; the dashboard's figures on icon tiles, the first on the dark panel, the

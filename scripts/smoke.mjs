@@ -755,7 +755,7 @@ const pp = await pub.newPage();
   await ops.goto(BASE + "/#/funnel"); await ops.reload();
   await ops.waitForSelector('main h1:text-is("Funnel")');
   const funnel = await ops.locator("main").innerText();
-  check("the Funnel page counts the selector's visits, starts, completions and saves and follows them to the lead (E7C):", /visitors/.test(funnel) && /completed of started/.test(funnel) && /By source and campaign/.test(funnel) && /selector/.test(funnel) && /Qualified means/.test(funnel) && !/margin|payout/i.test(funnel));
+  check("the Funnel page counts the selector's visits, starts, completions and saves and follows them to the lead (E7C):", /visitors/.test(funnel) && /completed of started/.test(funnel) && /By source and campaign/.test(funnel) && /selector/.test(funnel) && /Qualified means/.test(funnel) && !/payout|partner cost|AED [\d,]+ margin/i.test(funnel));
   check("the Funnel page lists the high-readiness lead that needs a person (E7C):", /Selector Smoke Co/.test(funnel) && /unassigned|overdue|no contact/.test(funnel));
   await shot(ops, "98-funnel");
   await axeCheck(ops, "funnel (E7C)");

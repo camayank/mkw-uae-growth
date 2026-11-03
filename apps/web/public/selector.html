@@ -54,8 +54,9 @@
     .profile dt { color: var(--muted); font-size: 0.8rem; }
     .profile dd { margin: 0; display: flex; justify-content: space-between; gap: 8px; }
     .profile dd a { font-size: 0.85rem; white-space: nowrap; }
-    .legend { display: flex; flex-wrap: wrap; gap: 8px 14px; font-size: 0.85rem; color: var(--muted); margin: 8px 0 0; }
-    .legend span { display: inline-flex; gap: 6px; align-items: center; }
+    .legend { display: flex; flex-wrap: wrap; gap: 8px 14px; font-size: 0.85rem; color: var(--muted); margin: 8px 0 0; padding: 0; list-style: none; }
+    .legend li { display: inline-flex; gap: 6px; align-items: center; }
+    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
     .badge.general { color: var(--brand); background: var(--brand-soft); }
     .badge.spec { color: var(--info); background: var(--info-soft); }
     .pathways { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
@@ -70,8 +71,8 @@
     .compare { overflow-x: auto; }
     .compare table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
     .compare th, .compare td { padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; text-align: start; }
-    .compare th[scope="row"] { color: var(--muted); font-weight: 500; white-space: nowrap; width: 1%; }
-    .compare thead th { position: sticky; top: 0; background: var(--surface); }
+    .compare th[scope="row"] { color: var(--muted); font-weight: 500; white-space: nowrap; width: 1%; position: sticky; inset-inline-start: 0; background: var(--surface); }
+    .compare thead th { background: var(--surface); }
     .next-action { border-inline-start: 4px solid var(--brand); }
     .guides { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
     .guide { padding: 12px; border-radius: 12px; background: var(--surface-2); }

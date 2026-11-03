@@ -13,7 +13,7 @@ as camayank/mkw-uae-growth#23 and does not touch the public pages. Executed here
 | --- | --- | --- |
 | Install | `pnpm install --frozen-lockfile` | pass |
 | Typecheck | `pnpm typecheck` | pass |
-| Tests | `pnpm test` | 105 core + 333 API pass (1 PostgreSQL-only test skipped on PGlite) |
+| Tests | `pnpm test` | 105 core + 333 API pass (1 PostgreSQL-only test skipped on PGlite); 108 + 334 after E7A and the U1 merge |
 | Build | `pnpm build` | pass |
 | Browser | `scripts/smoke.mjs` on a fresh demo | 213 checks OK (E6 evidence; rerun under U1 at 221) |
 
@@ -104,3 +104,23 @@ and ask for a review. Nothing unapproved is stated (D80); nothing that is not kn
 ## Rollback
 
 - Revert the pull request. Migration 019 only widens a check constraint.
+
+## Independent review
+
+A separate reviewer read the whole diff before the pull request, with a throwaway Playwright probe against a scratch
+seed and no repository changes. It found no D80 leak (source link, facilities, guidance, comparison cells, the
+three-year figure and the next action are all gated on what is approved), no money field and no branding slip, and
+confirmed migration 019 on Postgres and PGlite. Applied before the pull request:
+- **Must-fix.** A holding founder was never asked where the customers are, so the result carried a "data missing"
+  line for a question the page did not ask: the holding order now asks it. The outcome had no evidence yet (below).
+- **Should-fix.** A result reached through the homepage or "back to the start" kept the old saved code (reset now);
+  the five-place notice piled up (shown once); focus landed on the first choice, not the chosen one; the three-year
+  smoke check could not fail (asserts the cell now); an unverified renewal read "not on record" (reads "to be
+  verified", `renewalToBeVerified`); three guidance sentences reworded for UAE accuracy and tone (residence visa
+  issue, not stamping; "not enough on its own"; "is expected to register"); the profile kept its question wording
+  so the Arabic dictionary matches, plus three entries and a pattern; the legend is a list, not a paragraph with
+  an ARIA label; a hidden level-one heading on the result; a sticky row header in the comparison on a phone.
+- **Noted, not changed.** After a review is sent, changing an answer keeps the review form sent (no second lead
+  from the same result); the comparison can hold two places by default when the named place is also in the top
+  three; the matrix row in `docs/ENTITY-PROGRAMME.md` is corrected.
+

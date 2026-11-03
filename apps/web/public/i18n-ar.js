@@ -251,6 +251,10 @@ export const AR = {
   "Official source": "المصدر الرسمي",
   "source": "المصدر",
   "not on record": "غير مسجل",
+  "(setup plus two renewals, estimate)": "(التأسيس مع تجديدين، تقدير)",
+  "What the labels mean": "ماذا تعني العلامات",
+  "Your result": "نتيجتك",
+  "needs the yearly renewal on record": "يحتاج إلى تسجيل التجديد السنوي",
   "none shown": "لا شيء معروض",
   "Estimates include government fees as recorded; a price comes only from a partner firm's quote through MKW Advisors.": "تشمل التقديرات الرسوم الحكومية كما هي مسجلة؛ ولا يأتي السعر إلا من عرض شركة شريكة عبر MKW Advisors.",
   "Five places at most: untick one to add another.": "خمسة أماكن كحد أقصى: أزل علامة أحدها لإضافة آخر.",
@@ -655,6 +659,7 @@ export const AR = {
 export const AR_PATTERNS = [
   // E7A selector sentences with numbers; draft
   [/^(\d+) to go$/, (m) => `بقي ${m[1]}`],
+  [/^(AED [\d,.]+) to (AED [\d,.]+)$/, (m) => `${m[1]} إلى ${m[2]}`],
   [/^Ask MKW Advisors to review a (.+) company$/, (m) => `اطلب من MKW Advisors مراجعة شركة ${m[1]}`],
   [/^Structure: (.+)$/, (m) => `الهيكل: ${m[1]}`],
   [/^Facilities on record: (.+)$/, (m) => `المرافق المسجلة: ${m[1]}`],

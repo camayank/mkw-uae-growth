@@ -57,7 +57,7 @@ const EMIRATES = ["Dubai", "Abu Dhabi", "Sharjah", "Ajman", "Ras Al Khaimah", "U
 const DEFAULT_ORDER = ["activity", "customers", "visas", "premises", "budgetAed", "owners", "foreignTaxResident", "turnover", "structure", "emirate"];
 const ORDER = {
   manufacturing: ["activity", "premises", "customers", "visas", "budgetAed", "owners", "foreignTaxResident", "turnover", "structure", "emirate"],
-  holding: ["activity", "owners", "foreignTaxResident", "visas", "budgetAed", "structure", "emirate"],
+  holding: ["activity", "owners", "foreignTaxResident", "customers", "visas", "budgetAed", "structure", "emirate"],
   finance: ["activity", "customers", "owners", "foreignTaxResident", "visas", "premises", "budgetAed", "turnover", "structure", "emirate"],
   virtual_assets: ["activity", "customers", "owners", "foreignTaxResident", "visas", "premises", "budgetAed", "turnover", "structure", "emirate"],
 };
@@ -116,7 +116,7 @@ function render() {
   // Enter on a number field moves on, as on a form.
   $("step").querySelector("#qnum, #qzone")?.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); $("next").click(); } });
   if (isAr()) translateTree($("questions"));
-  ($("step").querySelector("#qnum, .choice[aria-pressed='true'], .choice, #qemirate") ?? $("next")).focus();
+  ($("step").querySelector(".choice[aria-pressed='true']") ?? $("step").querySelector("#qnum, .choice, #qemirate") ?? $("next")).focus();
 }
 
 function take() {
@@ -171,18 +171,18 @@ function profile() {
   };
   const rows = visible().map((q, idx) => {
     const v = q.key === "emirate" ? `${answers.emirate}${answers.freeZone ? `, ${answers.freeZone}` : ""}` : label(q.key, answers[q.key]);
-    return { key: q.key, idx, title: q.title.replace(/\?$/, ""), value: v ?? "not given" };
+    return { key: q.key, idx, title: q.title, value: v ?? "not given" };
   });
   return `<dl class="profile">${rows.map((r) => `<div><dt>${esc(r.title)}</dt><dd><span data-no-i18n>${esc(r.value)}</span><a href="#q" class="noprint" data-edit="${r.idx}">Change</a></dd></div>`).join("")}</dl>`;
 }
 
-const LEGEND = `<p class="legend" aria-label="What the labels mean">
-  <span><span class="badge ok">checked</span> approved for public display by a named person</span>
-  <span><span class="badge info">condition</span> fits if this is confirmed</span>
-  <span><span class="badge general">general information</span> educational, approved wording</span>
-  <span><span class="verify">to be verified</span> exists, not yet approved to state</span>
-  <span><span class="badge warn">data missing</span> no record held</span>
-  <span><span class="badge spec">specialist review</span> a qualified person decides</span></p>`;
+const LEGEND = `<ul class="legend" aria-label="What the labels mean">
+  <li><span class="badge ok">checked</span> approved for public display by a named person</li>
+  <li><span class="badge info">condition</span> fits if this is confirmed</li>
+  <li><span class="badge general">general information</span> educational, approved wording</li>
+  <li><span class="verify">to be verified</span> exists, not yet approved to state</li>
+  <li><span class="badge warn">data missing</span> no record held</li>
+  <li><span class="badge spec">specialist review</span> a qualified person decides</li></ul>`;
 
 const placeFigures = (p) => (p.figures
   ? `${aed(p.figures.costMinFils)} to ${aed(p.figures.costMaxFils)} to set up (estimate) · ${p.figures.visaQuota} visa(s) in the standard package · about ${p.figures.timelineDays} working days${p.figures.renewalMinFils ? ` · renews at about ${aed(p.figures.renewalMinFils)} to ${aed(p.figures.renewalMaxFils)} a year` : ""} <span class="badge ok">figures checked</span>`
@@ -213,8 +213,8 @@ function compareTable(places) {
   const rows = [
     ["Fit", (p) => badge(p.status)],
     ["Setup estimate", (p) => (p.figures ? `${aed(p.figures.costMinFils)} to ${aed(p.figures.costMaxFils)} <span class="badge ok">checked</span>` : verify)],
-    ["Yearly renewal", (p) => (p.figures ? (p.figures.renewalMinFils ? `${aed(p.figures.renewalMinFils)} to ${aed(p.figures.renewalMaxFils)} <span class="badge ok">checked</span>` : null) : verify)],
-    ["Three-year estimate", (p) => (p.figures ? three(p) : verify)],
+    ["Yearly renewal", (p) => (p.figures ? (p.figures.renewalMinFils ? `${aed(p.figures.renewalMinFils)} to ${aed(p.figures.renewalMaxFils)} <span class="badge ok">checked</span>` : p.figures.renewalToBeVerified ? verify : null) : verify)],
+    ["Three-year estimate", (p) => (p.figures ? (three(p) ?? (p.figures.renewalToBeVerified ? verify : `<span class="muted">needs the yearly renewal on record</span>`)) : verify)],
     ["Visas in the package", (p) => (p.figures ? String(p.figures.visaQuota) : verify)],
     ["Facilities on record", (p) => (p.figures ? (p.facilities ? esc(p.facilities.map(words).join(", ")) : null) : verify)],
     ["Timeline", (p) => (p.figures ? `about ${p.figures.timelineDays} working days` : verify)],
@@ -250,7 +250,8 @@ function showResult(p, recovered = null) {
     <div class="notice" role="note"><b>Preliminary, general information, not advice.</b> <span data-no-i18n>${esc(p.disclaimer)}</span>${p.asOf ? ` Rules and place data as of ${esc(p.asOf)}.` : ""}</div>
     <p class="small muted" style="margin-top:8px">${p.approved.statements} of ${p.approved.ofStatements} statements and ${p.approved.places} of ${p.approved.ofPlaces} places shown have been checked by a named person for public display; the rest are shown as "to be verified".</p>
     ${LEGEND}
-    <div class="card"><div class="row between"><h2 id="profile-h">Your business profile</h2><button type="button" class="sm noprint" id="edit">Change my answers</button></div>${profile()}</div>
+    <h1 class="sr-only">Your result</h1>
+    <div class="card"><div class="row between"><h2>Your business profile</h2><button type="button" class="sm noprint" id="edit">Change my answers</button></div>${profile()}</div>
     ${p.noViableOption ? `<div class="card" role="status"><h2>No option fits every answer yet</h2><p>We will not guess. Ask for a review and a person tells you what would make it work.</p></div>` : ""}
     ${p.contradictions.length ? `<div class="card"><h2>Answers to check</h2><ul class="plain">${p.contradictions.map((c) => `<li><span data-no-i18n>${esc(c)}</span></li>`).join("")}</ul></div>` : ""}
     <div class="card"><h2 id="result-head" tabindex="-1">${esc(head)}</h2>${list(p.structure.reasons, "No reasons to show yet.")}
@@ -272,7 +273,7 @@ function showResult(p, recovered = null) {
   for (const a of $("result").querySelectorAll("a[data-edit]")) a.addEventListener("click", (ev) => { ev.preventDefault(); edit(Number(a.dataset.edit)); });
   for (const c of $("result").querySelectorAll("input.cmp")) c.addEventListener("change", () => {
     const idx = Number(c.dataset.idx);
-    if (c.checked && compared.length >= 5) { c.checked = false; $("compare").insertAdjacentHTML("afterbegin", `<p class="notice small" role="alert">Five places at most: untick one to add another.</p>`); return; }
+    if (c.checked && compared.length >= 5) { c.checked = false; $("compare").querySelector("[role=alert]")?.remove(); $("compare").insertAdjacentHTML("afterbegin", `<p class="notice small" role="alert">Five places at most: untick one to add another.</p>`); return; }
     compared = c.checked ? [...compared, idx] : compared.filter((x) => x !== idx);
     c.closest(".place").classList.toggle("cmp-on", c.checked);
     $("compare").innerHTML = compareTable(compared.map((k) => p.places[k]));
@@ -326,10 +327,11 @@ $("next").addEventListener("click", async () => {
   if (i < visible().length - 1) { i++; render(); return; }
   await assess();
 });
-$("to-landing").addEventListener("click", () => { show("landing"); window.scrollTo(0, 0); $("start").focus(); });
+$("to-landing").addEventListener("click", () => { savedCode = null; show("landing"); window.scrollTo(0, 0); $("start").focus(); });
 
 // The homepage: the call to action starts at question one; an industry starts at question two with the activity set.
 function start(activity) {
+  savedCode = null;
   if (activity && QUESTIONS.activity.options.some((o) => o[0] === activity)) { answers.activity = activity; i = 1; } else i = 0;
   show("questions");
   render();

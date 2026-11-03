@@ -45,7 +45,7 @@ Status per contract capability:
 
 | Feature | Status | Where, or what is missing |
 | --- | --- | --- |
-| Public, no-registration assessment | Built (E3) | `selector.html`: adaptive questions, a public assessment filtered to what is approved for display (D80), printable, ending in a review request with consent |
+| Public, no-registration assessment | Built (E3, E7A) | `selector.html`: the product homepage, questions ordered by industry with a reason each, a public assessment filtered to what is approved for display (D80), the places compared side by side, approved general guidance, printable, ending in a review request with consent |
 | Activity discovery and industry questionnaires | Partial | 13 activity groups; no exact licensing activities (E2) |
 | Founder and ownership profiling | Partial (E1) | Owner type and foreign tax residence added; nationality, UBO and parent jurisdiction to come (E3) |
 | Mainland / free zone / offshore comparison | Built (E1) | Every structure assessed with a status and its reasons |
@@ -170,6 +170,6 @@ mapped to what exists (works, partial, missing, later).
 **E7A** (`outcomes/E7A-public-product-ux.md`, D85): the selector becomes the product's homepage; the questions are
 ordered by industry with a reason each; the result reads as a decision with a side-by-side comparison; general
 guidance notes are approved for public display like rules (kind `guide`); an approved place shows its official source
-and facilities. The gap matrix above changes in one row: "Downloadable report; consultation" stays partial (the
-report is E7D); "Public, no-registration assessment" gains the homepage, the comparison and the guidance.
+and facilities. In the gap matrix above, "Public, no-registration assessment" gains the homepage, the comparison and
+the guidance; "Downloadable report; consultation" stays partial (the report is E7D).
 

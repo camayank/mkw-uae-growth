@@ -658,7 +658,7 @@ const pp = await pub.newPage();
   // E7A: the comparison table carries the approved place's figures and source, the rest to be verified; the founder
   // approves one guidance note and the selector shows it, labelled general information; an answer can be changed.
   const cmp = await sel.locator("#compare").innerText();
-  check("the side-by-side table shows the approved place's figures, three-year estimate and source, and nothing for the rest (E7A):", /AED 12,000 to AED 20,000/.test(cmp) && /Three-year estimate/.test(cmp) && (await sel.locator('#compare a[href="https://ifza.com/"]').count()) === 1 && /to be verified by a person/.test(cmp) && (await sel.locator("#compare thead th").count()) >= 3);
+  check("the side-by-side table shows the approved place's figures, three-year estimate and source, and nothing for the rest (E7A):", /AED 12,000 to AED 20,000/.test(cmp) && /Three-year estimate\s+needs the yearly renewal on record/i.test(cmp) && (await sel.locator('#compare a[href^="https://ifza.com"]').count()) === 1 && /to be verified by a person/.test(cmp) && (await sel.locator("#compare thead th").count()) >= 3);
   await founder.locator('button[data-act="display-approve"][data-kind="guide"][data-subject="reading.labels"]').click();
   await founder.waitForTimeout(700);
   log.push("public guide: " + (await toastText(founder)));

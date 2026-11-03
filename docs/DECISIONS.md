@@ -819,6 +819,11 @@ canvas of 3 Nov 2026 and its review round.)
   approval. Unlike a rule, a note has no verification behind it: the founder's approval is the named person's check,
   because the note states nothing about any case. The public sees approved notes only, labelled "general
   information". Selection reads the answers and which structures the public may still see as open, nothing else.
+  The word list is a guard, not the control: a general obligation can be phrased past it (the tax note says a
+  company "is expected to register" with the Federal Tax Authority), so the founder reads each note before
+  approving it, and the review of E7A read every note for UAE accuracy.
+- A renewal estimate that exists but is unverified reads "to be verified" on an approved place (never "not on
+  record", which is for a missing record): the public view says so with `renewalToBeVerified`.
 - The ten acceptance criteria of the E7 contract are tracked in `outcomes/E7A-public-product-ux.md` (Phase 0 table);
   funnel events, reports and dashboards are E7C and E7D, not hidden in this outcome.
 

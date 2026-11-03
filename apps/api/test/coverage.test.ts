@@ -127,5 +127,11 @@ describe("jurisdiction coverage and the evidence pipeline (E7B)", () => {
     expect((await env.call("founder", "PUT", "/api/admin/scoping/zones/IFZA", { confidence: "verified", verifiedBy: "A. Q", sourceUrl: "https://agent.example/ifza", sourceKind: "intermediary" })).body.message).toMatch(/intermediary cannot be verified/);
     expect((await env.call("founder", "POST", "/api/admin/jurisdictions/places/SHAMS/status", { placeKind: "free_zone", status: "active", priority: 1 })).status).toBe(200);
     expect((await env.call("ops", "GET", "/api/admin/coverage")).body.places.active).toBe(14);
+    // A priority the founder clears stays cleared when the catalogue seed runs again at the next start.
+    expect((await env.call("founder", "POST", "/api/admin/jurisdictions/places/IFZA/status", { priority: null })).status).toBe(200);
+    const { seedCatalogue } = await import("../src/db/seed.ts");
+    await seedCatalogue(env.db);
+    expect((await env.call("ops", "GET", "/api/admin/jurisdictions")).body.places.find((p: any) => p.name === "IFZA").priority).toBeNull();
+    expect((await env.call("ops", "GET", "/api/admin/coverage")).body.places.priority).toBe(14);
   });
 });

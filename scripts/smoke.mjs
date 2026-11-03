@@ -1332,6 +1332,9 @@ await ap.keyboard.press("Enter");
 await ap.waitForSelector('form[data-form="verify"]');
 await ap.keyboard.press("Enter"); // the code is focused and filled in development mode
 await ap.waitForSelector("#nav > :is(a, .navgroup)");
+// The menu renders before the home's data arrives: wait for the engagement link itself, or the Tab loop below can
+// finish on a slow runner before there is anything to reach (seen in CI on camayank/mkw-uae-growth#33).
+await ap.waitForSelector('main a[href*="#/engagement/"]');
 let onOffer = false;
 for (let i = 0; i < 60 && !onOffer; i++) {
   await ap.keyboard.press("Tab");

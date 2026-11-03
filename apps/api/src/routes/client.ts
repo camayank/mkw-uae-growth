@@ -59,7 +59,8 @@ export function registerClientRoutes(ctx: RouteContext) {
   app.get<{ Params: { id: string } }>("/api/client/requests/:id/report.pdf", async (req, reply) => {
     const user = requireRole(req, ...CLIENT_ROLES);
     if (!/^[0-9a-f-]{36}$/i.test(req.params.id)) throw notFound("Request not found");
-    const { pdf, filename } = await clientReportPdf(db, user, req.params.id);
+    const lang = (req.query as { lang?: string }).lang === "ar" ? "ar" : "en";
+    const { pdf, filename } = await clientReportPdf(db, user, req.params.id, lang);
     reply.header("content-disposition", `attachment; filename="${filename}"`);
     return reply.type("application/pdf").send(pdf);
   });

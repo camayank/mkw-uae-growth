@@ -5,16 +5,24 @@
  *   no person's review behind it, and it says so at the top and in the closing note;
  * - reviewed, from the advice a named person at MKW Advisors approved for the client, with the reviewer and date.
  *
- * Pure: builds a structure of sections and lines; the API turns the lines into the text PDF. Never a partner cost,
+ * Pure: builds a structure of sections, lines and (E16) tables; the API draws it as a designed PDF (`lib/report-pdf.ts`),
+ * and `reportLines` keeps the plain-text version. Never a partner cost,
  * a margin or a payout: the inputs do not carry them, and a test walks the output.
  */
 import type { Advice, AdviceInput, Candidate, Reasoned } from "./advice.ts";
 import type { EligibilityStatus, Finding } from "./eligibility.ts";
 import type { PublicAssessment, PublicFinding, PublicPlace, PublicStatement } from "./public.ts";
 
+/** E16: a table the designed PDF draws (the text version keeps the section's lines). */
+export interface ReportTable {
+  columns: string[];
+  rows: string[][];
+}
+
 export interface ReportSection {
   heading: string;
   lines: string[];
+  table?: ReportTable;
 }
 
 export interface Report {
@@ -25,6 +33,20 @@ export interface Report {
   status: "preliminary" | "reviewed";
   statusLine: string;
   sections: ReportSection[];
+  /** E16: the closing line on every report, and the language it is written in (Arabic is a draft until signed off). */
+  closing: string;
+  lang: "en" | "ar";
+}
+
+const CLOSING = {
+  preliminary: "Preliminary general information, not advice. Tasees is a service of MKW Advisors; partner firms deliver the work; MKW Advisors manages scope, price, quality and payment. Nothing is filed automatically.",
+  reviewed: "Reviewed advice for the client named above. Tasees is a service of MKW Advisors; partner firms deliver the work; MKW Advisors manages scope, price, quality and payment. Nothing is filed automatically.",
+};
+
+/** E16: the official sources behind the places shown, each once; a preliminary report lists only approved places'. */
+function sourcesSection(urls: Array<string | undefined>, preliminary: boolean): ReportSection {
+  const list = [...new Set(urls.filter((u): u is string => !!u))];
+  return { heading: "Official sources", lines: list.length ? list : [preliminary ? "None shown yet: a place's official source appears once a named person has checked its figures." : "No official source is on record for the places above."] };
 }
 
 export interface ReportMeta {
@@ -94,7 +116,7 @@ export function preliminaryReport(p: PublicAssessment, answers: AdviceInput, met
   const fitting = p.places.filter((x) => x.status !== "INELIGIBLE");
   const unresolved = [...p.missingFacts.map((m) => `[DATA MISSING] ${m}`), ...p.contradictions.map((c) => `[ANSWERS TO CHECK] ${c}`)];
   const sections: ReportSection[] = [
-    { heading: "Your business profile", lines: [...(meta.company ? [`Company: ${meta.company}`] : []), ...profileLines(answers)] },
+    { heading: "Your business profile", lines: [...(meta.company ? [`Company: ${meta.company.replace(/\s+/g, " ").trim()}`] : []), ...profileLines(answers)] },
     {
       heading: "Structures compared",
       lines: [
@@ -106,6 +128,14 @@ export function preliminaryReport(p: PublicAssessment, answers: AdviceInput, met
     {
       heading: "Jurisdictions compared",
       lines: fitting.length ? fitting.flatMap(pubPlaceLines) : [p.noViableOption ? "No place fits every answer yet." : "No places to show yet; a person reviews which fit."],
+      ...(fitting.length
+        ? {
+            table: {
+              columns: ["Place", "Emirate", "Status", "Setup estimate", "Visas", "Timeline"],
+              rows: fitting.map((x) => [x.zone, x.emirate, STATUS_LABEL[x.status], x.figures ? `${aed(x.figures.costMinFils)} to ${aed(x.figures.costMaxFils)}` : "to be verified", x.figures ? String(x.figures.visaQuota) : "to be verified", x.figures ? `about ${x.figures.timelineDays} working days` : "to be verified"]),
+            },
+          }
+        : {}),
     },
     {
       heading: "Rejected or uncertain alternatives",
@@ -123,6 +153,7 @@ export function preliminaryReport(p: PublicAssessment, answers: AdviceInput, met
     },
   ];
   if (meta.guidance?.length) sections.push({ heading: "General guidance (approved wording)", lines: meta.guidance.flatMap((g) => [`${g.title}:`, g.text, ""]) });
+  sections.push(sourcesSection(fitting.map((x) => x.sourceUrl), true));
   sections.push({
     heading: "Next steps",
     lines: [
@@ -139,6 +170,8 @@ export function preliminaryReport(p: PublicAssessment, answers: AdviceInput, met
     status: "preliminary",
     statusLine: "PRELIMINARY: general information from your answers, not reviewed by a person and not advice.",
     sections,
+    closing: CLOSING.preliminary,
+    lang: "en",
   };
 }
 
@@ -160,7 +193,7 @@ export function reviewedReport(a: Advice, answers: AdviceInput, meta: ReportMeta
   const rec = a.structure.recommendation ? STRUCTURE[a.structure.recommendation] ?? words(a.structure.recommendation) : null;
   const unresolved = [...(a.missingFacts ?? []).map((m) => `[DATA MISSING] ${m}`), ...(a.contradictions ?? []).map((c) => `[ANSWERS TO CHECK] ${c}`)];
   const sections: ReportSection[] = [
-    { heading: "Your business profile", lines: [...(meta.company ? [`Company: ${meta.company}`] : []), ...profileLines(answers)] },
+    { heading: "Your business profile", lines: [...(meta.company ? [`Company: ${meta.company.replace(/\s+/g, " ").trim()}`] : []), ...profileLines(answers)] },
     {
       heading: "Structures compared",
       lines: [
@@ -169,7 +202,18 @@ export function reviewedReport(a: Advice, answers: AdviceInput, meta: ReportMeta
         ...(a.structures ?? []).map((s) => `${STRUCTURE[s.structure] ?? s.structure}: ${STATUS_LABEL[s.status]}${s.findings.filter((f) => f.outcome !== "pass").slice(0, 2).map((f) => `; ${finding(f)}`).join("")}`),
       ],
     },
-    { heading: "Jurisdictions compared", lines: a.places.length ? a.places.flatMap(placeLines) : ["No place fits every answer."] },
+    {
+      heading: "Jurisdictions compared",
+      lines: a.places.length ? a.places.flatMap(placeLines) : ["No place fits every answer."],
+      ...(a.places.length
+        ? {
+            table: {
+              columns: ["Place", "Emirate", "Status", "Setup estimate", "Visas", "Timeline"],
+              rows: a.places.map((x) => [x.zone, x.emirate, STATUS_LABEL[x.status ?? "REQUIRES_VERIFICATION"], `${aed(x.costMinFils)} to ${aed(x.costMaxFils)} [${FIG[x.confidence] ?? x.confidence}${x.stale ? ", stale" : ""}]`, String(x.visaQuota), `about ${x.timelineDays} working days`]),
+            },
+          }
+        : {}),
+    },
     // A rejection carries its finding with the confidence label, as on the advice page.
     { heading: "Rejected alternatives", lines: (a.excluded ?? []).length ? (a.excluded ?? []).map((x) => { const f = (x.findings ?? []).find((y) => y.outcome === "fail"); return `${x.zone}: does not fit${f ? `; ${finding(f)}` : ""}`; }) : ["None."] },
     { heading: "Licences, approvals and what follows after setup", lines: [...a.licences, ...a.obligations].map(reasoned) },
@@ -187,6 +231,7 @@ export function reviewedReport(a: Advice, answers: AdviceInput, meta: ReportMeta
         `Rules and place data as of ${a.dataVersion?.asOf ?? meta.date}. Nothing in this report is a statutory conclusion or a filing; a priced offer follows a person's scoping review.`,
       ],
     },
+    sourcesSection(a.places.map((x) => x.sourceUrl), false),
     { heading: "Next steps", lines: ["Your request is with MKW Advisors; the offers that follow price exactly the structure and place settled here. Sign in to Tasees to follow the request and reply to any question."] },
   );
   return {
@@ -197,6 +242,8 @@ export function reviewedReport(a: Advice, answers: AdviceInput, meta: ReportMeta
     status: "reviewed",
     statusLine: meta.reviewedBy ? `REVIEWED by ${meta.reviewedBy} at MKW Advisors on ${meta.reviewedAt ?? meta.date}.` : "REVIEWED by MKW Advisors.",
     sections,
+    closing: CLOSING.reviewed,
+    lang: "en",
   };
 }
 
@@ -224,6 +271,6 @@ export function reportLines(r: Report, width = 82): string[] {
     for (const l of s.lines) lines.push(...wrap(l, width));
     lines.push("");
   }
-  lines.push(...wrap(`${r.status === "preliminary" ? "Preliminary general information, not advice." : "Reviewed advice for the client named above."} Tasees is a service of MKW Advisors; partner firms deliver the work; MKW Advisors manages scope, price, quality and payment. Nothing is filed automatically.`, width));
+  lines.push(...wrap(r.closing, width));
   return lines;
 }

@@ -1120,3 +1120,51 @@ owner on 3 Nov 2026: "start E15", after the portal assessment's point on the 13-
   draws it: the documents needed now first, the later ones folded by step with "Expected by", what was sent folded
   last. Early upload stays possible.
 - Partners and MKW staff see the documents as before; the plan is the client's.
+
+**D98. The assessment report is a designed PDF, drawn with pdfkit, in English or Arabic.** (E16, released by the owner on
+3 Nov 2026: "start E16". The owner approved the library and the scope: "Approve pdfkit" and "Assessment report only".)
+
+- **Why.** The in-house writer (D26) draws monospaced Latin text: no logo, no tables, no Arabic (gap 101). The report
+  is what a founder keeps and forwards; for cross-border and investment clients it has to read like an adviser's
+  document. Arabic needs a font embedded and its letters joined, which the in-house writer cannot do.
+- **What was added** (exact versions, in `apps/api/package.json`):
+  - `pdfkit` 0.20.2, which writes the PDF and shapes Arabic through `fontkit`.
+  - `bidi-js` 1.1.0, the Unicode bidirectional algorithm for lines that mix Arabic with English, numbers or
+    addresses.
+  - `@types/pdfkit` 0.17.7, for development only.
+
+  Together the lockfile gains 21 packages, 20 for production. The fonts are Noto Sans and Noto Sans Arabic, regular
+  and bold (about 1.6 MB), committed in `apps/api/assets/fonts` with their licence (`OFL.txt`) and copied into the
+  container image.
+- **Licences** (each package's own declaration):
+  - MIT: pdfkit, fontkit, bidi-js, @noble/hashes, @noble/ciphers, @types/pdfkit and 12 more;
+  - Apache-2.0: @swc/helpers (a fontkit helper);
+  - 0BSD: tslib;
+  - png-js 2.0.0 declares no licence field, and its LICENSE file is MIT.
+
+  All of these allow commercial use and bundling. Apache-2.0 asks that its notice be kept, which the installed package
+  does. The Noto fonts are under the SIL Open Font License 1.1, which allows embedding them in documents. Corrected
+  after the independent review of E16, which found the first wording ("all MIT") wrong.
+- **Maintenance.** pdfkit and fontkit are maintained, with releases in 2026; bidi-js had a release in 2026.
+  pdf-lib was considered and set aside, because it has not been released since 2022.
+- **Security.** `pnpm audit --prod` finds no known vulnerability (`docs/evidence/E16/audit.txt`). The renderer reads
+  only the four font files at fixed paths. It writes the report's own text and makes no network call. No user input
+  reaches a file path.
+- **What is drawn.** `apps/api/src/lib/report-pdf.ts` draws:
+  - a branded header and the status as a banner;
+  - each section titled, its comparison as a table with a header repeated across pages, every point's label as a
+    coloured tag;
+  - the official sources;
+  - a footer with the brand, the reference, the label and the page on every page.
+
+  Each line is laid out run by run: bidi-js levels, runs reordered, right-to-left words placed one by one, brackets
+  mirrored, both fonts on one baseline. It returns the PDF and the text it drew, which the tests read.
+- **The Arabic report** (`arabicReport` in `packages/core/src/report-ar.ts`) translates the report's own wording.
+  What the engine or a person wrote stays in English, marked as a left-to-right island. The public report is in
+  Arabic only once the Arabic reviewer has signed off; a client's report, when Arabic is available to that client.
+  Partners never get a report. The page asks for the report in its own language.
+- **Scope.** Only the assessment report. Invoices, credit notes, offers and remittance advices keep the in-house
+  writer (gap 3b stays open).
+- **How to remove it.** Revert E16 (this decision's commit range). The report goes back to `textPdf(reportLines(...))`,
+  which is kept, and `pnpm remove pdfkit bidi-js @types/pdfkit` and the fonts folder go with it. No data or migration
+  depends on it.

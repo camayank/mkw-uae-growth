@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createSession } from "../src/lib/auth.ts";
-import { asPlatform } from "../src/lib/context.ts";
+import { asPlatform, type SessionUser } from "../src/lib/context.ts";
+import { clientReportPdf, publicReportPdf } from "../src/services/report.ts";
 import { verifyAuditChain } from "../src/lib/audit.ts";
 import { EMAILS, makeEnv, type TestEnv } from "./helpers.ts";
 
@@ -60,9 +61,11 @@ describe("the pilot journeys A to F (E7E)", () => {
     state.code = saved.body.code;
     const report = await env.send("anon", "GET", `/api/public/assessments/${state.code}/report.pdf`);
     expect(report.status).toBe(200);
-    const text = pdfText(String(report.body));
+    // E16: a designed PDF; what it says is the text the renderer drew, through the same service.
+    expect(String(report.body).startsWith("%PDF-1.") && /\/FontFile2/.test(String(report.body))).toBe(true);
+    const text = (await asPlatform(env.db, null, (tx) => publicReportPdf(tx, state.code!))).text.join(" ");
     expect(text).toMatch(/PRELIMINARY: general information from your answers/);
-    expect(text).toMatch(/\[TO BE VERIFIED\]/);
+    expect(text).toMatch(/\bTO BE VERIFIED\b/);
     expect(text).not.toMatch(/AED [\d,]+ to AED/);
     expect(text).not.toMatch(MONEY);
     const events = await env.call("anon", "POST", "/api/public/events", { visitor: "pilotvisitor01", events: [{ stage: "visited" }, { stage: "assessment_started" }, { stage: "assessment_completed" }, { stage: "result_viewed" }, { stage: "result_saved" }], attribution: { source: "linkedin", campaign: "pilot" } });
@@ -114,7 +117,9 @@ describe("the pilot journeys A to F (E7E)", () => {
     noMoney(req.advice);
     const report = await env.send("pilot", "GET", `/api/client/requests/${state.requestId}/report.pdf`);
     expect(report.status).toBe(200);
-    const text = pdfText(String(report.body));
+    expect(String(report.body).startsWith("%PDF-1.") && /\/FontFile2/.test(String(report.body))).toBe(true);
+    const pilotUser = (await env.call("pilot", "GET", "/api/me")).body as SessionUser;
+    const text = (await clientReportPdf(env.db, pilotUser, state.requestId!)).text.join(" ");
     expect(text).toMatch(/REVIEWED by .+ at MKW Advisors on \d{4}-\d{2}-\d{2}/);
     expect(text).toMatch(/\[UNCERTAIN\]/);
     expect(text).not.toMatch(MONEY);

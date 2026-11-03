@@ -5,11 +5,30 @@
 // It prints a log and checks that the client never sees partner cost, margin or masked contact details.
 import { chromium } from "playwright";
 import { readFileSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:8787";
 /** E14 (D96): the workspace lives at /app/; the public homepage is the front door at /. */
 const APP = BASE + "/app/";
 const OUT = process.env.OUT ?? "./smoke-shots";
+/**
+ * E16: the report is a designed PDF (embedded Noto fonts, its text as glyph codes). It is checked as a PDF here; its
+ * words are read with poppler's pdftotext and its pages drawn with pdftoppm when they are installed (the API tests read
+ * the drawn text either way). The file and its first page are kept with the screenshots.
+ */
+const designedPdf = (buf, arabic = false) => buf.subarray(0, 7).toString("latin1") === "%PDF-1." && /FontFile2/.test(buf.toString("latin1")) && /NotoSans/.test(buf.toString("latin1")) && (!arabic || /NotoSansArabic/.test(buf.toString("latin1"))) && (buf.toString("latin1").match(/\/Type \/Page\b/g) ?? []).length >= 2;
+// Without pdftotext the report's words cannot be read here: that fails, unless SMOKE_NO_PDFTOTEXT=1 says to skip them
+// (the API tests read the drawn text either way). CI installs poppler (independent review of E16).
+const pdfWords = (buf) => {
+  try { return execFileSync("pdftotext", ["-", "-"], { input: buf }).toString().replace(/\s+/g, " "); } catch {
+    if (process.env.SMOKE_NO_PDFTOTEXT === "1") { log.push("report words NOT read: pdftotext missing, skipped by SMOKE_NO_PDFTOTEXT=1"); return null; }
+    return "";
+  }
+};
+const keepPdf = (buf, name) => {
+  writeFileSync(`${OUT}/${name}.pdf`, buf);
+  try { execFileSync("pdftoppm", ["-r", "90", "-png", "-f", "1", "-l", "2", `${OUT}/${name}.pdf`, `${OUT}/${name}`]); log.push(`${name} (pdf and pages)`); } catch { log.push(`${name} (pdf)`); }
+};
 const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
 const errors = [];
 const log = [];
@@ -577,10 +596,15 @@ check("client sees the date the advice's rules and data stand at (E2):", /Rules 
 // U1: two sentences before the reasoning, built from the engine's own labelled text; the full advice folds below, open.
 check("the advice opens with a plain summary and the points to confirm before the reasoning (U1):", /fits what you told us|No option fits/.test(await client.locator("main .summary h2").innerText()) && (await client.locator("main .confirm > div").count()) >= 1 && (await client.locator("main .confirm > div").count()) <= 2 && (await client.locator("main details.reasoning[open]").count()) === 1);
 // E7D: the reviewed report, as a PDF, from the client's advice page.
-check("the client's advice page offers the reviewed report (E7D):", (await client.locator('a[href$="/report.pdf"]').count()) === 1 && /Download the reviewed report/.test(await client.locator("main").innerText()));
+check("the client's advice page offers the reviewed report (E7D):", (await client.locator('a[href*="/report.pdf"]').count()) === 1 && /Download the reviewed report/.test(await client.locator("main").innerText()));
 {
-  const pdf = await client.evaluate(async () => { const r = await fetch(document.querySelector('a[href$="/report.pdf"]').getAttribute("href")); return { type: r.headers.get("content-type"), text: await r.text() }; });
-  check("the reviewed report is a PDF naming the reviewer, with every section and no money internals (E7D):", /application\/pdf/.test(pdf.type) && pdf.text.startsWith("%PDF") && /REVIEWED by .+ at MKW Advisors/.test(pdf.text) && /JURISDICTIONS COMPARED/.test(pdf.text) && !/margin|payout/i.test(pdf.text));
+  const href = await client.locator('a[href*="/report.pdf"]').first().getAttribute("href");
+  const res = await client.request.get(BASE + href);
+  const buf = await res.body();
+  const words = pdfWords(buf);
+  log.push(`reviewed report: ${buf.length} bytes, words ${words === null ? "not read (no pdftotext)" : "read"}`);
+  check("the reviewed report is a designed PDF naming the reviewer, with every section and no money internals (E7D, E16):", /application\/pdf/.test(res.headers()["content-type"]) && designedPdf(buf) && (words === null || (/REVIEWED by .+ at MKW Advisors/.test(words) && /Jurisdictions compared/.test(words) && /Official sources/.test(words) && !/margin|payout/i.test(words))));
+  keepPdf(buf, "121-report-reviewed");
 }
 await shot(client, "36-client-advice");
 await axeCheck(client, "client advice with eligibility (E1)");
@@ -883,8 +907,11 @@ const pp = await pub.newPage();
   const savedCode = (await sel.locator("#save").innerText()).match(/[A-Z2-9]{10}/)[0];
   {
     // E7D: the preliminary report for the saved result, as a PDF, labelled preliminary, with the approved place's figures.
-    const pdf = await sel.evaluate(async (code) => { const r = await fetch(`/api/public/assessments/${code}/report.pdf`); return { type: r.headers.get("content-type"), text: await r.text() }; }, savedCode);
-    check("the preliminary report downloads as a PDF with the label, the sections and only approved figures (E7D):", /application\/pdf/.test(pdf.type) && pdf.text.startsWith("%PDF") && /PRELIMINARY: general information/.test(pdf.text) && /YOUR BUSINESS PROFILE/.test(pdf.text) && /AED 12,000 to AED 20,000 \[CHECKED\]/.test(pdf.text) && /\[TO BE VERIFIED\]/.test(pdf.text) && !/margin|payout/i.test(pdf.text) && (await sel.locator("#report").count()) === 1);
+    const res = await sel.request.get(`${BASE}/api/public/assessments/${savedCode}/report.pdf`);
+    const buf = await res.body();
+    const words = pdfWords(buf);
+    check("the preliminary report downloads as a designed PDF with the label, the sections and only approved figures (E7D, E16):", /application\/pdf/.test(res.headers()["content-type"]) && designedPdf(buf) && (words === null || (/PRELIMINARY: general information/.test(words) && /Your business profile/.test(words) && /AED 12,000 to AED 20,000 \[CHECKED\]/.test(words) && /TO BE VERIFIED/.test(words) && !/margin|payout/i.test(words))) && (await sel.locator("#report").count()) === 1);
+    keepPdf(buf, "120-report-preliminary");
   }
   const rec = await pub.newPage();
   rec.on("pageerror", (e) => errors.push(`selector recover: ${e.message}`));
@@ -1482,6 +1509,16 @@ await eventually("public intake in Arabic:", async () => /شركتك في الإ
 // E3: the selector's questions and controls are translated too, question by question.
 await pp.goto(BASE + "/?lang=ar"); await pp.waitForSelector('html[dir="rtl"]');
 check("the homepage in Arabic (E7A):", /اعثر على الكيان الإماراتي المناسب/.test(await pp.locator("main").innerText()));
+{
+  // E16: with Arabic signed off, the public report comes in Arabic when asked: the Arabic font embedded, an -ar file.
+  const saved = await (await pp.request.post(`${BASE}/api/public/assessments`, { data: { answers: { emirate: "Dubai", activity: "tech", customers: "international", visas: 2, budgetAed: 30000, premises: "office", ownerType: "individuals", foreignTaxResident: false } } })).json();
+  const res = await pp.request.get(`${BASE}/api/public/assessments/${saved.code}/report.pdf?lang=ar`);
+  const buf = await res.body();
+  const words = pdfWords(buf);
+  check("the preliminary report in Arabic: a designed PDF with the Arabic font, an Arabic file name and the Arabic title (E16):", res.status() === 200 && designedPdf(buf, true) && /-ar\.pdf/.test(res.headers()["content-disposition"] ?? "") && (words === null || /الكيان/.test(words)));
+  // (Copying Arabic out of the PDF can change a joined letter, e.g. تقرير reads تقرتر: what is drawn is right; gap 130.)
+  keepPdf(buf, "122-report-preliminary-ar");
+}
 await eventually("the homepage map in Arabic keeps west on the left and shows each emirate's name once (E12):", async () => (await pp.locator("#home-map .em").count()) === 7 && (await pp.evaluate(() => {
   const x = (e) => document.querySelector(`#home-map [data-home-em="${e}"]`).getBoundingClientRect().left;
   const shown = [...document.querySelectorAll("#home-map .em .ar")].filter((e) => getComputedStyle(e).display !== "none").length;

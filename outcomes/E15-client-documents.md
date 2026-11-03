@@ -1,6 +1,6 @@
 # E15 Client documents: needed now, needed later, already sent
 
-Status: verified-pending-merge (branch `outcome/E15-client-documents`, on `main` at db7c5ee with E14 merged; released
+Status: merged (camayank/mkw-uae-growth#36, 3 Nov 2026; previously verified-pending-merge, branch `outcome/E15-client-documents`, on `main` at db7c5ee with E14 merged; released
 by the owner on 3 Nov 2026: "start E15", after the portal assessment's point that the client was asked to upload 13
 documents in one action)
 

@@ -363,6 +363,7 @@ export async function setFollowup(tx: Queryable, actor: SessionUser, id: string,
 
 export async function completeFollowup(tx: Queryable, actor: SessionUser, followupId: number, note = "") {
   requirePipeline(actor);
+  await lockAuditChain(tx); // lock order (O13): the note row lock below is followed by an audit; a rebooking holds the chain lock and then touches this row
   const f = (await tx.query<{ id: number; lead_id: string; done_at: string | null }>("select id, lead_id, done_at from lead_notes where id = $1 and kind = 'followup' for update", [followupId])).rows[0];
   if (!f) throw notFound("Follow-up not found");
   if (f.done_at) throw conflict("This follow-up is already done");
@@ -516,6 +517,13 @@ export async function recordFunnelEvents(tx: Queryable, visitor: string, events:
   for (const e of events.slice(0, 40)) {
     if (!(FUNNEL_STAGES as readonly string[]).includes(e.stage)) continue;
     const key = String(e.key ?? "").slice(0, 40);
+    // A stage is counted once per visitor. A step reached again (the visitor went back) keeps one row but moves to
+    // the end of the sequence (a fresh id and time), so "the last step reached" is where they really stopped; only
+    // new rows count as recorded.
+    if (e.stage === "step_reached") {
+      const again = await tx.query("update funnel_events set at = app_now(), id = nextval('funnel_events_id_seq') where visitor = $1 and stage = $2 and key = $3 returning id", [visitor, e.stage, key]);
+      if (again.rows.length) continue;
+    }
     const r = await tx.query("insert into funnel_events (visitor, stage, key, source) values ($1,$2,$3,$4) on conflict (visitor, stage, key) do nothing returning id", [visitor, e.stage, key, JSON.stringify(source)]);
     recorded += r.rows.length;
   }
@@ -538,11 +546,16 @@ const ATTRIBUTED = "att as (select distinct on (request_id) id from leads where 
 export async function funnelReport(tx: Queryable, actor: SessionUser) {
   requirePipeline(actor);
   const bySource = await tx.query<Record<string, unknown>>(
-    `with vis as (
-       select visitor, coalesce(min(source->>'source'), 'direct') as source, coalesce(min(source->>'campaign'), '') as campaign,
-         bool_or(stage = 'assessment_started') as started, bool_or(stage = 'assessment_completed') as completed, bool_or(stage = 'result_viewed') as viewed,
-         bool_or(stage = 'compared') as compared, bool_or(stage = 'report_printed') as printed, bool_or(stage = 'result_saved') as saved
-       from funnel_events group by visitor),
+    `with first as (
+       -- First touch wins, as one pair: the source and campaign of the visitor's first event, never a source from one
+       -- link and a campaign from another.
+       select distinct on (visitor) visitor, coalesce(nullif(source->>'source', ''), 'direct') as source, coalesce(source->>'campaign', '') as campaign
+       from funnel_events order by visitor, id),
+     vis as (
+       select e.visitor, f.source, f.campaign,
+         bool_or(e.stage = 'assessment_started') as started, bool_or(e.stage = 'assessment_completed') as completed, bool_or(e.stage = 'result_viewed') as viewed,
+         bool_or(e.stage = 'compared') as compared, bool_or(e.stage = 'report_printed') as printed, bool_or(e.stage = 'result_saved') as saved
+       from funnel_events e join first f on f.visitor = e.visitor group by e.visitor, f.source, f.campaign),
      v as (select source, campaign, count(*)::int as visitors, sum(case when started then 1 else 0 end)::int as started, sum(case when completed then 1 else 0 end)::int as completed,
          sum(case when viewed then 1 else 0 end)::int as viewed, sum(case when compared then 1 else 0 end)::int as compared, sum(case when printed then 1 else 0 end)::int as printed, sum(case when saved then 1 else 0 end)::int as saved
        from vis group by source, campaign),
@@ -572,7 +585,7 @@ export async function funnelReport(tx: Queryable, actor: SessionUser) {
   );
   const abandon = await tx.query<{ key: string; n: number }>(
     `with last as (select visitor, (array_agg(key order by id desc) filter (where stage = 'step_reached'))[1] as key from funnel_events group by visitor having bool_or(stage = 'assessment_started') and not bool_or(stage = 'assessment_completed'))
-     select coalesce(key, '(first question)') as key, count(*)::int as n from last group by 1 order by n desc`,
+     select coalesce(key, '(first question)') as key, count(*)::int as n from last group by 1 order by n desc, key`,
   );
   const outcomes = await tx.query<Record<string, unknown>>(
     `select sum(case when status = 'converted' then 1 else 0 end)::int as won, sum(case when status = 'closed' then 1 else 0 end)::int as lost, count(*)::int as leads,

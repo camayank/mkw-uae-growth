@@ -887,6 +887,10 @@ canvas of 3 Nov 2026 and its review round.)
   attributed lead: the one with a measured browser session, then the earliest, then by id, so two leads of one saved
   result (the handoff attaches every one) never double a figure; lead counts stay per lead. A lead whose client
   accepted or is on an engagement leaves the attention list, as the next-action rule already says.
+- A visitor's source and campaign are one pair from their first event (first touch wins, as E4 decided for leads),
+  never a source from one link and a campaign from another opened later in the same session. A step the visitor
+  comes back to is sent again by the page and moves to the end of the sequence on the server (one row per step, a
+  fresh id and time, not counted again), so the abandonment breakdown names the question they really stopped at.
 - The next best action is a rule over the lead's state (status, readiness, call request, owner, follow-ups, what the
   request became), returning one action and the reason; it is computed on read, never stored, so it is always
   current. The adviser overrides it with a reason, audited; the override is shown beside the rule's suggestion and
@@ -918,7 +922,8 @@ canvas of 3 Nov 2026 and its review round.)
   owns the lead when nobody did. Times are Gulf Standard Time: the lead page sends the entered time as +04:00 and
   the follow-up note says "GST". A rebooking closes the earlier call's follow-up so the queue shows one call.
   Every lead write that locks the row and then audits takes the audit-chain lock first (the O13 lock order), in
-  `loadLead`, so a booking and the handoff's conversion of the same lead queue rather than deadlock.
+  `loadLead`, so a booking and the handoff's conversion of the same lead queue rather than deadlock; completing a
+  follow-up takes it before its note row lock for the same reason (a rebooking closes that row under the chain lock).
 - The client's report exists for a new-company request only: a services request for an existing company has no
   assessment behind it, so the route answers 404 and the page offers no link (the engine would otherwise have
   compared structures for a company that already exists).

@@ -30,7 +30,7 @@ describe("funnel measurement, qualification and the conversion dashboard (E7C)",
   it("events are anonymous, de-duplicated and refuse a malformed id or stage; nobody signed in is needed", async () => {
     const before = { audit: await count(env, "audit_events"), outbox: await count(env, "outbox") };
     const r = await events(visitor, [{ stage: "visited" }, { stage: "assessment_started" }, { stage: "step_reached", key: "activity" }, { stage: "step_reached", key: "customers" }, { stage: "visited" }]);
-    expect(r.status).toBe(200);
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
     expect(r.body).toEqual({ recorded: 4 }); // the repeated "visited" is one row
     expect((await events(visitor, [{ stage: "visited" }, { stage: "step_reached", key: "activity" }])).body).toEqual({ recorded: 0 });
     expect((await events("short", [{ stage: "visited" }])).status).toBe(400);
@@ -127,6 +127,19 @@ describe("funnel measurement, qualification and the conversion dashboard (E7C)",
     expect(f.bySource.find((r: any) => r.source === "newsletter")).toMatchObject({ visitors: 1, started: 1, completed: 0, leads: 0 });
     expect(f.totals).toMatchObject({ visitors: 2, started: 2, completed: 1, completionRate: 50, abandonmentRate: 50, won: 0, lost: 1 });
     expect(f.abandonment).toEqual([{ step: "premises", visitors: 1 }]);
+    // A visitor who went back: the last step they reached is where they stopped, not the furthest one; the step rows
+    // stay one per step and only new rows count as recorded.
+    const back = await events("v3abcdefghij", [{ stage: "visited" }, { stage: "assessment_started" }, { stage: "step_reached", key: "activity" }, { stage: "step_reached", key: "visas" }, { stage: "step_reached", key: "activity" }], { source: "newsletter" });
+    expect(back.body).toEqual({ recorded: 4 });
+    expect((await env.call("founder", "GET", "/api/ops/pipeline/funnel")).body.abandonment).toEqual([{ step: "activity", visitors: 1 }, { step: "premises", visitors: 1 }]);
+    // Attribution is one pair from the first event: a second link opened in the same session never mixes its campaign in.
+    await events("v4abcdefghij", [{ stage: "visited" }], { source: "google", campaign: "z-campaign" });
+    await events("v4abcdefghij", [{ stage: "assessment_started" }], { source: "newsletter", campaign: "a-campaign" });
+    const srcs = (await env.call("founder", "GET", "/api/ops/pipeline/funnel")).body.bySource;
+    expect(srcs.find((r: any) => r.source === "google" && r.campaign === "z-campaign")).toMatchObject({ visitors: 1, started: 1 });
+    expect(srcs.find((r: any) => r.campaign === "a-campaign")).toBeUndefined();
+    expect(srcs.find((r: any) => r.source === "google" && r.campaign === "a-campaign")).toBeUndefined();
+    f = (await env.call("founder", "GET", "/api/ops/pipeline/funnel")).body;
     expect(f.lostReasons).toEqual([{ reason: "Chose another adviser", leads: 1 }]);
     expect(f.turnaround.contacted).toBe(1);
     expect(f.turnaround.toFirstContactDays).toBeGreaterThanOrEqual(0);

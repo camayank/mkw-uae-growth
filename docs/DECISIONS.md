@@ -1025,8 +1025,10 @@ canvas of 3 Nov 2026 and its review round.)
   promises, a card per kind of place, the emirates map, the industries, how it works, what it does and does not
   do, three questions, and a closing call to action. The quick match is the main action; the eleven questions stay.
 - A package card shows a "from" figure only when a named person approved at least one place of that kind for public
-  display, and then quotes the lowest approved estimate (`byType` in the quick match, D80), labelled checked; else
-  "Price to be verified". The canvas's prices were design figures and are not used. Counts are places on record.
+  display, and then quotes that place by name ("from AED 12,000 at IFZA", `byType` in the quick match, D80), labelled
+  checked and "preliminary estimate, as of" the rules' date: the approval is of one place's figures, never a claim
+  about the whole kind (independent review). Else "Price to be verified". The canvas's prices were design figures and
+  are not used. The counts on the cards and the map are places on record (`onRecord`), not places still open.
 - The cards describe each kind by what licenses or registers it, not by what it allows (a benefit is a rule's
   conclusion and needs an approved statement); approved guidance notes remain the place for that.
 - The strip's promises are the platform's own ("4 questions", "7 emirates on one map", "1 person checks your case

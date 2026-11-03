@@ -420,25 +420,28 @@ const PACKAGES = [
   ["offshore", "Offshore company", "Registered with an offshore registry, usually to hold shares or assets.", "M12 3v18M5 8l7-5 7 5M5 16a7 4 0 0 0 14 0"],
 ];
 async function renderHome() {
-  $("try-tiles").innerHTML = HOME_TRY.map(([id, label]) => `<button type="button" class="try" data-try="${id}" aria-label="${esc(activityLabel(id))}"><span class="ico">${icon(id)}</span><b>${esc(label)}</b></button>`).join("");
+  $("try-tiles").innerHTML = HOME_TRY.map(([id, label]) => `<button type="button" class="try" data-try="${id}" title="${esc(activityLabel(id))}"><span class="ico">${icon(id)}</span><b>${esc(label)}</b></button>`).join("");
   for (const b of $("try-tiles").querySelectorAll("[data-try]")) b.addEventListener("click", () => startQuick(b.dataset.try));
   const draw = (d) => {
-    $("home-count").textContent = d ? `${d.everywhere} across the seven emirates` : "–";
+    // A redraw when the platform answers must not drop a keyboard user's place on the page.
+    const was = document.activeElement?.closest?.("#landing") ? (document.activeElement.dataset.pkg ? `[data-pkg="${document.activeElement.dataset.pkg}"]` : document.activeElement.dataset.homeEm ? `[data-home-em="${CSS.escape(document.activeElement.dataset.homeEm)}"]` : null) : null;
+    $("home-count").textContent = d ? `${Object.values(d.onRecord).reduce((a, b) => a + b, 0)} across the seven emirates` : "–";
     $("packages").innerHTML = PACKAGES.map(([type, title, line, path]) => {
       const t = d?.byType?.[type];
       return `<article class="pkg"><span class="ico"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="${path}"/></svg></span>
-        <h3>${esc(title)}</h3><p class="small muted">${esc(line)}</p>
-        ${t?.fromFils ? `<p class="from"><span class="small muted">from</span> ${esc(aed(t.fromFils))} <span class="badge ok">checked</span></p>` : `<p class="from tbv">Price to be verified</p>`}
-        <p class="small">${t ? `${esc(t.places)} place${t.places === 1 ? "" : "s"} on record` : ""}</p>
-        <button type="button" class="btn" data-pkg="${type}">See what fits you</button></article>`;
+        <h3 id="pkg-${type}">${esc(title)}</h3><p class="small muted">${esc(line)}</p>
+        ${t?.fromFils ? `<p class="from"><span class="small muted">from</span> ${esc(aed(t.fromFils))} <span class="small muted">at</span> <span data-no-i18n>${esc(t.fromZone)}</span> <span class="badge ok">checked</span></p><p class="small muted">Preliminary estimate${d.asOf ? `, as of ${esc(d.asOf)}` : ""}. Not advice.</p>` : `<p class="from tbv">Price to be verified</p>`}
+        <p class="small">${t ? `${esc(t.onRecord)} place${t.onRecord === 1 ? "" : "s"} on record` : ""}</p>
+        <button type="button" class="btn" data-pkg="${type}" aria-describedby="pkg-${type}">Start the four questions</button></article>`;
     }).join("");
     for (const b of $("packages").querySelectorAll("[data-pkg]")) b.addEventListener("click", () => startQuick());
-    const n = (e) => (d ? d.byEmirate[e] ?? 0 : null);
+    const n = (e) => (d ? d.onRecord[e] ?? 0 : null);
     $("home-map").innerHTML = `<div class="uaemap" role="group" aria-label="The seven emirates"><span class="sea" style="grid-column:1 / 4;grid-row:1 / 3">Arabian Gulf</span><span class="sea" style="grid-column:5 / 6;grid-row:5 / 6;text-align:center">Gulf of Oman</span>
       ${MAP.map(([e, ar, , col, row]) => `<button type="button" class="em${n(e) === 0 ? " none" : ""}" data-home-em="${esc(e)}" aria-label="${esc(e)}${n(e) == null ? "" : n(e) === 0 ? ", no places on record yet" : `, ${esc(n(e))} place(s) on record`}" style="grid-column:${col};grid-row:${row}"><span class="top-row">${flagOf(e)}<span class="n">${n(e) === 0 ? "–" : esc(n(e) ?? "·")}</span></span><span><b>${esc(e)}</b><br><span class="ar" lang="ar" data-no-i18n>${ar}</span></span></button>`).join("")}</div>
       <p class="small muted" style="margin:6px 0 0">Schematic map, not to scale.</p>`;
     for (const b of $("home-map").querySelectorAll("[data-home-em]")) b.addEventListener("click", () => startQuick(undefined, { emirate: b.dataset.homeEm }));
     if (isAr()) translateTree($("landing"));
+    if (was) $("landing").querySelector(was)?.focus();
   };
   draw(null);
   try {
@@ -617,7 +620,7 @@ function quickResultHtml() {
       ${facts.length ? `<ul class="facts">${facts.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>` : ""}
       ${b.conditions || b.toConfirm ? `<p class="small muted">${esc([b.conditions ? `${b.conditions} condition(s)` : "", b.toConfirm ? `${b.toConfirm} point(s) a person confirms` : ""].filter(Boolean).join(", "))} before anything is priced.</p>` : ""}
       <div class="cta noprint"><a class="btn gold" href="#review" id="quick-price">Get my exact price</a><button type="button" class="btn" id="quick-full">See the full comparison</button></div>
-      <p class="small muted" style="margin:0">No payment now. A person at MKW Advisors checks your case and sends one fixed price, usually within one working day.${b.sourceUrl ? ` <a href="${esc(b.sourceUrl)}" target="_blank" rel="noopener noreferrer">Official source</a>` : ""}</p>
+      <p class="small muted" style="margin:0">No payment now. A person at MKW Advisors checks your case and sends priced offers, usually within one working day.${b.sourceUrl ? ` <a href="${esc(b.sourceUrl)}" target="_blank" rel="noopener noreferrer">Official source</a>` : ""}</p>
     </div>
     ${d.alternatives.length ? `<h3 style="margin:8px 0 0;font-size:1.05rem">Also worth a look</h3><div class="alts">${d.alternatives.map(alt).join("")}</div>` : ""}
     ${legend}`;
@@ -691,8 +694,8 @@ function toFullQuestions() {
 function startQuick(activity, { emirate } = {}) {
   savedCode = null;
   track("assessment_started");
-  // E11: an emirate tapped on the homepage's map is the first answer to question 2; the questions still start at 1.
-  if (emirate) { quick.emirate = emirate; syncAnswers(); }
+  // E11: an emirate tapped on the homepage's map is the answer to question 2, and the questions start again at 1.
+  if (emirate) { quick.emirate = emirate; quick.step = 1; syncAnswers(); }
   show("quick");
   if (activity && QUESTIONS.activity.options.some((o) => o[0] === activity)) { quick.activity = activity; syncAnswers(); goQuick(CONFIRM_ACTIVITY.has(activity) ? 1 : 2); }
   else goQuick(quick.step || 1);

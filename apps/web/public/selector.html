@@ -169,15 +169,14 @@
     .ticks li::before { content: "✓"; color: var(--ok); font-weight: 700; margin-inline-end: 6px; }
     .hero-try { flex: 1 1 320px; min-width: 0; margin: 0; padding: 18px; border-radius: 20px; box-shadow: 0 22px 56px rgba(14, 91, 76, 0.16); display: flex; flex-direction: column; gap: 12px; }
     .hero-try h2 { margin: 0; font-size: 1.15rem; }
-    .meter-l { height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; } .meter-l i { display: block; width: 25%; height: 100%; background: #c8964a; }
     .try-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
     .try { display: flex; align-items: center; gap: 10px; padding: 10px; border: 1.5px solid var(--line); border-radius: 12px; background: var(--surface); font: inherit; color: var(--text); cursor: pointer; text-align: start; min-height: 52px; }
     .try:hover { border-color: var(--brand); }
     .try .ico { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--brand-soft); color: var(--brand); flex: none; }
-    .try-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; background: #16201c; color: #fff; }
-    .try-foot small { display: block; color: #a9b6af; } .try-foot b { color: #fff; }
-    .strip { list-style: none; margin: 8px 0 28px; padding: 18px; display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px 16px; border-radius: 16px; background: #16201c; color: #c9d3ce; }
-    .strip li { display: flex; flex-direction: column; } .strip b { font-size: 1.8rem; color: #e3c38f; font-variant-numeric: tabular-nums; line-height: 1.1; }
+    .try-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; background: var(--ink-panel); color: var(--ink-panel-text); }
+    .try-foot small { display: block; color: var(--ink-panel-muted); } .try-foot b { color: var(--ink-panel-text); }
+    .strip { list-style: none; margin: 8px 0 28px; padding: 18px; display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px 16px; border-radius: 16px; background: var(--ink-panel); color: var(--ink-panel-muted); }
+    .strip li { display: flex; flex-direction: column; } .strip b { font-size: 1.8rem; color: var(--gold-text); font-variant-numeric: tabular-nums; line-height: 1.1; }
     .packages { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
     .pkg { display: flex; flex-direction: column; gap: 10px; padding: 18px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
     .pkg .ico { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; background: var(--brand-soft); color: var(--brand); }
@@ -189,10 +188,10 @@
     .home-map-copy { flex: 1 1 260px; min-width: 0; } .home-map { flex: 2 1 420px; min-width: 0; }
     .faq details { border-bottom: 1px solid var(--line); } .faq summary { cursor: pointer; min-height: 48px; display: flex; align-items: center; font-weight: 650; }
     .faq p { margin: 0 0 14px; color: var(--muted); }
-    .cta-band { margin: 28px 0 8px; padding: 26px; border-radius: 18px; display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; align-items: center; background: linear-gradient(135deg, #0e5b4c, #0a4338); color: #fff; border-inline-start: 8px solid #ce1126; }
-    .cta-band h2 { margin: 0 0 4px; color: #fff; } .cta-band p { margin: 0; color: #d7e8e2; }
+    .cta-band { margin: 28px 0 8px; padding: 26px; border-radius: 18px; display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; align-items: center; background: var(--brand); color: var(--brand-ink); border-inline-start: 8px solid #ce1126; }
+    .cta-band h2 { margin: 0 0 4px; color: inherit; } .cta-band p { margin: 0; color: inherit; opacity: 0.9; }
     .cta-band .gold { padding: 13px 22px; font-size: 1.05rem; }
-    .selector.wide .landing h2 { margin-top: 32px; }
+    .selector.wide .landing > h2 { margin-top: 32px; }
     @media print {
       .top, .noprint, form, .landing, .quick, .flagbar { display: none !important; }
       body { background: #fff; }
@@ -222,13 +221,12 @@
           </div>
           <ul class="ticks"><li>Free, no account</li><li>About a minute</li><li>Nothing to pay before you accept an offer</li></ul>
         </div>
-        <div class="card hero-try" aria-labelledby="try-h">
-          <div class="row between"><p class="eyebrow" style="margin:0">Question 1 of 4</p><span class="small muted">25%</span></div>
-          <div class="meter-l" aria-hidden="true"><i></i></div>
+        <section class="card hero-try" aria-labelledby="try-h">
+          <p class="eyebrow" style="margin:0">Question 1 of 4</p>
           <h2 id="try-h">What will your company do?</h2>
           <div class="try-tiles" id="try-tiles" role="group" aria-labelledby="try-h"></div>
           <div class="try-foot"><span><small>Places on record now</small><b id="home-count">…</b></span><button type="button" class="gold sm" id="try-next">Next</button></div>
-        </div>
+        </section>
       </div>
       <ul class="strip" aria-label="What the four questions give you">
         <li><b>4</b><span>questions to the place to look at first</span></li>
@@ -238,7 +236,7 @@
       </ul>
       <h2>Pick a starting point, or let the four questions pick for you</h2>
       <div class="packages" id="packages"></div>
-      <p class="small muted">"From" is the lowest setup estimate among places a named person at MKW Advisors has checked against the official source and approved for this page; a kind with none says "to be verified". It is an estimate including government fees; a price comes only from an offer.</p>
+      <p class="small muted" id="from-note">A "from" figure is one named place's lowest setup estimate, checked against the official source by a named person at MKW Advisors and approved for this page; it is not a price for every place of that kind. A kind with none says "to be verified". Estimates include government fees; a price comes only from an offer.</p>
       <div class="home-map-row">
         <div class="home-map-copy">
           <h2>Tap an emirate to see what you can set up there</h2>
@@ -271,7 +269,7 @@
       <div class="faq">
         <details><summary>Do I pay anything now?</summary><p>No. The four questions and the comparison are free. You pay a deposit only after you accept an offer from MKW Advisors.</p></details>
         <details><summary>Is this advice?</summary><p>No. It is preliminary, general information from your answers. A person at MKW Advisors reviews your case before anything is priced or filed.</p></details>
-        <details><summary>What happens after I ask for a review?</summary><p>A person checks your answers against the current rules and figures and sends priced offers from vetted partner firms. A reply usually comes within one working day.</p></details>
+        <details><summary>What happens after I ask for a review?</summary><p>A person checks your answers against the current rules and figures and sends priced offers from MKW Advisors, delivered by vetted partner firms. A reply usually comes within one working day.</p></details>
       </div>
       <div class="cta-band"><div><h2>Find your set-up in about a minute</h2><p>Four questions. The place to look at first. A person checks it before any price.</p></div><button type="button" class="gold" id="cta-start">Start now, free</button></div>
       <p class="small muted" style="margin-top:16px">Already a client? <a href="/">Sign in to the Tasees workspace</a>.</p>

@@ -68,6 +68,10 @@
     "violations": []
   },
   {
+    "screen": "homepage with a checked package figure (E11)",
+    "violations": []
+  },
+  {
     "screen": "public selector result, one rule and one place approved (E3)",
     "violations": []
   },

@@ -65,14 +65,20 @@ describe("the quick match (E8)", () => {
 
   it("the package figures count the open places per kind and quote only an approved place's lowest estimate (E11)", () => {
     const none = quickMatch({}, rules, zones, NONE, NONE, AS_OF);
-    expect(none.byType).toEqual({ free_zone: { places: 3, fromFils: null }, mainland: { places: 1, fromFils: null }, financial: { places: 0, fromFils: null }, offshore: { places: 1, fromFils: null } });
+    expect(none.byType).toEqual({ free_zone: { places: 3, onRecord: 3, fromFils: null, fromZone: null }, mainland: { places: 1, onRecord: 1, fromFils: null, fromZone: null }, financial: { places: 0, onRecord: 0, fromFils: null, fromZone: null }, offshore: { places: 1, onRecord: 1, fromFils: null, fromZone: null } });
     // Only IFZA approved: the free zone card quotes IFZA's 12,000 although SHAMS (6,000) is lower, because SHAMS is not approved.
     const ifza = quickMatch({}, rules, zones, ALL_RULES, new Set(["IFZA"]), AS_OF);
-    expect(ifza.byType.free_zone).toEqual({ places: 3, fromFils: 1_200_000 });
+    expect(ifza.byType.free_zone).toEqual({ places: 3, onRecord: 3, fromFils: 1_200_000, fromZone: "IFZA" });
     expect(ifza.byType.mainland.fromFils).toBeNull();
     const all = quickMatch({ emirate: "Dubai" }, rules, zones, ALL_RULES, ALL_PLACES, AS_OF);
-    expect(all.byType.free_zone).toEqual({ places: 1, fromFils: 1_200_000 });
-    expect(all.byType.mainland).toEqual({ places: 1, fromFils: 2_200_000 });
+    expect(all.byType.free_zone).toEqual({ places: 1, onRecord: 1, fromFils: 1_200_000, fromZone: "IFZA" });
+    expect(all.byType.mainland).toEqual({ places: 1, onRecord: 1, fromFils: 2_200_000, fromZone: "Dubai DET mainland" });
+    // An approved place an approved rule excludes gives no figure; the kind is still on record.
+    const tight = quickMatch({ activity: "tech", visas: 1, budget: "up_to_15k" }, rules, zones, ALL_RULES, ALL_PLACES, AS_OF);
+    expect(tight.byType.mainland).toEqual({ places: 0, onRecord: 1, fromFils: null, fromZone: null });
+    // An approved place with no estimate (0) is never quoted.
+    const free = [...zones.filter((x) => x.name !== "SHAMS"), z("SHAMS", "Sharjah", "free_zone", 1, 0, 0, ["consulting"])];
+    expect(quickMatch({}, rules, free, ALL_RULES, new Set(free.map((x) => x.name)), AS_OF).byType.free_zone.fromZone).toBe("RAKEZ");
   });
 
   it("an emirate with no place on record says so, rather than that nothing fits", () => {

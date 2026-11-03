@@ -174,6 +174,13 @@ export const AR = {
   ": done": ": تم",
   ": now": ": الآن",
   // E11 homepage in the canvas look (draft until the Arabic reviewer signs it off)
+  "A \"from\" figure is one named place's lowest setup estimate, checked against the official source by a named person at MKW Advisors and approved for this page; it is not a price for every place of that kind. A kind with none says \"to be verified\". Estimates include government fees; a price comes only from an offer.": "رقم «من» هو أدنى تقدير تأسيس لجهة مسمّاة، تحقق منه شخص مسمّى في MKW Advisors مقابل المصدر الرسمي ووافق على عرضه هنا؛ وليس سعراً لكل جهة من هذا النوع. النوع الذي لا رقم له يظهر «قيد التحقق». تشمل التقديرات الرسوم الحكومية؛ ولا يصدر السعر إلا في عرض.",
+  "from": "من",
+  "at": "في",
+  "Start the four questions": "ابدأ الأسئلة الأربعة",
+  "The seven emirates": "الإمارات السبع",
+  "What the four questions give you": "ما تقدّمه لك الأسئلة الأربعة",
+  "Not advice.": "ليست مشورة.",
   "Right UAE Entity · all seven emirates": "الكيان الإماراتي المناسب · الإمارات السبع",
   "Free, no account": "مجاناً، دون حساب",
   "About a minute": "نحو دقيقة",
@@ -200,7 +207,7 @@ export const AR = {
   "Is this advice?": "هل هذه مشورة؟",
   "No. It is preliminary, general information from your answers. A person at MKW Advisors reviews your case before anything is priced or filed.": "لا. إنها معلومات عامة أولية من إجاباتك. يراجع شخص في MKW Advisors حالتك قبل أي تسعير أو تقديم.",
   "What happens after I ask for a review?": "ماذا يحدث بعد أن أطلب المراجعة؟",
-  "A person checks your answers against the current rules and figures and sends priced offers from vetted partner firms. A reply usually comes within one working day.": "يراجع شخص إجاباتك وفق القواعد والأرقام الحالية ويرسل عروضاً مسعّرة من شركات شريكة معتمدة. يصل الرد عادةً خلال يوم عمل واحد.",
+  "A person checks your answers against the current rules and figures and sends priced offers from MKW Advisors, delivered by vetted partner firms. A reply usually comes within one working day.": "يراجع شخص إجاباتك وفق القواعد والأرقام الحالية ويرسل عروضاً مسعّرة من MKW Advisors تنفذها شركات شريكة معتمدة. يصل الرد عادةً خلال يوم عمل واحد.",
   "Find your set-up in about a minute": "اعثر على التأسيس المناسب في نحو دقيقة",
   "Four questions. The place to look at first. A person checks it before any price.": "أربعة أسئلة. الجهة التي تبدأ بها. يراجعها شخص قبل أي سعر.",
   "Start now, free": "ابدأ الآن مجاناً",
@@ -208,7 +215,7 @@ export const AR = {
   "Finding your match…": "نبحث عن الأنسب لك…",
   "Your match could not be loaded": "تعذّر تحميل الأنسب لك",
   "Try again": "حاول مرة أخرى",
-  "No payment now. A person at MKW Advisors checks your case and sends one fixed price, usually within one working day.": "لا دفع الآن. يراجع شخص في MKW Advisors حالتك ويرسل سعراً ثابتاً واحداً، عادةً خلال يوم عمل واحد.",
+  "No payment now. A person at MKW Advisors checks your case and sends priced offers, usually within one working day.": "لا دفع الآن. يراجع شخص في MKW Advisors حالتك ويرسل عروضاً مسعّرة، عادةً خلال يوم عمل واحد.",
   "From": "من",
   "No places on record in this emirate yet": "لا توجد جهات مسجلة في هذه الإمارة بعد",
   "Schematic map, not to scale. A dash: we hold no places on record there yet.": "خريطة توضيحية، ليست بمقياس رسم. الشرطة تعني أنه لا توجد لدينا جهات مسجلة هناك بعد.",
@@ -774,6 +781,9 @@ export const AR = {
 
 /** Patterns for strings composed at render time. Each maps a regex over the English text to Arabic. */
 export const AR_PATTERNS = [
+  [/^Preliminary estimate, as of (\S+)\.$/, (m) => `تقدير أولي، حتى ${m[1]}.`],
+  [/^(.+), (\d+) place\(s\) on record$/, (m) => `${m[1]}، ${m[2]} جهة مسجلة`],
+  [/^(.+), no places on record yet$/, (m) => `${m[1]}، لا توجد جهات مسجلة بعد`],
   [/^(\d+) places? on record$/, (m) => `${m[1]} جهة مسجلة`],
   [/^(\d+) across the seven emirates$/, (m) => `${m[1]} في الإمارات السبع`],
   // E8 quick match sentences with numbers; draft

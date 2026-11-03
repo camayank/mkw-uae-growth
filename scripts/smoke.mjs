@@ -815,7 +815,8 @@ const pp = await pub.newPage();
     const q = await quickMatch(sel);
     check("an approved place's figures reach the quick match, labelled checked (E8):", /AED 12,000/.test(q + (await sel.locator("#quick-top").innerText())) && /figures checked|from AED 12,000/.test(q + (await sel.locator("#quick-top").innerText())) && /1 of \d+ places that fit have figures checked/.test(q));
     await sel.goto(BASE + "/selector.html");
-    await eventually("the homepage's free zone card quotes the approved place's lowest estimate, labelled checked; the others stay to be verified (E11):", async () => /from\s*AED 12,000/.test(await sel.locator('#packages .pkg:has([data-pkg="free_zone"])').innerText()) && /checked/.test(await sel.locator('#packages .pkg:has([data-pkg="free_zone"])').innerText()) && (await sel.locator("#packages .pkg .from.tbv").count()) === 3);
+    await eventually("the homepage's free zone card quotes the approved place by name, labelled checked and preliminary; the others stay to be verified (E11):", async () => /from\s*AED 12,000\s*at\s*IFZA/.test(await sel.locator('#packages .pkg:has([data-pkg="free_zone"])').innerText()) && /checked/.test(await sel.locator('#packages .pkg:has([data-pkg="free_zone"])').innerText()) && /Preliminary estimate, as of \d{4}-\d{2}-\d{2}\. Not advice\./.test(await sel.locator('#packages .pkg:has([data-pkg="free_zone"])').innerText()) && (await sel.locator("#packages .pkg .from.tbv").count()) === 3);
+    await axeCheck(sel, "homepage with a checked package figure (E11)");
   }
   const second = await answer(sel);
   check("an approved rule and place reach the public with text and figures (E3):", /Register for corporate tax/.test(second) && /AED 12,000 to AED 20,000 to set up/.test(second) && /figures checked/.test(second));
@@ -937,6 +938,7 @@ const pp = await pub.newPage();
   mp.on("pageerror", (e) => errors.push(`selector mobile: ${e.message}`));
   await mp.goto(BASE + "/selector.html");
   await mp.waitForSelector("#landing:not([hidden]) #start");
+  await eventually("the homepage at 390 px is filled from the platform before it is checked (E11):", async () => /across the seven emirates/.test(await mp.locator("#home-count").innerText()));
   check("the homepage at 390 px has no horizontal overflow (E7A):", !(await mp.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
   await mp.screenshot({ path: `${OUT}/94-mobile-public-home.png`, fullPage: true });
   log.push("94-mobile-public-home");

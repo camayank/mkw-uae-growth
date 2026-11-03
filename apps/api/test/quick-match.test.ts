@@ -62,7 +62,7 @@ describe("the quick match (E8)", () => {
     const ifza = [open.best, ...open.alternatives].find((p: any) => p.zone === "IFZA");
     expect(ifza).toMatchObject({ toBeVerified: false, figures: { costMinFils: 1_600_000, costMaxFils: 2_000_000 }, sourceUrl: "https://ifza.com/" });
     expect(open.approved.places).toBe(1);
-    expect(open.byType.free_zone.fromFils).toBe(1_600_000); // E11: the package card quotes only the approved IFZA
+    expect(open.byType.free_zone).toMatchObject({ fromFils: 1_600_000, fromZone: "IFZA" }); // E11: only the approved IFZA, named
     // Under 15,000 IFZA fails the budget, but the rule saying so is not approved: it stays open, to be verified.
     const low = (await quick({ ...tech, budget: "up_to_15k" })).body;
     expect(low.options).toBe(open.options);

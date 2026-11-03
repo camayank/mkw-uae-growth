@@ -54,9 +54,29 @@ Every figure comes from the platform, and every price from a named person's appr
 Evidence recorded on 3 Nov 2026 (`docs/evidence/E11/`):
 
 - `pnpm test`: core 140 passed; api 359 passed, 1 skipped (`tests-pglite.txt`). `pnpm typecheck` clean.
-- `scripts/smoke.mjs` against a fresh demo: 307 checks OK, 0 failed (`smoke-log.txt`; 303 after E10).
-- axe on 55 screens, 0 violations, including the homepage at 1280 and 390 px (`axe.json`).
+- `scripts/smoke.mjs` against a fresh demo: 309 checks OK, 0 failed (`smoke-log.txt`; 303 after E10).
+- axe on 56 screens, 0 violations, including the homepage at 1280 and 390 px and with a checked figure (`axe.json`).
 - Screenshots: `95-public-home.png` (1280 px), `94-mobile-public-home.png` (390 px).
+
+## Independent review
+
+No blocking finding. Applied:
+- the "from" figure names its place and carries "preliminary estimate, as of" the rules' date, so it is never a claim
+  about a whole kind;
+- the counts read places on record (`onRecord`);
+- the try tiles' accessible names are their visible text;
+- the missing Arabic strings and patterns are added;
+- the heading margins on the try card and the call-to-action band are fixed;
+- the package buttons now read "Start the four questions" and are described by their card's heading;
+- the try card is a section;
+- a map tap starts the questions at 1;
+- focus is kept when the cards and map redraw;
+- colours come from tokens;
+- the quick result's "one fixed price" now reads "priced offers";
+- the FAQ says the offers come from MKW Advisors;
+- core tests cover an approved place with no estimate and an approved place excluded by an approved rule;
+- the phone homepage is checked after the data arrives;
+- axe runs on the homepage with a checked figure.
 
 ## Dependencies
 

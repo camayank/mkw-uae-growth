@@ -74,7 +74,7 @@ export interface QuickMatch {
    * emirate when one is chosen) and the lowest setup estimate among them that a named person approved for public
    * display (null: none approved, shown as "to be verified").
    */
-  byType: Record<Zone["type"], { places: number; fromFils: number | null }>;
+  byType: Record<Zone["type"], { places: number; onRecord: number; fromFils: number | null; fromZone: string | null }>;
 }
 
 export const QUICK_TYPES: Array<Zone["type"]> = ["free_zone", "mainland", "financial", "offshore"];
@@ -145,8 +145,10 @@ export function quickMatch(q: QuickAnswers, rules: ScopingRule[], zones: Zone[],
     byType: Object.fromEntries(
       QUICK_TYPES.map((t) => {
         const ofType = here(open).filter((p) => p.type === t);
-        const checked = ofType.filter((p) => approvedPlaces.has(p.zone) && p.costMinFils > 0).map((p) => p.costMinFils);
-        return [t, { places: ofType.length, fromFils: checked.length ? Math.min(...checked) : null }];
+        // The figure is one approved place's, named with it: never a claim about the whole kind.
+        const cheapest = ofType.filter((p) => approvedPlaces.has(p.zone) && p.costMinFils > 0).sort((x, y) => x.costMinFils - y.costMinFils || x.zone.localeCompare(y.zone))[0];
+        const onRecord = zones.filter((z) => z.type === t && (!q.emirate || z.emirate === q.emirate)).length;
+        return [t, { places: ofType.length, onRecord, fromFils: cheapest?.costMinFils ?? null, fromZone: cheapest?.zone ?? null }];
       }),
     ) as QuickMatch["byType"],
   };

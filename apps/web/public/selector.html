@@ -160,6 +160,39 @@
       .tile { min-height: 96px; padding: 12px; }
     }
     @media (prefers-reduced-motion: reduce) { .tile, .em, .meter i { transition: none; } .tile:hover, .em:hover { transform: none; } }
+    /* E11 homepage in the canvas look: a hero with the first question to try, a stats strip, package cards with checked
+       prices only, the emirates map, a short FAQ and a closing call to action. */
+    .home-hero { display: flex; flex-wrap: wrap; gap: 28px; align-items: center; padding: 32px 0 24px; }
+    .home-hero .hero-copy { flex: 999 1 420px; min-width: 0; }
+    .home-hero h1 { font-size: clamp(2rem, 5vw, 3rem); max-width: 16ch; }
+    .ticks { list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 18px; color: var(--muted); font-size: 0.9rem; }
+    .ticks li::before { content: "✓"; color: var(--ok); font-weight: 700; margin-inline-end: 6px; }
+    .hero-try { flex: 1 1 320px; min-width: 0; margin: 0; padding: 18px; border-radius: 20px; box-shadow: 0 22px 56px rgba(14, 91, 76, 0.16); display: flex; flex-direction: column; gap: 12px; }
+    .hero-try h2 { margin: 0; font-size: 1.15rem; }
+    .meter-l { height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; } .meter-l i { display: block; width: 25%; height: 100%; background: #c8964a; }
+    .try-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .try { display: flex; align-items: center; gap: 10px; padding: 10px; border: 1.5px solid var(--line); border-radius: 12px; background: var(--surface); font: inherit; color: var(--text); cursor: pointer; text-align: start; min-height: 52px; }
+    .try:hover { border-color: var(--brand); }
+    .try .ico { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--brand-soft); color: var(--brand); flex: none; }
+    .try-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; background: #16201c; color: #fff; }
+    .try-foot small { display: block; color: #a9b6af; } .try-foot b { color: #fff; }
+    .strip { list-style: none; margin: 8px 0 28px; padding: 18px; display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px 16px; border-radius: 16px; background: #16201c; color: #c9d3ce; }
+    .strip li { display: flex; flex-direction: column; } .strip b { font-size: 1.8rem; color: #e3c38f; font-variant-numeric: tabular-nums; line-height: 1.1; }
+    .packages { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+    .pkg { display: flex; flex-direction: column; gap: 10px; padding: 18px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
+    .pkg .ico { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; background: var(--brand-soft); color: var(--brand); }
+    .pkg h3 { margin: 0; font-size: 1.1rem; } .pkg p { margin: 0; }
+    .pkg .from { font-size: 1.35rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+    .pkg .from.tbv { font-size: 1rem; font-weight: 500; color: var(--muted); font-style: italic; }
+    .pkg button { margin-top: auto; }
+    .home-map-row { display: flex; flex-wrap: wrap; gap: 20px; align-items: center; margin-top: 12px; }
+    .home-map-copy { flex: 1 1 260px; min-width: 0; } .home-map { flex: 2 1 420px; min-width: 0; }
+    .faq details { border-bottom: 1px solid var(--line); } .faq summary { cursor: pointer; min-height: 48px; display: flex; align-items: center; font-weight: 650; }
+    .faq p { margin: 0 0 14px; color: var(--muted); }
+    .cta-band { margin: 28px 0 8px; padding: 26px; border-radius: 18px; display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; align-items: center; background: linear-gradient(135deg, #0e5b4c, #0a4338); color: #fff; border-inline-start: 8px solid #ce1126; }
+    .cta-band h2 { margin: 0 0 4px; color: #fff; } .cta-band p { margin: 0; color: #d7e8e2; }
+    .cta-band .gold { padding: 13px 22px; font-size: 1.05rem; }
+    .selector.wide .landing h2 { margin-top: 32px; }
     @media print {
       .top, .noprint, form, .landing, .quick, .flagbar { display: none !important; }
       body { background: #fff; }
@@ -177,15 +210,41 @@
   </header>
   <main class="selector" id="main">
     <section id="landing" class="landing">
-      <div class="hero">
-        <p class="eyebrow">Right UAE Entity</p>
-        <h1>Find the right UAE entity for your business</h1>
-        <p class="lead">Four quick questions: what you do, where, how many visas and your budget. See the place to look at first and how many places still fit, with every figure labelled checked by a named person or to be verified. No sign-up. Then ask a person at MKW Advisors for your exact price.</p>
-        <div class="actions">
-          <button type="button" class="gold" id="quick-start">Find my set-up in four questions</button>
-          <button type="button" class="btn" id="start">Find the Right UAE Entity: all eleven questions</button>
-          <a class="btn" href="#recover">Open a saved result</a>
+      <div class="hero home-hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Right UAE Entity · all seven emirates</p>
+          <h1>Find the right UAE entity for your business</h1>
+          <p class="lead">Four quick questions: what you do, where, how many visas and your budget. See the place to look at first and how many places still fit, with every figure labelled checked by a named person or to be verified. No sign-up. Then ask a person at MKW Advisors for your exact price.</p>
+          <div class="actions">
+            <button type="button" class="gold" id="quick-start">Find my set-up in four questions</button>
+            <button type="button" class="btn" id="start">Find the Right UAE Entity: all eleven questions</button>
+            <a class="btn" href="#recover">Open a saved result</a>
+          </div>
+          <ul class="ticks"><li>Free, no account</li><li>About a minute</li><li>Nothing to pay before you accept an offer</li></ul>
         </div>
+        <div class="card hero-try" aria-labelledby="try-h">
+          <div class="row between"><p class="eyebrow" style="margin:0">Question 1 of 4</p><span class="small muted">25%</span></div>
+          <div class="meter-l" aria-hidden="true"><i></i></div>
+          <h2 id="try-h">What will your company do?</h2>
+          <div class="try-tiles" id="try-tiles" role="group" aria-labelledby="try-h"></div>
+          <div class="try-foot"><span><small>Places on record now</small><b id="home-count">…</b></span><button type="button" class="gold sm" id="try-next">Next</button></div>
+        </div>
+      </div>
+      <ul class="strip" aria-label="What the four questions give you">
+        <li><b>4</b><span>questions to the place to look at first</span></li>
+        <li><b>7</b><span>emirates on one map</span></li>
+        <li><b>1</b><span>person at MKW Advisors checks your case before any price</span></li>
+        <li><b>0</b><span>to pay before you accept an offer</span></li>
+      </ul>
+      <h2>Pick a starting point, or let the four questions pick for you</h2>
+      <div class="packages" id="packages"></div>
+      <p class="small muted">"From" is the lowest setup estimate among places a named person at MKW Advisors has checked against the official source and approved for this page; a kind with none says "to be verified". It is an estimate including government fees; a price comes only from an offer.</p>
+      <div class="home-map-row">
+        <div class="home-map-copy">
+          <h2>Tap an emirate to see what you can set up there</h2>
+          <p class="small muted">Each emirate runs its own free zones and licensing. The number is how many places we hold on record there; the four questions narrow them to your business.</p>
+        </div>
+        <div class="home-map" id="home-map"></div>
       </div>
       <h2>Start from your industry</h2>
       <div class="industries" role="group" aria-label="Start from your industry">
@@ -208,6 +267,13 @@
         <div class="card"><b>You get</b><ul class="small"><li>Which structures and places fit your answers, and which do not and why</li><li>Setup and renewal figures where a named person has checked them</li><li>The licences, approvals and obligations that follow, each labelled</li><li>A result you can save, edit, print and send for review</li></ul></div>
         <div class="card"><b>We do not</b><ul class="small"><li>State a fee, a rule or a benefit nobody has checked: it says "to be verified"</li><li>Guess when the data is missing: it says so</li><li>Give advice or a statutory conclusion on this page: a person reviews your case first</li><li>Take your contact details before you ask for that review</li></ul></div>
       </div>
+      <h2>Questions</h2>
+      <div class="faq">
+        <details><summary>Do I pay anything now?</summary><p>No. The four questions and the comparison are free. You pay a deposit only after you accept an offer from MKW Advisors.</p></details>
+        <details><summary>Is this advice?</summary><p>No. It is preliminary, general information from your answers. A person at MKW Advisors reviews your case before anything is priced or filed.</p></details>
+        <details><summary>What happens after I ask for a review?</summary><p>A person checks your answers against the current rules and figures and sends priced offers from vetted partner firms. A reply usually comes within one working day.</p></details>
+      </div>
+      <div class="cta-band"><div><h2>Find your set-up in about a minute</h2><p>Four questions. The place to look at first. A person checks it before any price.</p></div><button type="button" class="gold" id="cta-start">Start now, free</button></div>
       <p class="small muted" style="margin-top:16px">Already a client? <a href="/">Sign in to the Tasees workspace</a>.</p>
     </section>
 

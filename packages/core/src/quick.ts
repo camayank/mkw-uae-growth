@@ -69,7 +69,15 @@ export interface QuickMatch {
   /** True only when the rules behind "no option fits" are approved. */
   noViableOption: boolean;
   approved: { places: number; ofPlaces: number };
+  /**
+   * E11, the homepage's package cards: per kind of place, the places still open (for the answers given, in the chosen
+   * emirate when one is chosen) and the lowest setup estimate among them that a named person approved for public
+   * display (null: none approved, shown as "to be verified").
+   */
+  byType: Record<Zone["type"], { places: number; fromFils: number | null }>;
 }
+
+export const QUICK_TYPES: Array<Zone["type"]> = ["free_zone", "mainland", "financial", "offshore"];
 
 export const budgetAed = (b: QuickBudget | undefined): number | null => QUICK_BUDGETS.find((x) => x.id === b)?.maxAed ?? null;
 
@@ -134,5 +142,12 @@ export function quickMatch(q: QuickAnswers, rules: ScopingRule[], zones: Zone[],
     structure: { recommendation: fullView.structure.recommendation, confirmed: fullView.structure.confirmed },
     noViableOption: fullView.noViableOption,
     approved: { places: here(open).filter((p) => approvedPlaces.has(p.zone)).length, ofPlaces: here(open).length },
+    byType: Object.fromEntries(
+      QUICK_TYPES.map((t) => {
+        const ofType = here(open).filter((p) => p.type === t);
+        const checked = ofType.filter((p) => approvedPlaces.has(p.zone) && p.costMinFils > 0).map((p) => p.costMinFils);
+        return [t, { places: ofType.length, fromFils: checked.length ? Math.min(...checked) : null }];
+      }),
+    ) as QuickMatch["byType"],
   };
 }

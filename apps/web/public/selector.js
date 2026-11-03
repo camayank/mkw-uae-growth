@@ -117,7 +117,7 @@ function show(view) {
   $("result").hidden = view !== "result";
   $("review").hidden = !(view === "result" || (view === "quick" && quick.step === 5));
   $("recover").hidden = view === "questions" || view === "quick";
-  $("main").classList.toggle("wide", view === "quick");
+  $("main").classList.toggle("wide", view === "quick" || view === "landing");
   // Leaving the quick match drops any count still on its way, so it can neither redraw nor touch the answers.
   if (view !== "quick") quickSeq++;
 }
@@ -407,6 +407,45 @@ function start(activity) {
 }
 $("start").addEventListener("click", () => start());
 $("quick-start").addEventListener("click", () => startQuick());
+$("try-next").addEventListener("click", () => startQuick());
+$("cta-start").addEventListener("click", () => startQuick());
+
+// E11: the homepage in the canvas look, filled from the platform: the places on record, the package cards (an
+// approved place's lowest estimate, else "to be verified") and the emirates map. Nothing is invented while it loads.
+const HOME_TRY = [["tech", "Tech"], ["ecommerce", "E-commerce"], ["consulting", "Consulting"], ["trading", "Trading"]];
+const PACKAGES = [
+  ["free_zone", "Free zone company", "Licensed by one of the free zone authorities in the emirates.", "M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18M12 3a9 9 0 1 1 0 18a9 9 0 0 1 0-18"],
+  ["mainland", "Mainland company", "Licensed by the emirate's economic department.", "M4 21V8l8-5 8 5v13M9 21v-6h6v6M4 21h16"],
+  ["financial", "Financial centre company", "Registered in a financial centre such as DIFC or ADGM.", "M3 9l9-5 9 5M5 9v9M10 9v9M14 9v9M19 9v9M3 21h18"],
+  ["offshore", "Offshore company", "Registered with an offshore registry, usually to hold shares or assets.", "M12 3v18M5 8l7-5 7 5M5 16a7 4 0 0 0 14 0"],
+];
+async function renderHome() {
+  $("try-tiles").innerHTML = HOME_TRY.map(([id, label]) => `<button type="button" class="try" data-try="${id}" aria-label="${esc(activityLabel(id))}"><span class="ico">${icon(id)}</span><b>${esc(label)}</b></button>`).join("");
+  for (const b of $("try-tiles").querySelectorAll("[data-try]")) b.addEventListener("click", () => startQuick(b.dataset.try));
+  const draw = (d) => {
+    $("home-count").textContent = d ? `${d.everywhere} across the seven emirates` : "–";
+    $("packages").innerHTML = PACKAGES.map(([type, title, line, path]) => {
+      const t = d?.byType?.[type];
+      return `<article class="pkg"><span class="ico"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="${path}"/></svg></span>
+        <h3>${esc(title)}</h3><p class="small muted">${esc(line)}</p>
+        ${t?.fromFils ? `<p class="from"><span class="small muted">from</span> ${esc(aed(t.fromFils))} <span class="badge ok">checked</span></p>` : `<p class="from tbv">Price to be verified</p>`}
+        <p class="small">${t ? `${esc(t.places)} place${t.places === 1 ? "" : "s"} on record` : ""}</p>
+        <button type="button" class="btn" data-pkg="${type}">See what fits you</button></article>`;
+    }).join("");
+    for (const b of $("packages").querySelectorAll("[data-pkg]")) b.addEventListener("click", () => startQuick());
+    const n = (e) => (d ? d.byEmirate[e] ?? 0 : null);
+    $("home-map").innerHTML = `<div class="uaemap" role="group" aria-label="The seven emirates"><span class="sea" style="grid-column:1 / 4;grid-row:1 / 3">Arabian Gulf</span><span class="sea" style="grid-column:5 / 6;grid-row:5 / 6;text-align:center">Gulf of Oman</span>
+      ${MAP.map(([e, ar, , col, row]) => `<button type="button" class="em${n(e) === 0 ? " none" : ""}" data-home-em="${esc(e)}" aria-label="${esc(e)}${n(e) == null ? "" : n(e) === 0 ? ", no places on record yet" : `, ${esc(n(e))} place(s) on record`}" style="grid-column:${col};grid-row:${row}"><span class="top-row">${flagOf(e)}<span class="n">${n(e) === 0 ? "–" : esc(n(e) ?? "·")}</span></span><span><b>${esc(e)}</b><br><span class="ar" lang="ar" data-no-i18n>${ar}</span></span></button>`).join("")}</div>
+      <p class="small muted" style="margin:6px 0 0">Schematic map, not to scale.</p>`;
+    for (const b of $("home-map").querySelectorAll("[data-home-em]")) b.addEventListener("click", () => startQuick(undefined, { emirate: b.dataset.homeEm }));
+    if (isAr()) translateTree($("landing"));
+  };
+  draw(null);
+  try {
+    const res = await fetch("/api/public/quick", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+    if (res.ok) draw(await res.json());
+  } catch {}
+}
 $("nav-start").addEventListener("click", (ev) => { ev.preventDefault(); startQuick(); });
 for (const b of document.querySelectorAll(".industry")) b.addEventListener("click", () => startQuick(b.dataset.activity));
 
@@ -649,9 +688,11 @@ function toFullQuestions() {
   $("questions").scrollIntoView({ block: "start" });
 }
 
-function startQuick(activity) {
+function startQuick(activity, { emirate } = {}) {
   savedCode = null;
   track("assessment_started");
+  // E11: an emirate tapped on the homepage's map is the first answer to question 2; the questions still start at 1.
+  if (emirate) { quick.emirate = emirate; syncAnswers(); }
   show("quick");
   if (activity && QUESTIONS.activity.options.some((o) => o[0] === activity)) { quick.activity = activity; syncAnswers(); goQuick(CONFIRM_ACTIVITY.has(activity) ? 1 : 2); }
   else goQuick(quick.step || 1);
@@ -704,6 +745,7 @@ review.addEventListener("submit", async (ev) => {
   } catch (e) { msg.textContent = e.message; btn.disabled = false; }
 });
 
+renderHome();
 // Where to open: a saved code, a deep link to the questions or an industry, else the homepage.
 if (params.get("code")) { show("landing"); recover(params.get("code")); }
 else if (params.get("industry")) startQuick(params.get("industry"));

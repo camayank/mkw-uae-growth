@@ -1019,3 +1019,18 @@ canvas of 3 Nov 2026 and its review round.)
 - The tab's icon carries the same letter as the mark (T for clients and visitors, M for partners and staff), so a
   partner's browser tab no longer shows the Tasees T.
 
+**D93. The homepage takes the canvas's shape; its figures come from the platform and its prices only from approvals.** (E11, 3 Nov 2026.)
+
+- The public homepage follows the canvas "Homepage" board: a hero with the first question to try, a strip of four
+  promises, a card per kind of place, the emirates map, the industries, how it works, what it does and does not
+  do, three questions, and a closing call to action. The quick match is the main action; the eleven questions stay.
+- A package card shows a "from" figure only when a named person approved at least one place of that kind for public
+  display, and then quotes the lowest approved estimate (`byType` in the quick match, D80), labelled checked; else
+  "Price to be verified". The canvas's prices were design figures and are not used. Counts are places on record.
+- The cards describe each kind by what licenses or registers it, not by what it allows (a benefit is a rule's
+  conclusion and needs an approved statement); approved guidance notes remain the place for that.
+- The strip's promises are the platform's own ("4 questions", "7 emirates on one map", "1 person checks your case
+  before any price", "0 to pay before you accept an offer"); the canvas's "one fixed price" is not used, because a
+  review returns priced offers by tier.
+- Tapping an emirate on the homepage map starts the quick match with that emirate as the answer to question 2.
+

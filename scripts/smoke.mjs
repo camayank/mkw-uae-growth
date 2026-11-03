@@ -688,8 +688,18 @@ const pp = await pub.newPage();
   const home = await sel.locator("main").innerText();
   check("the homepage says what is measured, in aggregate, with no cookie (E7C):", /We count how this page is used, in aggregate/.test(home) && /No cookie/.test(home));
   check("the homepage states the product, the call to action, the industries and what it does not do (E7A):", /Find the right UAE entity for your business/.test(home) && /Find the Right UAE Entity/.test(home) && (await sel.locator(".industry").count()) === 7 && /We do not/.test(home) && /Sign in to the Tasees workspace/.test(home) && (await sel.locator("#questions").isHidden()));
+  // E11: the homepage in the canvas look, filled from the platform; with nothing approved no package quotes a price.
+  await eventually("the homepage's package cards and map are filled from the platform (E11):", async () => (await sel.locator("#packages .pkg").count()) === 4 && /across the seven emirates/.test(await sel.locator("#home-count").innerText()));
+  check("the homepage shows the first question to try, the strip, four kinds with no unapproved price and the emirates map (E11):", (await sel.locator("#try-tiles .try").count()) === 4 && (await sel.locator(".strip li").count()) === 4 && (await sel.locator("#packages .pkg .from.tbv").count()) === 4 && !/AED/.test(await sel.locator("#packages").innerText()) && (await sel.locator("#home-map .em").count()) === 7 && (await sel.locator("#home-map .em .flag svg").count()) === 7 && (await sel.locator(".faq details").count()) === 3 && (await sel.locator("#cta-start").count()) === 1);
   await shot(sel, "95-public-home");
   await axeCheck(sel, "public homepage (E7A)");
+  await sel.locator('#home-map [data-home-em="Sharjah"]').click();
+  await sel.waitForSelector("#quick:not([hidden]) .tile[data-act]");
+  await sel.locator('.tile[data-act="tech"]').click();
+  await sel.waitForSelector("#quick .uaemap .em");
+  check("an emirate tapped on the homepage map is already chosen at question two (E11):", (await sel.locator('#quick-step [data-em="Sharjah"]').getAttribute("aria-pressed")) === "true");
+  await sel.goto(BASE + "/selector.html");
+  await sel.waitForSelector("#landing:not([hidden])");
   // E8: an industry card opens the quick match at question two (where), with the activity set.
   await sel.locator('.industry[data-activity="manufacturing"]').click();
   await sel.waitForSelector("#quick:not([hidden]) .uaemap .em");
@@ -709,8 +719,8 @@ const pp = await pub.newPage();
     await page.waitForSelector("#quick:not([hidden]) .tile[data-act]");
     await eventually("the quick match shows the places on record before any answer (E8):", async () => /^\d+$/.test(await page.locator("#quick-count").innerText()));
     await page.locator('.tile[data-act="tech"]').click();
-    await page.waitForSelector(".uaemap .em");
-    await eventually("each emirate on the map carries its count of places that still fit (E8):", async () => /^\d+$/.test(await page.locator('.em[data-em="Dubai"] .n').innerText()) && (await page.locator(".uaemap .em").count()) === 7 && (await page.locator(".uaemap .em .flag svg").count()) === 7);
+    await page.waitForSelector("#quick .uaemap .em");
+    await eventually("each emirate on the map carries its count of places that still fit (E8):", async () => /^\d+$/.test(await page.locator('.em[data-em="Dubai"] .n').innerText()) && (await page.locator("#quick .uaemap .em").count()) === 7 && (await page.locator("#quick .uaemap .em .flag svg").count()) === 7);
     await page.locator('.em[data-em="Dubai"]').click();
     await page.locator("#quick-next").click();
     await page.waitForSelector("#quick-visas");
@@ -760,7 +770,7 @@ const pp = await pub.newPage();
     await qp.goto(BASE + "/selector.html");
     await qp.locator("#quick-start").click();
     await qp.locator('.tile[data-act="tech"]').click();
-    await qp.waitForSelector(".uaemap .em");
+    await qp.waitForSelector("#quick .uaemap .em");
     check("the quick match map at 390 px has no horizontal overflow (E8):", !(await qp.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
     await shot(qp, "104-quick-match-map-phone");
     await axeCheck(qp, "quick match map at 390 px (E8)");
@@ -804,6 +814,8 @@ const pp = await pub.newPage();
     // E8: the approved place's figures reach the quick match too, labelled checked; the others stay to be verified.
     const q = await quickMatch(sel);
     check("an approved place's figures reach the quick match, labelled checked (E8):", /AED 12,000/.test(q + (await sel.locator("#quick-top").innerText())) && /figures checked|from AED 12,000/.test(q + (await sel.locator("#quick-top").innerText())) && /1 of \d+ places that fit have figures checked/.test(q));
+    await sel.goto(BASE + "/selector.html");
+    await eventually("the homepage's free zone card quotes the approved place's lowest estimate, labelled checked; the others stay to be verified (E11):", async () => /from\s*AED 12,000/.test(await sel.locator('#packages .pkg:has([data-pkg="free_zone"])').innerText()) && /checked/.test(await sel.locator('#packages .pkg:has([data-pkg="free_zone"])').innerText()) && (await sel.locator("#packages .pkg .from.tbv").count()) === 3);
   }
   const second = await answer(sel);
   check("an approved rule and place reach the public with text and figures (E3):", /Register for corporate tax/.test(second) && /AED 12,000 to AED 20,000 to set up/.test(second) && /figures checked/.test(second));

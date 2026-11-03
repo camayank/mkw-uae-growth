@@ -63,6 +63,18 @@ describe("the quick match (E8)", () => {
         }
   });
 
+  it("the package figures count the open places per kind and quote only an approved place's lowest estimate (E11)", () => {
+    const none = quickMatch({}, rules, zones, NONE, NONE, AS_OF);
+    expect(none.byType).toEqual({ free_zone: { places: 3, fromFils: null }, mainland: { places: 1, fromFils: null }, financial: { places: 0, fromFils: null }, offshore: { places: 1, fromFils: null } });
+    // Only IFZA approved: the free zone card quotes IFZA's 12,000 although SHAMS (6,000) is lower, because SHAMS is not approved.
+    const ifza = quickMatch({}, rules, zones, ALL_RULES, new Set(["IFZA"]), AS_OF);
+    expect(ifza.byType.free_zone).toEqual({ places: 3, fromFils: 1_200_000 });
+    expect(ifza.byType.mainland.fromFils).toBeNull();
+    const all = quickMatch({ emirate: "Dubai" }, rules, zones, ALL_RULES, ALL_PLACES, AS_OF);
+    expect(all.byType.free_zone).toEqual({ places: 1, fromFils: 1_200_000 });
+    expect(all.byType.mainland).toEqual({ places: 1, fromFils: 2_200_000 });
+  });
+
   it("an emirate with no place on record says so, rather than that nothing fits", () => {
     const m = quickMatch({ activity: "tech", emirate: "Fujairah" }, rules, zones, NONE, NONE, AS_OF);
     expect(m.onRecord).toMatchObject({ Fujairah: 0, Dubai: 2, Sharjah: 1, "Ras Al Khaimah": 2 });

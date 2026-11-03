@@ -172,6 +172,8 @@ check("client terms show the draft note until the lawyer's review is recorded:",
   check("the proposal states the working-day estimate, the deposit now and the balance later:", /About \d+ working days/.test(proposal) && /On acceptance/.test(proposal) && /When every step is approved/.test(proposal));
   check("the proposal says the rules where the client acts:", /valid until/.test(proposal) && /approved automatically/.test(proposal) && /We do not file returns or notifications/.test(proposal));
   check("the proposal shows no partner cost or margin:", !/partner cost|margin|payout/i.test(proposal));
+  // U1: one offer shown as selected, the others as a switch; no tier promises a pace (gap 85).
+  if ((await client.locator(".tiers .tier").count()) > 1) check("the offer shows one selected tier and the others as a switch (U1):", (await client.locator(".tiers .tier.best").count()) === 1 && /Switch to/.test(proposal) && !/faster|quicker|sooner/i.test(await client.locator(".tiers").innerText()));
   await shot(client, "72-client-proposal");
 }
 await client.locator('button[data-act="accept-offer"]').click();
@@ -203,7 +205,10 @@ for (const email of ["admin@setup-partner.test", "admin@corporate-services.test"
   const p = await session(email);
   await p.waitForTimeout(500);
   const n = await p.locator('button[data-act="alloc"][data-decision="accept"]').count();
-  if (n && !log.some((l) => l.startsWith("shot-partner"))) { await shot(p, "10-partner-offered-work"); log.push("shot-partner"); }
+  if (n && !log.some((l) => l.startsWith("shot-partner"))) {
+    check("the partner's offer row carries a reply countdown, the payout, and no client price (U1):", /min left|reply time passed/.test(await p.locator("main").innerText()) && /your fees; government fees not included/.test(await p.locator("main").innerText()) && !/client price|margin|clientTotal|AED 0\.00/i.test(await p.locator("main").innerText()));
+    await shot(p, "10-partner-offered-work"); log.push("shot-partner");
+  }
   for (let i = 0; i < n; i++) {
     await p.locator('button[data-act="alloc"][data-decision="accept"]').first().click();
     await p.waitForTimeout(700);
@@ -217,15 +222,18 @@ for (const p of partnerPages) {
   await p.goto(engagementUrl); await p.reload();
   await p.waitForTimeout(800);
   if (worked || !(await p.locator('form[data-form="evidence"]').count())) continue;
-  const first = p.locator("ul.milestones li").first();
+  // U1: the partner's next step is pinned at the top with its evidence form; the steps list below carries no second form.
+  const first = p.locator('form[data-form="evidence"]').first();
+  // The pinned card holds the open step's form; later steps keep theirs folded in the list, so the page has one visible form.
+  check("the partner's next step is pinned with its evidence upload (U1):", (await p.locator(".nextaction h2").count()) === 1 && (await p.locator('.nextaction form[data-form="evidence"]').count()) === 1 && (await p.locator('form[data-form="evidence"]:visible').count()) === 1);
   const types = await first.locator('select[name="type"] option').evaluateAll((os) => os.map((o) => o.value).filter((v) => v !== "other"));
   for (const t of types) {
-    await p.locator("ul.milestones li").first().locator('select[name="type"]').selectOption(t);
-    await p.locator("ul.milestones li").first().locator('input[type="file"]').setInputFiles({ name: `${t}.pdf`, mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 demo") });
-    await p.locator("ul.milestones li").first().locator('form[data-form="evidence"] button').click();
+    await p.locator('form[data-form="evidence"]').first().locator('select[name="type"]').selectOption(t);
+    await p.locator('form[data-form="evidence"]').first().locator('input[type="file"]').setInputFiles({ name: `${t}.pdf`, mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 demo") });
+    await p.locator('form[data-form="evidence"]').first().locator("button").click();
     await p.waitForTimeout(700);
   }
-  await p.locator("ul.milestones li").first().locator('button[data-act="ms-submit"]').click();
+  await p.locator('button[data-act="ms-submit"]').first().click();
   await p.waitForTimeout(700);
   log.push("submit: " + (await toastText(p)));
   await p.fill('textarea[name="body"]', "Please send passport copies. You can reach me on +971 50 123 4567 or ali@example.com");
@@ -259,6 +267,8 @@ log.push("approve: " + (await toastText(client)));
 const pageText = await client.locator("main").innerText();
 check("client page hides the partner's phone and email:", !pageText.includes("123 4567") && !pageText.includes("ali@example.com"));
 check("client page shows no partner cost or margin:", !/partner cost|margin/i.test(pageText));
+// U1: the next action and messages come first; documents, steps and payments are folding panels with their state in the heading.
+check("the client engagement opens on the next action and folds the rest into panels (U1):", (await client.locator("main .nextaction").count()) === 1 && (await client.locator("main details.panel").count()) >= 3 && /Steps/.test(await client.locator("main details.panel[open] > summary").allInnerTexts().then((t) => t.join(" "))) && (await client.evaluate(() => { const a = document.querySelector("main .nextaction"); const t = document.querySelector("main ol.timeline"); return !!a && !!t && !!(a.compareDocumentPosition(t) & Node.DOCUMENT_POSITION_FOLLOWING); })));
 await shot(client, "13-client-engagement-approved");
 
 // Notifications (O2): the client's bell holds the offer and deposit notices; a partner's never says Tasees
@@ -315,6 +325,19 @@ for (const [route, name, label, ready] of [
   await mp.screenshot({ path: `${OUT}/${name}.png`, fullPage: false });
   log.push(name);
   await axeCheck(mp, `${label} at 390 px`);
+}
+// U1: at phone width the client's and the partner's menus are bottom tab bars; MKW staff keep the grouped menu.
+check("the client menu is a bottom tab bar at 390 px (U1):", await mp.evaluate(() => getComputedStyle(document.getElementById("nav")).position === "fixed" && document.querySelectorAll("#nav > a svg").length >= 4));
+if (partnerPages.length) {
+  const pm = await (await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, storageState: await partnerPages[0].context().storageState() })).newPage();
+  await pm.goto(BASE + "/#/"); await pm.reload();
+  await pm.waitForSelector('main h1:text-is("Work from MKW Advisors")');
+  await pm.waitForTimeout(500);
+  check("the partner menu is a bottom tab bar at 390 px, with no horizontal overflow (U1):", (await pm.evaluate(() => getComputedStyle(document.getElementById("nav")).position === "fixed")) && !(await pm.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
+  await pm.screenshot({ path: `${OUT}/93-mobile-partner-work.png`, fullPage: false });
+  log.push("93-mobile-partner-work");
+  await axeCheck(pm, "partner work at 390 px (U1)");
+  await pm.context().close();
 }
 await mp.goto(BASE + "/#/statement"); await mp.reload();
 await mp.waitForSelector('main h1:text-is("Statement of account")');
@@ -499,6 +522,8 @@ const clientAdvice = await client.locator("main").innerText();
 check("client sees the approved advice with confidence labels and no money internals:", /Free zone/.test(clientAdvice) && /UNCERTAIN/.test(clientAdvice) && !/margin|partner cost/i.test(clientAdvice));
 check("client sees each option's eligibility and why other places do not fit:", /to be verified/.test(clientAdvice) && /Every structure compared/.test(clientAdvice) && /Costs are estimates/.test(clientAdvice));
 check("client sees the date the advice's rules and data stand at (E2):", /Rules and place data as of \d/.test(clientAdvice) && /licensed by /.test(clientAdvice));
+// U1: two sentences before the reasoning, built from the engine's own labelled text; the full advice folds below, open.
+check("the advice opens with a plain summary and the points to confirm before the reasoning (U1):", /fits what you told us|No option fits/.test(await client.locator("main .summary h2").innerText()) && (await client.locator("main .confirm > div").count()) >= 1 && (await client.locator("main .confirm > div").count()) <= 2 && (await client.locator("main details.reasoning[open]").count()) === 1);
 await shot(client, "36-client-advice");
 await axeCheck(client, "client advice with eligibility (E1)");
 {
@@ -1138,6 +1163,17 @@ check("the Arabic document title follows the heading:", /تأسيس/.test(await 
 await ap3.goto(engagementUrl); await ap3.reload(); await ap3.waitForSelector(".msg");
 const msgs = await ap3.locator(".msg div[data-no-i18n]").allInnerTexts();
 check("people's own words are left untranslated:", msgs.length >= 1 && msgs.every((m) => !/[\u0600-\u06FF]/.test(m)));
+// U1: the gap list the Arabic reviewer sees (strings seen on client screens without an entry) holds none of the
+// strings U1 added. The list also carries service names, amounts, file names and older strings, which are logged.
+{
+  await ap3.waitForTimeout(800);
+  const gaps = await founder.evaluate(async () => (await (await fetch("/api/admin/arabic")).json()).gaps ?? []);
+  const u1 = ["Money", "Invoiced, net of credit notes", "Statement and invoices", "Compliance calendar", "Full calendar", "One offer, with another option", "One offer, with other options", "Choose an option", "Priority", "Standard", "Essential", "selected", "In short", "nothing due", "All steps"];
+  const u1Shapes = [/^(Priority|Standard|Essential) · AED/, /^Switch to /, /fits what you told us/, /needs? confirming before we quote/, /^Accept this offer/, / due now$/, /^about \d+ working days$/, /^No option fits/, /^The reasoning:/, /^The setup estimate for/, /^\d+ of \d+ approved$/];
+  const leaked = gaps.filter((g) => u1.includes(g) || u1Shapes.some((re) => re.test(g)));
+  log.push(`arabic gaps reported by the client screens (${gaps.length}): ${gaps.join(" | ")}`);
+  check("no string U1 added appears untranslated on the client screens visited in Arabic (U1):", leaked.length === 0 && gaps.length > 0);
+}
 await ap3.goto(BASE + "/intake.html?lang=ar"); await ap3.waitForSelector('html[dir="rtl"]');
 await axeCheck(ap3, "public intake (ar)");
 // O10: legal texts and holidays on Settings, the grouped console menu, the partner agreement, an imported prospect.

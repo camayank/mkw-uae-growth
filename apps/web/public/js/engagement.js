@@ -1,5 +1,5 @@
 // Tasees workspace: engagement module (split from app.js in O12; plain ES modules, no build step).
-import { $app, MILESTONE_LABEL, aed, api, badge, byStage, date, dateTime, dropzone, esc, isClient, isPartner, isPlatform, nameOf, role, seesMargin, table, uploadRules, words } from "./core.js";
+import { $app, MILESTONE_LABEL, aed, api, badge, byStage, date, dateTime, dropzone, esc, isClient, isPartner, isPlatform, nameOf, panel, role, seesMargin, table, uploadRules, words } from "./core.js";
 import { nextActionCard } from "./client.js";
 
 export async function renderEngagement(id) {
@@ -11,9 +11,9 @@ export async function renderEngagement(id) {
   const nextOpenId = ms.find((m) => ["pending", "in_progress", "qa_rejected"].includes(m.status))?.id;
   const partnerNames = (e.parties ?? []).filter((p) => p.party === "partner").map((p) => p.name);
 
-  const milestoneActions = (m) => {
+  const milestoneActions = (m, { work: withWork = true } = {}) => {
     const out = [];
-    if (isPartner() && ["pending", "in_progress", "qa_rejected"].includes(m.status)) {
+    if (isPartner() && withWork && ["pending", "in_progress", "qa_rejected"].includes(m.status)) {
       const work = `<form class="row" data-form="evidence" data-id="${m.id}">
         <select name="type" style="width:auto">${(m.evidenceRequired ?? []).map((t) => `<option value="${esc(t)}">${esc(words(t))}</option>`).join("")}<option value="other">other</option></select>
         <input type="file" name="file" required style="width:auto;max-width:100%" /><button class="sm" type="submit">Upload</button><p class="field-msg small" aria-live="polite"></p></form>
@@ -110,12 +110,16 @@ export async function renderEngagement(id) {
         e.invoices.map((i) => `<tr><td class="mono small">${esc(i.number)}${i.kind === "credit_note" ? ` ${badge("refunded", "credit note")}` : ""}</td><td>${date(i.issuedAt)}</td><td class="num">${aed(i.gross)}</td><td><a href="/api/invoices/${i.id}/pdf" target="_blank" rel="noopener">Download PDF</a></td></tr>`),
       )}` : ""}
       <p class="small muted pad" style="padding-top:0">Pay by bank transfer to MKW Advisors quoting reference ${esc(e.engagement.id.slice(0, 8).toUpperCase())}, or by card. A tax invoice is issued for every payment.</p></div>`;
-    if (isPartner())
-      return `<div class="card flush"><h2>Your payouts</h2>${table(
+    if (isPartner()) {
+      const list = [...(e.payouts ?? [])].sort(byStage);
+      const paid = list.filter((p) => p.status === "released").reduce((n, p) => n + p.amount, 0);
+      const toCome = list.filter((p) => p.status !== "released").reduce((n, p) => n + p.amount, 0);
+      return panel("Your payouts on this engagement", `${table(
         ["Stage", "#Amount", "Status", "Your invoice"],
-        [...(e.payouts ?? [])].sort(byStage).map((p) => `<tr><td>${esc(words(p.stage))}</td><td class="num">${aed(p.amount)}</td><td>${badge(p.status)}</td><td class="small">${p.invoiceNumber ? esc(p.invoiceNumber) : p.status === "eligible" ? `<a href="#/payouts">upload on Payouts</a>` : "–"}</td></tr>`),
+        list.map((p) => `<tr><td>${esc(words(p.stage))}</td><td class="num">${aed(p.amount)}</td><td>${badge(p.status)}</td><td class="small">${p.invoiceNumber ? esc(p.invoiceNumber) : p.status === "eligible" ? `<a href="#/payouts">upload on Payouts</a>` : "–"}</td></tr>`),
         "Payouts appear once you accept the work.",
-      )}</div>`;
+      )}<p class="small muted">Each release needs your invoice for the same amount, on the Payouts page. Paid in MKW Advisors' weekly bank run.</p>`, { state: list.length ? `${aed(paid)} paid · ${aed(toCome)} to come` : "" });
+    }
     return `<div class="card flush"><h2>Money</h2>
       ${table(
         ["Client payment", "#Amount", "Status", ""],
@@ -182,6 +186,7 @@ export async function renderEngagement(id) {
            <p class="small muted pad" style="padding-top:0">MKW Advisors prices the change for the client. Start the extra work only after the client approves it here.</p>`
         : "";
     if (!rows.length && !form) return "";
+    if (isPartner() || isClient()) return panel("Changes to scope", `${table(["Change", "#Amount", "Status", ""], rows, "No changes.")}${form}`, { id: "changes", state: rows.length ? `${rows.length} change${rows.length > 1 ? "s" : ""}` : "", open: isClient() && list.some((c) => c.status === "priced") });
     return `<div class="card flush" id="changes" tabindex="-1"><h2>Changes to scope</h2>${table(["Change", "#Amount", "Status", ""], rows, "No changes.")}${form}</div>`;
   };
 
@@ -201,6 +206,7 @@ export async function renderEngagement(id) {
       </div>`;
 
   if (isClient()) return renderClientEngagement(e, { evidenceFor, delayLine, moneyCard, creditsCard, ratingCard, changeOrders, messagesCard, partnerNames, done });
+  if (isPartner()) return renderPartnerEngagement(e, { evidenceFor, delayLine, docsFor, docsCard, moneyCard, creditsCard, ratingCard, changeOrders, messagesCard, milestoneActions, dotTone, linesCard, done, nextOpenId });
 
   $app.innerHTML = `
   <p><a href="${back}">← Back</a></p>
@@ -293,34 +299,101 @@ function renderClientEngagement(e, parts) {
             : ""
       }</li>`;
   };
+  // U1: the documents fold away once none is outstanding; steps stay open (they are the record); the rest folds.
   const checklist = docs.length
-    ? `<section class="card" id="docs" tabindex="-1" aria-labelledby="docs-h"><h2 id="docs-h">Documents we need from you ${missing ? badge("pending", `${missing} to upload`) : badge("ok", "complete")}</h2>
-      <p class="small muted">Each file is checked here before it is sent: PDF, a photo, Word or Excel, up to ${Math.round(uploadRules.maxBytes / 1024 / 1024)} MB. Files are stored in the UAE and shared only with the firm doing the work.</p>
+    ? panel(
+        `Documents we need from you ${missing ? badge("pending", `${missing} to upload`) : badge("ok", "complete")}`,
+        `<p class="small muted">Each file is checked here before it is sent: PDF, a photo, Word or Excel, up to ${Math.round(uploadRules.maxBytes / 1024 / 1024)} MB. Files are stored in the UAE and shared only with the firm doing the work.</p>
       ${[...new Set(docs.map((r) => r.milestoneId))]
         .map((mid) => `<h3 class="checklist-step">Needed for ${esc(e.milestones.find((m) => m.id === mid)?.name ?? "this step")}</h3><ul class="checklist">${docs.filter((r) => r.milestoneId === mid).map(docItem).join("")}</ul>`)
-        .join("")}</section>`
+        .join("")}`,
+        { id: "docs", open: missing > 0 },
+      )
     : "";
+  const pending = (e.payments ?? []).filter((p) => p.status === "pending");
+  const paymentsPanel = panel("Payments", stripCard(parts.moneyCard()), { state: pending.length ? `${aed(pending.reduce((n, p) => n + p.amount, 0))} due now` : "nothing due", open: pending.length > 0 });
+  const creditsPanel = parts.creditsCard() ? panel("Service guarantee", stripCard(parts.creditsCard()), { state: `${(e.credits ?? []).length} credit${(e.credits ?? []).length === 1 ? "" : "s"}` }) : "";
   $app.innerHTML = `
   <p><a href="#/">← Overview</a></p>
   <div class="row between"><h1>Your engagement · ${esc(e.engagement.emirate)}${e.engagement.freeZone ? ` · ${esc(e.engagement.freeZone)}` : ""}</h1>${badge(e.engagement.status)}</div>
   <p class="muted">${parts.done} of ${e.milestones.length} steps approved${parts.partnerNames.length ? ` · Delivered by ${esc(parts.partnerNames.join(", "))}, managed by MKW Advisors` : ""}</p>
-  ${nextActionCard(j.actions, j.whatsNext, { inline: true, evidenceFor: parts.evidenceFor })}
   <div class="grid cols-2 eng">
-    <section class="card" aria-labelledby="steps-h"><h2 id="steps-h">Steps</h2>
-      <ol class="timeline">${j.timeline.map(entry).join("")}</ol>
-      <p class="small muted">Every step is checked by MKW Advisors before it comes to you. Approving it releases the partner's payment for that step; if you do nothing for five working days after our check, it is approved automatically.</p>
-    </section>
+    <div class="stack">
+      ${nextActionCard(j.actions, j.whatsNext, { inline: true, evidenceFor: parts.evidenceFor })}
+      ${parts.messagesCard()}
+      ${parts.ratingCard()}
+    </div>
     <div class="stack">
       ${checklist}
-      ${parts.moneyCard()}
-      ${parts.creditsCard()}
-      ${parts.ratingCard()}
+      ${panel("Steps", `<ol class="timeline">${j.timeline.map(entry).join("")}</ol>
+        <p class="small muted">Every step is checked by MKW Advisors before it comes to you. Approving it releases the partner's payment for that step; if you do nothing for five working days after our check, it is approved automatically.</p>`, { state: `${parts.done} of ${e.milestones.length} approved`, open: true })}
+      ${paymentsPanel}
+      ${creditsPanel}
       ${parts.changeOrders()}
-      ${parts.messagesCard()}
-      <details class="card"><summary><b>What you bought</b></summary>${table(
+      ${panel("What you bought", table(
         ["Service", "#Qty", "#Fee each", "#Govt fee each"],
         e.lines.map((l) => `<tr><td>${esc(l.name)}</td><td class="num">${l.qty}</td><td class="num">${aed(l.clientUnitPrice)}</td><td class="num">${aed(l.govUnitFee)}</td></tr>`),
-      )}</details>
+      ), { state: `${e.lines.length} service${e.lines.length === 1 ? "" : "s"}` })}
+    </div>
+  </div>`;
+}
+
+/** The body of a `.card.flush` block without its own card and heading, for use inside a panel (U1). */
+const stripCard = (html) => html.replace(/^<div class="card flush">\s*<h2>[^<]*<\/h2>/, "").replace(/<\/div>\s*$/, "");
+
+// The partner's engagement (U1): the next step with its evidence upload first, messages beside it; the rest folds ------
+
+function renderPartnerEngagement(e, parts) {
+  const ms = e.milestones;
+  const next = ms.find((m) => m.id === parts.nextOpenId);
+  const waiting = ms.filter((m) => ["evidence_submitted", "qa_passed"].includes(m.status));
+  const docsOpen = (e.documentRequests ?? []).filter((r) => ["requested", "rejected"].includes(r.status)).length;
+  const toReceive = (e.documentRequests ?? []).filter((r) => r.status === "uploaded").length;
+  const nextCard = next
+    ? `<section class="nextaction" aria-labelledby="next-h"><p class="eyebrow"><span>Your next step</span> · <span>due ${date(next.dueDate)}</span>${next.isKey ? ` · <span>key step</span>` : ""}</p>
+        <h2 id="next-h">${esc(next.name)}</h2>
+        <p>Evidence: ${esc((next.evidenceRequired ?? []).map(words).join(", ") || "none")}. MKW Advisors checks it, then the client approves, and your payout for this step is released.</p>
+        ${parts.delayLine(next)}
+        ${next.qaNote ? `<p class="small">MKW note: <span data-no-i18n>${esc(next.qaNote)}</span></p>` : ""}
+        ${parts.docsFor(next.id).length ? `<p class="small muted">Client documents for this step: ${parts.docsFor(next.id).filter((r) => r.status === "received").length}/${parts.docsFor(next.id).length} received</p>` : ""}
+        ${parts.evidenceFor(next.id).length ? `<p class="small">Uploaded: ${parts.evidenceFor(next.id).map((x) => `<a href="/api/evidence/${x.id}/file" target="_blank" rel="noopener">${esc(x.fileName)}</a>`).join(" · ")}</p>` : ""}
+        ${parts.milestoneActions(next)}
+        ${waiting.length || docsOpen || toReceive ? `<ul class="todo">${toReceive ? `<li>${badge("warn", "yours")}<span>${toReceive} client document${toReceive > 1 ? "s" : ""} uploaded: <a href="#docs" data-act="jump" data-target="docs">confirm you received ${toReceive > 1 ? "them" : "it"}</a></span></li>` : ""}${waiting.map((m) => `<li>${badge("info", m.status === "qa_passed" ? "with the client" : "with MKW")}<span>${esc(m.name)}: ${m.status === "qa_passed" ? "checked, waiting for the client's approval" : "evidence with MKW Advisors for checking"}</span></li>`).join("")}${docsOpen ? `<li>${badge("pending", "waiting")}<span>${docsOpen} client document${docsOpen > 1 ? "s" : ""} outstanding; the delay is attributed to the client</span></li>` : ""}</ul>` : ""}
+      </section>`
+    : `<section class="nextaction calm" aria-labelledby="next-h"><p class="eyebrow">Your next step</p><h2 id="next-h">Nothing needed from you right now</h2><p>${waiting.length ? `${waiting.length} step${waiting.length > 1 ? "s are" : " is"} with MKW Advisors or the client; the next one opens when it is approved.` : e.engagement.status === "completed" ? "Every step is approved; the engagement is complete." : "Steps appear when the deposit is paid and the work is allocated."}</p></section>`;
+  const stepsList = ms.length
+    ? `<ul class="milestones">${ms
+        .map(
+          (m) => `<li><span class="dot ${parts.dotTone(m.status)}"></span><div>
+            <div class="row between"><b>${esc(m.name)}</b>${badge(m.status, m.id === next?.id ? "Your next step" : MILESTONE_LABEL[m.status])}</div>
+            <div class="small muted">Due ${date(m.dueDate)}${m.isKey ? " · key step" : ""} · Evidence: ${esc((m.evidenceRequired ?? []).map(words).join(", ") || "none")}</div>
+            ${parts.delayLine(m)}
+            ${parts.docsFor(m.id).length ? `<div class="small muted">Client documents: ${parts.docsFor(m.id).filter((r) => r.status === "received").length}/${parts.docsFor(m.id).length} received</div>` : ""}
+            ${m.qaNote && m.id !== next?.id ? `<div class="small">MKW note: <span data-no-i18n>${esc(m.qaNote)}</span></div>` : ""}
+            ${m.disputeReason ? `<div class="small">Client issue: <span data-no-i18n>${esc(m.disputeReason)}</span></div>` : ""}
+            ${parts.evidenceFor(m.id).length ? `<div class="small">${parts.evidenceFor(m.id).map((x) => `<a href="/api/evidence/${x.id}/file" target="_blank" rel="noopener">${esc(x.fileName)}</a> <span class="muted">(${esc(words(x.type))})</span>`).join(" · ")}</div>` : ""}
+            ${m.id === next?.id ? "" : parts.milestoneActions(m)}</div></li>`,
+        )
+        .join("")}</ul>`
+    : `<p class="muted">Steps appear when a partner accepts the work.</p>`;
+  const fees = e.lines.reduce((n, l) => n + (l.partnerUnitCost ?? 0) * l.qty, 0);
+  $app.innerHTML = `
+  <p><a href="#/">← Work</a></p>
+  <div class="row between"><h1>Engagement · ${esc(e.engagement.emirate)}${e.engagement.freeZone ? ` · ${esc(e.engagement.freeZone)}` : ""}</h1>${badge(e.engagement.status)}</div>
+  <p class="muted">${parts.done} of ${ms.length} steps approved · opened ${date(e.engagement.createdAt)} · the client's contact details are hidden; message through this page</p>
+  <div class="grid cols-2 eng">
+    <div class="stack">
+      ${nextCard}
+      ${parts.messagesCard()}
+      ${parts.ratingCard()}
+    </div>
+    <div class="stack">
+      ${panel("All steps", stepsList, { state: `${parts.done} of ${ms.length} approved${next ? " · 1 yours now" : ""}`, open: true })}
+      ${parts.docsCard() ? panel(`Documents from the client ${toReceive ? badge("warn", `${toReceive} to confirm`) : docsOpen ? badge("pending", `${docsOpen} outstanding`) : badge("ok", "complete")}`, stripCard(parts.docsCard()).replace(/^[^]*?<\/h2>/, ""), { id: "docs", open: toReceive > 0 }) : ""}
+      ${panel("Scope and your fees", `${stripCard(parts.linesCard())}<p class="small muted">Your own rate card as accepted; government fees are not part of this figure. The client's price is set by MKW Advisors and is not shown here.</p>`, { state: e.lines.some((l) => l.partnerUnitCost != null) ? `${aed(fees)} your fees` : "" })}
+      ${parts.moneyCard()}
+      ${parts.creditsCard()}
+      ${parts.changeOrders()}
     </div>
   </div>`;
 }

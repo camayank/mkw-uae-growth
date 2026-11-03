@@ -1,6 +1,6 @@
 # E6 Verification and pilot readiness
 
-Status: verified-pending-merge (branch `outcome/E6-pilot-readiness`, built on E5 and rebased onto `main` after
+Status: merged (camayank/mkw-uae-growth#22, 2 Nov 2026; branch `outcome/E6-pilot-readiness`, built on E5 and rebased onto `main` after
 camayank/mkw-uae-growth#21 merged; released by the owner on 2 Nov 2026 with the Right UAE Entity programme,
 `docs/ENTITY-PROGRAMME.md`)
 

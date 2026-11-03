@@ -207,6 +207,31 @@ in a browser; everything listed here is not.
 80. **Staging checks were not run.** No cloud account exists (gap 6a); `docs/evidence/E6/VERIFICATION.md` lists each
     blocked check and what unblocks it. The container image build is verified by CI only.
 
+## U1: client and partner workspace redesign
+
+81. **Partner screens are English only**, including the redesigned work and engagement pages; the Arabic partner
+    wording on the design canvas was not shipped and needs a native reviewer first (O15).
+82. **The "In short" summary is a reading of the advice, not a new judgement.** It takes the recommended structure, the
+    first-ranked place, the first reason and up to two findings to confirm. A case whose most important point is the
+    third finding reads less sharply; the full reasoning is always one panel below.
+83. **The offer switch shows what ops built.** If ops build three tiers the client sees three; the design's "one
+    offer with another option" is the two-tier case. Whether to stop building the essential tier is a product decision.
+84. **The partner's offer row does not show the client's document status before acceptance**, because the allocation
+    brief does not carry it; the row says so. Adding it means widening the brief, a later change.
+85. **The priority tier's speed does not reach the client.** Tier selection picks the quote with the fewest working
+    days, but offer lines do not store them: the proposal's estimate and the engagement's milestone dates come from the
+    scope templates, the same for every tier. The screen therefore calls the tier "Priority" and promises no pace
+    (raised in the U1 review). Carrying the quoted working days into offer lines, the proposal and the delivery plan is
+    an API and schema change for a later outcome.
+86. **The browser tab title says "Tasees" for partners.** `document.title` follows the heading with " · Tasees" for
+    every signed-in role (`js/core.js`), so a partner's tab carries the client brand; the page itself is branded MKW
+    Advisors Partner Network. Pre-dates U1; noted in its review. Fix: pick the suffix by audience.
+87. **Arabic entries missing for some E5 and E6 client strings.** The gap list the Arabic reviewer sees, read by the
+    smoke test after the client screens are visited in Arabic, carries "This offer is accepted.", "On the licence",
+    "Renewal requested", "Already answered on our public page?", "Saved result code", "Start from my saved result" and
+    the intake placeholders, beside service names, amounts and file names that are left as they are by design. U1's
+    own strings are checked not to be in it; the older ones wait for the dictionary round with the reviewer (O15).
+
 ## E7A: public product UX
 
 88. **Guidance notes are drafts until the founder approves them**, so a fresh demo and the pilot start with no

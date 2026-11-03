@@ -63,6 +63,14 @@ No blocking finding. Applied:
 - doc wording is corrected, and the canvas's streak is kept open as gap 117;
 - the M favicon for partners and staff (rule 10).
 
+## CI
+
+CI's smoke run (DejaVu Sans on Linux) found the partner engagement 393 px wide on a 390 px phone. The cause was the
+evidence form, a flex item inside the row of step actions, which kept its content's width. It now takes the row's
+width and may shrink (`.actions > form`). `SMOKE_WIDE_FONT=1` renders the partner phone pages in DejaVu Sans, which
+reproduced the failure here and shows the fix (390/390 px). The phone checks now log page width, tab bar and top bar
+colours.
+
 ## Dependencies
 
 E9 (the look, helpers and tokens). No new library.

@@ -370,8 +370,11 @@ nav#nav > a, .navbtn { display: inline-flex; align-items: center; font-weight: 5
 .navmenu a { display: flex; align-items: center; }
 .navbtn > svg:first-child { width: 16px; height: 16px; margin-inline-end: 5px; }
 .search input { width: 180px; }
-/* A file picker in a row may shrink to the row's width: its "Choose file / No file chosen" text is wider in some fonts. */
-.row > input[type="file"] { min-width: 0; flex: 1 1 160px; max-width: 100%; }
+/* A form inside a row of actions (the partner's evidence upload beside Start) takes the row's width and may shrink:
+   as a flex item it would otherwise keep its content's width and, with a wider font (DejaVu Sans on Linux), push a
+   390 px page 3 px wide. */
+.actions > form { min-width: 0; flex: 1 1 100%; }
+.row > input[type="file"] { min-width: 0; max-width: 100%; }
 /* E10: partners get the same dark MKW Advisors bar; their phone tab bar stays light (below 641 px). */
 body:is([data-audience="platform"], [data-audience="partner"]) .top { background: var(--ink-panel); border-bottom-color: var(--ink-panel); color: var(--ink-panel-text); }
 body:is([data-audience="platform"], [data-audience="partner"]) .brand, body:is([data-audience="platform"], [data-audience="partner"]) .brand small, body:is([data-audience="platform"], [data-audience="partner"]) .who { color: var(--ink-panel-muted); }

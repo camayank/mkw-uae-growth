@@ -1279,7 +1279,8 @@ check("partner performance page has no client or margin figures:", !/margin|clie
   ph.on("pageerror", (e) => errors.push(`E10 partner phone: ${e.message}`));
   for (const [route, ready, name] of [["#/performance", 'main h1:text-is("Your performance")', "111-mobile-partner-performance"], ["#/payouts", 'main h1:text-is("Payouts")', "112-mobile-partner-payouts"], [engagementUrl.slice(engagementUrl.indexOf("#")), "main h1", "113-mobile-partner-engagement"]]) {
     await ph.goto(BASE + "/" + route); await ph.reload(); await ph.waitForSelector(ready); await ph.waitForTimeout(400);
-    if (process.env.SMOKE_WIDE_FONT) await ph.addStyleTag({ content: "body { letter-spacing: 0.06em !important; }" });
+    // SMOKE_WIDE_FONT=1 renders these pages in DejaVu Sans, the wider font CI's Linux runner uses, to reproduce its widths.
+    if (process.env.SMOKE_WIDE_FONT) await ph.addStyleTag({ content: "* { font-family: \"DejaVu Sans\", sans-serif !important; }" });
     // Name what sticks out, so a failure on another machine's fonts says where to look.
     const state = await ph.evaluate(() => {
       const inScroller = (e) => { for (let x = e.parentElement; x; x = x.parentElement) if (/auto|scroll|hidden/.test(getComputedStyle(x).overflowX)) return true; return false; };

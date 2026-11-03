@@ -330,9 +330,12 @@ $("next").addEventListener("click", async () => {
 $("to-landing").addEventListener("click", () => { savedCode = null; show("landing"); window.scrollTo(0, 0); $("start").focus(); });
 
 // The homepage: the call to action starts at question one; an industry starts at question two with the activity set.
+// Regulated finance covers two activities the engine treats differently (financial services, virtual assets), so that
+// card preselects the first and keeps question one on screen for the founder to confirm or change.
+const CONFIRM_ACTIVITY = new Set(["finance"]);
 function start(activity) {
   savedCode = null;
-  if (activity && QUESTIONS.activity.options.some((o) => o[0] === activity)) { answers.activity = activity; i = 1; } else i = 0;
+  if (activity && QUESTIONS.activity.options.some((o) => o[0] === activity)) { answers.activity = activity; i = CONFIRM_ACTIVITY.has(activity) ? 0 : 1; } else i = 0;
   show("questions");
   render();
   $("questions").scrollIntoView({ block: "start" });

@@ -581,6 +581,9 @@ export async function renderSearch(q) {
 const SEGMENT_LABEL = { starter: "Starter", standard: "Standard", complex: "Complex", regulated: "Regulated", cross_border: "Cross-border" };
 const LEAD_STATUS = ["new", "routed", "contacted", "consultation", "converted", "closed"];
 const leadStatusBadge = (s) => badge(s === "converted" ? "ok" : s === "closed" ? "pending" : s === "new" ? "UNCERTAIN" : "info", words(s));
+// E7C: the next best action, with the adviser's override beside the computed one when there is one.
+const nextActionCell = (l) => `${l.nextActionOverride ? `<b>${esc(l.nextActionOverride.action)}</b> ${badge("info", "set by hand")}<br><span class="muted">suggested: ${esc(l.nextAction?.action ?? "")}</span>` : `${l.nextAction?.urgent ? badge("warn", "today") + " " : ""}<b>${esc(l.nextAction?.action ?? "")}</b>`}`;
+const evidenceList = (rows) => (rows?.length ? `<ul class="plain small">${rows.map((f) => `<li>${esc(f.factor)} <span class="muted">+${f.points}</span></li>`).join("")}</ul>` : `<p class="small muted">Nothing raised it above the base.</p>`);
 const consentBadges = (c) => ["service", "marketing", "partner_disclosure"].map((p) => `<span class="badge ${c?.[p] ? "ok" : ""}" title="${esc(words(p))}">${esc(words(p))}: ${c?.[p] ? "yes" : "no"}</span>`).join(" ");
 
 export async function renderLeads() {
@@ -589,12 +592,13 @@ export async function renderLeads() {
   const [leads, analytics] = await Promise.all([api("GET", `/api/ops/pipeline/leads${q ? `?${q}` : ""}`), api("GET", "/api/ops/pipeline/leads/analytics")]);
   const filter = (k, v, label) => `<a class="badge ${params.get(k) === v ? "ok" : ""}" href="#/leads?${new URLSearchParams({ ...Object.fromEntries(params), [k]: v }).toString()}">${esc(label)}</a>`;
   $app.innerHTML = `<h1>Leads</h1>
-  <p class="muted">Everyone who asked MKW Advisors to review their case, with their consents, where they came from and two scores that order a person's attention. Nothing is sent to a lead from here: a person calls, writes or books, and records it. ${role() === "founder" ? `Who owns each kind of lead is set on <a href="#/settings">Settings</a>.` : ""}</p>
+  <p class="muted">Everyone who asked MKW Advisors to review their case, with their consents, where they came from, two scores that order a person's attention (purchase readiness, commercial value) and the next best action with its reason. Nothing is sent to a lead from here: a person calls, writes or books, and records it. The funnel from visitor to revenue is on the <a href="#/funnel">Funnel</a> page. ${role() === "founder" ? `Who owns each kind of lead is set on <a href="#/settings">Settings</a>.` : ""}</p>
   <div class="row small" style="margin-bottom:12px"><a class="badge ${!params.toString() ? "ok" : ""}" href="#/leads">All</a> ${filter("owner", "me", "Mine")} ${LEAD_STATUS.map((s) => filter("status", s, words(s))).join(" ")} ${Object.entries(SEGMENT_LABEL).map(([k, v]) => filter("segment", k, v)).join(" ")}</div>
   <div class="card flush">${table(
-    ["Received", "Company", "Segment", "#Intent", "#Complexity", "Status", "Owner", "Consents", "Source", ""],
+    ["Received", "Company", "Segment", "#Readiness", "#Value", "Status", "Next action", "Owner", "Consents", "Source", ""],
     leads.map((l) => `<tr><td class="small">${dateTime(l.createdAt)}</td><td>${esc(l.company)}<br><span class="small muted">${esc(l.name)}${l.phoneGiven ? " · phone given" : ""}${l.consultation ? ` · ${badge("info", "call requested")}` : ""}</span></td>
       <td>${esc(SEGMENT_LABEL[l.segment] ?? l.segment)}</td><td class="num">${l.intent}${l.highIntent ? ` ${badge("ok", "high")}` : ""}</td><td class="num">${l.complexity}</td><td>${leadStatusBadge(l.status)}${l.openFollowups ? `<br><span class="small muted">follow-up ${date(l.nextFollowup)}</span>` : ""}</td>
+      <td class="small">${nextActionCell(l)}</td>
       <td class="small">${esc(l.owner ?? "–")}</td><td class="small">${consentBadges(l.consents)}</td><td class="small">${esc([l.source?.source, l.source?.campaign].filter(Boolean).join(" / ") || "direct")}</td><td><a href="#/leads/${l.id}">Open</a></td></tr>`),
     "No leads yet.",
   )}</div>
@@ -621,10 +625,17 @@ export async function renderLead(id) {
       ${l.requestId ? `<p class="small"><a href="#/request/${l.requestId}">Open the request's scoping</a></p>` : l.intakeLeadId ? `<p class="small muted">The email already had an account; the enquiry is held in the <a href="#/agent">AI queue</a>.</p>` : ""}
     </div>
     <div class="card"><h2>What they answered</h2>
-      <table>${answer("Activity", a.activity)}${answer("Customers", words(a.customers))}${answer("Visas", a.visas)}${answer("Premises", a.premises)}${answer("Budget", a.budgetAed ? aed(a.budgetAed * 100) : null)}${answer("Emirate", a.emirate)}${answer("Place in mind", a.freeZone)}${answer("Owners", a.ownerType)}${answer("Tax resident abroad", a.foreignTaxResident === true ? "yes" : a.foreignTaxResident === false ? "no" : null)}</table>
-      <p class="small muted">Segment ${esc(SEGMENT_LABEL[l.segment] ?? l.segment)} · intent ${l.intent}${l.highIntent ? " (high)" : ""} · complexity ${l.complexity}. Scores order attention; they decide nothing.</p>
+      <table>${answer("Activity", a.activity)}${answer("Customers", words(a.customers))}${answer("Visas", a.visas)}${answer("Premises", a.premises)}${answer("Budget", a.budgetAed ? aed(a.budgetAed * 100) : null)}${answer("Emirate", a.emirate)}${answer("Place in mind", a.freeZone)}${answer("Owners", a.ownerType)}${answer("Tax resident abroad", a.foreignTaxResident === true ? "yes" : a.foreignTaxResident === false ? "no" : null)}${answer("Wants to start", { "1_month": "within a month", "3_months": "within three months", later: "later, exploring" }[a.startWithin] ?? null)}</table>
+      <p class="small muted">Segment ${esc(SEGMENT_LABEL[l.segment] ?? l.segment)}. Scores order attention; they decide nothing.</p>
     </div>
   </div>
+  <div class="grid cols-2" style="margin-top:16px">
+    <div class="card"><h2>Purchase readiness ${l.intent}${l.highIntent ? ` ${badge("ok", "high")}` : ""}</h2><p class="small muted">Base 10 plus the points below, capped at 100:</p>${evidenceList(l.scoreEvidence?.readiness)}</div>
+    <div class="card"><h2>Commercial value ${l.complexity}</h2><p class="small muted">Base 10 plus the points below, capped at 100:</p>${evidenceList(l.scoreEvidence?.value)}</div>
+  </div>
+  <form class="card next-action" data-form="lead-next-action" data-id="${l.id}" style="margin-top:16px"><h2>Next best action: ${esc(l.nextActionOverride?.action ?? l.nextAction?.action ?? "")} ${l.nextAction?.urgent && !l.nextActionOverride ? badge("warn", "today") : ""}</h2>
+    <p class="small">${l.nextActionOverride ? `Set by hand: <span data-no-i18n>${esc(l.nextActionOverride.reason ?? "")}</span> (${dateTime(l.nextActionOverride.at)}). The rule suggests: <b>${esc(l.nextAction?.action ?? "")}</b>, because ${esc(l.nextAction?.why ?? "")}` : esc(l.nextAction?.why ?? "")}</p>
+    <div class="row"><input name="action" placeholder="A different action (leave empty to clear)" style="max-width:300px" value="${esc(l.nextActionOverride?.action ?? "")}" /><input name="reason" placeholder="Why (recorded)" style="max-width:300px" /><button class="sm" type="submit">${l.nextActionOverride ? "Change or clear" : "Override"}</button></div></form>
   <div class="grid cols-2" style="margin-top:16px">
     <form class="card" data-form="lead-assign" data-id="${l.id}"><h2>Owner</h2>
       <div class="row"><select name="ownerUserId" aria-label="Owner"><option value="">Nobody yet</option>${routing.owners.map((o) => `<option value="${o.id}" ${o.id === l.ownerUserId ? "selected" : ""}>${esc(o.name)} (${esc(o.role)})</option>`).join("")}</select><input name="note" placeholder="Note (optional)" style="max-width:220px" /><button class="sm" type="submit">Assign</button></div></form>
@@ -646,5 +657,41 @@ export async function renderLead(id) {
     ["When", "Purpose", "Decision", "Text version", "Channel"],
     l.consentHistory.map((c) => `<tr><td class="small">${dateTime(c.at)}</td><td>${esc(words(c.purpose))}</td><td>${badge(c.given ? "ok" : "pending", c.given ? "given" : "not given")}</td><td class="small mono">${esc(c.version)}</td><td class="small">${esc(words(c.channel))}</td></tr>`),
   )}</div>`;
+}
+
+// E7C: the funnel from visitor to revenue, every figure from recorded rows.
+export async function renderFunnel() {
+  const f = await api("GET", "/api/ops/pipeline/funnel");
+  const t = f.totals;
+  const pct = (n, of) => (of ? `${Math.round((100 * n) / of)}%` : "–");
+  const stageRow = (label, n, of) => `<tr><td>${esc(label)}</td><td class="num">${n ?? 0}</td><td class="num">${pct(n ?? 0, of)}</td></tr>`;
+  $app.innerHTML = `<h1>Funnel</h1>
+  <p class="muted">From a visit to the public page to revenue, source by source. The first stages are counted from the page in aggregate (a random id per browser session, no cookie, no contact detail); from the lead onwards every figure comes from the platform's own records, counted once per request and offer. Qualified means: ${esc(f.qualifiedRule)}. Client totals only; no margin here.</p>
+  <div class="kpis">
+    <div class="kpi"><b>${t.visitors ?? 0}</b><span>visitors</span></div>
+    <div class="kpi"><b>${t.completionRate ?? "–"}${t.completionRate != null ? "%" : ""}</b><span>completed of started (${t.started ?? 0} started)</span></div>
+    <div class="kpi"><b>${t.leadsAll ?? 0}</b><span>leads, ${t.qualifiedAll ?? 0} qualified</span></div>
+    <div class="kpi"><b>${t.consultations ?? 0}</b><span>consultation requests</span></div>
+    <div class="kpi"><b>${t.proposals ?? 0} → ${t.accepted ?? 0}</b><span>proposals issued → accepted</span></div>
+    <div class="kpi"><b>${t.won ?? 0} · ${t.lost ?? 0}</b><span>won · lost</span></div>
+    <div class="kpi"><b>${aed(t.revenueFils ?? 0)}</b><span>accepted revenue; ${aed(t.realisedFils ?? 0)} received</span></div>
+    <div class="kpi"><b>${aed(t.pipelineFils ?? 0)}</b><span>pipeline (proposals not yet decided)</span></div>
+    <div class="kpi"><b>${t.revenuePerQualifiedFils != null ? aed(t.revenuePerQualifiedFils) : "–"}</b><span>revenue per qualified lead</span></div>
+    <div class="kpi"><b>${f.turnaround.toFirstContactDays ?? "–"} · ${f.turnaround.toProposalDays ?? "–"}</b><span>days to first contact (${f.turnaround.contacted}) · to proposal (${f.turnaround.proposed})</span></div>
+  </div>
+  ${f.attention.length ? `<div class="card flush"><h2 style="padding:16px 18px 0">High-readiness leads that need a person</h2>${table(["Company", "Status", "#Readiness", "Owner", "Days", "Why"], f.attention.map((a) => `<tr><td><a href="#/leads/${a.id}">${esc(a.company)}</a></td><td>${leadStatusBadge(a.status)}</td><td class="num">${a.intent}</td><td class="small">${esc(a.owner ?? "nobody")}</td><td class="num">${a.days}</td><td>${badge("warn", a.why)}</td></tr>`))}</div>` : `<p class="notice small">No high-readiness lead is unassigned or overdue.</p>`}
+  <div class="card flush"><h2 style="padding:16px 18px 0">Stages, all sources</h2>${table(["Stage", "#Count", "#Of visitors"], [
+    stageRow("Visited", t.visitors, t.visitors), stageRow("Assessment started", t.started, t.visitors), stageRow("Assessment completed", t.completed, t.visitors), stageRow("Result viewed", t.viewed, t.visitors), stageRow("Compared places", t.compared, t.visitors), stageRow("Printed", t.printed, t.visitors), stageRow("Result saved", t.saved, t.visitors),
+    stageRow("Leads (review requested)", t.leads, t.visitors), stageRow("Consultation requested", t.consultations, t.visitors), stageRow("Qualified leads", t.qualified, t.visitors), stageRow("Proposals issued", t.proposals, t.visitors), stageRow("Proposals accepted", t.accepted, t.visitors), stageRow("Engagements", t.engagements, t.visitors),
+  ])}<p class="small muted" style="padding:0 18px 12px">Abandonment ${t.abandonmentRate ?? "–"}${t.abandonmentRate != null ? "%" : ""} of those who started. ${f.abandonment.length ? `Last question reached by those who did not finish: ${f.abandonment.map((a) => `${esc(words(a.step))} (${a.visitors})`).join(", ")}.` : ""}</p></div>
+  <div class="card flush"><h2 style="padding:16px 18px 0">By source and campaign</h2>${table(
+    ["Source", "Campaign", "#Visitors", "#Started", "#Completed", "#Saved", "#Leads", "#Qualified", "#Proposals", "#Accepted", "#Engagements", "#Revenue", "#Received", "#Pipeline"],
+    f.bySource.map((r) => `<tr><td>${esc(r.source)}</td><td class="small">${esc(r.campaign || "–")}</td><td class="num">${r.visitors}</td><td class="num">${r.started}</td><td class="num">${r.completed}</td><td class="num">${r.saved}</td><td class="num">${r.leads}</td><td class="num">${r.qualified}</td><td class="num">${r.proposals}</td><td class="num">${r.accepted}</td><td class="num">${r.engagements}</td><td class="num">${aed(r.revenueFils)}</td><td class="num">${aed(r.realisedFils)}</td><td class="num">${aed(r.pipelineFils)}</td></tr>`),
+    "Nothing recorded yet.",
+  )}</div>
+  <div class="grid cols-2" style="margin-top:16px">
+    <div class="card flush"><h2 style="padding:16px 18px 0">By segment</h2>${table(["Segment", "#Leads", "#Qualified", "#Revenue"], f.bySegment.map((s) => `<tr><td>${esc(SEGMENT_LABEL[s.segment] ?? s.segment)}</td><td class="num">${s.leads}</td><td class="num">${s.qualified}</td><td class="num">${aed(s.revenueFils)}</td></tr>`), "No leads yet.")}</div>
+    <div class="card flush"><h2 style="padding:16px 18px 0">Lost, by reason</h2>${table(["Reason", "#Leads"], f.lostReasons.map((r) => `<tr><td data-no-i18n>${esc(r.reason)}</td><td class="num">${r.leads}</td></tr>`), "Nothing lost yet.")}</div>
+  </div>`;
 }
 

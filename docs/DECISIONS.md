@@ -855,3 +855,49 @@ canvas of 3 Nov 2026 and its review round.)
 - No official page was read in this outcome (the container has no internet access): the data pipeline is ready and
   the backlog names what to obtain; filling it is the named verifier's work, through the importer.
 
+**D87. The funnel is measured in aggregate and anonymously, the scores show their evidence, and the next action is a rule a person can overrule.** (E7C, migration 021.)
+
+- The public page records the stages a browser session reaches (visited, started, each question step, completed,
+  viewed, compared, printed, saved) under a random id the browser keeps for the session only. The row holds that
+  id, the stage, the step and the attribution the page already sends; never a cookie, an IP, a user agent or a
+  contact detail, and no audit or outbox row, because nobody acts on it. One row per visitor, stage and step (a
+  unique index), so a repeat never counts twice. The later stages (consultation, lead, qualified, proposal, accepted,
+  engagement, revenue) are derived from the platform's records, counted once per request and offer, never sent by
+  the browser; a proposal counts as issued once published, whatever became of it later; the pipeline counts a
+  request once, at its highest published tier. The review request carries the
+  same id in its attribution; it is kept on the lead only (not on the request, not in the audit payload) and the
+  funnel joins a lead to its measured session by it, so a lead counts under the label of the session it came from.
+  The page says what is measured (owner wording, default labelled). Rows older than 400 days are deleted on every
+  retention sweep whether or not the personal-data periods are confirmed, and older than the leads period once they
+  are; they hold nothing personal, so this is housekeeping.
+- A second review request from the same email and company within a day with the same answers is the same lead: the
+  existing lead takes a note, keeps a call request if one is added (the first times given stay), has the consents
+  decided this time appended, has its scores recomputed on the merged signals, and nothing else is created or sent: no held enquiry, no account, no request, no
+  email. A changed answer, another company or a later day is a new case and a new lead, as before.
+- The two scores keep their columns (`intent`, `complexity`) and gain their evidence: the factors and points behind
+  each (base 10 plus the points, capped at 100), stored on the lead and shown on its page under the labels purchase
+  readiness and commercial value. New
+  factors: a start date (one optional question on the selector, read by the scores only), a clear activity,
+  investment size, expected revenue, a payroll. The segments are unchanged.
+- Erasure and anonymisation clear the adviser's free text on the lead (the override, its reason, the closure
+  reason) along with the rest, since an adviser may type a person's details there. For the same reason the
+  audit row of an override records only that it changed (`{ overridden }`), never its wording, which lives in the
+  erasable lead fields and notes (as follow-ups already do): the audit chain is never edited (rule 8).
+- Commercial outcomes (proposals, acceptances, engagements, revenue, pipeline) count once per request, on one
+  attributed lead: the one with a measured browser session, then the earliest, then by id, so two leads of one saved
+  result (the handoff attaches every one) never double a figure; lead counts stay per lead. A lead whose client
+  accepted or is on an engagement leaves the attention list, as the next-action rule already says.
+- A visitor's source and campaign are one pair from their first event (first touch wins, as E4 decided for leads),
+  never a source from one link and a campaign from another opened later in the same session. A step the visitor
+  comes back to is sent again by the page and moves to the end of the sequence on the server (one row per step, a
+  fresh id and time, not counted again), so the abandonment breakdown names the question they really stopped at.
+- The next best action is a rule over the lead's state (status, readiness, call request, owner, follow-ups, what the
+  request became), returning one action and the reason; it is computed on read, never stored, so it is always
+  current. The adviser overrides it with a reason, audited; the override is shown beside the rule's suggestion and
+  can be cleared. "Qualified" is one expression in one place (`QUALIFIED`), written on the Funnel page.
+- The Funnel page (founder and ops) shows every figure from recorded rows: by source and campaign from visitors to
+  revenue, completion and abandonment with the last step reached, won and lost with reasons, revenue by segment,
+  revenue per qualified lead, days to first contact and to proposal, the high-readiness leads that need a person,
+  and realised revenue (payments received) against the pipeline (proposals published and not yet decided). Client
+  totals only; finance, clients and partners cannot read it. The demo seeds no funnel rows.
+

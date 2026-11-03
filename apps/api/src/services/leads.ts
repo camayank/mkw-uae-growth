@@ -1,5 +1,5 @@
 import { createHash, randomInt } from "node:crypto";
-import { cleanAttribution, scoreLead, type AdviceInput, type Attribution, type LeadSignals, type Segment } from "@tasees/core";
+import { cleanAttribution, nextBestAction, scoreLead, type AdviceInput, type Attribution, type LeadSignals, type Segment } from "@tasees/core";
 import { audit, type SessionUser } from "../lib/context.ts";
 import { num, type Queryable } from "../lib/db.ts";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.ts";
@@ -122,20 +122,61 @@ export async function setRouting(tx: Queryable, actor: SessionUser, routing: Rec
 }
 
 /** Record a lead for a review request: identity, consents, scores, segment and owner. Nothing is sent. */
-export async function createLead(tx: Queryable, input: NewLead): Promise<{ id: string; segment: Segment; owner: string | null }> {
+/** The window in which a second review request with the same email and answers is the same lead (E7C). */
+export const DUPLICATE_WINDOW_HOURS = 24;
+
+/**
+ * E7C: a double submission (same email, same company, the same answers, within a day) is the same lead. The lookup
+ * is separate so the intake can stop before it creates a held enquiry or sends anything.
+ */
+export async function findDuplicateLead(tx: Queryable, email: string, company: string, answers: AdviceInput): Promise<{ id: string; segment: Segment; owner_user_id: string | null } | null> {
+  return (
+    (
+      await tx.query<{ id: string; segment: Segment; owner_user_id: string | null }>(
+        `select id, segment, owner_user_id from leads where email = $1 and lower(company) = lower($2) and status not in ('anonymised', 'closed', 'converted')
+           and created_at > app_now() - make_interval(hours => ${DUPLICATE_WINDOW_HOURS}) and answers = $3::jsonb order by created_at desc limit 1`,
+        [email.trim().toLowerCase(), company.trim(), JSON.stringify(answers)],
+      )
+    ).rows[0] ?? null
+  );
+}
+
+export async function createLead(tx: Queryable, input: NewLead): Promise<{ id: string; segment: Segment; owner: string | null; duplicateOf?: string }> {
   const session = await assessmentByCode(tx, input.assessmentCode);
   const score = scoreLead(input.answers, { ...input.signals, recovered: session?.recovered ?? 0, phoneGiven: input.phoneGiven, consultationRequested: !!input.consultation?.wanted });
+  const email = input.email.trim().toLowerCase();
+  // A double submission is one lead: the existing lead takes a note, keeps a call request if one is added (the first
+  // times given stay), and its consents are appended as decided this time; nothing else is created.
+  const dup = await findDuplicateLead(tx, email, input.company, input.answers);
+  if (dup) {
+    await tx.query("insert into lead_notes (lead_id, author_user_id, kind, body) values ($1, null, 'note', $2)", [dup.id, `Asked again with the same answers${input.consultation?.wanted ? ", and asked for a call (the first preferred times are kept)" : ""}; counted once.`]);
+    // The repeat can add a signal (a call request, a phone number): the score is recomputed on the merged signals
+    // so the lead's readiness, its qualification and its place in the attention list follow.
+    const was = (await tx.query<{ consultation: unknown; phone_given: boolean }>("select consultation, phone_given from leads where id = $1", [dup.id])).rows[0]!;
+    const merged = scoreLead(input.answers, { ...input.signals, recovered: session?.recovered ?? 0, phoneGiven: !!was.phone_given || input.phoneGiven, consultationRequested: !!was.consultation || !!input.consultation?.wanted });
+    await tx.query(
+      "update leads set updated_at = app_now(), consultation = coalesce(consultation, $2::jsonb), phone_given = phone_given or $3, intent = $4, complexity = $5, high_intent = $6, score_evidence = $7 where id = $1",
+      [dup.id, input.consultation?.wanted ? JSON.stringify({ times: (input.consultation.times ?? "").slice(0, 300), at: new Date().toISOString() }) : null, input.phoneGiven, merged.intent, merged.complexity, merged.highIntent, JSON.stringify(merged.evidence)],
+    );
+    const again = async (purpose: "service" | "marketing" | "partner_disclosure", given: boolean, version: string) =>
+      tx.query("insert into consents (subject_kind, subject_id, purpose, given, version, channel) values ('lead', $1, $2, $3, $4, 'public_intake')", [dup.id, purpose, given, version]);
+    await again("service", true, input.consents.service.version);
+    await again("marketing", !!input.consents.marketing?.given, input.consents.marketing?.version ?? CONSENT_TEXTS.marketing.version);
+    await again("partner_disclosure", !!input.consents.partnerDisclosure?.given, input.consents.partnerDisclosure?.version ?? CONSENT_TEXTS.partner_disclosure.version);
+    await audit(tx, null, "lead.duplicate_ignored", "lead", dup.id, { withinHours: DUPLICATE_WINDOW_HOURS });
+    return { id: dup.id, segment: dup.segment, owner: dup.owner_user_id, duplicateOf: dup.id };
+  }
   const routing = await getRouting(tx);
   const owner = routing[score.segment] ?? null;
   const status: LeadStatus = owner ? "routed" : "new";
   const r = (
     await tx.query<{ id: string }>(
-      `insert into leads (email, name, company, phone_given, assessment_id, answers, source, segment, complexity, intent, high_intent, consultation, status, owner_user_id, client_org_id, request_id, intake_lead_id, ip)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) returning id`,
+      `insert into leads (email, name, company, phone_given, assessment_id, answers, source, segment, complexity, intent, high_intent, consultation, status, owner_user_id, client_org_id, request_id, intake_lead_id, ip, score_evidence)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) returning id`,
       [
-        input.email.trim().toLowerCase(), input.name.trim(), input.company.trim(), input.phoneGiven, session?.id ?? null, JSON.stringify(input.answers), JSON.stringify(cleanAttribution(input.attribution as Record<string, unknown>)),
+        email, input.name.trim(), input.company.trim(), input.phoneGiven, session?.id ?? null, JSON.stringify(input.answers), JSON.stringify(cleanAttribution(input.attribution as Record<string, unknown>)),
         score.segment, score.complexity, score.intent, score.highIntent, input.consultation?.wanted ? JSON.stringify({ times: (input.consultation.times ?? "").slice(0, 300), at: new Date().toISOString() }) : null,
-        status, owner, input.outcome.clientOrgId ?? null, input.outcome.requestId ?? null, input.outcome.intakeLeadId ?? null, input.ip,
+        status, owner, input.outcome.clientOrgId ?? null, input.outcome.requestId ?? null, input.outcome.intakeLeadId ?? null, input.ip, JSON.stringify(score.evidence),
       ],
     )
   ).rows[0]!;
@@ -147,7 +188,8 @@ export async function createLead(tx: Queryable, input: NewLead): Promise<{ id: s
   await consent("marketing", !!input.consents.marketing?.given, input.consents.marketing?.version ?? CONSENT_TEXTS.marketing.version);
   await consent("partner_disclosure", !!input.consents.partnerDisclosure?.given, input.consents.partnerDisclosure?.version ?? CONSENT_TEXTS.partner_disclosure.version);
   if (owner) await tx.query("insert into lead_notes (lead_id, author_user_id, kind, body) values ($1, null, 'assigned', $2)", [r.id, `Routed to the owner for ${score.segment.replace("_", " ")} leads`]);
-  await audit(tx, null, "lead.created", "lead", r.id, { segment: score.segment, complexity: score.complexity, intent: score.intent, highIntent: score.highIntent, factors: score.factors, owner, session: !!session, consultation: !!input.consultation?.wanted, source: cleanAttribution(input.attribution as Record<string, unknown>) });
+  const { visitor: _v, ...auditSource } = cleanAttribution(input.attribution as Record<string, unknown>);
+  await audit(tx, null, "lead.created", "lead", r.id, { segment: score.segment, complexity: score.complexity, intent: score.intent, highIntent: score.highIntent, factors: score.factors, owner, session: !!session, consultation: !!input.consultation?.wanted, source: auditSource });
   return { id: r.id, segment: score.segment, owner };
 }
 
@@ -157,7 +199,14 @@ const requirePipeline = (actor: SessionUser) => {
 };
 
 const LEAD_COLUMNS = `l.id, l.email, l.name, l.company, l.phone_given, l.assessment_id, l.answers, l.source, l.segment, l.complexity, l.intent, l.high_intent, l.consultation, l.status,
-  l.owner_user_id, u.name as owner_name, l.client_org_id, l.request_id, l.intake_lead_id, l.created_at, l.updated_at`;
+  l.owner_user_id, u.name as owner_name, l.client_org_id, l.request_id, l.intake_lead_id, l.created_at, l.updated_at,
+  l.score_evidence, l.next_action_override, l.next_action_reason, l.next_action_at, l.first_contact_at, l.closed_reason,
+  exists (select 1 from offers f where f.request_id = l.request_id and f.status in ('published', 'accepted')) as offer_published,
+  exists (select 1 from offers f where f.request_id = l.request_id and f.status = 'accepted') as offer_accepted,
+  exists (select 1 from engagements e where e.request_id = l.request_id) as engagement_exists,
+  exists (select 1 from lead_notes n where n.lead_id = l.id and n.kind = 'followup' and n.done_at is null and n.due_at <= app_now()) as followup_due,
+  extract(epoch from (app_now() - l.created_at)) / 86400 as days_since_created,
+  extract(epoch from (app_now() - l.updated_at)) / 86400 as days_since_update`;
 
 export async function listLeads(tx: Queryable, actor: SessionUser, filter: { status?: string; segment?: string; owner?: string } = {}) {
   requirePipeline(actor);
@@ -199,6 +248,26 @@ const leadRow = (x: Record<string, unknown>) => ({
   intakeLeadId: x.intake_lead_id,
   createdAt: x.created_at,
   updatedAt: x.updated_at,
+  // E7C: the evidence behind the scores, the computed next best action and the adviser's override.
+  scoreEvidence: x.score_evidence ?? null,
+  firstContactAt: x.first_contact_at ?? null,
+  closedReason: x.closed_reason ?? null,
+  nextAction: nextBestAction({
+    status: x.status as never,
+    highIntent: !!x.high_intent,
+    intent: num(x.intent),
+    consultationRequested: !!x.consultation,
+    hasOwner: !!x.owner_user_id,
+    followupOpen: num(x.open_followups ?? 0) > 0,
+    followupDue: !!x.followup_due,
+    requestId: (x.request_id as string | null) ?? null,
+    offerPublished: !!x.offer_published,
+    offerAccepted: !!x.offer_accepted,
+    engagement: !!x.engagement_exists,
+    daysSinceCreated: Number(x.days_since_created ?? 0),
+    daysSinceUpdate: Number(x.days_since_update ?? 0),
+  }),
+  nextActionOverride: x.next_action_override ? { action: x.next_action_override, reason: x.next_action_reason, at: x.next_action_at } : null,
   openFollowups: num(x.open_followups ?? 0),
   nextFollowup: x.next_followup ?? null,
   consents: x.consents ?? {},
@@ -251,7 +320,13 @@ export async function setLeadStatus(tx: Queryable, actor: SessionUser, id: strin
     const became = (await tx.query(`select 1 from leads l where l.id = $1 and (${BECAME_CLIENT})`, [id])).rows.length;
     if (!became) throw conflict("A lead counts as converted only once an offer on its request is accepted; a submitted form is not a client yet");
   }
-  await tx.query("update leads set status = $2, updated_at = app_now() where id = $1", [id, status]);
+  await tx.query(
+    `update leads set status = $2, updated_at = app_now(),
+       first_contact_at = case when $2 in ('contacted', 'consultation') then coalesce(first_contact_at, app_now()) else first_contact_at end,
+       closed_reason = case when $2 = 'closed' then nullif($3, '') else closed_reason end
+     where id = $1`,
+    [id, status, note],
+  );
   await tx.query("insert into lead_notes (lead_id, author_user_id, kind, body) values ($1, $2, 'status', $3)", [id, actor.id, `${l.status} → ${status}${note ? `: ${note}` : ""}`]);
   await audit(tx, actor, "lead.status", "lead", id, { from: l.status, to: status });
   return { ok: true };
@@ -342,6 +417,9 @@ export async function anonymiseOldLeads(tx: Queryable, actor: SessionUser | null
   const dueLeads = `from leads l where l.status <> 'anonymised' and l.created_at < ${cutoff} and not (${BECAME_CLIENT})`;
   const dueAssessments = `from assessments a where a.status <> 'anonymised' and a.created_at < ${cutoff}
     and not exists (select 1 from leads l where l.assessment_id = a.id and (l.status = 'anonymised' or (${BECAME_CLIENT})) and l.status <> 'anonymised')`;
+  // E7C: funnel rows hold nothing personal; they are pruned on a fixed horizon (400 days) whether or not the
+  // personal-data periods are confirmed, so the table never grows without bound.
+  await tx.query("delete from funnel_events where at < app_now() - interval '400 days'");
   if (!applied) {
     const l = (await tx.query<{ n: number }>(`select count(*)::int as n ${dueLeads}`)).rows[0]!.n;
     const a = (await tx.query<{ n: number }>(`select count(*)::int as n ${dueAssessments}`)).rows[0]!.n;
@@ -349,11 +427,13 @@ export async function anonymiseOldLeads(tx: Queryable, actor: SessionUser | null
   }
   const leads = (
     await tx.query<{ id: string }>(
-      `update leads set email = 'anonymised-' || id::text || '@erased.invalid', name = 'Anonymised', company = 'Anonymised', answers = '{}'::jsonb, consultation = null, ip = null, status = 'anonymised', updated_at = app_now()
+      `update leads set email = 'anonymised-' || id::text || '@erased.invalid', name = 'Anonymised', company = 'Anonymised', answers = '{}'::jsonb, consultation = null, ip = null, next_action_override = null, next_action_reason = null, closed_reason = null, status = 'anonymised', updated_at = app_now()
        where id in (select l.id ${dueLeads}) returning id`,
     )
   ).rows;
   for (const l of leads) await tx.query("update lead_notes set body = '' where lead_id = $1", [l.id]);
+  // E7C: with the period confirmed, funnel rows older than it go too.
+  await tx.query(`delete from funnel_events where at < ${cutoff}`);
   // The held intake copy of an anonymised lead (an email that already had an account) goes with it, and leaves the
   // ops queue: nobody will act on an enquiry whose details are gone.
   await tx.query(
@@ -384,7 +464,7 @@ export async function leadsForEmail(tx: Queryable, email: string) {
 
 /** Erase a person's leads (PDPL): personal data tombstoned, the rows and the consent history kept. */
 export async function eraseLeadsForEmail(tx: Queryable, email: string, tombstone: string): Promise<number> {
-  const rows = (await tx.query<{ id: string; assessment_id: string | null }>("update leads set email = $2, name = 'Erased person', company = 'Erased person', answers = '{}'::jsonb, consultation = null, ip = null, updated_at = app_now() where email = $1 returning id, assessment_id", [email.toLowerCase(), tombstone])).rows;
+  const rows = (await tx.query<{ id: string; assessment_id: string | null }>("update leads set email = $2, name = 'Erased person', company = 'Erased person', answers = '{}'::jsonb, consultation = null, ip = null, next_action_override = null, next_action_reason = null, closed_reason = null, updated_at = app_now() where email = $1 returning id, assessment_id", [email.toLowerCase(), tombstone])).rows;
   for (const l of rows) {
     await tx.query("update lead_notes set body = $2 where lead_id = $1", [l.id, "[Removed at the person's request under the UAE PDPL]"]);
     // The saved answers behind the lead are personal data too.
@@ -392,3 +472,168 @@ export async function eraseLeadsForEmail(tx: Queryable, email: string, tombstone
   }
   return rows.length;
 }
+
+// E7C: the adviser's override of the next best action ----------------------------------------------------
+
+export async function setNextAction(tx: Queryable, actor: SessionUser, id: string, action: string | null, reason: string) {
+  requirePipeline(actor);
+  await loadLead(tx, id);
+  const a = action?.trim().slice(0, 120) || null;
+  if (a && reason.trim().length < 3) throw badRequest("Say why the action is different from the suggested one");
+  await tx.query("update leads set next_action_override = $2::text, next_action_reason = $3::text, next_action_by = $4::uuid, next_action_at = case when $2::text is null then null else app_now() end, updated_at = app_now() where id = $1", [id, a, a ? reason.trim().slice(0, 500) : null, a ? actor.id : null]);
+  await tx.query("insert into lead_notes (lead_id, author_user_id, kind, body) values ($1, $2, 'note', $3)", [id, actor.id, a ? `Next action set by hand: ${a} (${reason.trim()})` : "Next action override cleared"]);
+  // The audit records that the override changed, never its wording: free text stays in the erasable lead fields and notes.
+  await audit(tx, actor, "lead.next_action", "lead", id, { overridden: a !== null });
+  return { ok: true };
+}
+
+// E7C: anonymous funnel measurement --------------------------------------------------------------------
+
+export const FUNNEL_STAGES = ["visited", "assessment_started", "step_reached", "assessment_completed", "result_viewed", "compared", "report_printed", "result_saved"] as const;
+export type FunnelStage = (typeof FUNNEL_STAGES)[number];
+const VISITOR = /^[A-Za-z0-9_-]{8,32}$/;
+
+/**
+ * Record the stages a browser session reached on the public page. The row holds the random visitor id, the stage,
+ * a key (the question step) and the attribution: never a cookie, an IP, a user agent or a contact detail. One row
+ * per visitor, stage and key; a repeat is ignored. Nothing is written for a malformed id.
+ */
+export async function recordFunnelEvents(tx: Queryable, visitor: string, events: Array<{ stage: string; key?: string }>, attribution: Attribution): Promise<{ recorded: number }> {
+  if (!VISITOR.test(visitor)) throw badRequest("Malformed visitor id");
+  const source = cleanAttribution({ ...attribution } as Record<string, unknown>);
+  delete (source as Record<string, unknown>).visitor;
+  let recorded = 0;
+  for (const e of events.slice(0, 40)) {
+    if (!(FUNNEL_STAGES as readonly string[]).includes(e.stage)) continue;
+    const key = String(e.key ?? "").slice(0, 40);
+    // A stage is counted once per visitor. A step reached again (the visitor went back) keeps one row but moves to
+    // the end of the sequence (a fresh id and time), so "the last step reached" is where they really stopped; only
+    // new rows count as recorded.
+    if (e.stage === "step_reached") {
+      const again = await tx.query("update funnel_events set at = app_now(), id = nextval('funnel_events_id_seq') where visitor = $1 and stage = $2 and key = $3 returning id", [visitor, e.stage, key]);
+      if (again.rows.length) continue;
+    }
+    const r = await tx.query("insert into funnel_events (visitor, stage, key, source) values ($1,$2,$3,$4) on conflict (visitor, stage, key) do nothing returning id", [visitor, e.stage, key, JSON.stringify(source)]);
+    recorded += r.rows.length;
+  }
+  return { recorded };
+}
+
+/** What counts as a qualified lead: high readiness, or a person moved it past routing. One place to change it. */
+export const QUALIFIED = `(l.high_intent or l.status in ('consultation', 'converted') or (l.status = 'contacted' and l.request_id is not null))`;
+
+/**
+ * The conversion dashboard (E7C): every figure from recorded rows. Per source and campaign, the browser's stages
+ * (visitors) and the platform's (leads to revenue); completion and abandonment; won and lost; revenue by segment;
+ * turnaround; the leads that need a person; realised revenue against the pipeline.
+ */
+/** One lead per request carries its commercial outcomes, so a request two leads point at (the handoff attaches every
+ *  lead of a saved result) counts its offers, engagement and revenue once: the lead with a measured browser session
+ *  first (that is what the funnel joins on), then the earliest, then the id so the choice is stable. */
+const ATTRIBUTED = "att as (select distinct on (request_id) id from leads where request_id is not null and status <> 'anonymised' order by request_id, (source->>'visitor') is null, created_at, id)";
+
+export async function funnelReport(tx: Queryable, actor: SessionUser) {
+  requirePipeline(actor);
+  const bySource = await tx.query<Record<string, unknown>>(
+    `with first as (
+       -- First touch wins, as one pair: the source and campaign of the visitor's first event, never a source from one
+       -- link and a campaign from another.
+       select distinct on (visitor) visitor, coalesce(nullif(source->>'source', ''), 'direct') as source, coalesce(source->>'campaign', '') as campaign
+       from funnel_events order by visitor, id),
+     vis as (
+       select e.visitor, f.source, f.campaign,
+         bool_or(e.stage = 'assessment_started') as started, bool_or(e.stage = 'assessment_completed') as completed, bool_or(e.stage = 'result_viewed') as viewed,
+         bool_or(e.stage = 'compared') as compared, bool_or(e.stage = 'report_printed') as printed, bool_or(e.stage = 'result_saved') as saved
+       from funnel_events e join first f on f.visitor = e.visitor group by e.visitor, f.source, f.campaign),
+     v as (select source, campaign, count(*)::int as visitors, sum(case when started then 1 else 0 end)::int as started, sum(case when completed then 1 else 0 end)::int as completed,
+         sum(case when viewed then 1 else 0 end)::int as viewed, sum(case when compared then 1 else 0 end)::int as compared, sum(case when printed then 1 else 0 end)::int as printed, sum(case when saved then 1 else 0 end)::int as saved
+       from vis group by source, campaign),
+     lv as (select l.id, v.source as vsource, v.campaign as vcampaign from leads l join vis v on v.visitor = l.source->>'visitor'),
+     ${ATTRIBUTED},
+     ld as (
+       -- A lead whose browser session was measured counts under that session's label, so the two halves meet; a
+       -- lead with no measured session (another page, a held enquiry) counts under its own recorded source.
+       select coalesce(lv.vsource, nullif(l.source->>'source', ''), 'direct') as source, coalesce(lv.vcampaign, l.source->>'campaign', '') as campaign,
+         count(*)::int as leads,
+         sum(case when l.consultation is not null then 1 else 0 end)::int as consultations,
+         sum(case when ${QUALIFIED} then 1 else 0 end)::int as qualified,
+         -- Commercial outcomes count once per request, on the lead attributed to it (att), however many leads point at it.
+         sum(case when att.id is not null and exists (select 1 from offers f where f.request_id = l.request_id and f.published_at is not null) then 1 else 0 end)::int as proposals,
+         sum(case when att.id is not null and exists (select 1 from offers f where f.request_id = l.request_id and f.status = 'accepted') then 1 else 0 end)::int as accepted,
+         sum(case when att.id is not null and exists (select 1 from engagements e where e.request_id = l.request_id) then 1 else 0 end)::int as engagements,
+         coalesce(sum(case when att.id is not null then (select sum(f.client_total_fils) from offers f where f.request_id = l.request_id and f.status = 'accepted') end), 0)::bigint as revenue_fils,
+         coalesce(sum(case when att.id is not null then (select sum(p.amount_fils) from payments p join engagements e on e.id = p.engagement_id where e.request_id = l.request_id and p.status = 'paid') end), 0)::bigint as realised_fils,
+         -- One proposal per request: the client accepts one tier, so the pipeline counts the highest published tier once.
+         coalesce(sum(case when att.id is not null then (select max(f.client_total_fils) from offers f where f.request_id = l.request_id and f.status = 'published') end), 0)::bigint as pipeline_fils
+       from leads l left join lv on lv.id = l.id left join att on att.id = l.id where l.status <> 'anonymised' group by 1, 2)
+     select coalesce(v.source, ld.source) as source, coalesce(v.campaign, ld.campaign) as campaign,
+       coalesce(v.visitors, 0) as visitors, coalesce(v.started, 0) as started, coalesce(v.completed, 0) as completed, coalesce(v.viewed, 0) as viewed, coalesce(v.compared, 0) as compared, coalesce(v.printed, 0) as printed, coalesce(v.saved, 0) as saved,
+       coalesce(ld.leads, 0) as leads, coalesce(ld.consultations, 0) as consultations, coalesce(ld.qualified, 0) as qualified, coalesce(ld.proposals, 0) as proposals, coalesce(ld.accepted, 0) as accepted, coalesce(ld.engagements, 0) as engagements,
+       coalesce(ld.revenue_fils, 0) as revenue_fils, coalesce(ld.realised_fils, 0) as realised_fils, coalesce(ld.pipeline_fils, 0) as pipeline_fils
+     from v full outer join ld on ld.source = v.source and ld.campaign = v.campaign order by revenue_fils desc, leads desc, visitors desc, source, campaign`,
+  );
+  const abandon = await tx.query<{ key: string; n: number }>(
+    `with last as (select visitor, (array_agg(key order by id desc) filter (where stage = 'step_reached'))[1] as key from funnel_events group by visitor having bool_or(stage = 'assessment_started') and not bool_or(stage = 'assessment_completed'))
+     select coalesce(key, '(first question)') as key, count(*)::int as n from last group by 1 order by n desc, key`,
+  );
+  const outcomes = await tx.query<Record<string, unknown>>(
+    `select sum(case when status = 'converted' then 1 else 0 end)::int as won, sum(case when status = 'closed' then 1 else 0 end)::int as lost, count(*)::int as leads,
+       sum(case when ${QUALIFIED} then 1 else 0 end)::int as qualified
+     from leads l where status <> 'anonymised'`,
+  );
+  const lost = await tx.query<{ reason: string; n: number }>("select coalesce(closed_reason, '(no reason recorded)') as reason, count(*)::int as n from leads where status = 'closed' group by 1 order by n desc limit 10");
+  const bySegment = await tx.query<Record<string, unknown>>(
+    `with ${ATTRIBUTED}
+     select l.segment, count(*)::int as leads, sum(case when ${QUALIFIED} then 1 else 0 end)::int as qualified,
+       coalesce(sum(case when att.id is not null then (select sum(f.client_total_fils) from offers f where f.request_id = l.request_id and f.status = 'accepted') end), 0)::bigint as revenue_fils
+     from leads l left join att on att.id = l.id where l.status <> 'anonymised' group by l.segment order by revenue_fils desc, leads desc`,
+  );
+  const turnaround = (
+    await tx.query<Record<string, unknown>>(
+      `with ${ATTRIBUTED}
+       select avg(extract(epoch from (l.first_contact_at - l.created_at)) / 86400) as to_contact_days, count(l.first_contact_at)::int as contacted,
+         avg(case when att.id is not null then (select extract(epoch from (min(f.published_at) - l.created_at)) / 86400 from offers f where f.request_id = l.request_id and f.published_at is not null) end) as to_proposal_days,
+         sum(case when att.id is not null and exists (select 1 from offers f where f.request_id = l.request_id and f.published_at is not null) then 1 else 0 end)::int as proposed
+       from leads l left join att on att.id = l.id where l.status <> 'anonymised'`,
+    )
+  ).rows[0]!;
+  const attention = await tx.query<Record<string, unknown>>(
+    `select l.id, l.company, l.status, l.intent, l.owner_user_id, u.name as owner, extract(epoch from (app_now() - l.created_at)) / 86400 as days,
+       exists (select 1 from lead_notes n where n.lead_id = l.id and n.kind = 'followup' and n.done_at is null and n.due_at <= app_now()) as followup_due
+     from leads l left join users u on u.id = l.owner_user_id
+     where l.status not in ('converted', 'closed', 'anonymised') and l.high_intent
+       -- A lead whose client accepted or is on an engagement needs nobody (the next-action rule says the same).
+       and not exists (select 1 from offers f where f.request_id = l.request_id and f.status = 'accepted')
+       and not exists (select 1 from engagements e where e.request_id = l.request_id)
+       and (l.owner_user_id is null or (l.status in ('new', 'routed') and l.updated_at < app_now() - interval '2 days')
+            or exists (select 1 from lead_notes n where n.lead_id = l.id and n.kind = 'followup' and n.done_at is null and n.due_at <= app_now()))
+     order by l.intent desc, l.created_at limit 50`,
+  );
+  const rows = bySource.rows.map((x) => ({
+    source: String(x.source), campaign: String(x.campaign ?? ""),
+    visitors: num(x.visitors), started: num(x.started), completed: num(x.completed), viewed: num(x.viewed), compared: num(x.compared), printed: num(x.printed), saved: num(x.saved),
+    leads: num(x.leads), consultations: num(x.consultations), qualified: num(x.qualified), proposals: num(x.proposals), accepted: num(x.accepted), engagements: num(x.engagements),
+    revenueFils: num(x.revenue_fils), realisedFils: num(x.realised_fils), pipelineFils: num(x.pipeline_fils),
+  }));
+  const total = rows.reduce((t, r) => { for (const k of Object.keys(r) as Array<keyof typeof r>) if (typeof r[k] === "number") (t as Record<string, number>)[k] = ((t as Record<string, number>)[k] ?? 0) + (r[k] as number); return t; }, {} as Record<string, number>);
+  const o = outcomes.rows[0]!;
+  return {
+    asOf: new Date().toISOString(),
+    stages: ["visited", "assessment started", "assessment completed", "result viewed", "result saved", "consultation requested", "lead", "qualified lead", "proposal issued", "proposal accepted", "engagement", "revenue"],
+    qualifiedRule: "high readiness (60 or more), or a person moved the lead to consultation or converted, or contacted with a request open",
+    bySource: rows,
+    totals: {
+      ...total,
+      completionRate: total.started ? Math.round((100 * (total.completed ?? 0)) / total.started) : null,
+      abandonmentRate: total.started ? Math.round((100 * (total.started - (total.completed ?? 0))) / total.started) : null,
+      revenuePerQualifiedFils: num(o.qualified) ? Math.round(num(total.revenueFils ?? 0) / num(o.qualified)) : null,
+      won: num(o.won), lost: num(o.lost), leadsAll: num(o.leads), qualifiedAll: num(o.qualified),
+    },
+    abandonment: abandon.rows.map((x) => ({ step: x.key, visitors: num(x.n) })),
+    lostReasons: lost.rows.map((x) => ({ reason: x.reason, leads: num(x.n) })),
+    bySegment: bySegment.rows.map((x) => ({ segment: String(x.segment), leads: num(x.leads), qualified: num(x.qualified), revenueFils: num(x.revenue_fils) })),
+    turnaround: { toFirstContactDays: turnaround.to_contact_days == null ? null : Math.round(Number(turnaround.to_contact_days) * 10) / 10, contacted: num(turnaround.contacted), toProposalDays: turnaround.to_proposal_days == null ? null : Math.round(Number(turnaround.to_proposal_days) * 10) / 10, proposed: num(turnaround.proposed) },
+    attention: attention.rows.map((x) => ({ id: x.id, company: x.company, status: x.status, intent: num(x.intent), owner: x.owner ?? null, days: Math.round(Number(x.days) * 10) / 10, why: !x.owner_user_id ? "unassigned" : x.followup_due ? "follow-up overdue" : "no contact for two days" })),
+  };
+}
+

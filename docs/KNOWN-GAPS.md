@@ -262,6 +262,21 @@ in a browser; everything listed here is not.
 95. **Legal forms within one jurisdiction never decide eligibility.** They are on record for the verifier; a test
     keeps the engine from guessing with them.
 
+## E7C: lead conversion intelligence
+
+96. **Funnel figures start at zero on the pilot's first day** and only count what the public page sends; a visitor
+    whose browser blocks session storage or scripts is not counted. Nothing is estimated to fill the gap. The rate
+    limit on the events endpoint is per IP (300 batches per quarter hour), so a large office behind one address can
+    lose events silently; the page never retries.
+97. **"Qualified" is a definition, not a judgement**: high readiness (60 or more), or a person moved the lead to
+    consultation or converted, or contacted with a request open (`QUALIFIED` in `services/leads.ts`). The pilot's
+    conversions should decide whether the threshold is right; the scores themselves stay heuristics (gap 70).
+98. **Lost reasons are free text** typed by the adviser when closing a lead, so the "lost, by reason" table groups by
+    exact wording; a fixed list is an owner decision.
+99. **Turnaround to first contact depends on the adviser recording the status**; a call that is not recorded as
+    "contacted" is not measured.
+100. **The measurement notice wording is a default** for the owner and a lawyer to settle, like the consent texts.
+
 ## O7: launch-gate preparation
 
 43. ~~zod 3 has a memory-exhaustion advisory.~~ Closed by S1: zod 4.6.7 (D71); the body caps stay as defence in depth.

@@ -150,13 +150,14 @@ outcomes:
     needs_from_owner: [approval of the guidance notes for public display]
   - id: E7B
     title: Jurisdiction data operations (coverage matrix, evidence pipeline, verification workflow)
-    status: verified-pending-merge
+    status: merged  # camayank/mkw-uae-growth#25, 3 Nov 2026
     contract: outcomes/E7B-jurisdiction-data.md
     depends_on: [E7A]
     needs_from_owner: [authoritative sources, named verifier]
   - id: E7C
     title: Lead conversion intelligence (funnel, qualification, conversion dashboard, lead-to-Tasees regression)
-    status: planned
+    status: verified-pending-merge
+    contract: outcomes/E7C-lead-conversion.md
     depends_on: [E7A]
     needs_from_owner: [consent wording for measurement]
   - id: E7D

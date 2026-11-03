@@ -33,7 +33,7 @@ describe("lead intelligence", () => {
     const [row] = (await asPlatform(env.db, null, (tx) => tx.query("select code_hash, answers, source, summary, status from assessments"))).rows as any[];
     expect(row.code_hash).not.toBe(code);
     expect(JSON.stringify(row)).not.toMatch(/no@no\.test|password|A\. Founder/);
-    expect(row.source).toEqual({ source: "google", medium: "cpc", campaign: "nov-launch", term: null, content: null, referrer: "https://google.test/", landing: "/selector.html?utm_source=google" }); // the code is stripped
+    expect(row.source).toEqual({ source: "google", medium: "cpc", campaign: "nov-launch", term: null, content: null, referrer: "https://google.test/", landing: "/selector.html?utm_source=google", visitor: null }); // the code is stripped
     expect(row.summary).toMatchObject({ recommendation: null, confirmed: false }); // nothing approved: the structure is withheld
     const back = (await env.call("anon", "GET", `/api/public/assessments/${code.toLowerCase()}`)).body;
     expect(back).toMatchObject({ found: true, recovered: 1, answers: { activity: "tech", visas: 2 } });

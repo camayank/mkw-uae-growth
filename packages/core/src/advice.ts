@@ -157,6 +157,8 @@ export interface AdviceInput extends IntakeAnswers {
   /** E1: a founder or owner is tax resident outside the UAE. */
   foreignTaxResident?: boolean;
   description?: string;
+  /** E7C: when the founder wants to start; read by the lead scores only, never by the engine. */
+  startWithin?: "1_month" | "3_months" | "later";
 }
 
 const rule = (rules: ScopingRule[], key: string) => rules.find((r) => r.key === key);

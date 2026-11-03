@@ -91,9 +91,9 @@ Status per contract capability:
 | UTM and referral attribution | Built (E4): the five UTM fields, referrer and landing page on the session, the lead and the request |
 | Distinct assessment, lead and customer identities | Built (E4): `assessments`, `leads`, and the client organisation they become |
 | Consent records | Built (E4): service, marketing and partner disclosure as separate append-only records with the text version; withdrawals recorded; in the export and erasure paths |
-| Scoring, segmentation, complexity, high-intent detection | Built (E4): complexity and intent scores, five segments, a high-intent flag; heuristics that order attention |
+| Scoring, segmentation, complexity, high-intent detection | Built (E4, E7C): purchase readiness and commercial value with the evidence behind each, five segments, a high-intent flag, a next best action with its reason that the adviser can override |
 | Expert routing, consultation booking, CRM pipeline, follow-ups | Built (E4) as internal work: routing per segment to an owner, call requests and follow-ups in the ops queue, the leads page. No booking integration (owner decision, rules 7 and 11) |
-| Conversion and source-to-revenue analytics | Built (E4): per source and campaign, assessments to accepted client revenue |
+| Conversion and source-to-revenue analytics | Built (E4, E7C): per source and campaign from visitors to accepted and realised revenue, completion and abandonment, won and lost, revenue by segment and per qualified lead, turnaround, the leads that need a person |
 
 ### D. Tasees fulfilment
 
@@ -178,4 +178,9 @@ with its reference, effective date and source kind, and an intermediary's figure
 with the matrix by emirate and kind, verification per field, expiring evidence, approvals outstanding and the
 evidence backlog in the importer's layout; fifteen first-wave places flagged; one test per engine case the contract
 lists. No data was verified in this outcome: the pipeline is ready for the named verifier.
+
+**E7C** (`outcomes/E7C-lead-conversion.md`, D87): aggregate anonymous funnel measurement from the public page joined
+to the platform's own records; a double submission is one lead; the two scores show their evidence and gain a start
+date, a clear activity, investment size, revenue and payroll; a next best action with its reason, overridable with a
+reason; the Funnel page from visitors to realised revenue; a regression suite for the lead-to-Tasees path.
 

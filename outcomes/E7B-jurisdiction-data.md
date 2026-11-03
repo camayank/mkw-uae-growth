@@ -1,6 +1,6 @@
 # E7B Jurisdiction data operations: coverage matrix, evidence pipeline, verification backlog
 
-Status: verified-pending-merge (branch `outcome/E7B-jurisdiction-data`, built on E7A, merged as camayank/mkw-uae-growth#24; released by the owner on 3 Nov 2026 with the
+Status: merged (camayank/mkw-uae-growth#25; branch `outcome/E7B-jurisdiction-data`, built on E7A, camayank/mkw-uae-growth#24; released by the owner on 3 Nov 2026 with the
 E7 contract, phase 2 "Regulatory data and jurisdiction intelligence")
 
 ## Business result

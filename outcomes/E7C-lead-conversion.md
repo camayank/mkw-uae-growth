@@ -66,7 +66,7 @@ the owner intact, proven by a regression suite.
 
 ## Dependencies and risks
 
-- Depends on E4 (merged), E7A and E7B (E7A merged; E7B open, this branch is built on it).
+- Depends on E4, E7A and E7B (all merged; main is merged into this branch).
 - Risk: "qualified" is a definition (high readiness, or a person moved the lead past routing); it is written down
   on the page and can be changed in one place.
 

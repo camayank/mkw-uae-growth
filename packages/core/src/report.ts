@@ -172,15 +172,20 @@ export function reviewedReport(a: Advice, answers: AdviceInput, meta: ReportMeta
     { heading: "Licences, approvals and what follows after setup", lines: [...a.licences, ...a.obligations].map(reasoned) },
     { heading: "Cross-border risks for a specialist", lines: (a.crossBorder ?? []).length ? (a.crossBorder ?? []).map((r) => `${reasoned(r)} [SPECIALIST REVIEW]`) : ["None raised by the answers."] },
     { heading: "Unresolved questions", lines: unresolved.length ? unresolved : ["None."] },
+  ];
+  // The closing sentence is decided by what the report prints, not by the advice's flags alone: a renewal figure
+  // can be unverified while every rule and setup figure is verified.
+  const anyUnverified = a.hasUncertain || a.needsVerification || sections.some((s) => s.lines.some((l) => /\[(UNCERTAIN|rule of thumb)\]/.test(l)));
+  sections.push(
     {
       heading: "Recommendation and its limits",
       lines: [
-        a.hasUncertain || a.needsVerification ? "Some points above rest on rules or figures marked rule of thumb or UNCERTAIN; they are confirmed before the offer is priced and nothing is filed on them." : "Every point above rests on a verified rule or figure as of the data date.",
+        anyUnverified ? "Some points above rest on rules or figures marked rule of thumb or UNCERTAIN; they are confirmed before the offer is priced and nothing is filed on them." : "Every point above rests on a verified rule or figure as of the data date.",
         `Rules and place data as of ${a.dataVersion?.asOf ?? meta.date}. Nothing in this report is a statutory conclusion or a filing; a priced offer follows a person's scoping review.`,
       ],
     },
     { heading: "Next steps", lines: ["Your request is with MKW Advisors; the offers that follow price exactly the structure and place settled here. Sign in to Tasees to follow the request and reply to any question."] },
-  ];
+  );
   return {
     title: "UAE Entity Assessment Report",
     brand: "Tasees, by MKW Advisors",

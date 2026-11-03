@@ -73,7 +73,14 @@ describe("the assessment report (E7D)", () => {
     expect(text).toMatch(/\[verified rule\]/);
     expect(text).toContain("Setup estimate AED 12,000 to AED 20,000 [verified]");
     expect(text).toMatch(/CROSS-BORDER RISKS/);
-    expect(text).toMatch(/Every point above rests on a verified rule or figure|Some points above rest on rules/);
+    // The closing sentence follows what is printed: an unverified renewal figure alone makes it "some points".
+    const label = (t: string) => (/Every point above rests on a verified rule or figure/.test(t) ? "every" : /Some points above rest on rules/.test(t) ? "some" : "none");
+    expect(["every", "some"]).toContain(label(text));
+    const unverifiedRenewal = advise(answers, rules, [{ ...zones[0]!, renewalConfidence: "UNCERTAIN" }, ...zones.slice(1)], "2026-11-03");
+    const t2 = reportLines(reviewedReport(unverifiedRenewal, answers, { reference: "REQ-1234ABCD", date: "2026-11-03", reviewedBy: "Ops Manager", reviewedAt: "2026-11-02" })).join("\n");
+    expect(t2).toMatch(/Yearly renewal estimate AED 9,000 to AED 11,000 \[UNCERTAIN\]/);
+    expect(label(t2)).toBe("some");
+    if (!unverifiedRenewal.hasUncertain && !unverifiedRenewal.needsVerification) expect(label(text)).toBe("every"); // the flags alone would have said "every"
     expect(text).toContain("Reviewed advice for the client named above.");
     for (const s of SECTIONS.filter((x) => x !== "REJECTED")) expect(text, s).toContain(s);
     expect(text).not.toMatch(MONEY);

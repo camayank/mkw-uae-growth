@@ -156,7 +156,7 @@ outcomes:
     needs_from_owner: [authoritative sources, named verifier]
   - id: E7C
     title: Lead conversion intelligence (funnel, qualification, conversion dashboard, lead-to-Tasees regression)
-    status: verified-pending-merge
+    status: merged  # camayank/mkw-uae-growth#26, 3 Nov 2026
     contract: outcomes/E7C-lead-conversion.md
     depends_on: [E7A]
     needs_from_owner: [consent wording for measurement]

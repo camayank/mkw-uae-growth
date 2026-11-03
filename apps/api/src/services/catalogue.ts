@@ -12,6 +12,15 @@ import {
   weaker,
   ELIGIBILITY_ENGINE_VERSION,
   MAX_REVERIFY_DAYS,
+  PLACE_KINDS,
+  PLACE_STATUSES,
+  coverageMatrix,
+  backlogCsv,
+  type CoverageApproval,
+  type CoveragePlace,
+  type PlaceKind,
+  type PlaceStatus,
+  type SourceKind,
   type Confidence,
   type DataVersion,
   type FieldEvidence,
@@ -47,6 +56,10 @@ export interface FactInput {
   verifiedBy?: string | null;
   nextVerification?: string | null;
   note?: string;
+  /** E7B: when the figure takes effect, the exact reference in the source, and whether the source is official. */
+  effectiveDate?: string | null;
+  reference?: string;
+  sourceKind?: SourceKind;
 }
 
 const httpUrl = (u: string) => /^https?:\/\/\S+$/i.test(u.trim());
@@ -65,10 +78,13 @@ interface FactRow {
   next_verification: string | null;
   note: string;
   recorded_at: string;
+  effective_date: string | null;
+  reference: string;
+  source_kind: SourceKind;
 }
 
 const FACT_COLUMNS = `id, subject_kind, subject, field, value, source_url, evidence_date::text as evidence_date, confidence, verified_by,
-  next_verification::text as next_verification, note, recorded_at`;
+  next_verification::text as next_verification, note, recorded_at, effective_date::text as effective_date, reference, source_kind`;
 
 /** The latest fact per subject and field, for one kind of subject. */
 async function latestFacts(tx: Queryable, kind: SubjectKind): Promise<Map<string, Map<string, FactRow>>> {
@@ -96,6 +112,9 @@ const evidenceOf = (f: FactRow, asOf: string): FieldEvidence => {
     verifiedBy: f.verified_by,
     sourceUrl: f.source_url,
     factId: f.id,
+    sourceKind: f.source_kind ?? "official",
+    effectiveDate: f.effective_date ?? null,
+    reference: f.reference ?? "",
   };
 };
 
@@ -132,7 +151,22 @@ export async function loadRules(tx: Queryable, asOf?: string): Promise<Array<Sco
   });
 }
 
-export type Place = Zone & { active: boolean; placeholder: boolean; authorityId: string | null; legalForms: string[] | null; coordinates: { lat: number; lng: number } | null };
+export type Place = Zone & {
+  active: boolean;
+  placeholder: boolean;
+  authorityId: string | null;
+  legalForms: string[] | null;
+  coordinates: { lat: number; lng: number } | null;
+  /** E7B: classification, status, first-wave priority and the verifier's extra records. */
+  placeKind: PlaceKind;
+  status: PlaceStatus;
+  priority: number | null;
+  activityCodes: string[] | null;
+  govChargesMinFils: number | null;
+  govChargesMaxFils: number | null;
+  conditions: string[] | null;
+  exclusions: string[] | null;
+};
 
 /** Places with their current values and the evidence behind each, judged on `asOf`. */
 export async function loadPlaces(tx: Queryable, asOf?: string, opts: { includeInactive?: boolean } = {}): Promise<Place[]> {
@@ -185,13 +219,21 @@ export async function loadPlaces(tx: Queryable, asOf?: string, opts: { includeIn
       authorityId: (z.authority_id as string | null) ?? null,
       legalForms: (z.legal_forms as string[] | null) ?? null,
       coordinates: z.latitude == null ? null : { lat: Number(z.latitude), lng: Number(z.longitude) },
+      placeKind: (z.place_kind as PlaceKind) ?? "free_zone",
+      status: (z.status as PlaceStatus) ?? (z.active ? "active" : "inactive"),
+      priority: z.priority == null ? null : num(z.priority),
+      activityCodes: (z.activity_codes as string[] | null) ?? null,
+      govChargesMinFils: z.gov_charges_min_fils == null ? null : num(z.gov_charges_min_fils),
+      govChargesMaxFils: z.gov_charges_max_fils == null ? null : num(z.gov_charges_max_fils),
+      conditions: (z.conditions as string[] | null) ?? null,
+      exclusions: (z.exclusions as string[] | null) ?? null,
     };
   });
 }
 
 /** What the engine sees, without the console-only fields (so the digest covers exactly what the advice used). */
 export const engineZone = (p: Place): Zone => {
-  const { active: _a, placeholder: _p, authorityId: _i, legalForms: _l, coordinates: _c, evidence: _e, ...z } = p;
+  const { active: _a, placeholder: _p, authorityId: _i, legalForms: _l, coordinates: _c, evidence: _e, placeKind: _k, status: _s, priority: _r, activityCodes: _ac, govChargesMinFils: _g1, govChargesMaxFils: _g2, conditions: _co, exclusions: _ex, ...z } = p;
   return z;
 };
 
@@ -234,6 +276,13 @@ export async function appendFact(tx: Queryable, actor: SessionUser | null, input
     if (!verifiedBy || verifiedBy.length < 2) throw badRequest("Name the person who verified this");
     if (!sourceUrl) throw badRequest("A verified fact needs an http(s) source link");
   }
+  // E7B: an intermediary's figure is labelled as such and is at most a rule of thumb; only the authority's own
+  // publication can be verified. The effective date is a date; the reference is free text.
+  const sourceKind: SourceKind = input.sourceKind ?? "official";
+  if (sourceKind === "intermediary" && input.confidence === "verified") throw badRequest("A figure from an intermediary cannot be verified: record it as a rule of thumb, or cite the authority's own page");
+  const effectiveDate = input.effectiveDate?.trim() || null;
+  if (effectiveDate && !isoDate(effectiveDate)) throw badRequest("The effective date must be a date (YYYY-MM-DD)");
+  const reference = (input.reference ?? "").trim().slice(0, 300);
 
   if (kind === "place") {
     if (!(PLACE_FIELDS as readonly string[]).includes(field)) throw badRequest(`Unknown place field ${field}`);
@@ -260,9 +309,9 @@ export async function appendFact(tx: Queryable, actor: SessionUser | null, input
 
   const r = (
     await tx.query<{ id: number }>(
-      `insert into catalogue_facts (subject_kind, subject, field, value, source_url, evidence_date, confidence, verified_by, next_verification, note, recorded_by)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning id`,
-      [kind, subject, field, JSON.stringify(input.value ?? null), sourceUrl, input.evidenceDate, input.confidence, verifiedBy, next, input.note?.trim() ?? "", actor?.id ?? null],
+      `insert into catalogue_facts (subject_kind, subject, field, value, source_url, evidence_date, confidence, verified_by, next_verification, note, recorded_by, effective_date, reference, source_kind)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) returning id`,
+      [kind, subject, field, JSON.stringify(input.value ?? null), sourceUrl, input.evidenceDate, input.confidence, verifiedBy, next, input.note?.trim() ?? "", actor?.id ?? null, effectiveDate, reference, sourceKind],
     )
   ).rows[0]!;
 
@@ -279,9 +328,13 @@ export async function appendFact(tx: Queryable, actor: SessionUser | null, input
       activities_listed: "activities_listed = $2",
       legal_forms: "legal_forms = $2",
       coordinates: "latitude = $2, longitude = $3",
+      activity_codes: "activity_codes = $2",
+      government_charges: "gov_charges_min_fils = $2, gov_charges_max_fils = $3",
+      conditions: "conditions = $2",
+      exclusions: "exclusions = $2",
     };
     const params =
-      field === "cost" || field === "renewal_cost" ? [v.minFils, v.maxFils] : field === "coordinates" ? [v.lat, v.lng] : [v];
+      field === "cost" || field === "renewal_cost" || field === "government_charges" ? [v.minFils, v.maxFils] : field === "coordinates" ? [v.lat, v.lng] : [v];
     await tx.query(`update zones set ${set[field]}, updated_at = app_now() where name = $1`, [subject, ...params]);
   } else if (kind === "authority") {
     const col = { parent: "parent_id", registrar: "registrar", website: "website" }[field as "parent" | "registrar" | "website"];
@@ -293,6 +346,8 @@ export async function appendFact(tx: Queryable, actor: SessionUser | null, input
     confidence: input.confidence,
     evidenceDate: input.evidenceDate,
     nextVerification: next,
+    sourceKind,
+    ...(effectiveDate ? { effectiveDate } : {}),
   });
   return { id: num(r.id) };
 }
@@ -310,7 +365,7 @@ export async function factHistory(tx: Queryable, kind: SubjectKind, subject: str
   const asOf = await catalogueToday(tx);
   const r = await tx.query<FactRow & { recorded_by_name: string | null }>(
     `select f.id, f.subject_kind, f.subject, f.field, f.value, f.source_url, f.evidence_date::text as evidence_date, f.confidence, f.verified_by,
-       f.next_verification::text as next_verification, f.note, f.recorded_at, u.name as recorded_by_name
+       f.next_verification::text as next_verification, f.note, f.recorded_at, f.effective_date::text as effective_date, f.reference, f.source_kind, u.name as recorded_by_name
      from catalogue_facts f left join users u on u.id = f.recorded_by where f.subject_kind = $1 and f.subject = $2 order by f.id desc`,
     [kind, subject],
   );
@@ -332,6 +387,9 @@ export async function factHistory(tx: Queryable, kind: SubjectKind, subject: str
     recordedBy: f.recorded_by_name,
     recordedAt: f.recorded_at,
     current: current.has(num(f.id)),
+    effectiveDate: f.effective_date ?? null,
+    reference: f.reference ?? "",
+    sourceKind: f.source_kind ?? "official",
   }));
 }
 
@@ -376,6 +434,14 @@ export async function catalogueOverview(tx: Queryable) {
       coordinates: p.coordinates,
       renewalMinFils: p.renewalMinFils,
       renewalMaxFils: p.renewalMaxFils,
+      placeKind: p.placeKind,
+      status: p.status,
+      priority: p.priority,
+      activityCodes: p.activityCodes,
+      govChargesMinFils: p.govChargesMinFils,
+      govChargesMaxFils: p.govChargesMaxFils,
+      conditions: p.conditions,
+      exclusions: p.exclusions,
     })),
     rules: { stale: rules.filter((r) => r.stale).map((r) => r.key), due: rules.filter((r) => !r.stale && r.nextVerification && r.nextVerification <= soon).map((r) => r.key) },
     fields: { place: PLACE_FIELDS.map((f) => ({ field: f, label: FIELD_LABEL[f] })), authority: AUTHORITY_FIELDS.map((f) => ({ field: f, label: FIELD_LABEL[f] })) },
@@ -391,3 +457,75 @@ export async function placeByName(tx: Queryable, name: string, places?: Place[])
   const hit = all.filter((p) => [p.authority ?? "", ...(p.aliases ?? [])].some((x) => x && normaliseName(x) === n));
   return hit.length === 1 ? hit[0]!.name : null;
 }
+
+/**
+ * E7B: the founder classifies a place (what it is), sets its status (offered, waiting for figures, kept for the
+ * record) and its first-wave priority. `active` follows the status so the engine's switch stays one thing. A place
+ * with placeholder figures cannot be made active here: its figures are recorded first (as in verifyZone).
+ */
+export async function setPlaceStatus(tx: Queryable, actor: SessionUser, name: string, input: { placeKind?: PlaceKind; status?: PlaceStatus; priority?: number | null }) {
+  if (actor.role !== "founder") throw forbidden("Only the founder classifies places");
+  const before = (await tx.query<Record<string, unknown>>("select name, place_kind, status, priority, placeholder, active from zones where name = $1 for update", [name])).rows[0];
+  if (!before) throw notFound(`No place named ${name}`);
+  if (input.placeKind && !(PLACE_KINDS as readonly string[]).includes(input.placeKind)) throw badRequest("Unknown place kind");
+  if (input.status && !(PLACE_STATUSES as readonly string[]).includes(input.status)) throw badRequest("Unknown status");
+  if (input.priority != null && !(Number.isInteger(input.priority) && input.priority >= 1 && input.priority <= 9)) throw badRequest("Priority is 1 (first) to 9, or none");
+  const status = input.status ?? (before.status as PlaceStatus);
+  if (status === "active" && before.placeholder) {
+    const recorded = new Set((await tx.query<{ field: string }>("select distinct field from catalogue_facts where subject_kind = 'place' and subject = $1", [name])).rows.map((x) => x.field));
+    const missing = ["cost", "visa_quota", "timeline_days"].filter((f) => !recorded.has(f));
+    if (missing.length) throw badRequest(`This place has no ${missing.join(", ").replace(/_/g, " ")} on record yet: record them before offering it`);
+  }
+  await tx.query("update zones set place_kind = coalesce($2, place_kind), status = $3, active = $4, priority = $5, updated_at = app_now() where name = $1", [
+    name,
+    input.placeKind ?? null,
+    status,
+    status === "active",
+    input.priority === undefined ? (before.priority == null ? null : num(before.priority)) : input.priority,
+  ]);
+  await audit(tx, actor, "catalogue.place_classified", "zone", name, { before: { placeKind: before.place_kind, status: before.status, priority: before.priority }, after: input });
+  return { ok: true };
+}
+
+/** E7B: the coverage matrix and the evidence backlog, from the catalogue as it stands today. */
+export async function coverageReport(tx: Queryable, approvals: CoverageApproval[]) {
+  const asOf = await catalogueToday(tx);
+  const authorities = (await tx.query<Record<string, unknown>>("select id, name, kind, emirate, parent_id, active from authorities order by name")).rows;
+  const places = await loadPlaces(tx, asOf, { includeInactive: true });
+  const rows: CoveragePlace[] = places.map((p) => ({
+    name: p.name,
+    emirate: p.emirate,
+    placeKind: p.placeKind,
+    status: p.status,
+    priority: p.priority,
+    authorityId: p.authorityId,
+    authority: p.authority ?? null,
+    evidence: p.evidence ?? {},
+    has: {
+      cost: !p.placeholder && p.costMinFils > 0,
+      renewal_cost: p.renewalMinFils != null,
+      visa_quota: !p.placeholder,
+      visa_max: p.visaMax !== undefined && p.visaMax !== null,
+      timeline_days: !p.placeholder,
+      facilities: !!p.facilities,
+      activities_listed: !!p.activitiesListed,
+      activity_codes: !!p.activityCodes,
+      legal_forms: !!p.legalForms,
+      government_charges: p.govChargesMinFils != null,
+      conditions: !!p.conditions,
+      exclusions: !!p.exclusions,
+      coordinates: !!p.coordinates,
+    },
+    confidence: p.confidence,
+    stale: !!p.stale,
+  }));
+  return coverageMatrix(
+    asOf,
+    authorities.map((a) => ({ id: String(a.id), name: String(a.name), kind: a.kind as never, emirate: (a.emirate as string | null) ?? null, parentId: (a.parent_id as string | null) ?? null, active: !!a.active })),
+    rows,
+    approvals,
+  );
+}
+
+export { backlogCsv };
+

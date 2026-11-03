@@ -81,6 +81,9 @@ export const ZONES: Array<[string, string, "free_zone" | "mainland" | "offshore"
  */
 export const AUTHORITIES: Array<[string, string, "free_zone_authority" | "mainland_department" | "offshore_registry" | "financial_centre" | "regulator", string | null, string[]]> = [
   ["ifza", "International Free Zone Authority", "free_zone_authority", "Dubai", ["IFZA"]],
+  // E7B: two more authorities by name only, for the first-wave backlog (industrial, and a trading free zone).
+  ["kezad", "Khalifa Economic Zones Abu Dhabi", "free_zone_authority", "Abu Dhabi", ["KEZAD", "KIZAD", "Khalifa Industrial Zone"]],
+  ["jafza", "Jebel Ali Free Zone Authority", "free_zone_authority", "Dubai", ["JAFZA", "Jebel Ali Free Zone"]],
   ["meydan_fz", "Meydan Free Zone", "free_zone_authority", "Dubai", ["Meydan FZ", "Meydan"]],
   ["dmcc", "Dubai Multi Commodities Centre", "free_zone_authority", "Dubai", ["DMCC"]],
   ["dso", "Dubai Silicon Oasis", "free_zone_authority", "Dubai", ["DSO", "Dubai Silicon Oasis Authority", "DSOA"]],
@@ -122,6 +125,8 @@ export const PLACE_AUTHORITY: Record<string, string> = {
   DIFC: "difc",
   ADGM: "adgm",
   "UAQ Free Trade Zone": "uaq_ftz",
+  KEZAD: "kezad",
+  JAFZA: "jafza",
   "Fujairah Free Zone": "fujairah_fz",
   "Fujairah Creative City": "fujairah_cc",
 };
@@ -131,7 +136,18 @@ export const PLACE_AUTHORITY: Record<string, string> = {
  * visas and timeline are recorded as facts and the founder activates them. No number here is a market figure.
  */
 export const PENDING_PLACES: Array<[string, string]> = [
+  ["KEZAD", "Abu Dhabi"],
+  ["JAFZA", "Dubai"],
   ["UAQ Free Trade Zone", "Umm Al Quwain"],
   ["Fujairah Free Zone", "Fujairah"],
   ["Fujairah Creative City", "Fujairah"],
 ];
+
+/**
+ * E7B first commercial wave (contract 2C): the places to verify first, by name. Priority 1 flags what the verifier
+ * obtains evidence for first; it verifies nothing and changes no figure. Coverage: general services (IFZA, Meydan,
+ * SHAMS), technology (DSO, ADGM), trading and e-commerce (DMCC, RAKEZ, Ajman, JAFZA), industrial (KEZAD, RAKEZ),
+ * holding and investment (RAK ICC, DIFC, ADGM), regulated finance (DIFC, ADGM), mainland (Dubai, Abu Dhabi, Sharjah).
+ */
+export const FIRST_WAVE: string[] = ["IFZA", "Meydan Free Zone", "SHAMS", "Dubai Silicon Oasis", "ADGM", "DMCC", "RAKEZ", "Ajman Free Zone", "JAFZA", "KEZAD", "RAK ICC", "DIFC", "Dubai DET mainland", "Abu Dhabi DED mainland", "Sharjah SEDD mainland"];
+

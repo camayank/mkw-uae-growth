@@ -3,7 +3,7 @@ import { asPlatform } from "../lib/context.ts";
 import type { Database } from "../lib/db.ts";
 import { DELIVERABLES, DEMO, MARGIN_RULES } from "./seed-data.ts";
 import { CATALOGUE_EXTENSION, EXTENSION_MARGIN_RULES, STARTER_ROWS } from "./catalogue.ts";
-import { AUTHORITIES, PENDING_PLACES, PLACE_AUTHORITY, SCOPING_RULES, ZONES } from "./scoping-data.ts";
+import { AUTHORITIES, FIRST_WAVE, PENDING_PLACES, PLACE_AUTHORITY, SCOPING_RULES, ZONES } from "./scoping-data.ts";
 import { normaliseName } from "@tasees/core";
 
 /** Catalogue, margin rules and settings. Safe to run more than once. */
@@ -45,8 +45,8 @@ export async function seedCatalogue(db: Database): Promise<void> {
     }
     for (const [name, emirate, type, visas, min, max, days, activities] of ZONES) {
       await tx.query(
-        "insert into zones (name, emirate, type, visa_quota, cost_min_fils, cost_max_fils, timeline_days, activities) values ($1,$2,$3,$4,$5,$6,$7,$8) on conflict (name) do nothing",
-        [name, emirate, type, visas, aed(min), aed(max), days, activities],
+        "insert into zones (name, emirate, type, visa_quota, cost_min_fils, cost_max_fils, timeline_days, activities, place_kind) values ($1,$2,$3,$4,$5,$6,$7,$8,$9) on conflict (name) do nothing",
+        [name, emirate, type, visas, aed(min), aed(max), days, activities, { free_zone: "free_zone", mainland: "mainland", offshore: "offshore_registry", financial: "financial_centre" }[type]],
       );
     }
     // E2: authorities with their aliases, and the authority behind each place. Places without figures stay inactive.
@@ -57,11 +57,13 @@ export async function seedCatalogue(db: Database): Promise<void> {
       }
     }
     for (const [name, emirate] of PENDING_PLACES) {
-      await tx.query("insert into zones (name, emirate, type, visa_quota, cost_min_fils, cost_max_fils, timeline_days, activities, active, placeholder) values ($1,$2,'free_zone',0,0,0,1,'{}',false, true) on conflict (name) do nothing", [name, emirate]);
+      await tx.query("insert into zones (name, emirate, type, visa_quota, cost_min_fils, cost_max_fils, timeline_days, activities, active, placeholder, status) values ($1,$2,'free_zone',0,0,0,1,'{}',false, true, 'inactive') on conflict (name) do nothing", [name, emirate]);
     }
     for (const [place, authority] of Object.entries(PLACE_AUTHORITY)) {
       await tx.query("update zones set authority_id = $2 where name = $1 and authority_id is null", [place, authority]);
     }
+    // E7B: the first commercial wave, flagged for the verifier; a placeholder place stays inactive whatever its priority.
+    for (const place of FIRST_WAVE) await tx.query("update zones set priority = 1 where name = $1 and priority is null", [place]);
   });
 }
 

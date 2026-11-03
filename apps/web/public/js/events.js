@@ -476,8 +476,15 @@ document.addEventListener("submit", (ev) => {
       verifiedBy: String(fd.get("verifiedBy") || "") || undefined,
       nextVerification: String(fd.get("nextVerification") || "") || undefined,
       note: String(fd.get("note") || "") || undefined,
+      effectiveDate: String(fd.get("effectiveDate") || "") || undefined,
+      reference: String(fd.get("reference") || "") || undefined,
+      sourceKind: String(fd.get("sourceKind") || "official"),
     };
     return act(() => api("POST", "/api/admin/jurisdictions/facts", body), "Evidence recorded");
+  }
+  if (kind === "place-status") {
+    const p = String(fd.get("priority") || "");
+    return act(() => api("POST", `/api/admin/jurisdictions/places/${encodeURIComponent(id)}/status`, { placeKind: String(fd.get("placeKind")), status: String(fd.get("status")), priority: p ? Number(p) : null }), "Place classified");
   }
   if (kind === "verify-rule" || kind === "verify-zone") {
     const body = { confidence: String(fd.get("confidence")), verifiedBy: String(fd.get("verifiedBy") || "") || undefined, sourceUrl: String(fd.get("sourceUrl") || "") || undefined };

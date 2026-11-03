@@ -374,3 +374,52 @@ export async function renderSystem() {
     ${table(["Day", "#Events checked", "Result"], s.auditChecks.map((c) => `<tr><td>${date(c.day)}</td><td class="num">${c.checked}</td><td>${c.brokenId === null ? badge("ok", "intact") : badge("rejected", `broken at event ${c.brokenId}`)}</td></tr>`), "Not checked yet: the first jobs run of the day checks it.")}
   </section>`;
 }
+
+// E7B: the jurisdiction coverage matrix and the evidence backlog for the verifier.
+const PLACE_KIND_LABEL = { free_zone: "Free zone", sub_zone: "Sub-zone", offshore_registry: "Offshore registry", mainland: "Mainland", financial_centre: "Financial centre", industrial_development: "Industrial development" };
+const AUTHORITY_KIND_LABEL = { free_zone_authority: "Free zone authorities", mainland_department: "Mainland departments", offshore_registry: "Offshore registries", financial_centre: "Financial centres", regulator: "Regulators", industrial_development: "Industrial developments" };
+const REASON_LABEL = { missing: ["warn", "not on record"], unverified: ["pending", "unverified"], stale: ["UNCERTAIN", "stale"], due: ["info", "due"], intermediary: ["warn", "intermediary source"] };
+export async function renderCoverage() {
+  const [c, cat] = await Promise.all([api("GET", "/api/admin/coverage"), api("GET", "/api/admin/jurisdictions")]);
+  const founder = role() === "founder";
+  const kinds = Object.keys(PLACE_KIND_LABEL).filter((k) => c.emirates.some((e) => c.places.matrix[e]?.[k]));
+  const pct = (n, of) => (of ? `${Math.round((100 * n) / of)}%` : "–");
+  const fieldRows = Object.entries(c.fields).map(([f, v]) => `<tr><td>${esc(cat.fields.place.find((x) => x.field === f)?.label ?? words(f))}</td><td class="num">${v.onRecord} / ${v.of}</td><td class="num">${v.verified}</td><td class="num">${v.stale}</td><td class="num">${pct(v.verified, v.of)}</td></tr>`);
+  const byPlace = new Map();
+  for (const t of c.tasks) { if (!byPlace.has(t.place)) byPlace.set(t.place, { ...t, fields: [] }); byPlace.get(t.place).fields.push(t); }
+  const placeRow = (p) => {
+    const tasks = byPlace.get(p.name)?.fields ?? [];
+    return `<tr><td><b>${esc(p.name)}</b><br><span class="small muted">${esc(p.emirate)} · ${esc(PLACE_KIND_LABEL[p.placeKind] ?? words(p.placeKind))}${p.authority ? ` · ${esc(p.authority)}` : ""}</span></td>
+      <td>${badge(p.status === "active" ? "ok" : p.status === "historical" ? "expired" : "pending", p.status)}${p.priority ? ` ${badge("info", `wave ${p.priority}`)}` : ""}</td>
+      <td class="small">${tasks.length ? `${tasks.length} to obtain: ${tasks.map((t) => `<span class="badge ${REASON_LABEL[t.reason][0]}" title="${esc(t.ask)}">${esc(words(t.field))}</span>`).join(" ")}` : badge("ok", "complete")}</td>
+      ${founder ? `<td><form class="row" data-form="place-status" data-id="${esc(p.name)}" style="flex-wrap:wrap;gap:4px">
+        <select name="placeKind" aria-label="Kind">${Object.entries(PLACE_KIND_LABEL).map(([k, l]) => `<option value="${k}" ${p.placeKind === k ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>
+        <select name="status" aria-label="Status">${["active", "inactive", "historical"].map((s) => `<option value="${s}" ${p.status === s ? "selected" : ""}>${s}</option>`).join("")}</select>
+        <input name="priority" type="number" min="1" max="9" value="${p.priority ?? ""}" placeholder="wave" aria-label="Priority" style="width:70px" />
+        <button class="sm" type="submit">Save</button></form></td>` : ""}</tr>`;
+  };
+  const places = [...cat.places].sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99) || a.name.localeCompare(b.name));
+  $app.innerHTML = `<h1>Jurisdiction coverage</h1>
+  <p class="muted">What the catalogue holds for every licensing authority and place in the seven emirates, as of ${date(c.asOf)}: counted once each, with what is verified, what is stale, what is missing and what waits for public-display approval. The backlog below is the evidence still to obtain, first wave first, in the importer's own layout: the verifier fills it in and it comes back through <code>import catalogue --as</code>. Nothing here is a figure; a missing record is a task.</p>
+  <div class="kpis">
+    <div class="kpi"><b>${c.authorities.total}</b><span>authorities (${c.authorities.active} active)</span></div>
+    <div class="kpi"><b>${c.places.total}</b><span>places: ${c.places.active} offered, ${c.places.inactive} waiting for figures, ${c.places.historical} historical</span></div>
+    <div class="kpi"><b>${c.places.priority}</b><span>first-wave places</span></div>
+    <div class="kpi"><b>${c.fields.cost?.verified ?? 0} / ${c.fields.cost?.of ?? 0}</b><span>places with verified setup cost</span></div>
+    <div class="kpi"><b>${c.fields.activity_codes?.onRecord ?? 0} / ${c.fields.activity_codes?.of ?? 0}</b><span>places with exact activities on record</span></div>
+    <div class="kpi"><b>${c.expiring.stale} · ${c.expiring.within30} · ${c.expiring.within90}</b><span>evidence stale · due in 30 days · due in 90 days</span></div>
+    <div class="kpi"><b>${c.approvals.outstanding}</b><span>public-display approvals outstanding</span></div>
+    <div class="kpi"><b>${c.tasks.length}</b><span>evidence tasks</span></div>
+  </div>
+  <div class="card flush"><h2 style="padding:16px 18px 0">Places by emirate and kind</h2>${table(
+    ["Emirate", ...kinds.map((k) => PLACE_KIND_LABEL[k]), "Authorities"],
+    c.emirates.map((e) => `<tr><td>${esc(e)}</td>${kinds.map((k) => `<td class="num">${c.places.matrix[e]?.[k] ?? "–"}</td>`).join("")}<td class="num">${c.authorities.byEmirate[e] ?? 0}</td></tr>`).concat([`<tr><td class="small muted">Federal regulators</td>${kinds.map(() => "<td></td>").join("")}<td class="num">${c.authorities.byEmirate.federal ?? 0}</td></tr>`]),
+  )}<p class="small muted" style="padding:0 18px 12px">Historical places are kept for the record and not counted. Authorities by kind: ${Object.entries(c.authorities.byKind).map(([k, n]) => `${esc(AUTHORITY_KIND_LABEL[k] ?? words(k))} ${n}`).join(" · ")}.</p></div>
+  <div class="card flush"><h2 style="padding:16px 18px 0">Evidence per field</h2>${table(["Field", "On record", "Verified and current", "Stale", "Verified"], fieldRows)}</div>
+  <div class="card flush"><h2 style="padding:16px 18px 0">Expiring evidence</h2>${c.expiring.items.length ? table(["Place", "Field", "Check by", ""], c.expiring.items.map((x) => `<tr><td>${esc(x.place)}</td><td class="small">${esc(words(x.field))}</td><td class="small">${x.nextVerification ? date(x.nextVerification) : "–"}</td><td>${x.stale ? badge("UNCERTAIN", "stale") : badge("info", "due")}</td></tr>`)) : `<p class="muted pad">Nothing on record expires within 90 days.</p>`}</div>
+  <div class="card flush"><h2 style="padding:16px 18px 0">Public-display approvals outstanding</h2>${c.approvals.items.length ? table(["Kind", "Subject", "State"], c.approvals.items.map((a) => `<tr><td class="small">${esc(a.kind)}</td><td class="small mono">${esc(a.subject)}</td><td>${badge(a.state === "lapsed" ? "UNCERTAIN" : "pending", a.state)}</td></tr>`)) : `<p class="muted pad">Everything checked is approved for public display.</p>`}<p class="small muted" style="padding:0 18px 12px">Approve or withdraw on the <a href="#/scoping">Scoping</a> page.</p></div>
+  <div class="card flush"><div class="row between" style="padding:16px 18px 0"><h2 style="margin:0">Evidence backlog by place</h2><a class="btn sm" href="/api/admin/coverage/backlog.csv" download>Download the backlog (CSV)</a></div>
+  <p class="small muted" style="padding:6px 18px 0">${c.tasks.length} task(s) across ${byPlace.size} place(s); first wave first. Each badge names a field; hover for what to obtain and from where.</p>
+  ${table(["Place", "Status", "To obtain", ...(founder ? ["Classify"] : [])], places.map(placeRow))}</div>`;
+}
+

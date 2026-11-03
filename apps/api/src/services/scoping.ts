@@ -109,7 +109,8 @@ export async function verifyZone(
   if (have("timeline_days")) await appendFact(tx, actor, { ...common, field: "timeline_days", value: input.timelineDays ?? num(before.timeline_days) });
   await tx.query(
     `update zones set confidence = $2, verified_by = $3, verified_at = case when $2 = 'verified' then app_now()::date else null end, source_url = $4,
-       active = coalesce($5, active), updated_at = app_now() where name = $1`,
+       active = coalesce($5, active) and status <> 'historical',
+       status = case when status = 'historical' then 'historical' when coalesce($5, active) then 'active' else 'inactive' end, updated_at = app_now() where name = $1`,
     [name, input.confidence, input.confidence === "verified" ? input.verifiedBy!.trim() : null, sourceUrl, input.active ?? null],
   );
   await audit(tx, actor, "scoping.zone_verified", "zone", name, { before: { confidence: before.confidence, costMin: num(before.cost_min_fils), costMax: num(before.cost_max_fils), visaQuota: num(before.visa_quota), active: before.active }, after: input });

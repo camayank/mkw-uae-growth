@@ -567,6 +567,9 @@ await shot(founder, "38-scoping-rules");
   await f.locator('input[name="sourceUrl"]').fill("https://www.shams.ae/activities");
   await f.locator('select[name="confidence"]').selectOption("verified");
   await f.locator('input[name="verifiedBy"]').fill("A. Qualified, licensing adviser");
+  // E7B: the exact reference and the effective date travel with the fact.
+  await f.locator('input[name="reference"]').fill("Activities list, page 3");
+  await f.locator('input[name="effectiveDate"]').fill("2026-01-01");
   await f.locator('button[type="submit"]').click();
   await founder.waitForTimeout(700);
   log.push("fact: " + (await toastText(founder)));
@@ -575,8 +578,35 @@ await shot(founder, "38-scoping-rules");
   await row.click();
   const target = await row.getAttribute("data-target");
   await eventually("the place's evidence history opens with the current fact (E2):", async () => /current/.test(await founder.locator(`#${target}`).innerText()) && /A\. Qualified, licensing adviser/.test(await founder.locator(`#${target}`).innerText()));
+  check("the history shows the fact's reference and effective date (E7B):", /Activities list, page 3/.test(await founder.locator(`#${target}`).innerText()) && /effective 1 Jan 2026/.test(await founder.locator(`#${target}`).innerText()));
   await shot(founder, "82-scoping-catalogue");
   await axeCheck(founder, "jurisdiction catalogue and evidence history (E2)");
+  // E7B: the coverage matrix and the evidence backlog; the founder classifies a place; the backlog downloads.
+  await founder.goto(BASE + "/#/coverage"); await founder.reload();
+  await founder.waitForSelector('main h1:text-is("Jurisdiction coverage")');
+  const cov = await founder.locator("main").innerText();
+  check("the Coverage page counts authorities and places once, per emirate and kind, with the backlog first wave first (E7B):", /authorities \(\d+ active\)/.test(cov) && /first-wave places/.test(cov) && /Places by emirate and kind/.test(cov) && /Umm Al Quwain/.test(cov) && /Evidence backlog by place/.test(cov) && /wave 1/.test(cov) && (await founder.locator('form[data-form="place-status"]').count()) >= 15);
+  check("the Coverage page lists the public-display approvals outstanding and the expiring evidence (E7B):", /approvals outstanding/.test(cov) && /guide/.test(cov) && /Expiring evidence/.test(cov));
+  const csv = await founder.evaluate(async () => (await fetch("/api/admin/coverage/backlog.csv")).text());
+  check("the backlog downloads in the importer's layout (E7B):", /^Kind,Place or authority,Field,Value,Source,Evidence date,Confidence/.test(csv) && /^place,KEZAD,cost,,,,/m.test(csv));
+  const ps = founder.locator('form[data-form="place-status"][data-id="Fujairah Creative City"]');
+  await ps.locator('select[name="status"]').selectOption("historical");
+  await ps.locator('button[type="submit"]').click();
+  await founder.waitForTimeout(700);
+  log.push("place status: " + (await toastText(founder)));
+  await eventually("a place marked historical leaves the counts and the backlog (E7B):", async () => /1 historical/.test(await founder.locator("main").innerText()));
+  await shot(founder, "96-coverage");
+  await axeCheck(founder, "jurisdiction coverage (E7B)");
+  const mcov = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, storageState: await founder.context().storageState() });
+  const mc = await mcov.newPage();
+  mc.on("pageerror", (e) => errors.push(`coverage mobile: ${e.message}`));
+  await mc.goto(BASE + "/#/coverage"); await mc.reload();
+  await mc.waitForSelector('main h1:text-is("Jurisdiction coverage")');
+  check("the Coverage page at 390 px has no horizontal overflow (E7B):", !(await mc.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
+  await mc.screenshot({ path: `${OUT}/97-mobile-coverage.png`, fullPage: false });
+  log.push("97-mobile-coverage");
+  await axeCheck(mc, "jurisdiction coverage at 390 px (E7B)");
+  await mcov.close();
 }
 // E3: the public Right UAE Entity selector, no sign-in. With nothing approved it shows no rule text and no figure;
 // once the founder approves a verified rule and a verified place for public display, those appear.

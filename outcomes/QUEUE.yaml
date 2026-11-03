@@ -150,7 +150,8 @@ outcomes:
     needs_from_owner: [approval of the guidance notes for public display]
   - id: E7B
     title: Jurisdiction data operations (coverage matrix, evidence pipeline, verification workflow)
-    status: planned
+    status: released
+    contract: outcomes/E7B-jurisdiction-data.md
     depends_on: [E7A]
     needs_from_owner: [authoritative sources, named verifier]
   - id: E7C

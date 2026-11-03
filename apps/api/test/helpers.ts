@@ -91,7 +91,9 @@ export async function makeEnv(
       ...(body === undefined ? {} : { payload: body as object }),
     });
     await notify.flush(); // deliveries happen after the request, as in production
-    return { status: res.statusCode, body: res.body ? JSON.parse(res.body) : null, headers: res.headers as Record<string, unknown> };
+    // A JSON body is parsed; anything else (a CSV download) comes back as text.
+    const parsed = (() => { try { return res.body ? JSON.parse(res.body) : null; } catch { return res.body; } })();
+    return { status: res.statusCode, body: parsed, headers: res.headers as Record<string, unknown> };
   };
   const call = async (who: string, method: string, url: string, body?: unknown) => {
     const { status, body: b } = await send(who, method, url, body);

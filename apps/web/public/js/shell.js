@@ -5,7 +5,7 @@ import { renderClientCompliance, renderClientHome, renderClientOffer, renderInta
 import { renderEngagement } from "./engagement.js";
 import { renderFirm, renderPartnerHome, renderPartnerPayouts, renderPartnerPerformance, renderRateCards } from "./partner.js";
 import { renderAgentQueue, renderAudit, renderDashboard, renderDelays, renderLead, renderLeads, renderOpsCompliance, renderOpsOffer, renderPartners, renderPipeline, renderQueue, renderRequest, renderScoping, renderSearch } from "./ops.js";
-import { renderCatalogue, renderPeople, renderRules, renderSettings, renderSystem } from "./admin.js";
+import { renderCatalogue, renderCoverage, renderPeople, renderRules, renderSettings, renderSystem } from "./admin.js";
 
 hooks.render = renderNow;
 
@@ -24,7 +24,7 @@ export function navFor() {
     { group: "Work", items: [["home", "Queue"], ["leads", "Leads"], ["pipeline", "Pipeline"], ["new", "New request"], ["delays", "Delays"], ["compliance", "Compliance"], ["agent", "AI queue"]] },
     ["partners", "Partners"],
     ["dashboard", "Dashboard"],
-    { group: "Setup", items: [["people", "People"], ["catalogue", "Catalogue"], ["rules", "Rules"], ["scoping", "Scoping"], ["settings", "Settings"], ["system", "System"], ["audit", "Audit trail"]] },
+    { group: "Setup", items: [["people", "People"], ["catalogue", "Catalogue"], ["rules", "Rules"], ["scoping", "Scoping"], ["coverage", "Coverage"], ["settings", "Settings"], ["system", "System"], ["audit", "Audit trail"]] },
   ];
 }
 
@@ -202,6 +202,7 @@ export async function renderPage(page, id) {
     if (page === "catalogue") return await renderCatalogue();
     if (page === "rules") return await renderRules();
     if (page === "scoping") return await renderScoping();
+    if (page === "coverage") return await renderCoverage();
     if (page === "agent") return await renderAgentQueue();
     if (page === "search") return await renderSearch(decodeURIComponent(id ?? ""));
     if (page === "settings") return await renderSettings();

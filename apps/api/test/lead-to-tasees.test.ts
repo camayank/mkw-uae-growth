@@ -66,6 +66,17 @@ describe("lead to Tasees without loss (E7C, 3D)", () => {
     const d2 = (await env.call("ops", "GET", `/api/ops/pipeline/leads/${leadId}`)).body;
     expect(d2.consentHistory.filter((c: any) => c.purpose === "marketing").map((c: any) => c.given)).toEqual([true, false]);
     expect(d2.consents.marketing).toBe(false);
+    // Erasure clears the adviser's free text on the lead too (an override, its reason, a closure reason).
+    const held = (await env.call("ops", "GET", "/api/ops/pipeline/leads")).body.find((x: any) => x.company === "Lossless Ltd" && x.id !== leadId);
+    expect((await env.call("ops", "POST", `/api/ops/pipeline/leads/${held.id}/next-action`, { action: "Call L. Founder on +971 50 000", reason: "Prefers calls, Dubai number" })).status).toBe(200);
+    expect((await env.call("ops", "POST", `/api/ops/pipeline/leads/${held.id}/status`, { status: "closed", note: "L. Founder moved to Riyadh" })).status).toBe(200);
+    const { eraseLeadsForEmail } = await import("../src/services/leads.ts");
+    await asPlatform(env.db, null, (tx) => eraseLeadsForEmail(tx, "lossless-held@example.test", "erased-x@erased.invalid"));
+    const gone = (await asPlatform(env.db, null, (tx) => tx.query("select next_action_override, next_action_reason, closed_reason from leads where id = $1", [held.id]))).rows[0] as any;
+    expect(gone).toEqual({ next_action_override: "Call L. Founder on +971 50 000", next_action_reason: "Prefers calls, Dubai number", closed_reason: "L. Founder moved to Riyadh" }); // a different email: untouched
+    await asPlatform(env.db, null, (tx) => eraseLeadsForEmail(tx, "lossless@example.test", "erased-y@erased.invalid"));
+    const erased = (await asPlatform(env.db, null, (tx) => tx.query("select next_action_override, next_action_reason, closed_reason from leads where id = $1", [held.id]))).rows[0] as any;
+    expect(erased).toEqual({ next_action_override: null, next_action_reason: null, closed_reason: null });
   });
 
   it("no proposal reaches the client without a person's approval of the scoping, and the lead cannot be marked converted before an offer is accepted", async () => {

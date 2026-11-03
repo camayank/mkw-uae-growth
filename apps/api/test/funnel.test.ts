@@ -82,6 +82,16 @@ describe("funnel measurement, qualification and the conversion dashboard (E7C)",
     // A different case from the same person is a new lead.
     expect((await review({ assessmentCode: undefined, answers: { mode: "new_company", jurisdiction: "not_sure", ...answers, activity: "trading", visas: 5 } })).status).toBe(200);
     expect(await count(env, "leads")).toBe(leadsBefore + 2);
+    // A repeat that adds a signal refreshes the score: a lead that scored 45 without a call reaches high readiness with one.
+    const quiet = { company: "Quiet Co", name: "Q. Founder", email: "quiet@example.test", consent: true, consentVersion: "2026-11-selector-v1", answers: { mode: "new_company", jurisdiction: "not_sure", emirate: "Dubai", activity: "consulting", customers: "international", visas: 0, budgetAed: 20_000 } };
+    expect((await env.call("anon", "POST", "/api/public/intake", quiet)).status).toBe(200);
+    const q1 = (await env.call("ops", "GET", "/api/ops/pipeline/leads")).body.find((x: any) => x.company === "Quiet Co");
+    expect(q1.highIntent).toBe(false);
+    expect((await env.call("anon", "POST", "/api/public/intake", { ...quiet, consultation: { wanted: true } })).status).toBe(200);
+    const q2 = (await env.call("ops", "GET", `/api/ops/pipeline/leads/${q1.id}`)).body;
+    expect(q2.intent).toBe(q1.intent + 15);
+    expect(q2.highIntent).toBe(q2.intent >= 60);
+    expect(q2.scoreEvidence.readiness.map((f: any) => f.factor)).toContain("asked for a call");
   });
 
   it("the adviser overrides the next best action with a reason, audited, and can clear it; status changes record first contact", async () => {
@@ -147,6 +157,9 @@ describe("funnel measurement, qualification and the conversion dashboard (E7C)",
     expect(gg).toMatchObject({ proposals: 1, accepted: 1, engagements: 1, pipelineFils: 0 });
     expect(gg.revenueFils).toBeGreaterThan(0);
     expect(f.bySegment.find((s: any) => s.segment === l.segment).revenueFils).toBe(gg.revenueFils);
+    // An issued proposal stays issued in the history even once its sibling tier is withdrawn or an offer expires.
+    await asPlatform(env.db, null, (tx) => tx.query("update offers set status = 'expired' where request_id = $1 and status = 'withdrawn'", [l.requestId]));
+    expect((await env.call("ops", "GET", "/api/ops/pipeline/funnel")).body.bySource.find((r: any) => r.source === "google" && r.campaign === "nov-launch").proposals).toBe(1);
     expect(f.totals.revenuePerQualifiedFils).toBe(Math.round(gg.revenueFils / f.totals.qualifiedAll));
     expect((await env.call("ops", "GET", `/api/ops/pipeline/leads/${l.id}`)).body.nextAction.action).toMatch(/on the engagement/);
     // The leads that need a person: a high-readiness lead with no owner is listed, with why.

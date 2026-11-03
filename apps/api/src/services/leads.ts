@@ -156,7 +156,14 @@ export async function createLead(tx: Queryable, input: NewLead): Promise<{ id: s
   const dup = await findDuplicateLead(tx, email, input.company, input.answers);
   if (dup) {
     await tx.query("insert into lead_notes (lead_id, author_user_id, kind, body) values ($1, null, 'note', $2)", [dup.id, `Asked again with the same answers${input.consultation?.wanted ? ", and asked for a call (the first preferred times are kept)" : ""}; counted once.`]);
-    await tx.query("update leads set updated_at = app_now(), consultation = coalesce(consultation, $2::jsonb) where id = $1", [dup.id, input.consultation?.wanted ? JSON.stringify({ times: (input.consultation.times ?? "").slice(0, 300), at: new Date().toISOString() }) : null]);
+    // The repeat can add a signal (a call request, a phone number): the score is recomputed on the merged signals
+    // so the lead's readiness, its qualification and its place in the attention list follow.
+    const was = (await tx.query<{ consultation: unknown; phone_given: boolean }>("select consultation, phone_given from leads where id = $1", [dup.id])).rows[0]!;
+    const merged = scoreLead(input.answers, { ...input.signals, recovered: session?.recovered ?? 0, phoneGiven: !!was.phone_given || input.phoneGiven, consultationRequested: !!was.consultation || !!input.consultation?.wanted });
+    await tx.query(
+      "update leads set updated_at = app_now(), consultation = coalesce(consultation, $2::jsonb), phone_given = phone_given or $3, intent = $4, complexity = $5, high_intent = $6, score_evidence = $7 where id = $1",
+      [dup.id, input.consultation?.wanted ? JSON.stringify({ times: (input.consultation.times ?? "").slice(0, 300), at: new Date().toISOString() }) : null, input.phoneGiven, merged.intent, merged.complexity, merged.highIntent, JSON.stringify(merged.evidence)],
+    );
     const again = async (purpose: "service" | "marketing" | "partner_disclosure", given: boolean, version: string) =>
       tx.query("insert into consents (subject_kind, subject_id, purpose, given, version, channel) values ('lead', $1, $2, $3, $4, 'public_intake')", [dup.id, purpose, given, version]);
     await again("service", true, input.consents.service.version);
@@ -427,7 +434,7 @@ export async function anonymiseOldLeads(tx: Queryable, actor: SessionUser | null
   }
   const leads = (
     await tx.query<{ id: string }>(
-      `update leads set email = 'anonymised-' || id::text || '@erased.invalid', name = 'Anonymised', company = 'Anonymised', answers = '{}'::jsonb, consultation = null, ip = null, status = 'anonymised', updated_at = app_now()
+      `update leads set email = 'anonymised-' || id::text || '@erased.invalid', name = 'Anonymised', company = 'Anonymised', answers = '{}'::jsonb, consultation = null, ip = null, next_action_override = null, next_action_reason = null, closed_reason = null, status = 'anonymised', updated_at = app_now()
        where id in (select l.id ${dueLeads}) returning id`,
     )
   ).rows;
@@ -464,7 +471,7 @@ export async function leadsForEmail(tx: Queryable, email: string) {
 
 /** Erase a person's leads (PDPL): personal data tombstoned, the rows and the consent history kept. */
 export async function eraseLeadsForEmail(tx: Queryable, email: string, tombstone: string): Promise<number> {
-  const rows = (await tx.query<{ id: string; assessment_id: string | null }>("update leads set email = $2, name = 'Erased person', company = 'Erased person', answers = '{}'::jsonb, consultation = null, ip = null, updated_at = app_now() where email = $1 returning id, assessment_id", [email.toLowerCase(), tombstone])).rows;
+  const rows = (await tx.query<{ id: string; assessment_id: string | null }>("update leads set email = $2, name = 'Erased person', company = 'Erased person', answers = '{}'::jsonb, consultation = null, ip = null, next_action_override = null, next_action_reason = null, closed_reason = null, updated_at = app_now() where email = $1 returning id, assessment_id", [email.toLowerCase(), tombstone])).rows;
   for (const l of rows) {
     await tx.query("update lead_notes set body = $2 where lead_id = $1", [l.id, "[Removed at the person's request under the UAE PDPL]"]);
     // The saved answers behind the lead are personal data too.
@@ -538,7 +545,7 @@ export async function funnelReport(tx: Queryable, actor: SessionUser) {
          count(*)::int as leads,
          sum(case when l.consultation is not null then 1 else 0 end)::int as consultations,
          sum(case when ${QUALIFIED} then 1 else 0 end)::int as qualified,
-         sum(case when exists (select 1 from offers f where f.request_id = l.request_id and f.status in ('published', 'accepted')) then 1 else 0 end)::int as proposals,
+         sum(case when exists (select 1 from offers f where f.request_id = l.request_id and f.published_at is not null) then 1 else 0 end)::int as proposals,
          sum(case when exists (select 1 from offers f where f.request_id = l.request_id and f.status = 'accepted') then 1 else 0 end)::int as accepted,
          sum(case when exists (select 1 from engagements e where e.request_id = l.request_id) then 1 else 0 end)::int as engagements,
          coalesce(sum((select sum(f.client_total_fils) from offers f where f.request_id = l.request_id and f.status = 'accepted')), 0)::bigint as revenue_fils,

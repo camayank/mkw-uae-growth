@@ -8,6 +8,8 @@ import { makeEnv, type TestEnv } from "./helpers.ts";
  * the limit; and every failure reads the same, so the answer never tells whether an email has an account.
  */
 const EMAIL = "founder@sample-client.test";
+// Codes are limited to five an hour per email: this file issues exactly five for EMAIL, so a new test needing more
+// codes should use another seeded account.
 
 describe("sign-in codes (E17)", () => {
   let env: TestEnv;
@@ -56,6 +58,18 @@ describe("sign-in codes (E17)", () => {
     expect(ok.status).toBe(200);
     expect(typeof ok.body.token).toBe("string");
     expect((await verify(devCode!)).status).toBe(401);
+  });
+
+  it("only the newest code counts: once it is used or spent, an older code still alive cannot be guessed (independent review of E17)", async () => {
+    ip = "203.0.113.5";
+    const other = "accounts@sample-client.test";
+    // Two live codes for one email, as two requests at the same moment could once leave (issuing is now one at a time).
+    const older = (await request(other)).devCode!;
+    await asPlatform(env.db, null, (tx) => tx.query("update login_codes set used_at = null where email = $1", [other]));
+    const newer = (await request(other)).devCode!;
+    await asPlatform(env.db, null, (tx) => tx.query("update login_codes set used_at = null where email = $1", [other]));
+    expect((await verify(newer, other)).status).toBe(200);
+    expect((await verify(older, other)).status).toBe(401);
   });
 
   it("every failure reads the same: a wrong code, a used or spent code, an email with no account", async () => {

@@ -1188,10 +1188,20 @@ after the owner's transformation mandate named the defect: "Investigate the repo
 
   The limit lives in the database, so it holds across instances. The per-address throttle stays as a second brake
   (gap 13).
+- **Found by the independent review of E17, and fixed:**
+  - Two code requests at the same moment could each pass the hourly count and leave two codes alive; once the newest
+    was used, the older one could be guessed. Issuing is now one at a time per email (a transaction advisory lock),
+    and verifying looks only at the newest code, used or not.
+  - The path with no live code now compares the hash too, so it takes about as long as the others.
+  - A correct code for an account deactivated in the meantime gets the same refusal as any other failure.
+  - The new message and the throttle message have draft Arabic.
+- **What remains.** The time a request takes can still differ a little between a known and an unknown email, above
+  all when asking for a code, since a known email sends one (gap 134). The answer itself is the same.
 - **Tests** (`apps/api/test/sign-in.test.ts`):
   - a wrong code is counted, and after five the right code is refused;
   - twelve simultaneous wrong guesses leave the count at five;
   - a used code does not sign in again;
+  - once the newest code is used, an older code still alive cannot be guessed;
   - the failures read the same.
 
   They pass on PGlite and on PostgreSQL 16, and fail on the old code.

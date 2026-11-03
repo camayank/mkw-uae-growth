@@ -6,9 +6,10 @@ rollback… Begin with the OTP security defect and write a failing reproduction 
 
 ## Business result
 
-Nobody can sign in to a client's, partner's or MKW staff member's account by guessing the six-digit code: five wrong
-guesses spend the code, guesses sent at the same moment cannot get past five, and the answer to a failed sign-in never
-tells whether an email has an account.
+Nobody can sign in to a client's, partner's or MKW staff member's account by guessing the six-digit code:
+- five wrong guesses spend the code, and guesses sent at the same moment cannot get past five;
+- only the newest code counts;
+- the answer to a failed sign-in is the same whether or not the email has an account (timing: gap 134).
 
 ## Scope
 
@@ -34,10 +35,24 @@ tells whether an email has an account.
   - twelve simultaneous wrong guesses leave it at 0;
   - the three failures give three different answers, and after six wrong guesses the right code still signed in
     (HTTP 200 with a session; the token is redacted).
-- `tests-postgres16.txt`: `sign-in.test.ts` and `security.test.ts` on PostgreSQL 16: 12 passed.
-- `tests-pglite.txt`: `pnpm test` gives core 154 passed and API 374 passed, 1 skipped (38 files).
+- `tests-postgres16.txt`: `sign-in.test.ts` and `security.test.ts` on PostgreSQL 16: 13 passed.
+- `tests-pglite.txt`: `pnpm test` gives core 154 passed and API 375 passed, 1 skipped (38 files).
 - `typecheck.txt`: clean.
 - Smoke: `scripts/smoke.mjs` against a fresh demo: 326 checks OK, 0 failed, unchanged (`smoke-log.txt`).
+
+## Independent review
+
+Nothing blocking. Fixed with a test:
+- an older code left alive by two simultaneous requests could be guessed once the newest was used. Issuing is now
+  one at a time per email, and verifying looks only at the newest code.
+
+Also fixed:
+- the no-code path compares the hash too;
+- a deactivated account's correct code gets the common refusal;
+- draft Arabic for the messages;
+- a note on the test file's hourly code limit.
+
+Recorded: timing differences (gap 134).
 
 ## Dependencies
 

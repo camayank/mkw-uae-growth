@@ -19,6 +19,9 @@ export async function issueLoginCode(db: Database, email: string): Promise<{ cod
   const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
   let limited = false;
   const known = await asPlatform(db, null, async (tx) => {
+    // E17: one code is issued at a time per email, so two requests at the same moment cannot both pass the hourly
+    // count and leave two codes alive (independent review of E17).
+    await tx.query("select pg_advisory_xact_lock(hashtext('login-code:' || $1))", [normalised]);
     // Deactivated and erased people get no code; the response to the caller is the same either way.
     const u = await tx.query("select 1 from users where email = $1 and status = 'active'", [normalised]);
     if (u.rows.length === 0) return false;
@@ -47,28 +50,38 @@ const CODE_REFUSED = "That code is not right or has expired. Check the email, or
  * Check a sign-in code (E17). The code's row is locked while it is checked, so guesses sent at the same moment are
  * taken one at a time; a wrong guess is counted and committed before the refusal is returned (an error thrown inside
  * the transaction used to roll the count back, so the limit never held); after MAX_ATTEMPTS wrong guesses the code is
- * spent. Every failure gets the same answer.
+ * spent. Every failure gets the same answer. (The time a request takes can still differ a little between paths: gap
+ * 134.)
  */
 export async function verifyLoginCode(db: Database, email: string, code: string): Promise<{ token: string; user: SessionUser }> {
   const normalised = email.trim().toLowerCase();
   const result = await asPlatform(db, null, async (tx): Promise<{ token: string; user: SessionUser } | null> => {
-    const r = await tx.query<{ id: string; code_hash: string; attempts: number }>(
-      `select id, code_hash, attempts from login_codes
-       where email = $1 and used_at is null and expires_at > now() order by expires_at desc limit 1 for update`,
+    // Only the newest code counts, used or not: a used or spent newest code never lets an older one be guessed
+    // (independent review of E17).
+    const r = await tx.query<{ id: string; code_hash: string; attempts: number; live: boolean }>(
+      `select id, code_hash, attempts, (used_at is null and expires_at > now()) as live from login_codes
+       where email = $1 order by expires_at desc limit 1 for update`,
       [normalised],
     );
     const row = r.rows[0];
-    if (!row || row.attempts >= MAX_ATTEMPTS) return null;
-    const expected = Buffer.from(row.code_hash, "hex");
     const actual = Buffer.from(sha256(`${normalised}:${code.trim()}`), "hex");
+    // With no live code the hash is still compared, against itself, so that path takes about as long.
+    if (!row || !row.live || row.attempts >= MAX_ATTEMPTS) {
+      timingSafeEqual(actual, actual);
+      return null;
+    }
+    const expected = Buffer.from(row.code_hash, "hex");
     if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
       // Returned, not thrown: the count is committed with the transaction.
       await tx.query("update login_codes set attempts = attempts + 1 where id = $1", [row.id]);
       return null;
     }
     await tx.query("update login_codes set used_at = now() where id = $1", [row.id]);
+    // An account deactivated since the code was sent gets the same refusal as any other failure.
+    const found = await tx.query<UserRow>(USER_SQL + " where u.email = $1 and u.status = 'active'", [normalised]);
+    if (!found.rows[0]) return null;
+    const user = toSessionUser(found.rows[0]);
     const token = randomBytes(32).toString("base64url");
-    const user = await loadUserByEmail(tx, normalised);
     await tx.query(
       `insert into sessions (token_hash, user_id, expires_at) values ($1, $2, now() + interval '${SESSION_DAYS} days')`,
       [sha256(token), user.id],

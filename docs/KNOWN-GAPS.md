@@ -352,6 +352,12 @@ in a browser; everything listed here is not.
      by themselves is a delivery rule for ops, not changed here; the demo seeds such a case.
 128. **The new Arabic strings for E15 are drafts** until the Arabic reviewer signs them off (with gaps 111, 116, 119).
 
+## E17: sign-in
+
+134. **Timing can still hint whether an email has an account.** The answers are the same (D99), but asking for a code
+     takes longer for a known email, which sends one, than for an unknown one; checking a code differs by far less.
+     Sending the email from the outbox rather than in the request would close most of it.
+
 ## E16: report design
 
 129. **The Arabic report's wording is a draft** until the Arabic reviewer signs it off (with gaps 111, 116, 119, 128).

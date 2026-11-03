@@ -110,6 +110,9 @@ export function chrome() {
   // staff, rule 10: nothing addressed to a partner carries Tasees).
   const mark = document.querySelector(".brand .mark");
   if (mark) mark.textContent = !state.me || isClient() ? "T" : "M";
+  // The tab's icon carries the same letter (rule 10: a partner's tab never shows the Tasees T).
+  const icon = document.querySelector('link[rel="icon"]');
+  if (icon) icon.href = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="${!state.me || isClient() ? "#0f5c4d" : "#16201c"}"/><text x="16" y="23" font-family="Arial,sans-serif" font-size="18" font-weight="700" text-anchor="middle" fill="#fff">${!state.me || isClient() ? "T" : "M"}</text></svg>`)}`;
   if (!state.me) {
     $nav.innerHTML = "";
     $who.innerHTML = langSwitch();

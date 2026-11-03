@@ -22,7 +22,9 @@ export const expiryBadge = (iso, soonDays = 30) => {
 
 export async function renderPartnerHome() {
   const h = await api("GET", "/api/partner/home");
-  const offered = h.allocations.filter((a) => !a.acceptedAt && !a.declinedAt && !a.timedOutAt);
+  // Soonest reply-by first (the list comes newest first); the gold Accept goes to the most urgent offer still open.
+  const offered = h.allocations.filter((a) => !a.acceptedAt && !a.declinedAt && !a.timedOutAt).sort((x, y) => new Date(x.deadline) - new Date(y.deadline));
+  const urgent = offered.find((a) => new Date(a.deadline).getTime() > Date.now())?.id;
   const active = h.allocations.filter((a) => a.acceptedAt);
   const rfqs = h.rfqs.filter((q) => q.status === "open" && !q.submitted);
   const admin = role() === "partner_admin";
@@ -41,10 +43,10 @@ export async function renderPartnerHome() {
       ${table(
         ["Where", "Work", "#Your payout", "Reply by", ""],
         offered.map(
-          (a, i) => `<tr><td>${flag(a.brief?.emirate)}<b>${esc(a.brief?.emirate ?? "")}</b>${a.brief?.freeZone ? `<br><span class="small muted">${esc(a.brief.freeZone)}</span>` : ""}</td>
+          (a) => `<tr><td>${flag(a.brief?.emirate)}<b>${esc(a.brief?.emirate ?? "")}</b>${a.brief?.freeZone ? `<br><span class="small muted">${esc(a.brief.freeZone)}</span>` : ""}</td>
           <td>${esc((a.brief?.lines ?? a.codes.map((c) => ({ code: c, qty: 1 }))).map((l) => `${l.name ?? nameOf(l.code)}${l.qty > 1 ? ` ×${l.qty}` : ""}`).join(", "))}<br><span class="small muted">Step dates and the client's documents are in the brief once you accept.</span></td>
           <td class="num"><b>${aed(a.payoutTotal)}</b><br><span class="small muted">your fees; government fees not included</span></td><td><b>${dateTime(a.deadline)}</b><br>${timeLeft(a.deadline)}</td>
-          <td style="white-space:nowrap">${admin ? `<button class="primary${i === 0 ? " gold" : ""}" data-act="alloc" data-id="${a.id}" data-decision="accept">Accept</button> <button data-act="alloc" data-id="${a.id}" data-decision="decline">Decline</button>` : `<span class="small muted">Your admin replies</span>`}</td></tr>`,
+          <td style="white-space:nowrap">${admin ? `<button class="primary${a.id === urgent ? " gold" : ""}" data-act="alloc" data-id="${a.id}" data-decision="accept">Accept</button> <button data-act="alloc" data-id="${a.id}" data-decision="decline">Decline</button>` : `<span class="small muted">Your admin replies</span>`}</td></tr>`,
         ),
         "Nothing waiting. New work arrives here and by email; you have 4 working hours to reply.",
       )}

@@ -43,11 +43,25 @@ one the partner already had.
 Evidence recorded on 3 Nov 2026 (`docs/evidence/E10/`):
 
 - `pnpm test`: core 139 passed; api 359 passed, 1 skipped (`tests-pglite.txt`). `pnpm typecheck` clean.
-- `scripts/smoke.mjs` against a fresh demo: 297 checks OK, 0 failed (`smoke-log.txt`; 290 after E9).
-- axe on 54 screens, 0 violations, including "partner performance with the scorecard tiles (E10)" and "partner work
-  with icon tiles and flags (E10)" (`axe.json`).
-- Screenshots: `108-partner-performance.png`, `109-partner-work.png`, `11-partner-engagement.png` (1280 px);
-  `93-mobile-partner-work.png` (390 px, the light tab bar under the dark top bar).
+- `scripts/smoke.mjs` against a fresh demo: 303 checks OK, 0 failed (`smoke-log.txt`; 290 after E9).
+- axe on 55 screens, 0 violations, including the partner performance, work and the engagement at 390 px (`axe.json`).
+- Screenshots at 1280 px: `10-partner-offered-work.png` (the gold Accept), `108-partner-performance.png`,
+  `109-partner-work.png`, `110-partner-payouts.png`, `11-partner-engagement.png`.
+- Screenshots at 390 px: `93-mobile-partner-work.png`, `111-mobile-partner-performance.png`,
+  `112-mobile-partner-payouts.png`, `113-mobile-partner-engagement.png`.
+
+## Independent review
+
+No blocking finding. Applied:
+- the screenshots now cover Payouts and the gold Accept (`10-`, `110-`), phone width for Performance, Payouts and the
+  engagement (`111-` to `113-`), and the engagement from the top of the page;
+- the gold Submit is set by an option rather than a string replace, with a check that it is the page's only gold;
+- the gold Accept goes to the offer that is due soonest;
+- the payout tiles are checked against the rows' sums; the flags against the in-delivery rows; "Tasees" on every
+  partner page checked;
+- the 640/641 px media-query gap is closed;
+- doc wording is corrected, and the canvas's streak is kept open as gap 117;
+- the M favicon for partners and staff (rule 10).
 
 ## Dependencies
 

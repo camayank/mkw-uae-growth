@@ -375,7 +375,7 @@ body:is([data-audience="platform"], [data-audience="partner"]) .top { background
 body:is([data-audience="platform"], [data-audience="partner"]) .brand, body:is([data-audience="platform"], [data-audience="partner"]) .brand small, body:is([data-audience="platform"], [data-audience="partner"]) .who { color: var(--ink-panel-muted); }
 body:is([data-audience="platform"], [data-audience="partner"]) .brand { color: var(--ink-panel-text); }
 body:is([data-audience="platform"], [data-audience="partner"]) .mark { background: var(--ink-panel-text); color: var(--ink-panel); }
-@media (min-width: 641px) {
+@media (min-width: 640.02px) {
   body[data-audience="partner"] nav a { color: var(--ink-panel-muted); }
   body[data-audience="partner"] nav > a.on, body[data-audience="partner"] nav > a:hover { background: var(--ink-panel-2); color: var(--ink-panel-text); box-shadow: inset 0 -3px 0 var(--gold); }
 }

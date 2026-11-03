@@ -1014,4 +1014,8 @@ canvas of 3 Nov 2026 and its review round.)
   payable, withheld). Every figure is one the partner already saw; nothing about clients' prices, margins or other
   partners is added (rule 1).
 - At 1024 px and wider the partner's menu never wraps either (the rule D91 set for staff).
+- The gold Accept goes to the open offer whose reply time ends first; the gold on the next step is asked for by name
+  (`milestoneActions(m, { goldSubmit: true })`), never found by matching markup.
+- The tab's icon carries the same letter as the mark (T for clients and visitors, M for partners and staff), so a
+  partner's browser tab no longer shows the Tasees T.
 

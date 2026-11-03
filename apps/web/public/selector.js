@@ -48,18 +48,19 @@ const QUESTIONS = {
   owners: { title: "Who will own the company?", why: "A company as owner brings its own documents, beneficial-owner checks and tax questions.", type: "choice", options: [["individuals", "One or more individuals"], ["company", "A company"]] },
   foreignTaxResident: { title: "Is any owner tax resident outside the UAE?", why: "Another country's tax rules can reach a UAE company through its owners; a specialist reviews that.", type: "choice", options: [["yes", "Yes"], ["no", "No"], ["unsure", "Not sure"]] },
   turnover: { title: "What yearly revenue do you expect, in AED?", why: "It decides which tax registration points apply. Nothing is calculated here.", type: "number", hint: "Optional. A rough figure is enough.", min: 0, max: 10000000000, optional: true, when: () => answers.activity !== "holding" },
+  startWithin: { title: "When do you want to start?", why: "It tells MKW Advisors how soon to act; it changes nothing in the result.", type: "choice", optional: true, hint: "Optional.", options: [["1_month", "Within a month"], ["3_months", "Within three months"], ["later", "Later, I am exploring"]] },
   structure: { title: "Do you already have a structure in mind?", why: "If your answers point elsewhere, the result says so and a person confirms which fits.", type: "choice", options: [["not_sure", "Not yet", "show me what fits"], ["free_zone", "A free zone company"], ["mainland", "A mainland company"], ["offshore", "An offshore company"], ["difc_adgm", "DIFC or ADGM"]] },
   emirate: { title: "Which emirate, and is there a place you have in mind?", why: "The emirate narrows the places; naming one puts it at the top of the comparison.", type: "emirate" },
 };
 const EMIRATES = ["Dubai", "Abu Dhabi", "Sharjah", "Ajman", "Ras Al Khaimah", "Umm Al Quwain", "Fujairah"];
 // The order follows what matters first for the industry chosen: premises for manufacturing, owners for a holding
 // company, the customers and owners for regulated activity. The engine reads the same answers whatever the order.
-const DEFAULT_ORDER = ["activity", "customers", "visas", "premises", "budgetAed", "owners", "foreignTaxResident", "turnover", "structure", "emirate"];
+const DEFAULT_ORDER = ["activity", "customers", "visas", "premises", "budgetAed", "owners", "foreignTaxResident", "turnover", "structure", "startWithin", "emirate"];
 const ORDER = {
-  manufacturing: ["activity", "premises", "customers", "visas", "budgetAed", "owners", "foreignTaxResident", "turnover", "structure", "emirate"],
-  holding: ["activity", "owners", "foreignTaxResident", "customers", "visas", "budgetAed", "structure", "emirate"],
-  finance: ["activity", "customers", "owners", "foreignTaxResident", "visas", "premises", "budgetAed", "turnover", "structure", "emirate"],
-  virtual_assets: ["activity", "customers", "owners", "foreignTaxResident", "visas", "premises", "budgetAed", "turnover", "structure", "emirate"],
+  manufacturing: ["activity", "premises", "customers", "visas", "budgetAed", "owners", "foreignTaxResident", "turnover", "structure", "startWithin", "emirate"],
+  holding: ["activity", "owners", "foreignTaxResident", "customers", "visas", "budgetAed", "structure", "startWithin", "emirate"],
+  finance: ["activity", "customers", "owners", "foreignTaxResident", "visas", "premises", "budgetAed", "turnover", "structure", "startWithin", "emirate"],
+  virtual_assets: ["activity", "customers", "owners", "foreignTaxResident", "visas", "premises", "budgetAed", "turnover", "structure", "startWithin", "emirate"],
 };
 const visible = () => (ORDER[answers.activity] ?? DEFAULT_ORDER).map((k) => ({ key: k, ...QUESTIONS[k] })).filter((q) => !q.when || q.when());
 
@@ -74,6 +75,35 @@ const attribution = {
 };
 let savedCode = null;
 let lastResult = null;
+// E7C: aggregate, anonymous measurement. A random id the browser keeps for this session only (no cookie, nothing
+// stored beyond the tab's session), the stage reached and the question step; sent in small batches, repeats ignored
+// by the platform. It never carries a contact detail; the review request carries the same id so the funnel joins.
+const visitor = (() => {
+  try {
+    let v = sessionStorage.getItem("tasees-visitor");
+    if (!v || !/^[A-Za-z0-9_-]{8,32}$/.test(v)) { v = Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"[b % 62]).join(""); sessionStorage.setItem("tasees-visitor", v); }
+    return v;
+  } catch { return Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => "abcdefghijklmnopqrstuvwxyz0123456789"[b % 36]).join(""); }
+})();
+attribution.visitor = visitor;
+let pending = [];
+let flushTimer = null;
+const sent = new Set();
+function track(stage, key = "") {
+  const id = `${stage}:${key}`;
+  if (sent.has(id)) return;
+  sent.add(id);
+  pending.push({ stage, ...(key ? { key } : {}) });
+  clearTimeout(flushTimer);
+  flushTimer = setTimeout(flush, 800);
+}
+function flush() {
+  if (!pending.length) return;
+  const events = pending.splice(0, 40);
+  fetch("/api/public/events", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ visitor, events, attribution }), keepalive: true }).catch(() => {});
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") { clearTimeout(flushTimer); flush(); } });
+track("visited");
 // The consent texts come from the platform, so the page and the record always carry the same version.
 fetch("/api/public/consent-texts").then((r) => r.json()).then((t) => { $("marketing-text").textContent = t.marketing.text; $("partner-text").textContent = t.partner_disclosure.text; }).catch(() => {});
 
@@ -105,6 +135,7 @@ function render() {
       <div class="field"><label for="qzone">A free zone or authority you have in mind (optional)</label><input id="qzone" value="${esc(answers.freeZone ?? "")}" placeholder="for example IFZA, SHAMS, DIFC" /></div></div>`;
   }
   html += `<p class="why"><b>Why we ask:</b> ${esc(q.why)}</p>`;
+  track("step_reached", q.key);
   $("step").innerHTML = html;
   $("qmsg").hidden = true;
   for (const b of $("step").querySelectorAll(".choice")) {
@@ -121,7 +152,7 @@ function render() {
 
 function take() {
   const q = visible()[i];
-  if (q.type === "choice" && !answers[q.key]) return "Choose one to continue.";
+  if (q.type === "choice" && !answers[q.key] && !q.optional) return "Choose one to continue.";
   if (q.type === "number") {
     const raw = $("qnum").value.trim();
     if (!raw && !q.optional) return "Enter a number (zero is fine).";
@@ -151,6 +182,7 @@ const body = () => {
     ...(answers.premises ? { premises: answers.premises } : {}),
     ...(answers.budgetAed != null ? { budgetAed: answers.budgetAed } : {}),
     ...(answers.turnover != null ? { expectedTurnoverAed: answers.turnover } : {}),
+    ...(answers.startWithin ? { startWithin: answers.startWithin } : {}),
     ownerType: answers.owners,
     ...(answers.foreignTaxResident === "yes" ? { foreignTaxResident: true } : answers.foreignTaxResident === "no" ? { foreignTaxResident: false } : {}),
   };
@@ -268,13 +300,15 @@ function showResult(p, recovered = null) {
     <p class="small muted noprint" id="save-msg" hidden aria-live="polite"></p></div>
     ${recovered ? `<p class="small muted">Saved ${esc(recovered.savedAt.slice(0, 10))}, opened ${recovered.recovered} time(s); shown again on today's rules.</p>` : ""}`;
   show("result");
-  $("print").addEventListener("click", () => window.print());
+  track("result_viewed");
+  $("print").addEventListener("click", () => { track("report_printed"); window.print(); });
   $("edit").addEventListener("click", () => edit(0));
   for (const a of $("result").querySelectorAll("a[data-edit]")) a.addEventListener("click", (ev) => { ev.preventDefault(); edit(Number(a.dataset.edit)); });
   for (const c of $("result").querySelectorAll("input.cmp")) c.addEventListener("change", () => {
     const idx = Number(c.dataset.idx);
     if (c.checked && compared.length >= 5) { c.checked = false; $("compare").querySelector("[role=alert]")?.remove(); $("compare").insertAdjacentHTML("afterbegin", `<p class="notice small" role="alert">Five places at most: untick one to add another.</p>`); return; }
     compared = c.checked ? [...compared, idx] : compared.filter((x) => x !== idx);
+    track("compared");
     c.closest(".place").classList.toggle("cmp-on", c.checked);
     $("compare").innerHTML = compareTable(compared.map((k) => p.places[k]));
     if (isAr()) translateTree($("compare"));
@@ -287,6 +321,7 @@ function showResult(p, recovered = null) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Could not save");
       savedCode = data.code;
+      track("result_saved");
       $("save").textContent = `Saved: code ${savedCode}`;
       $("save-msg").hidden = false;
       $("save-msg").textContent = `Keep this code to come back to your result: ${savedCode}. It holds your answers only, no contact details, and is kept for a limited time.`;
@@ -316,6 +351,7 @@ async function assess() {
     const res = await fetch("/api/public/assess", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body()) });
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || "Something went wrong");
+    track("assessment_completed");
     showResult(data);
   } catch (e) { $("qmsg").textContent = `${e.message}. Check your connection and try again; your answers are still here.`; } finally { $("next").disabled = false; $("next").classList.remove("busy"); }
 }
@@ -335,6 +371,7 @@ $("to-landing").addEventListener("click", () => { savedCode = null; show("landin
 const CONFIRM_ACTIVITY = new Set(["finance"]);
 function start(activity) {
   savedCode = null;
+  track("assessment_started");
   if (activity && QUESTIONS.activity.options.some((o) => o[0] === activity)) { answers.activity = activity; i = CONFIRM_ACTIVITY.has(activity) ? 0 : 1; } else i = 0;
   show("questions");
   render();
@@ -354,7 +391,7 @@ async function recover(code) {
     if (!res.ok || !data.found) { msg.textContent = "No saved result with that code (saved results are kept for a limited time)."; return; }
     // Only the recovered answers: nothing typed or recovered before stays behind.
     for (const k of Object.keys(answers)) delete answers[k];
-    Object.assign(answers, data.answers, { owners: data.answers.ownerType, foreignTaxResident: data.answers.foreignTaxResident === true ? "yes" : data.answers.foreignTaxResident === false ? "no" : undefined, structure: data.answers.jurisdiction, turnover: data.answers.expectedTurnoverAed ?? undefined });
+    Object.assign(answers, data.answers, { owners: data.answers.ownerType, foreignTaxResident: data.answers.foreignTaxResident === true ? "yes" : data.answers.foreignTaxResident === false ? "no" : undefined, structure: data.answers.jurisdiction, turnover: data.answers.expectedTurnoverAed ?? undefined, startWithin: data.answers.startWithin ?? undefined });
     savedCode = code.trim().toUpperCase();
     msg.textContent = "";
     showResult(data.result, { savedAt: data.savedAt, recovered: data.recovered });

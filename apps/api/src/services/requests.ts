@@ -27,6 +27,8 @@ export const IntakeSchema = z.object({
   ownerType: z.enum(["individuals", "company"]).optional(),
   foreignTaxResident: z.boolean().optional(),
   description: z.string().max(2000).optional(),
+  // E7C: when the founder wants to start (the lead scores read it; the engine does not).
+  startWithin: z.enum(["1_month", "3_months", "later"]).optional(),
 });
 
 /**

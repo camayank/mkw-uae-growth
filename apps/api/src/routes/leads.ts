@@ -4,14 +4,14 @@ import { PLATFORM_ROLES, requireRole } from "../lib/auth.ts";
 import { asPlatform } from "../lib/context.ts";
 import { publicAssess } from "../services/public.ts";
 import { IntakeSchema } from "../services/requests.ts";
-import { addLeadNote, assignLead, completeFollowup, CONSENT_TEXTS, getRouting, leadAnalytics, leadDetail, LEAD_STATUSES, listLeads, recoverAssessment, saveAssessment, SEGMENTS, setFollowup, setLeadStatus, setRouting, withdrawConsent } from "../services/leads.ts";
+import { addLeadNote, assignLead, completeFollowup, CONSENT_TEXTS, FUNNEL_STAGES, funnelReport, getRouting, leadAnalytics, leadDetail, LEAD_STATUSES, listLeads, recordFunnelEvents, recoverAssessment, saveAssessment, SEGMENTS, setFollowup, setLeadStatus, setNextAction, setRouting, withdrawConsent } from "../services/leads.ts";
 import type { RouteContext } from "./context.ts";
 
 /** Lead intelligence (E4): saved assessments, the lead pipeline, routing, analytics. Nothing here sends anything. */
 export function registerLeadRoutes(ctx: RouteContext) {
   const { app, db, throttle } = ctx;
 
-  const Attribution = z.object({ source: z.string().max(80).optional(), medium: z.string().max(80).optional(), campaign: z.string().max(80).optional(), term: z.string().max(120).optional(), content: z.string().max(120).optional(), referrer: z.string().max(300).optional(), landing: z.string().max(200).optional() }).partial();
+  const Attribution = z.object({ source: z.string().max(80).optional(), medium: z.string().max(80).optional(), campaign: z.string().max(80).optional(), term: z.string().max(120).optional(), content: z.string().max(120).optional(), referrer: z.string().max(300).optional(), landing: z.string().max(200).optional(), visitor: z.string().max(32).optional() }).partial();
   const AnswersBody = IntakeSchema.omit({ mode: true, addOns: true, services: true, description: true });
 
   // Saving is the founder's own action and takes no contact details; the code comes back once, never by email.
@@ -41,6 +41,25 @@ export function registerLeadRoutes(ctx: RouteContext) {
   });
   // The consent texts the public pages show, so the page and the record always agree on the version.
   app.get("/api/public/consent-texts", async () => CONSENT_TEXTS);
+  // E7C: anonymous funnel measurement from the public page. A random per-session id, the stage and a step key; the
+  // attribution is the same the page already sends. Nothing identifies a person; repeats are ignored.
+  const FunnelBody = z.object({ visitor: z.string().regex(/^[A-Za-z0-9_-]{8,32}$/), events: z.array(z.object({ stage: z.enum(FUNNEL_STAGES), key: z.string().max(40).optional() })).min(1).max(40), attribution: Attribution.optional() });
+  app.post("/api/public/events", { config: { body: FunnelBody } }, async (req) => {
+    throttle(req, "public-events", 300);
+    const body = FunnelBody.parse(req.body);
+    return asPlatform(db, null, (tx) => recordFunnelEvents(tx, body.visitor, body.events, cleanAttribution(body.attribution ?? {})));
+  });
+  // E7C: the conversion dashboard and the adviser's override of the next best action.
+  app.get("/api/ops/pipeline/funnel", async (req) => {
+    const user = requireRole(req, "ops", "founder");
+    return asPlatform(db, user, (tx) => funnelReport(tx, user));
+  });
+  const NextActionBody = z.object({ action: z.string().max(120).nullable(), reason: z.string().max(500).default("") });
+  app.post<{ Params: { id: string } }>("/api/ops/pipeline/leads/:id/next-action", { config: { body: NextActionBody } }, async (req) => {
+    const user = requireRole(req, "ops", "founder");
+    const body = NextActionBody.parse(req.body);
+    return asPlatform(db, user, (tx) => setNextAction(tx, user, z.string().uuid().parse(req.params.id), body.action, body.reason));
+  });
 
   // The pipeline (ops and the founder) ----------------------------------------------------------------
   const Id = z.string().uuid();

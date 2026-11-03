@@ -270,6 +270,13 @@ export const AR = {
   "Ask MKW Advisors to review this result": "اطلب من MKW Advisors مراجعة هذه النتيجة",
   "The structure is confirmed by a person, not by this page. A review checks every point marked to be verified and sends priced offers from vetted partner firms.": "يؤكد الهيكلَ شخصٌ لا هذه الصفحة. تتحقق المراجعة من كل نقطة قيد التحقق وترسل عروضاً مسعّرة من شركات شريكة معتمدة.",
   "Site": "الموقع",
+  "When do you want to start?": "متى تريد البدء؟",
+  "It tells MKW Advisors how soon to act; it changes nothing in the result.": "يخبر MKW Advisors بمدى السرعة المطلوبة؛ ولا يغيّر شيئاً في النتيجة.",
+  "Optional.": "اختياري.",
+  "Within a month": "خلال شهر",
+  "Within three months": "خلال ثلاثة أشهر",
+  "Later, I am exploring": "لاحقاً، ما زلت أستكشف",
+  "We count how this page is used, in aggregate: which questions are reached and whether a result is viewed or saved. No cookie, no contact detail, nothing tied to you unless you ask for a review.": "نحصي كيفية استخدام هذه الصفحة إجمالاً: أي الأسئلة يتم الوصول إليها وما إذا كانت النتيجة تُعرض أو تُحفظ. لا ملفات تعريف ارتباط ولا بيانات اتصال ولا شيء مرتبط بك ما لم تطلب مراجعة.",
   // Public Right UAE Entity selector (E3)
   "Which UAE structure fits your business?": "أي هيكل شركة في الإمارات يناسب عملك؟",
   "Seven short questions. You see which structures and places fit, which do not and why, with nothing to sign up for. Only points a named person at MKW Advisors has checked show their detail; the rest say \"to be verified\" until a person reviews your case.": "سبعة أسئلة قصيرة. سترى أي الهياكل والأماكن تناسبك وأيها لا يناسبك ولماذا، دون أي تسجيل. تظهر التفاصيل فقط للنقاط التي راجعها شخص مسمّى في MKW Advisors؛ أما الباقي فيُكتب \"قيد التحقق\" إلى أن يراجع شخص حالتك.",

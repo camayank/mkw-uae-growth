@@ -36,7 +36,7 @@ export const PublicIntakeSchema = z.object({
   referrer: z.string().max(300).optional(),
   answers: IntakeSchema,
   // E4: attribution, the saved assessment this came from, the other consents (never pre-ticked), a call request.
-  attribution: z.object({ source: z.string().max(80).optional(), medium: z.string().max(80).optional(), campaign: z.string().max(80).optional(), term: z.string().max(120).optional(), content: z.string().max(120).optional(), referrer: z.string().max(300).optional(), landing: z.string().max(200).optional() }).partial().optional(),
+  attribution: z.object({ source: z.string().max(80).optional(), medium: z.string().max(80).optional(), campaign: z.string().max(80).optional(), term: z.string().max(120).optional(), content: z.string().max(120).optional(), referrer: z.string().max(300).optional(), landing: z.string().max(200).optional(), visitor: z.string().max(32).optional() }).partial().optional(),
   assessmentCode: z.string().max(12).optional(),
   marketingConsent: z.boolean().default(false),
   partnerDisclosureConsent: z.boolean().default(false),

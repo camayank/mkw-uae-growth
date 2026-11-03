@@ -1,6 +1,6 @@
 # E7D Reporting and advisory experiences: the assessment report and the consultation workflow
 
-Status: verified-pending-merge (branch `outcome/E7D-reports`, built on E7C; released by the owner on 3 Nov 2026 with the E7
+Status: merged (camayank/mkw-uae-growth#27, 3 Nov 2026; previously verified-pending-merge, branch `outcome/E7D-reports`, built on E7C; released by the owner on 3 Nov 2026 with the E7
 contract, phase 4 "Customer trust and professional reporting")
 
 ## Business result

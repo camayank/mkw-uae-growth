@@ -189,3 +189,11 @@ reviewed from the approved advice), downloadable from the public page and the cl
 same data the screens read, with the in-house PDF writer; consultation booking on the lead page with a queued
 follow-up.
 
+**E7E** (`outcomes/E7E-pilot-readiness.md`, D89): the pilot decided from one record in `docs/evidence/E7E/`: six
+pilot journeys (founder, adviser, client, partners, the founder of MKW, the data subject) end to end on a fresh
+environment with every launch-gate invariant asserted; the quality and security regression on the final code on
+PGlite and PostgreSQL 16, with the browser, the load test, the audit, the infrastructure synthesis and the
+container build each marked executed here, CI-only or blocked; the staging checklist with a state and an owner per
+item; the go/no-go sheet with the platform's rows filled and the human rows blank. Development tools taken off the
+advisory list (gap 44). Staging stays blocked on the owner's inputs (gap 80): no live readiness is claimed.
+

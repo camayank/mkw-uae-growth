@@ -46,9 +46,12 @@ task on the same image. Secrets come from AWS Secrets Manager at start (`infra/l
 | csv-parse 5.6.0 | yes (owner-run import scripts) | prototype replacement via column names | Upgraded to 7.0.3 |
 | fast-uri (through Fastify's validator) | yes | URI scheme and host confusion | Patched versions pinned with a pnpm override |
 | zod 3.23.8 | yes | memory exhaustion on oversized constrained collections | Migrated to zod 4.6.7 (S1, D71). The 1 MB body cap (25 MB only for file routes) stays as defence in depth |
-| vitest, vite, tinypool, esbuild (through tsx), playwright | no (development and CI only) | issues when a dev server or the Vitest UI listens, or when browsers are downloaded | Not exposed: tests run with `vitest run`, no dev server is reachable, CI is ephemeral. Upgrade with the next tooling change. Gap 44 |
+| vitest, vite, tinypool, esbuild (through tsx), playwright | no (development and CI only) | issues when a dev server or the Vitest UI listens, or when browsers are downloaded | Not exposed: tests run with `vitest run`, no dev server is reachable, CI is ephemeral. Upgraded to patched, pinned versions (E7E, D89); gap 44 closed |
 
-`pnpm audit --prod` reports no known vulnerabilities (S1, 25 Oct 2026).
+`pnpm audit --prod` reports no known vulnerabilities (S1, 25 Oct 2026). On 3 Nov 2026 (E7E, D89) the development
+tools were upgraded to patched, pinned versions (vitest 4.1.12, vite 7.3.7, tsx 4.23.15, playwright 1.64.1), so
+`pnpm audit` is clean for everything, not only for what ships; `docs/evidence/E7E/SECURITY-REGRESSION.md` maps the
+eight items below to the tests that already try them, so the reviewer starts from a failing-test template.
 
 ## What we ask you to try
 

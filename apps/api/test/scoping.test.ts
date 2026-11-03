@@ -287,7 +287,7 @@ describe("public intake", () => {
     } finally {
       await trusting.db.close();
     }
-  });
+  }, 30_000); // builds a second environment (migrations and seed), which takes seconds on a loaded PostgreSQL server
 
   it("is rate-limited per IP", async () => {
     let limited = 0;

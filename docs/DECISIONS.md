@@ -931,3 +931,23 @@ canvas of 3 Nov 2026 and its review round.)
   assessment behind it, so the route answers 404 and the page offers no link (the engine would otherwise have
   compared structures for a company that already exists).
 
+**D89. The pilot is decided from one record, and the development tools are off the advisory list.** (E7E, 3 Nov 2026.)
+
+- The go/no-go for the commercial pilot rests on `docs/evidence/E7E/`: the six pilot journeys run end to end on a
+  fresh environment (`apps/api/test/pilot-journeys.test.ts`, one suite, one pilot day, every launch-gate invariant
+  asserted at every step), the quality and security regression on the final code with each check marked executed
+  here, CI-only or blocked, the staging checklist with a state and an owner for every item, and the decision sheet
+  whose human rows stay blank until the named person signs. No cloud resource, spend, message, payment or filing
+  came out of writing it; staging stays blocked on the owner's inputs (gap 80) and no live readiness is claimed.
+- The six journeys are the six people the pilot has (founder on the public page, adviser, client, partner firms,
+  the founder of MKW, the data subject). The contract's own wording for its journeys A to F is held in the owner's
+  prompt; if the list differs, the suite is renamed, not rebuilt (an owner decision on the outcome).
+- Development tooling (gap 44): vitest 2.1.8 to 4.1.12 with vite pinned at 7.3.7 (vitest 4 accepts vite 6 to 8 and
+  the lockfile had kept 5.4, which carries the advisories), tsx 4.19.2 to 4.23.15 (esbuild 0.28.2), playwright 1.49.1
+  to 1.64.1, `@types/node` 22.10.2 to 22.20.5 for vite's peer range. All exact (rule 11); `pnpm audit` is clean for
+  everything and for production alone. Licences unchanged (MIT, Apache-2.0 for playwright). Every suite was rerun on
+  PGlite and PostgreSQL 16 and the smoke test on the new browser driver before this was recorded. To remove: pin the
+  previous versions back in the three `package.json` files and reinstall; nothing in the application depends on them.
+- A test that builds a second whole environment (the trusted-proxy test) gets a 30-second budget on PostgreSQL: the
+  5-second default timed out when two suites shared the server, which is a budget problem, not a defect.
+

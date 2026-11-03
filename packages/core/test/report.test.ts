@@ -102,8 +102,9 @@ describe("the assessment report (E7D)", () => {
     const p = publicView(tight, new Set(allRules.map((r) => r.key)), new Set(zones.map((x) => x.name)), "2026-11-03");
     expect(p.noViableOption).toBe(true);
     const text = reportLines(preliminaryReport(p, { ...rest, visas: 1, budgetAed: 1_000 }, { reference: "PRE-ABCD1234", date: "2026-11-03" })).join("\n");
-    expect(text).toMatch(/No structure fits every answer yet: a specialist at MKW Advisors\s+looks at the case\./); // the line may wrap
-    expect(text).toContain("No recommendation is made on this page");
+    const flat = text.replace(/\s+/g, " "); // lines wrap at the PDF width
+    expect(flat).toContain("No structure fits every answer yet: a specialist at MKW Advisors looks at the case.");
+    expect(flat).toContain("No recommendation is made on this page; a person at MKW Advisors reviews the case first.");
     expect(text).not.toMatch(/Pathway that fits your answers|The answers point to/);
   });
 

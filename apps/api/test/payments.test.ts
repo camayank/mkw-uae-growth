@@ -34,7 +34,7 @@ describe("payment links and the signed webhook", () => {
 
   it("creates a card link on acceptance and tells the client about it", async () => {
     const { engagementId, deposit } = await engagementWithDeposit(env);
-    expect(deposit.payUrl).toBe(`https://app.test/#/pay/${deposit.id}`);
+    expect(deposit.payUrl).toBe(`https://app.test/app/#/pay/${deposit.id}`); // E14: the workspace is at /app/
     expect(env.provider.links).toHaveLength(1);
     const client = await env.call("client", "GET", `/api/engagements/${engagementId}`);
     expect(client.body.payments.find((p: any) => p.kind === "deposit").payUrl).toContain("/pay/");

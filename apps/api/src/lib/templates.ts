@@ -99,7 +99,7 @@ const ref = (id: unknown) => String(id ?? "").slice(0, 8).toUpperCase();
 
 export function renderTemplate(template: TemplateName, audience: Audience, vars: Vars, appUrl: string): Rendered {
   const brand = BRAND[audience];
-  const link = (path: string) => `${appUrl.replace(/\/$/, "")}/#${path}`;
+  const link = (path: string) => `${appUrl.replace(/\/$/, "")}/app/#${path}`; // E14: the workspace is at /app/
   const sign = `\n\n${brand.signOff}`;
   switch (template) {
     case "login_code":

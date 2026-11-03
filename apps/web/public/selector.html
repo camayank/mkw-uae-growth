@@ -6,6 +6,9 @@
   <title>Right UAE Entity: find the structure and place that fit your business</title>
   <meta name="description" content="Answer a few questions and see which UAE structures and places fit your business, which do not and why, with every figure labelled checked or to be verified. Preliminary general information from MKW Advisors, not advice. No sign-up." />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230f5c4d'/%3E%3Cpath d='M9 10h14v3h-5.5v11h-3V13H9z' fill='%23fff'/%3E%3C/svg%3E" />
+  <link rel="canonical" href="/" />
+  <!-- E14: a workspace link sent before the workspace moved to /app/ (/#/…) goes there before this page draws. -->
+  <script src="forward.js"></script>
   <link rel="stylesheet" href="tokens.css" />
   <link rel="stylesheet" href="styles.css" />
   <style>
@@ -211,8 +214,8 @@
   <a class="skip" href="#main">Skip to content</a>
   <div class="flagbar" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
   <header class="top">
-    <a class="brand" href="/selector.html"><span class="mark">T</span><span class="brand-text">Tasees <small>by MKW Advisors</small></span></a>
-    <nav class="links noprint" aria-label="Site"><a href="/selector.html#quick" id="nav-start">Start</a><a href="/" id="nav-signin">Sign in to Tasees</a></nav>
+    <a class="brand" href="/"><span class="mark">T</span><span class="brand-text">Tasees <small>by MKW Advisors</small></span></a>
+    <nav class="links noprint" aria-label="Site"><a href="/#quick" id="nav-start">Start</a><a href="/app/" id="nav-signin">Sign in to Tasees</a></nav>
   </header>
   <main class="selector" id="main">
     <section id="landing" class="landing">
@@ -279,7 +282,7 @@
         <details><summary>What happens after I ask for a review?</summary><p>A person checks your answers against the current rules and figures and sends priced offers from MKW Advisors, delivered by vetted partner firms. A reply usually comes within one working day.</p></details>
       </div>
       <div class="cta-band"><div><h2>Find your set-up in about a minute</h2><p>Four questions. The places worth reviewing. A person checks them before any price.</p></div><button type="button" class="gold" id="cta-start">Start now, free</button></div>
-      <p class="small muted" style="margin-top:16px">Already a client? <a href="/">Sign in to the Tasees workspace</a>.</p>
+      <p class="small muted" style="margin-top:16px">Already a client? <a href="/app/">Sign in to the Tasees workspace</a>.</p>
     </section>
 
     <section id="quick" class="quick" hidden aria-labelledby="quick-title">
@@ -344,6 +347,6 @@
     <p class="small muted">Tasees is a service of MKW Advisors. Partner firms deliver the work; MKW Advisors manages scope, price, quality and payment. Nothing on this page is advice or a statutory conclusion; nothing is filed automatically.</p>
     <p class="small muted" id="measure">We count how this page is used, in aggregate: which questions are reached and whether a result is viewed or saved. No cookie, no contact detail, nothing tied to you unless you ask for a review.</p>
   </main>
-  <script type="module" src="selector.js"></script>
+  <!-- selector.js is loaded by forward.js (E14), unless the page is forwarding an old workspace link. -->
 </body>
 </html>

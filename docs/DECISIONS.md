@@ -1075,3 +1075,25 @@ canvas of 3 Nov 2026 and its review round.)
   never that places fit, because a count falls only on an approved exclusion.
 - Staff (the review, the offers, allocation) keep the engine's full order. The page's "No preference: show me the best
   value anywhere" became "No preference: anywhere in the UAE".
+
+**D96. The public homepage is the site's front door at `/`; the workspace lives at `/app/`.** (E14, released by the
+owner on 3 Nov 2026: "start E14".)
+
+- Before, `/` served the workspace (clients, partners, MKW staff) and the public homepage lived at `/selector.html`, so
+  a visitor arriving at the bare address met a sign-in screen. Paid or search traffic needs the product page first.
+- Now `/` serves the homepage, `/app/` the workspace (its files are served from there too, so its relative links
+  work), and `/intake.html` stays as it is. The workspace path is fixed in code; the domain stays the owner's choice
+  (`APP_URL`, DNS: gap 18).
+- **Old addresses keep working.** `/selector.html` and `/index.html` redirect permanently, keeping the query (a saved
+  result's `?code=`). A link sent before the move (`/#/engagement/…` in an email, `/#/pay/…`) opens the homepage,
+  whose first script (`forward.js`, before anything draws) sends it to the same place under `/app/`.
+- Email and payment links now point at `APP_URL/app/#/…` directly. Payment links stored before E14 keep the old form
+  and are forwarded. While forwarding, the homepage stays hidden and does not load its script, so no funnel visit is
+  counted and a partner never sees it.
+- The E7C funnel's landing path for the homepage is `/` from E14 on (it was `/selector.html`): a report that compares
+  landing pages across the change should read both as the homepage.
+- Any other address is a 404 page with the way home, never the workspace. Under `/app/` an unknown path still opens
+  the workspace, whose routes are in the fragment.
+- **Search.** The public pages carry a canonical link, made absolute from `APP_URL` when it is set. `robots.txt`
+  keeps `/app/` and `/api/` out of search, and `/sitemap.xml` lists `/` and `/intake.html` (no sitemap until
+  `APP_URL` is set). The workspace and the 404 page carry `noindex`.

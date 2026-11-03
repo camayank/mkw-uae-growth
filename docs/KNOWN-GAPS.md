@@ -330,6 +330,16 @@ in a browser; everything listed here is not.
      assessment and the structure on the rules alone). Each run is linear in places and rules; at the first wave's
      size this is milliseconds. Reusing one run across them is an optimisation for a larger catalogue.
 
+## E14: front door
+
+122. **The domain is not chosen.** The homepage is at `/` and the workspace at `/app/` on whatever address `APP_URL`
+     names; the domain, DNS and certificate wait on the owner (gap 18). Until `APP_URL` is set the canonical links
+     are relative and there is no sitemap.
+123. **One address serves both languages.** The Arabic homepage is `/?lang=ar` with the same canonical link as the
+     English page; separate Arabic addresses with `hreflang` links come with the Arabic sign-off (gaps 111, 119).
+124. **The privacy consent text recorded for the homepage still says "selector.html"** (`2026-11-selector-v1`). It is
+     the wording a founder agreed to, kept as recorded; a new consent version would name the new address.
+
 ## E9: workspace look
 
 113. ~~**The staff console's sidebar from the canvas is not built.**~~ Decided by the owner on 3 Nov 2026: staff keep

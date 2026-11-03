@@ -28,8 +28,8 @@
 | `SES_REGION`, `SES_ACCESS_KEY_ID`, `SES_SECRET_ACCESS_KEY` | fall back to the `S3_*` values | Credentials of a user allowed only `ses:SendEmail`. `SES_ENDPOINT` overrides the service URL. |
 | `EMAIL_FROM_CLIENT` | `tasees@mkwadvisors.com` | Sender address for messages to clients (shown as "Tasees, by MKW Advisors"). Must be verified in SES. |
 | `EMAIL_FROM_PARTNER` | `partners@mkwadvisors.com` | Sender address for messages to partners and staff (shown as "MKW Advisors"). |
-| `APP_URL` | `http://localhost:PORT` | Public URL of the workspace, used in links inside messages. |
-| `WEB_DIR` | `apps/web/public` | Static web app served at `/`. |
+| `APP_URL` | `http://localhost:PORT` | The public web address, without a path: the homepage is at `/` and the workspace at `/app/` (E14). Used in links inside messages (`APP_URL/app/#/…`), the public pages' canonical links, `robots.txt` and `/sitemap.xml` (no sitemap until it is set). |
+| `WEB_DIR` | `apps/web/public` | The web pages: the public homepage at `/`, the workspace at `/app/`, the intake at `/intake.html` (E14). |
 | `IN_PROCESS_JOBS` | on | `0` turns off the 15-minute in-process timers; then run `pnpm jobs` from cron. |
 | `LOG` | on | `0` turns off request logging. |
 | `ALERT_EMAIL` | unset | Where platform alerts go (jobs late, a step failed, messages stuck, audit chain broken). Needs `EMAIL=ses` to actually send (the server warns at start otherwise). Unset, alerts are logged and shown on Setup → System and in the ops queue only. |

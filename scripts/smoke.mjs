@@ -7,6 +7,8 @@ import { chromium } from "playwright";
 import { readFileSync, writeFileSync } from "node:fs";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:8787";
+/** E14 (D96): the workspace lives at /app/; the public homepage is the front door at /. */
+const APP = BASE + "/app/";
 const OUT = process.env.OUT ?? "./smoke-shots";
 const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
 const errors = [];
@@ -30,7 +32,7 @@ async function session(email) {
   page.on("pageerror", (e) => errors.push(`${email}: ${e.message}`));
   page.on("console", (m) => m.type() === "error" && !m.text().includes("401") && errors.push(`${email} console: ${m.text()}`));
   page.on("dialog", (d) => d.accept(d.type() === "prompt" ? (d.message().includes("Type ERASE") ? "ERASE" : d.defaultValue() || "REF-12345") : undefined));
-  await page.goto(BASE + "/");
+  await page.goto(APP);
   await page.locator(`button[data-email="${email}"]`).click();
   await page.locator('form[data-form="verify"] button[type="submit"]').click();
   await page.waitForSelector("#nav > :is(a, .navgroup)");
@@ -41,7 +43,7 @@ async function sessionByEmail(email) {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const page = await ctx.newPage();
   page.on("pageerror", (e) => errors.push(`${email}: ${e.message}`));
-  await page.goto(BASE + "/");
+  await page.goto(APP);
   await page.fill('form[data-form="request-code"] input[name="email"]', email);
   await page.locator('form[data-form="request-code"] button[type="submit"]').click();
   await page.waitForSelector('form[data-form="verify"]');
@@ -87,14 +89,28 @@ await (await import("node:fs/promises")).mkdir(OUT, { recursive: true });
 {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const p = await ctx.newPage();
-  await p.goto(BASE + "/");
+  await p.goto(APP);
   await p.waitForSelector("form");
   await shot(p, "01-sign-in");
 }
 
 // Client: new request
 const client = await session("founder@sample-client.test");
-await client.goto(BASE + "/#/new");
+// E14: a workspace link sent before the move (/#/…) opens the same screen at /app/, without running the homepage:
+// no funnel event, no public request (independent review of E14).
+{
+  const publicCalls = [];
+  const onRequest = (r) => { if (r.url().includes("/api/public/") || r.url().endsWith("/selector.js")) publicCalls.push(r.url()); };
+  client.on("request", onRequest);
+  await client.goto(BASE + "/#/home");
+  await client.waitForURL(/\/app\/#\/home$/);
+  await client.waitForSelector("#nav > :is(a, .navgroup)");
+  await client.waitForTimeout(1200);
+  client.off("request", onRequest);
+  check("an old workspace link (/#/home) forwards to /app/#/home, signed in, with no homepage script or public request (E14):", new URL(client.url()).pathname === "/app/" && publicCalls.length === 0);
+  if (publicCalls.length) log.push("public calls while forwarding: " + publicCalls.join(", "));
+}
+await client.goto(APP + "#/new");
 await client.waitForSelector('form[data-form="intake"]');
 // O12: a conversation, one question at a time, with the plan building beside it.
 const next = async () => {
@@ -134,19 +150,19 @@ const opsKeyed = [];
 ops.on("request", (r) => {
   if (["POST", "PUT", "DELETE"].includes(r.method()) && r.url().includes("/api/") && !/\/api\/(auth|public)\//.test(r.url())) opsKeyed.push(!!r.headers()["idempotency-key"]);
 });
-await ops.goto(BASE + "/#/pipeline");
+await ops.goto(APP + "#/pipeline");
 await ops.locator('button[data-act="build"]').first().click();
 await ops.waitForTimeout(900);
 log.push("build: " + (await toastText(ops)));
 await shot(ops, "03-ops-pipeline");
-await ops.goto(BASE + "/#/home");
+await ops.goto(APP + "#/home");
 await shot(ops, "04-ops-queue");
 // open the standard offer
-await ops.goto(BASE + "/#/pipeline");
+await ops.goto(APP + "#/pipeline");
 await ops.waitForSelector('a[href^="#/offer/"]');
 const offerLinks = await ops.locator('a[href^="#/offer/"]').evaluateAll((as) => as.map((a) => [a.textContent, a.getAttribute("href")]));
 const standard = offerLinks.find(([t]) => t === "standard") ?? offerLinks[0];
-await ops.goto(BASE + "/" + standard[1]);
+await ops.goto(APP + standard[1]);
 await ops.waitForSelector('button[data-act="publish"]');
 await shot(ops, "05-ops-offer-no-margin");
 await ops.locator('button[data-act="publish"]').click();
@@ -155,12 +171,12 @@ log.push("publish: " + (await toastText(ops)));
 
 // Finance sees margin on the same offer
 const finance = await session("finance@mkwadvisors.test");
-await finance.goto(BASE + "/" + standard[1]);
+await finance.goto(APP + standard[1]);
 await finance.waitForSelector(".kpis");
 await shot(finance, "06-finance-offer-with-margin");
 
 // Client: view and accept. The client terms come first (O10): version, draft note, a tick to accept.
-await client.goto(BASE + "/" + standard[1]);
+await client.goto(APP + standard[1]);
 await client.waitForSelector('button[data-act="accept-offer"]');
 await axeCheck(client, "client offer with the client terms (O10)");
 check("client sees the client terms with their version before accepting:", (await client.locator("input[data-terms-version]").count()) === 1 && /version 1/.test(await client.locator(".accept-terms").innerText()));
@@ -187,7 +203,7 @@ const engagementUrl = client.url();
 await client.waitForTimeout(600);
 await shot(client, "08-client-engagement-awaiting-payment");
 // E9: the client's home shows where the work stands, from the platform's own states: the deposit is the step now.
-await client.goto(BASE + "/#/"); await client.reload();
+await client.goto(APP + "#/"); await client.reload();
 await client.waitForSelector("ol.journey");
 check("the client's journey marks the request and the offer done and the deposit as the step now (E9):", await client.evaluate(() => { const li = [...document.querySelectorAll("ol.journey li")]; const st = (n) => li.find((x) => x.textContent.includes(n))?.className; return st("Request") === "done" && st("Offer accepted") === "done" && st("Deposit") === "now" && st("Complete") === "upcoming" && document.querySelector('ol.journey li[aria-current="step"]')?.textContent.includes("Deposit"); }));
 {
@@ -300,18 +316,18 @@ check("the client engagement opens on the next action and folds the rest into pa
 await shot(client, "13-client-engagement-approved");
 // E9: in delivery, the journey moves on, and the money sits on the dark panel; the engagement carries its flag.
 check("the engagement page shows the emirate's flag and the steps approved as a progress bar (E9):", (await client.locator("main h1 .flag svg").count()) === 1 && (await client.locator('main > .progress[role="progressbar"]').count()) === 1);
-await client.goto(BASE + "/#/"); await client.reload();
+await client.goto(APP + "#/"); await client.reload();
 await client.waitForSelector("ol.journey");
 check("in delivery, the journey marks the deposit and the partner done and delivery as the step now, with the steps approved (E9):", await client.evaluate(() => { const li = [...document.querySelectorAll("ol.journey li")]; const st = (n) => li.find((x) => x.textContent.includes(n))?.className; return st("Deposit") === "done" && st("Partner assigned") === "done" && st("Delivery") === "now" && /\d+ of \d+ steps approved/.test(li.find((x) => x.textContent.includes("Delivery")).textContent); }) && (await client.locator("section.money.panel-dark").count()) === 1);
 await shot(client, "106-client-home-journey");
 await axeCheck(client, "client home with the journey and the money panel (E9)");
 
 // Notifications (O2): the client's bell holds the offer and deposit notices; a partner's never says Tasees
-await client.goto(BASE + "/#/home"); await client.reload();
+await client.goto(APP + "#/home"); await client.reload();
 await client.waitForSelector("#who .bell");
 const unreadBefore = Number((await client.locator("#who .bell .count").textContent().catch(() => "0")) || 0);
 check("client bell shows unread notices after the flow:", unreadBefore >= 2);
-await client.goto(BASE + "/#/notifications");
+await client.goto(APP + "#/notifications");
 await client.waitForSelector('main h1:text-is("Notifications")');
 const noticeText = await client.locator("main").innerText();
 check("client notifications mention the offers and the deposit:", /offers are ready/i.test(noticeText) && /deposit/i.test(noticeText));
@@ -321,7 +337,7 @@ await client.locator('button[data-act="read-all"]').click();
 await eventually("mark all as read clears the bell:", async () => (await client.locator("#who .bell .count").count()) === 0);
 const partnerNotices = partnerPages[0];
 if (partnerNotices) {
-  await partnerNotices.goto(BASE + "/#/notifications"); await partnerNotices.reload();
+  await partnerNotices.goto(APP + "#/notifications"); await partnerNotices.reload();
   await partnerNotices.waitForSelector('main h1:text-is("Notifications")');
   const pt = await partnerNotices.locator("main").innerText();
   check("partner notifications come from MKW Advisors and never say Tasees:", /MKW Advisors/.test(pt) && !/tasees/i.test(pt));
@@ -332,7 +348,7 @@ if (partnerNotices) {
 // Mobile
 const m = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
 const mp = await m.newPage();
-await mp.goto(BASE + "/");
+await mp.goto(APP);
 await mp.locator('button[data-email="founder@sample-client.test"]').click();
 await mp.locator('form[data-form="verify"] button[type="submit"]').click();
 await mp.waitForSelector("#nav > :is(a, .navgroup)");
@@ -341,7 +357,7 @@ await mp.waitForTimeout(700);
 const overflow = await mp.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
 check("client page at 390 px has no horizontal overflow:", !overflow);
 await mp.screenshot({ path: `${OUT}/14-mobile-client.png`, fullPage: false });
-await mp.goto(BASE + "/#/notifications"); await mp.reload();
+await mp.goto(APP + "#/notifications"); await mp.reload();
 await mp.waitForSelector('main h1:text-is("Notifications")');
 await mp.waitForTimeout(500);
 check("notifications at 390 px have no horizontal overflow:", !(await mp.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
@@ -353,7 +369,7 @@ for (const [route, name, label, ready] of [
   [engagementUrl.slice(engagementUrl.indexOf("#")), "77-mobile-client-timeline", "client timeline (O12)", "ol.timeline"],
   [standard[1], "78-mobile-client-proposal", "client proposal (O12)", ".proposal"],
 ]) {
-  await mp.goto(BASE + "/" + route); await mp.reload();
+  await mp.goto(APP + route); await mp.reload();
   await mp.waitForSelector(ready);
   await mp.waitForTimeout(400);
   check(`${label} at 390 px has no horizontal overflow:`, !(await mp.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
@@ -365,7 +381,7 @@ for (const [route, name, label, ready] of [
 check("the client menu is a bottom tab bar at 390 px (U1):", await mp.evaluate(() => getComputedStyle(document.getElementById("nav")).position === "fixed" && document.querySelectorAll("#nav > a svg").length >= 4));
 if (partnerPages.length) {
   const pm = await (await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, storageState: await partnerPages[0].context().storageState() })).newPage();
-  await pm.goto(BASE + "/#/"); await pm.reload();
+  await pm.goto(APP + "#/"); await pm.reload();
   await pm.waitForSelector('main h1:text-is("Work from MKW Advisors")');
   await pm.waitForTimeout(500);
   check("a partner sees the MKW Advisors mark and tab title, never Tasees (E9, rule 10, gap 86):", (await pm.locator(".brand .mark").innerText()) === "M" && !/Tasees/.test(await pm.locator(".top").innerText()) && /MKW Advisors/.test(await pm.title()) && !/Tasees/.test(await pm.title()));
@@ -375,7 +391,7 @@ if (partnerPages.length) {
   await axeCheck(pm, "partner work at 390 px (U1)");
   await pm.context().close();
 }
-await mp.goto(BASE + "/#/statement"); await mp.reload();
+await mp.goto(APP + "#/statement"); await mp.reload();
 await mp.waitForSelector('main h1:text-is("Statement of account")');
 await mp.waitForTimeout(500);
 check("statement at 390 px has no horizontal overflow:", !(await mp.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
@@ -383,13 +399,13 @@ await mp.screenshot({ path: `${OUT}/34-mobile-statement.png`, fullPage: false })
 
 // Audit
 const founder = await session("founder@mkwadvisors.test");
-await founder.goto(BASE + "/#/audit");
+await founder.goto(APP + "#/audit");
 await founder.waitForSelector('main h1:text-is("Audit trail")');
 check("audit chain intact on the audit screen:", (await founder.locator("main p").first().innerText()).includes("intact"));
 await shot(founder, "15-audit");
 
 // People and organisations (O1): partner creation, invite, role change, deactivation, export, erasure
-await founder.goto(BASE + "/#/people");
+await founder.goto(APP + "#/people");
 await founder.waitForSelector('form[data-form="new-partner"]');
 await shot(founder, "16-people");
 const stamp = Date.now().toString(36);
@@ -434,16 +450,16 @@ log.push("erase: " + (await toastText(founder)));
 await eventually("erased person shown as a tombstone:", async () => (await founder.locator("tr", { hasText: "Erased person" }).count()) > 0);
 await shot(founder, "17-people-after-changes");
 // Ops cannot touch MKW Advisors staff; finance can only look
-await ops.goto(BASE + "/#/people"); await ops.reload();
+await ops.goto(APP + "#/people"); await ops.reload();
 await ops.waitForSelector("main h1");
 const mkwCard = ops.locator(".card", { hasText: "MKW Advisors" }).first();
 check("ops cannot invite MKW staff or erase anyone:", (await mkwCard.locator('form[data-form="invite"]').count()) === 0 && (await ops.locator('button[data-act="user-erase"]').count()) === 0);
-await finance.goto(BASE + "/#/people"); await finance.reload();
+await finance.goto(APP + "#/people"); await finance.reload();
 await finance.waitForSelector("main h1");
 check("finance sees no admin forms or deactivate buttons:", (await finance.locator('form[data-form="invite"], form[data-form="new-partner"], form[data-form="role"]').count()) === 0 && (await finance.locator('button[data-act="user-deactivate"]').count()) === 0);
 
 // Settings: retention periods (O1)
-await founder.goto(BASE + "/#/settings");
+await founder.goto(APP + "#/settings");
 await founder.waitForSelector('form[data-form="retention"]');
 log.push("retention UNCERTAIN badges before: " + (await founder.locator('form[data-form="retention"] .badge:text-is("UNCERTAIN")').count()));
 await shot(founder, "18-settings-retention");
@@ -459,14 +475,14 @@ for (let i = 0; i < 3 && !/Retention periods confirmed/.test(await toastText(fou
 log.push("retention: " + (await toastText(founder)));
 await eventually("no UNCERTAIN retention badge after the founder confirms:", async () => (await founder.locator('form[data-form="retention"] .badge').count()) > 0 && (await founder.locator('form[data-form="retention"] .badge:text-is("UNCERTAIN")').count()) === 0);
 await shot(founder, "19-settings-retention-confirmed");
-await finance.goto(BASE + "/#/settings"); await finance.reload();
+await finance.goto(APP + "#/settings"); await finance.reload();
 await finance.waitForSelector("main h1");
 check("finance cannot confirm retention periods:", (await finance.locator('form[data-form="retention"] button[type="submit"]').count()) === 0);
 const logText = await finance.locator("main").innerText();
 check("delivery log lists sent messages for client and partner audiences:", /Delivery log/.test(logText) && /offer ready/i.test(logText) && /allocation offered/i.test(logText));
 
 // Payments and invoices (O3): TRN, held invoice issued, statement and PDF, partner invoice and bank, payout run
-await founder.goto(BASE + "/#/settings"); await founder.reload();
+await founder.goto(APP + "#/settings"); await founder.reload();
 await founder.waitForSelector('form[data-form="company"]');
 check("invoice held while TRN missing:", /invoice\(s\) held/.test(await founder.locator("main").innerText()));
 await founder.fill('form[data-form="company"] input[name="trn"]', "100123456700003");
@@ -484,7 +500,7 @@ for (let i = 0; i < 2 && !/TI-\d{4}-000001/.test(await toastText(founder)); i++)
 log.push("issue held: " + (await toastText(founder)));
 check("held invoice issued with a sequential number:", /TI-\d{4}-000001/.test(await toastText(founder)));
 await shot(founder, "29-settings-company");
-await client.goto(BASE + "/#/statement"); await client.reload();
+await client.goto(APP + "#/statement"); await client.reload();
 await client.waitForSelector('main h1:text-is("Statement of account")');
 const stText = await client.locator("main").innerText();
 check("client statement shows the paid deposit and the tax invoice:", /TI-\d{4}-000001/.test(stText) && /Paid to date/.test(stText));
@@ -493,7 +509,7 @@ const [pdf] = await Promise.all([client.waitForEvent("download"), client.locator
 check("client downloads the tax invoice PDF:", /^TI-\d{4}-000001\.pdf$/.test(pdf.suggestedFilename()));
 await shot(client, "30-client-statement");
 const payoutPartner = partnerPages[0];
-await payoutPartner.goto(BASE + "/#/payouts"); await payoutPartner.reload();
+await payoutPartner.goto(APP + "#/payouts"); await payoutPartner.reload();
 await payoutPartner.waitForSelector('form[data-form="bank"]');
 await payoutPartner.fill('form[data-form="bank"] input[name="beneficiary"]', "Example Setup Partners FZ-LLC");
 await payoutPartner.fill('form[data-form="bank"] input[name="iban"]', "AE07 0331 2345 6789 0123 456");
@@ -510,7 +526,7 @@ await payoutPartner.waitForTimeout(800);
 log.push("partner invoice: " + (await toastText(payoutPartner)));
 check("partner payouts page shows the invoice number and no client price:", /P-INV-001/.test(await payoutPartner.locator("main").innerText()) && !/client price|margin/i.test(await payoutPartner.locator("main").innerText()));
 await shot(payoutPartner, "31-partner-payouts");
-await finance.goto(BASE + "/#/partners"); await finance.reload();
+await finance.goto(APP + "#/partners"); await finance.reload();
 await finance.waitForSelector('button[data-act="run-create"]');
 check("one payout is ready for the run:", /Create payout run \(1 ready\)/.test(await finance.locator("main").innerText()));
 await finance.locator('button[data-act="run-create"]').click();
@@ -525,19 +541,19 @@ await finance.waitForTimeout(900);
 log.push("run paid: " + (await toastText(finance)));
 await eventually("payout run marked paid:", async () => /paid/.test((await finance.locator("main tbody").last().innerText())));
 await shot(finance, "32-finance-payout-runs");
-await payoutPartner.goto(BASE + "/#/payouts"); await payoutPartner.reload();
+await payoutPartner.goto(APP + "#/payouts"); await payoutPartner.reload();
 await payoutPartner.waitForSelector("main h1");
 check("partner sees the payout released:", (await payoutPartner.locator('.badge:text-is("released")').count()) >= 1);
-await ops.goto(BASE + "/#/partners"); await ops.reload();
+await ops.goto(APP + "#/partners"); await ops.reload();
 await ops.waitForSelector("main h1");
 check("ops has no payout run controls:", (await ops.locator('button[data-act="run-create"], button[data-act="run-paid"]').count()) === 0);
 
 // Scoping intelligence (O5): ops reviews and approves the advice, the client reads it, AI queue, rules page, public intake
-await ops.goto(BASE + "/#/pipeline"); await ops.reload();
+await ops.goto(APP + "#/pipeline"); await ops.reload();
 await ops.waitForSelector('a[href^="#/request/"]');
 check("pipeline flags advice to review:", (await ops.locator('.badge:text-is("advice to review")').count()) >= 1);
 const requestHref = await ops.locator('a[href^="#/request/"]').first().getAttribute("href");
-await ops.goto(BASE + "/" + requestHref);
+await ops.goto(APP + requestHref);
 await ops.waitForSelector('form[data-form="approve-advice"]');
 const scopingText = await ops.locator("main").innerText();
 check("ops sees the structure advice with UNCERTAIN labels:", /Structure: Free zone/.test(scopingText) && /UNCERTAIN/.test(scopingText));
@@ -550,7 +566,7 @@ await ops.locator('input[name="keep"][value="obligation.goaml_dnfbp"]').uncheck(
 await ops.locator('form[data-form="approve-advice"] button[type="submit"]').click();
 await ops.waitForTimeout(800);
 log.push("advice: " + (await toastText(ops)));
-await client.goto(BASE + "/#/home"); await client.reload();
+await client.goto(APP + "#/home"); await client.reload();
 await client.waitForSelector('a[href^="#/request/"]');
 await client.locator('a[href^="#/request/"]').first().click();
 await client.waitForSelector('main h1:text-is("Our advice for your request")');
@@ -572,7 +588,7 @@ await axeCheck(client, "client advice with eligibility (E1)");
   const mctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, storageState: await client.context().storageState() });
   const m = await mctx.newPage();
   m.on("pageerror", (e) => errors.push(`E1 mobile: ${e.message}`));
-  await m.goto(BASE + "/" + (await client.evaluate(() => location.hash)));
+  await m.goto(APP + (await client.evaluate(() => location.hash)));
   await m.waitForSelector('main h1:text-is("Our advice for your request")');
   check("client advice at 390 px has no horizontal overflow (E1):", !(await m.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
   await m.screenshot({ path: `${OUT}/81-mobile-client-advice.png`, fullPage: true });
@@ -580,14 +596,14 @@ await axeCheck(client, "client advice with eligibility (E1)");
   await axeCheck(m, "client advice at 390 px (E1)");
   await mctx.close();
 }
-await ops.goto(BASE + "/#/agent"); await ops.reload();
+await ops.goto(APP + "#/agent"); await ops.reload();
 await ops.waitForSelector('main h1:text-is("AI review queue")');
 check("AI queue shows the draft as UNCERTAIN with its lines:", (await ops.locator('form[data-form="draft"]').count()) >= 1 && /software company/.test(await ops.locator("main").innerText()));
 await shot(ops, "37-ai-queue");
 await ops.locator('form[data-form="draft"] button[value="discard"]').first().click();
 await ops.waitForTimeout(700);
 log.push("draft: " + (await toastText(ops)));
-await founder.goto(BASE + "/#/scoping"); await founder.reload();
+await founder.goto(APP + "#/scoping"); await founder.reload();
 await founder.waitForSelector('form[data-form="verify-rule"]');
 const ruleForm = founder.locator('form[data-form="verify-rule"][data-id="obligation.vat_mandatory"]');
 await ruleForm.locator('select[name="confidence"]').selectOption("verified");
@@ -624,7 +640,7 @@ await shot(founder, "38-scoping-rules");
   await shot(founder, "82-scoping-catalogue");
   await axeCheck(founder, "jurisdiction catalogue and evidence history (E2)");
   // E7B: the coverage matrix and the evidence backlog; the founder classifies a place; the backlog downloads.
-  await founder.goto(BASE + "/#/coverage"); await founder.reload();
+  await founder.goto(APP + "#/coverage"); await founder.reload();
   await founder.waitForSelector('main h1:text-is("Jurisdiction coverage")');
   const cov = await founder.locator("main").innerText();
   check("the Coverage page counts authorities and places once, per emirate and kind, with the backlog first wave first (E7B):", /authorities \(\d+ active\)/.test(cov) && /first-wave places/.test(cov) && /Places by emirate and kind/.test(cov) && /Umm Al Quwain/.test(cov) && /Evidence backlog by place/.test(cov) && /wave 1/.test(cov) && (await founder.locator('form[data-form="place-status"]').count()) >= 15);
@@ -642,7 +658,7 @@ await shot(founder, "38-scoping-rules");
   const mcov = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, storageState: await founder.context().storageState() });
   const mc = await mcov.newPage();
   mc.on("pageerror", (e) => errors.push(`coverage mobile: ${e.message}`));
-  await mc.goto(BASE + "/#/coverage"); await mc.reload();
+  await mc.goto(APP + "#/coverage"); await mc.reload();
   await mc.waitForSelector('main h1:text-is("Jurisdiction coverage")');
   check("the Coverage page at 390 px has no horizontal overflow (E7B):", !(await mc.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
   await mc.screenshot({ path: `${OUT}/97-mobile-coverage.png`, fullPage: false });
@@ -660,7 +676,7 @@ const pp = await pub.newPage();
   // E7A: the homepage first; the call to action opens the questions, ten for a technology business, in order.
   const answer = async (page, { fromHome = true } = {}) => {
     if (fromHome) {
-      await page.goto(BASE + "/selector.html");
+      await page.goto(BASE + "/");
       await page.waitForSelector("#landing:not([hidden]) #start");
       await page.locator("#start").click();
     }
@@ -683,7 +699,7 @@ const pp = await pub.newPage();
     // The result without the founder's own profile (their budget is their figure, not one of ours).
     return page.evaluate(() => { const r = document.getElementById("result").cloneNode(true); r.querySelector(".profile")?.remove(); document.body.appendChild(r); const t = r.innerText; r.remove(); return t; });
   };
-  await sel.goto(BASE + "/selector.html");
+  await sel.goto(BASE + "/");
   await sel.waitForSelector("#landing:not([hidden]) #start");
   const home = await sel.locator("main").innerText();
   check("the homepage says what is measured, in aggregate, with no cookie (E7C):", /We count how this page is used, in aggregate/.test(home) && /No cookie/.test(home));
@@ -693,12 +709,29 @@ const pp = await pub.newPage();
   check("the homepage shows the first question to try, the strip, four kinds with no unapproved price and the emirates map (E11):", (await sel.locator("#try-tiles .try").count()) === 4 && (await sel.locator(".strip li").count()) === 4 && (await sel.locator("#packages .pkg .from.tbv").count()) === 4 && !/AED/.test(await sel.locator("#packages").innerText()) && (await sel.locator("#home-map .em").count()) === 7 && (await sel.locator("#home-map .em .flag svg").count()) === 7 && (await sel.locator(".faq details").count()) === 3 && (await sel.locator("#cta-start").count()) === 1);
   await shot(sel, "95-public-home");
   await axeCheck(sel, "public homepage (E7A)");
+  // E14 (D96): the homepage is the front door at /; the workspace is at /app/; old addresses keep working.
+  check("the homepage is at /, and its sign-in link opens the workspace at /app/ (E14):", new URL(sel.url()).pathname === "/" && (await sel.locator("#nav-signin").getAttribute("href")) === "/app/" && (await sel.locator('link[rel="canonical"]').getAttribute("href")) === "/");
+  await sel.goto(BASE + "/selector.html?lang=en");
+  check("the old /selector.html redirects to /, keeping its query (E14):", new URL(sel.url()).pathname === "/" && new URL(sel.url()).search === "?lang=en");
+  {
+    const res = await sel.goto(BASE + "/no-such-page");
+    check("an unknown address is a 404 page with the way home, not the workspace (E14):", res.status() === 404 && /We could not find that page/.test(await sel.locator("main").innerText()) && (await sel.locator('main a[href="/"]').count()) === 1 && (await sel.locator("#nav").count()) === 0);
+    await shot(sel, "116-not-found");
+    await axeCheck(sel, "not found page (E14)");
+    const np = await (await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 })).newPage();
+    const nres = await np.goto(BASE + "/no-such-page");
+    check("the 404 page at 390 px has no horizontal overflow (E14):", nres.status() === 404 && !(await np.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
+    await shot(np, "117-mobile-not-found");
+    await np.context().close();
+  }
+  await sel.goto(BASE + "/");
+  await sel.waitForSelector('#landing:not([hidden]) #home-map [data-home-em="Sharjah"]');
   await sel.locator('#home-map [data-home-em="Sharjah"]').click();
   await sel.waitForSelector("#quick:not([hidden]) .tile[data-act]");
   await sel.locator('.tile[data-act="tech"]').click();
   await sel.waitForSelector("#quick .uaemap .em");
   check("an emirate tapped on the homepage map is already chosen at question two (E11):", (await sel.locator('#quick-step [data-em="Sharjah"]').getAttribute("aria-pressed")) === "true");
-  await sel.goto(BASE + "/selector.html");
+  await sel.goto(BASE + "/");
   await sel.waitForSelector("#landing:not([hidden])");
   // E8: an industry card opens the quick match at question two (where), with the activity set.
   await sel.locator('.industry[data-activity="manufacturing"]').click();
@@ -706,7 +739,7 @@ const pp = await pub.newPage();
   check("an industry entry opens the quick match at question two with the activity set (E7A, E8):", /Question 2 of 4/i.test(await sel.locator("#quick-step").innerText()) && /Manufacturing/.test(await sel.locator("#quick-answers").innerText()) && (await sel.locator("#quick-track li.done").count()) === 1);
   await sel.locator("#quick-back").click();
   check("going back shows the activity chosen on the industry card (E7A, E8):", (await sel.locator('#quick-step .tile[data-act="manufacturing"]').getAttribute("aria-pressed")) === "true");
-  await sel.goto(BASE + "/selector.html");
+  await sel.goto(BASE + "/");
   await sel.waitForSelector("#landing:not([hidden])");
   await sel.locator('.industry[data-activity="finance"]').click();
   await sel.waitForSelector("#quick:not([hidden]) .tile");
@@ -714,7 +747,7 @@ const pp = await pub.newPage();
   // E8: the quick match from the homepage, four answers, live counts, and the places worth reviewing (E13: a lead only
   // for an approved place).
   const quickMatch = async (page) => {
-    await page.goto(BASE + "/selector.html");
+    await page.goto(BASE + "/");
     await page.waitForSelector("#landing:not([hidden]) #quick-start");
     await page.locator("#quick-start").click();
     await page.waitForSelector("#quick:not([hidden]) .tile[data-act]");
@@ -772,7 +805,7 @@ const pp = await pub.newPage();
     // Phone width: the map becomes a two-column list and nothing scrolls sideways.
     const qp = await (await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 })).newPage();
     qp.on("pageerror", (e) => errors.push(`quick match phone: ${e.message}`));
-    await qp.goto(BASE + "/selector.html");
+    await qp.goto(BASE + "/");
     await qp.locator("#quick-start").click();
     await qp.locator('.tile[data-act="tech"]').click();
     await qp.waitForSelector("#quick .uaemap .em");
@@ -784,7 +817,7 @@ const pp = await pub.newPage();
     await shot(qp, "105-quick-match-phone");
     await qp.context().close();
   }
-  await sel.goto(BASE + "/selector.html");
+  await sel.goto(BASE + "/");
   await sel.waitForSelector("#landing:not([hidden])");
   const first = await answer(sel);
   check("the result opens with the profile, the legend and the places side by side (E7A):", /Your business profile/.test(first) && /Software or technology/.test(await sel.locator("#result .profile").innerText()) && /What the labels mean|general information/.test(first) && (await sel.locator("#compare table").count()) === 1 && (await sel.locator("#compare thead th").count()) >= 2 && /to be verified by a person/.test(await sel.locator("#compare").innerText()) && !/AED/.test(await sel.locator("#compare").innerText()));
@@ -794,7 +827,7 @@ const pp = await pub.newPage();
   await shot(sel, "83-public-selector-unapproved");
   await axeCheck(sel, "public selector result, nothing approved (E3)");
   // The founder approves the corporate tax rule (verified earlier in this run? no: VAT was) and IFZA's figures.
-  await founder.goto(BASE + "/#/scoping"); await founder.reload();
+  await founder.goto(APP + "#/scoping"); await founder.reload();
   await founder.waitForSelector('form[data-form="verify-rule"]');
   const ct = founder.locator('form[data-form="verify-rule"][data-id="obligation.corporate_tax"]');
   await ct.locator('select[name="confidence"]').selectOption("verified");
@@ -821,7 +854,7 @@ const pp = await pub.newPage();
     check("an approved place's figures reach the quick match, labelled checked (E8):", /AED 12,000/.test(q + (await sel.locator("#quick-top").innerText())) && /figures checked|from AED 12,000/.test(q + (await sel.locator("#quick-top").innerText())) && /1 of \d+ places not yet ruled out have figures checked/.test(q));
     check("the approved IFZA, put first on its checked figures, is named as a place worth reviewing first (E13):", /A place worth reviewing first in Dubai/.test(q) && (await sel.locator("#quick-step .best h3").innerText()) === "IFZA" && /Put first on what a named person has checked/.test(q));
     await shot(sel, "115-quick-match-lead");
-    await sel.goto(BASE + "/selector.html");
+    await sel.goto(BASE + "/");
     await eventually("the homepage's free zone card quotes the approved place by name, labelled checked and preliminary; the others stay to be verified (E11):", async () => /from\s*AED 12,000\s*at\s*IFZA/.test(await sel.locator('#packages .pkg:has([data-pkg="free_zone"])').innerText()) && /checked/.test(await sel.locator('#packages .pkg:has([data-pkg="free_zone"])').innerText()) && /Preliminary estimate, as of \d{4}-\d{2}-\d{2}\. Not advice\./.test(await sel.locator('#packages .pkg:has([data-pkg="free_zone"])').innerText()) && (await sel.locator("#packages .pkg .from.tbv").count()) === 3);
     await axeCheck(sel, "homepage with a checked package figure (E11)");
   }
@@ -855,7 +888,7 @@ const pp = await pub.newPage();
   }
   const rec = await pub.newPage();
   rec.on("pageerror", (e) => errors.push(`selector recover: ${e.message}`));
-  await rec.goto(BASE + `/selector.html?code=${savedCode}`);
+  await rec.goto(BASE + `/?code=${savedCode}`);
   await rec.waitForSelector("#result:not([hidden]) .card");
   check("a saved result is recovered by its code and re-run on today's rules (E4):", /opened 1 time/.test(await rec.locator("#result").innerText()) && /Register for corporate tax/.test(await rec.locator("#result").innerText()));
   await rec.close();
@@ -868,7 +901,7 @@ const pp = await pub.newPage();
   await sel.check('#review input[name="consent"]');
   await sel.locator('#review button[type="submit"]').click();
   await eventually("the selector's review request is accepted (E3):", async () => /A person at MKW Advisors reviews your case/.test(await sel.locator("#rmsg").innerText()));
-  await ops.goto(BASE + "/#/leads"); await ops.reload();
+  await ops.goto(APP + "#/leads"); await ops.reload();
   await ops.waitForSelector('main h1:text-is("Leads")');
   const leadsText = await ops.locator("main").innerText();
   check("the lead appears in the pipeline with its scores, consents and call request (E4):", /Selector Smoke Co/.test(leadsText) && /call requested/.test(leadsText) && /marketing: no/.test(leadsText) && /service: yes/.test(leadsText));
@@ -893,7 +926,7 @@ const pp = await pub.newPage();
   await eventually("the override shows beside the rule's suggestion (E7C):", async () => /Set by hand: Travelling until the 20th/.test(await ops.locator("main").innerText()) && /The rule suggests:/.test(await ops.locator("main").innerText()));
   await shot(ops, "87-lead-detail");
   await axeCheck(ops, "lead detail (E4)");
-  await ops.goto(BASE + "/#/funnel"); await ops.reload();
+  await ops.goto(APP + "#/funnel"); await ops.reload();
   await ops.waitForSelector('main h1:text-is("Funnel")');
   const funnel = await ops.locator("main").innerText();
   check("the Funnel page counts the selector's visits, starts, completions and saves and follows them to the lead (E7C):", /visitors/.test(funnel) && /completed of started/.test(funnel) && /By source and campaign/.test(funnel) && /direct/.test(funnel) && /Qualified means/.test(funnel) && !/payout|partner cost|AED [\d,]+ margin/i.test(funnel) && /\bdirect\s+–\s+[1-9]/.test(await ops.locator("main").innerText()));
@@ -903,7 +936,7 @@ const pp = await pub.newPage();
   {
     const mfc = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, storageState: await ops.context().storageState() });
     const mf = await mfc.newPage();
-    await mf.goto(BASE + "/#/funnel"); await mf.reload();
+    await mf.goto(APP + "#/funnel"); await mf.reload();
     await mf.waitForSelector('main h1:text-is("Funnel")');
     check("the Funnel page at 390 px has no horizontal overflow (E7C):", !(await mf.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
     await mf.screenshot({ path: `${OUT}/99-mobile-funnel.png`, fullPage: false });
@@ -912,7 +945,7 @@ const pp = await pub.newPage();
     await mfc.close();
   }
   // E7D: the adviser books the call from the lead page; the lead moves to consultation with a follow-up for that time.
-  await ops.goto(BASE + "/#/leads"); await ops.reload();
+  await ops.goto(APP + "#/leads"); await ops.reload();
   await ops.waitForSelector('main h1:text-is("Leads")');
   await ops.locator('a[href^="#/leads/"]').first().click();
   await ops.waitForSelector('form[data-form="lead-consultation"]');
@@ -928,7 +961,7 @@ const pp = await pub.newPage();
   const mlead = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, storageState: await ops.context().storageState() });
   const ml = await mlead.newPage();
   ml.on("pageerror", (e) => errors.push(`leads mobile: ${e.message}`));
-  await ml.goto(BASE + "/#/leads"); await ml.reload();
+  await ml.goto(APP + "#/leads"); await ml.reload();
   await ml.waitForSelector('main h1:text-is("Leads")');
   check("the leads page at 390 px has no horizontal overflow (E4):", !(await ml.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
   await ml.screenshot({ path: `${OUT}/88-mobile-leads.png`, fullPage: false });
@@ -943,7 +976,7 @@ const pp = await pub.newPage();
   const m3 = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
   const mp = await m3.newPage();
   mp.on("pageerror", (e) => errors.push(`selector mobile: ${e.message}`));
-  await mp.goto(BASE + "/selector.html");
+  await mp.goto(BASE + "/");
   await mp.waitForSelector("#landing:not([hidden]) #start");
   await eventually("the homepage at 390 px is filled from the platform before it is checked (E11):", async () => /across the seven emirates/.test(await mp.locator("#home-count").innerText()));
   check("the homepage at 390 px has no horizontal overflow (E7A):", !(await mp.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
@@ -972,7 +1005,7 @@ await shot(pp, "39-public-intake");
 await pp.locator('button[type="submit"]').click();
 await pp.waitForTimeout(1200);
 await eventually("public intake accepted the lead:", async () => /Thank you. We have your request/.test(await pp.locator("#msg").innerText()));
-await ops.goto(BASE + "/#/pipeline"); await ops.reload();
+await ops.goto(APP + "#/pipeline"); await ops.reload();
 await ops.waitForSelector("main h1");
 check("lead from the public page appears in the pipeline:", /Smoke Lead Ventures/.test(await ops.locator("main").innerText()) && /from the lead page/.test(await ops.locator("main").innerText()));
 await ops.fill('form[data-form="search"] input[name="q"]', "smoke lead");
@@ -988,7 +1021,7 @@ await pp.check('input[name="consent"]');
 await pp.locator('button[type="submit"]').click();
 await pp.waitForTimeout(1200);
 await eventually("repeat lead gets the same answer:", async () => /Thank you. We have your request/.test(await pp.locator("#msg").innerText()));
-await ops.goto(BASE + "/#/agent"); await ops.reload();
+await ops.goto(APP + "#/agent"); await ops.reload();
 await ops.waitForSelector('main h1:text-is("AI review queue")');
 check("repeat lead is held for ops, not attached:", /Held leads/.test(await ops.locator("main").innerText()) && /Second Try Co/.test(await ops.locator("main").innerText()));
 await shot(ops, "42-held-leads");
@@ -1006,7 +1039,7 @@ await pp.selectOption("#customers", "uae_mainland");
 await pp.check('input[name="consent"]');
 await pp.locator('button[type="submit"]').click();
 await pp.waitForTimeout(1200);
-await ops.goto(BASE + "/#/agent"); await ops.reload();
+await ops.goto(APP + "#/agent"); await ops.reload();
 await ops.waitForSelector('button[data-act="lead-convert"]');
 await ops.locator('button[data-act="lead-convert"]').first().click();
 await ops.waitForSelector('form[data-form="approve-advice"], h1:text-is("Scoping")', { timeout: 8000 }).catch(() => {});
@@ -1014,11 +1047,11 @@ await eventually("ops turned the held enquiry into a request for the existing cl
 await shot(ops, "89-held-enquiry-converted");
 
 // Catalogue and rules (O4)
-await founder.goto(BASE + "/#/catalogue");
+await founder.goto(APP + "#/catalogue");
 await founder.waitForSelector('main h1:text-is("Service catalogue")');
 check("catalogue lists 82 services:", (await founder.locator("main tbody tr").count()) === 82);
 await shot(founder, "25-catalogue");
-await founder.goto(BASE + "/#/rules");
+await founder.goto(APP + "#/rules");
 await founder.waitForSelector('main h1:text-is("Pricing rules and government fees")');
 await founder.selectOption('form[data-form="fee"] select[name="code"]', "SET-FZ-LIC");
 await founder.selectOption('form[data-form="fee"] select[name="emirate"]', "Dubai");
@@ -1044,17 +1077,17 @@ await founder.waitForTimeout(700);
 log.push("rule: " + (await toastText(founder)));
 await eventually("scheduled rule change is listed with its date:", async () => /22\.0%.*AED 350.*from 1 Jan 2030/s.test(await founder.locator("main").innerText()));
 await shot(founder, "26-rules");
-await ops.goto(BASE + "/#/rules"); await ops.reload();
+await ops.goto(APP + "#/rules"); await ops.reload();
 await ops.waitForSelector('main h1:text-is("Government fees")');
 const opsRules = await ops.locator("main").innerText();
 check("ops sees the fee table but no margin rates, floors or settings:", !/Margin rules by category|Pricing settings|20\.0%/.test(opsRules) && (await ops.locator('form[data-form="rule"], form[data-form="pricing-settings"], button[data-act="fee-verify"]').count()) === 0 && (await ops.locator('form[data-form="fee"]').count()) === 1);
-await ops.goto(BASE + "/#/catalogue"); await ops.reload();
+await ops.goto(APP + "#/catalogue"); await ops.reload();
 await ops.waitForSelector('main h1:text-is("Service catalogue")');
 check("ops catalogue hides the rule column values:", !/20\.0% \//.test(await ops.locator("main").innerText()));
 
 // Partners and delivery (O6): onboarding with documents, client document requests, delays page, offer PDF
 const pdfBytes = Buffer.from("%PDF-1.4 smoke");
-await founder.goto(BASE + "/#/partners"); await founder.reload();
+await founder.goto(APP + "#/partners"); await founder.reload();
 await founder.waitForSelector('main h1:text-is("Partner network")');
 const firmLink = founder.locator("main a", { hasText: `Smoke Partners ${stamp} LLC` }).first();
 check("partners page links to onboarding:", (await firmLink.count()) === 1);
@@ -1067,7 +1100,7 @@ await founder.locator('form[data-form="partner-move"] button[type="submit"]').cl
 await founder.waitForTimeout(700);
 await eventually("partner moved to contacted:", async () => /contacted/i.test(await founder.locator("main .badge").first().innerText()));
 // The new partner's admin completes the application and uploads the trade licence
-await newPartnerAdmin.goto(BASE + "/#/firm"); await newPartnerAdmin.reload();
+await newPartnerAdmin.goto(APP + "#/firm"); await newPartnerAdmin.reload();
 await newPartnerAdmin.waitForSelector('form[data-form="application"]');
 await newPartnerAdmin.fill('form[data-form="application"] input[name="licenceNumber"]', "DED-SMOKE-1");
 await newPartnerAdmin.fill('form[data-form="application"] input[name="licenceExpiry"]', "2027-12-31");
@@ -1083,7 +1116,7 @@ await newPartnerAdmin.waitForTimeout(800);
 await eventually("trade licence uploaded, awaiting MKW check:", async () => /awaiting MKW check/.test(await newPartnerAdmin.locator("main").innerText()));
 await shot(newPartnerAdmin, "44-partner-firm");
 // O11 command centre: the licence waits in the ranked queue with why it is there and the document check beside it.
-await ops.goto(BASE + "/#/home"); await ops.reload();
+await ops.goto(APP + "#/home"); await ops.reload();
 await ops.waitForSelector("#queue-list");
 await eventually("command centre says why the partner document is waiting:", async () => /a firm cannot move to pilot, or keep working, on an unverified document/.test(await ops.locator("#queue-list").innerText()));
 const licenceItem = ops.locator(".qitem", { hasText: "Partner document to verify: trade licence" });
@@ -1104,11 +1137,11 @@ await eventually("the check now shows as confirmed:", async () => /check confirm
   const mctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
   const mops = await mctx.newPage();
   mops.on("pageerror", (e) => errors.push(`O11 mobile: ${e.message}`));
-  await mops.goto(BASE + "/");
+  await mops.goto(APP);
   await mops.locator('button[data-email="ops@mkwadvisors.test"]').click();
   await mops.locator('form[data-form="verify"] button[type="submit"]').click();
   await mops.waitForSelector("#nav > :is(a, .navgroup)");
-  await mops.goto(BASE + "/#/home"); await mops.reload();
+  await mops.goto(APP + "#/home"); await mops.reload();
   await mops.waitForSelector(".qitem");
   check("command centre at 390 px has no horizontal overflow:", !(await mops.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
   await mops.screenshot({ path: `${OUT}/71-mobile-command-centre.png`, fullPage: false });
@@ -1119,7 +1152,7 @@ await eventually("the check now shows as confirmed:", async () => /check confirm
 // O13 System page: runs and their steps, messages waiting, alerts, the nightly audit check. Every change the web app
 // sends carries an idempotency key.
 {
-  await ops.goto(BASE + "/#/system"); await ops.reload();
+  await ops.goto(APP + "#/system"); await ops.reload();
   await ops.waitForSelector("#runs-h");
   await ops.locator('button[data-act="run-jobs"]').click();
   check("the jobs run from the System page:", await toastHas(ops, /Jobs run:/));
@@ -1134,7 +1167,7 @@ await eventually("the check now shows as confirmed:", async () => /check confirm
   const mctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, storageState: await ops.context().storageState() });
   const mops = await mctx.newPage();
   mops.on("pageerror", (e) => errors.push(`O13 mobile: ${e.message}`));
-  await mops.goto(BASE + "/#/system");
+  await mops.goto(APP + "#/system");
   await mops.waitForSelector("#runs-h");
   check("System page at 390 px has no horizontal overflow:", !(await mops.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
   await mops.screenshot({ path: `${OUT}/80-mobile-system.png`, fullPage: true });
@@ -1183,17 +1216,17 @@ if (await docPartner.locator('button[data-act="doc-decide"][data-decision="recei
   check("partner marked the client document received:", (await toastHas(docPartner, /Marked received/)));
 }
 // Delays page for ops
-await ops.goto(BASE + "/#/delays"); await ops.reload();
+await ops.goto(APP + "#/delays"); await ops.reload();
 await ops.waitForSelector('main h1:text-is("Delays and service guarantee")');
 await shot(ops, "46-ops-delays");
 
 // Reporting and compliance (O8): dashboard, accounting export, compliance calendar, partner performance
-await founder.goto(BASE + "/#/dashboard"); await founder.reload();
+await founder.goto(APP + "#/dashboard"); await founder.reload();
 await founder.waitForSelector('main h1:text-is("Dashboard")');
 const dashText = await founder.locator("main").innerText();
 check("founder dashboard shows revenue, cash and margin:", /Revenue/.test(dashText) && /Cash collected/.test(dashText) && /Margin on accepted offers/.test(dashText));
 await shot(founder, "49-founder-dashboard");
-await ops.goto(BASE + "/#/dashboard"); await ops.reload();
+await ops.goto(APP + "#/dashboard"); await ops.reload();
 await ops.waitForSelector('main h1:text-is("Dashboard")');
 check("ops dashboard hides margin:", !/Margin on accepted offers/.test(await ops.locator("main").innerText()));
 const today = new Date().toISOString().slice(0, 10);
@@ -1202,7 +1235,7 @@ check("accounting export downloads as CSV:", csv.status() === 200 && /text\/csv/
 const marginCsv = await ops.request.get(`${BASE}/api/admin/accounting/export?set=margin&from=2026-01-01&to=${today}`);
 check("ops cannot export margin:", marginCsv.status() === 403);
 // Ops adds an obligation for the sample client; the client uploads the filing confirmation; ops marks it met
-await ops.goto(BASE + "/#/compliance"); await ops.reload();
+await ops.goto(APP + "#/compliance"); await ops.reload();
 await ops.waitForSelector('form[data-form="obligation-add"]');
 await ops.selectOption('form[data-form="obligation-add"] select[name="kind"]', "vat_return");
 await ops.fill('form[data-form="obligation-add"] input[name="title"]', "VAT return Q4 2026");
@@ -1213,7 +1246,7 @@ await ops.locator('form[data-form="obligation-add"] button[type="submit"]').clic
 await ops.waitForTimeout(800);
 await eventually("obligation added:", async () => /VAT return Q4 2026/.test(await ops.locator("main").innerText()));
 await shot(ops, "50-ops-compliance");
-await client.goto(BASE + "/#/compliance"); await client.reload();
+await client.goto(APP + "#/compliance"); await client.reload();
 await client.waitForSelector('main h1:text-is("Your compliance calendar")');
 check("client sees the confirmed obligation:", /VAT return Q4 2026/.test(await client.locator("main").innerText()));
 await client.setInputFiles('form[data-form="obligation-evidence"] input[name="file"] >> nth=0', { name: "vat-return-acknowledgement.pdf", mimeType: "application/pdf", buffer: pdfBytes });
@@ -1225,24 +1258,24 @@ await shot(client, "51-client-compliance");
 // the obligation that is due.
 {
   const saved = await (await pub.request.post(BASE + "/api/public/assessments", { data: { answers: { emirate: "Dubai", activity: "consulting", customers: "international", visas: 1, budgetAed: 20000 }, attribution: { source: "smoke", campaign: "handoff" } } })).json();
-  await client.goto(BASE + "/#/new"); await client.reload();
+  await client.goto(APP + "#/new"); await client.reload();
   await client.waitForSelector('form[data-form="from-assessment"]');
   await client.fill("#saved-code", saved.code);
   await client.locator('form[data-form="from-assessment"] button[type="submit"]').click();
   await eventually("a saved result became the client's request without re-typing (E5):", async () => /^#\/request\//.test(await client.evaluate(() => location.hash)));
   const fromAssessment = (await client.evaluate(() => location.hash)).replace("#/request/", "");
-  await ops.goto(BASE + "/#/request/" + fromAssessment); await ops.reload();
+  await ops.goto(APP + "#/request/" + fromAssessment); await ops.reload();
   await ops.waitForSelector('form[data-form="approve-advice"]');
   check("the review shows the saved result then against today's advice (E5):", /From a saved public result/.test(await ops.locator("main").innerText()) && /smoke \/ handoff/.test(await ops.locator("main").innerText()));
   await shot(ops, "90-review-from-saved-result");
   const clients = await (await ops.request.get(BASE + "/api/ops/clients")).json();
   const sampleClient = clients.find((c) => /Sample Trading/.test(c.name)) ?? clients[0];
   const ob = await (await ops.request.post(BASE + `/api/ops/clients/${sampleClient.id}/obligations`, { data: { kind: "licence_renewal", title: "Trade licence renewal", dueDate: "2027-03-01", recurrence: "yearly", basis: "On the licence" } })).json();
-  await client.goto(BASE + "/#/compliance"); await client.reload();
+  await client.goto(APP + "#/compliance"); await client.reload();
   await client.waitForSelector(`button[data-act="renewal-request"][data-id="${ob.id}"]`);
   await client.locator(`button[data-act="renewal-request"][data-id="${ob.id}"]`).click();
   await eventually("the client asked for a renewal offer from the obligation (E5):", async () => /Renewal requested/.test(await client.locator("main").innerText()));
-  await client.goto(BASE + "/#/compliance"); await client.reload();
+  await client.goto(APP + "#/compliance"); await client.reload();
   await client.waitForSelector('main h1:text-is("Your compliance calendar")');
   check("the obligation shows its renewal request after a reload too (E5):", /Renewal requested/.test(await client.locator("main").innerText()));
   await shot(client, "91-client-renewal-requested");
@@ -1250,12 +1283,12 @@ await shot(client, "51-client-compliance");
   const mctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, storageState: await client.context().storageState() });
   const m = await mctx.newPage();
   m.on("pageerror", (e) => errors.push(`E5 mobile: ${e.message}`));
-  await m.goto(BASE + "/#/new"); await m.waitForSelector('form[data-form="from-assessment"]');
+  await m.goto(APP + "#/new"); await m.waitForSelector('form[data-form="from-assessment"]');
   check("the saved-result box at 390 px has no horizontal overflow (E5):", !(await m.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
   await m.screenshot({ path: `${OUT}/92-mobile-saved-result.png`, fullPage: false });
   log.push("92-mobile-saved-result");
   await mctx.close();
-  await ops.goto(BASE + "/#/compliance"); await ops.reload();
+  await ops.goto(APP + "#/compliance"); await ops.reload();
   await ops.waitForSelector("main h1");
 }
 await ops.reload();
@@ -1265,7 +1298,7 @@ await ops.waitForTimeout(800);
 check("ops marked the obligation met:", await toastHas(ops, /Marked met/));
 await eventually("the next obligation rolled forward:", async () => (await ops.locator("main").innerText()).split("VAT return Q4 2026").length >= 3);
 // Partner performance
-await partnerPages[0].goto(BASE + "/#/performance"); await partnerPages[0].reload();
+await partnerPages[0].goto(APP + "#/performance"); await partnerPages[0].reload();
 await partnerPages[0].waitForSelector('main h1:text-is("Your performance")');
 check("partner performance page has no client or margin figures:", !/margin|client price/i.test(await partnerPages[0].locator("main").innerText()));
 // E10: the partner's screens in the shared look: the dark MKW Advisors bar, icon tiles with the quality score on the
@@ -1277,7 +1310,7 @@ check("partner performance page has no client or margin figures:", !/margin|clie
   await pg.screenshot({ path: `${OUT}/108-partner-performance.png`, fullPage: false });
   log.push("108-partner-performance");
   await axeCheck(pg, "partner performance with the scorecard tiles (E10)");
-  await pg.goto(BASE + "/#/payouts"); await pg.reload();
+  await pg.goto(APP + "#/payouts"); await pg.reload();
   await pg.waitForSelector('main h1:text-is("Payouts")');
   // The tiles add up the rows below: due now is the sum of the eligible payouts in the table, read from the page.
   const sums = await pg.evaluate(() => {
@@ -1288,7 +1321,7 @@ check("partner performance page has no client or margin figures:", !/margin|clie
   });
   check("the partner's payouts are summed by state on tiles, due now first, and the sums match the rows (E10):", /Due now: invoice us/.test(await pg.locator(".kpis.lead-kpis .kpi").first().innerText()) && sums.due === sums.eligible && sums.paid === sums.released && !/Tasees/.test(await pg.locator("body").innerText()));
   await pg.screenshot({ path: `${OUT}/110-partner-payouts.png`, fullPage: false }); log.push("110-partner-payouts");
-  await pg.goto(BASE + "/#/home"); await pg.reload();
+  await pg.goto(APP + "#/home"); await pg.reload();
   await pg.waitForSelector('main h1:text-is("Work from MKW Advisors")');
   const delivery = pg.locator("main .card.flush", { has: pg.locator('h2:text-is("In delivery")') }).locator("table tbody tr");
   check("the partner's work shows a flag beside each emirate in delivery and icon tiles (E10):", (await delivery.count()) >= 1 && (await delivery.locator(".flag svg").count()) === (await delivery.count()) && (await pg.locator(".kpis.lead-kpis .kpi .ico").count()) === 5 && !/Tasees/.test(await pg.locator("body").innerText()));
@@ -1299,7 +1332,7 @@ check("partner performance page has no client or margin figures:", !/margin|clie
   const ph = await (await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, storageState: await pg.context().storageState() })).newPage();
   ph.on("pageerror", (e) => errors.push(`E10 partner phone: ${e.message}`));
   for (const [route, ready, name] of [["#/performance", 'main h1:text-is("Your performance")', "111-mobile-partner-performance"], ["#/payouts", 'main h1:text-is("Payouts")', "112-mobile-partner-payouts"], [engagementUrl.slice(engagementUrl.indexOf("#")), "main h1", "113-mobile-partner-engagement"]]) {
-    await ph.goto(BASE + "/" + route); await ph.reload(); await ph.waitForSelector(ready); await ph.waitForTimeout(400);
+    await ph.goto(APP + route); await ph.reload(); await ph.waitForSelector(ready); await ph.waitForTimeout(400);
     // SMOKE_WIDE_FONT=1 renders these pages in DejaVu Sans, the wider font CI's Linux runner uses, to reproduce its widths.
     if (process.env.SMOKE_WIDE_FONT) await ph.addStyleTag({ content: "* { font-family: \"DejaVu Sans\", sans-serif !important; }" });
     // Name what sticks out, so a failure on another machine's fonts says where to look.
@@ -1321,7 +1354,7 @@ await shot(partnerPages[0], "52-partner-performance");
 const a11y = await browser.newContext({ viewport: { width: 1280, height: 900 }, bypassCSP: true });
 const ap = await a11y.newPage();
 ap.on("pageerror", (e) => errors.push(`a11y: ${e.message}`));
-await ap.goto(BASE + "/");
+await ap.goto(APP);
 await ap.waitForSelector("form");
 await axeCheck(ap, "sign-in (en)");
 // Keyboard only: reach the email field, request a code, sign in, open the offer
@@ -1349,33 +1382,33 @@ for (let i = 0; i < 60 && !onOffer; i++) {
 }
 await ap.waitForSelector('main h1:has-text("Engagement")');
 check("keyboard-only path opens the engagement:", onOffer);
-await ap.goto(BASE + "/" + standard[1]); await ap.waitForSelector('main h1:text-is("Your offer")');
+await ap.goto(APP + standard[1]); await ap.waitForSelector('main h1:text-is("Your offer")');
 await axeCheck(ap, "client offer (en)");
-await ap.goto(BASE + "/#/"); await ap.waitForSelector("main h1");
+await ap.goto(APP + "#/"); await ap.waitForSelector("main h1");
 await axeCheck(ap, "client home (en)");
 await ap.goto(engagementUrl); await ap.waitForSelector("main h1");
 await axeCheck(ap, "client engagement (en)");
-await ap.goto(BASE + "/#/compliance"); await ap.waitForSelector("main h1");
+await ap.goto(APP + "#/compliance"); await ap.waitForSelector("main h1");
 await axeCheck(ap, "client compliance (en)");
-await ap.goto(BASE + "/#/new"); await ap.waitForSelector('form[data-form="intake"]');
+await ap.goto(APP + "#/new"); await ap.waitForSelector('form[data-form="intake"]');
 await axeCheck(ap, "client intake (en)");
 // Partner and public pages
 const ap2 = await (await browser.newContext({ viewport: { width: 1280, height: 900 }, bypassCSP: true })).newPage();
 ap2.on("pageerror", (e) => errors.push(`a11y partner: ${e.message}`));
-await ap2.goto(BASE + "/");
+await ap2.goto(APP);
 await ap2.locator('button[data-email="admin@setup-partner.test"]').click();
 await ap2.locator('form[data-form="verify"] button[type="submit"]').click();
 await ap2.waitForSelector("#nav > :is(a, .navgroup)");
 await axeCheck(ap2, "partner home (en)");
-await ap2.goto(BASE + "/#/firm"); await ap2.waitForSelector("main h1");
+await ap2.goto(APP + "#/firm"); await ap2.waitForSelector("main h1");
 await axeCheck(ap2, "partner firm (en)");
 await ap2.goto(BASE + "/intake.html"); await ap2.waitForSelector("#intake");
 await axeCheck(ap2, "public intake (en)");
 // Before the sign-off a client cannot switch to Arabic; the founder records it on Settings
-await client.goto(BASE + "/#/"); await client.reload();
+await client.goto(APP + "#/"); await client.reload();
 await client.waitForSelector("main h1");
 check("no Arabic switch for clients before the sign-off:", (await client.locator('button[data-act="lang"]').count()) === 0);
-await founder.goto(BASE + "/#/settings"); await founder.reload();
+await founder.goto(APP + "#/settings"); await founder.reload();
 await founder.waitForSelector('form[data-form="arabic-review"]');
 await founder.fill('form[data-form="arabic-review"] input[name="reviewedBy"]', "Huda Al Marri, legal translator");
 await founder.fill('form[data-form="arabic-review"] input[name="note"]', "Dictionary v1 and client templates");
@@ -1390,7 +1423,7 @@ await client.waitForSelector('html[dir="rtl"]');
 await client.waitForTimeout(600);
 await eventually("client home renders in Arabic, right-to-left:", async () => (await client.getAttribute("html", "lang")) === "ar" && /شركتك مع تأسيس/.test(await client.locator("main").innerText()));
 await shot(client, "55-client-home-ar");
-await client.goto(BASE + "/" + standard[1]); await client.waitForSelector("main h1");
+await client.goto(APP + standard[1]); await client.waitForSelector("main h1");
 await eventually("offer in Arabic keeps amounts and the accept wording:", async () => {
   const offerAr = await client.locator("main").innerText();
   return /عرضك/.test(offerAr) && /AED [\d,]+/.test(offerAr);
@@ -1400,7 +1433,7 @@ await client.goto(engagementUrl); await client.waitForSelector("main h1");
 await client.waitForTimeout(500);
 await eventually("engagement in Arabic:", async () => /الخطوات/.test(await client.locator("main").innerText()));
 await shot(client, "57-client-engagement-ar");
-await client.goto(BASE + "/#/compliance"); await client.waitForSelector("main h1");
+await client.goto(APP + "#/compliance"); await client.waitForSelector("main h1");
 // Wait for the compliance page itself, not the previous page's heading that is still on screen while it loads.
 await eventually("compliance in Arabic:", async () => /تقويم التزاماتك/.test(await client.locator("main").innerText()));
 await shot(client, "58-client-compliance-ar");
@@ -1408,7 +1441,7 @@ await pp.goto(BASE + "/intake.html?lang=ar"); await pp.waitForSelector('html[dir
 await pp.waitForTimeout(400);
 await eventually("public intake in Arabic:", async () => /شركتك في الإمارات/.test(await pp.locator("main").innerText()));
 // E3: the selector's questions and controls are translated too, question by question.
-await pp.goto(BASE + "/selector.html?lang=ar"); await pp.waitForSelector('html[dir="rtl"]');
+await pp.goto(BASE + "/?lang=ar"); await pp.waitForSelector('html[dir="rtl"]');
 check("the homepage in Arabic (E7A):", /اعثر على الكيان الإماراتي المناسب/.test(await pp.locator("main").innerText()));
 await eventually("the homepage map in Arabic keeps west on the left and shows each emirate's name once (E12):", async () => (await pp.locator("#home-map .em").count()) === 7 && (await pp.evaluate(() => {
   const x = (e) => document.querySelector(`#home-map [data-home-em="${e}"]`).getBoundingClientRect().left;
@@ -1426,19 +1459,19 @@ await shot(pp, "59-public-intake-ar");
 // axe on the Arabic screens (same account, new context that bypasses CSP for the axe script only)
 const ap3 = await (await browser.newContext({ viewport: { width: 1280, height: 900 }, bypassCSP: true })).newPage();
 ap3.on("pageerror", (e) => errors.push(`a11y ar: ${e.message}`));
-await ap3.goto(BASE + "/");
+await ap3.goto(APP);
 await ap3.locator('button[data-email="founder@sample-client.test"]').click();
 await ap3.locator('form[data-form="verify"] button[type="submit"]').click();
 await ap3.waitForSelector("#nav > :is(a, .navgroup)");
 await ap3.waitForSelector('html[dir="rtl"]');
 await axeCheck(ap3, "client home (ar)");
-await ap3.goto(BASE + "/" + standard[1]); await ap3.waitForSelector("main h1");
+await ap3.goto(APP + standard[1]); await ap3.waitForSelector("main h1");
 await axeCheck(ap3, "client offer (ar)");
 await ap3.goto(engagementUrl); await ap3.waitForSelector("main h1");
 await axeCheck(ap3, "client engagement (ar)");
-await ap3.goto(BASE + "/#/compliance"); await ap3.waitForSelector("main h1");
+await ap3.goto(APP + "#/compliance"); await ap3.waitForSelector("main h1");
 await axeCheck(ap3, "client compliance (ar)");
-await ap3.goto(BASE + "/#/new"); await ap3.waitForSelector('form[data-form="intake"]');
+await ap3.goto(APP + "#/new"); await ap3.waitForSelector('form[data-form="intake"]');
 await axeCheck(ap3, "client intake (ar)");
 check("the Arabic document title follows the heading:", /تأسيس/.test(await ap3.title()));
 // A message a partner wrote is never rewritten by the dictionary, even when it equals a dictionary key.
@@ -1461,7 +1494,7 @@ await axeCheck(ap3, "public intake (ar)");
 // O10: legal texts and holidays on Settings, the grouped console menu, the partner agreement, an imported prospect.
 {
   const signIn = async (page, email) => {
-    await page.goto(BASE + "/");
+    await page.goto(APP);
     await page.locator(`button[data-email="${email}"]`).click();
     await page.locator('form[data-form="verify"] button[type="submit"]').click();
     await page.waitForSelector("#nav > :is(a, .navgroup)");
@@ -1479,12 +1512,12 @@ await axeCheck(ap3, "public intake (ar)");
   check("staff menu fits on one row at 1280 px:", oneRow);
   check("staff menu has four entries (Work, Partners, Dashboard, Setup):", (await fp.locator("#nav > a, #nav > .navgroup").count()) === 4);
   check("the staff console has the dark bar, an icon on each entry and the MKW Advisors mark (E9):", (await fp.evaluate(() => getComputedStyle(document.querySelector(".top")).backgroundColor)) === "rgb(22, 32, 28)" && (await fp.locator("#nav > a svg").count()) === 2 && (await fp.locator("#nav .navbtn svg").count()) === 4 /* each menu: its icon and its chevron */ && (await fp.locator(".brand .mark").innerText()) === "M" && !/Tasees/.test(await fp.locator(".brand").innerText()));
-  await fp.goto(BASE + "/#/dashboard"); await fp.waitForSelector('main h1:text-is("Dashboard")'); await fp.waitForSelector(".kpis.lead-kpis .kpi .ico");
+  await fp.goto(APP + "#/dashboard"); await fp.waitForSelector('main h1:text-is("Dashboard")'); await fp.waitForSelector(".kpis.lead-kpis .kpi .ico");
   check("the dashboard's figures sit on tiles with icons, the first on the dark panel (E9):", (await fp.locator(".kpis .kpi .ico").count()) >= 12 && (await fp.evaluate(() => getComputedStyle(document.querySelector(".kpis.lead-kpis .kpi")).backgroundColor)) === "rgb(22, 32, 28)");
   await fp.screenshot({ path: `${OUT}/107-staff-dashboard.png`, fullPage: false });
   log.push("107-staff-dashboard");
   await axeCheck(fp, "staff dashboard with icon tiles (E9)");
-  await fp.goto(BASE + "/#/home"); await fp.waitForSelector("#queue-list");
+  await fp.goto(APP + "#/home"); await fp.waitForSelector("#queue-list");
   await fp.locator('#nav button[aria-controls="nav-work"]').focus();
   await fp.keyboard.press("Enter");
   const openWork = await fp.evaluate(() => !document.getElementById("nav-work").hidden && document.activeElement?.getAttribute("href") === "#/home");
@@ -1523,7 +1556,7 @@ await axeCheck(ap3, "public intake (ar)");
   // An imported prospect, as ops sees it (synthetic firm from the development seed).
   const op = await desk.newPage();
   op.on("pageerror", (e) => errors.push(`O10 ops: ${e.message}`));
-  await op.goto(BASE + "/#/partners");
+  await op.goto(APP + "#/partners");
   await op.reload();
   await op.locator("main a", { hasText: "Example Prospect Consultants" }).first().click();
   await op.waitForSelector("text=From the partner roster");
@@ -1538,7 +1571,7 @@ await axeCheck(ap3, "public intake (ar)");
   pp.on("pageerror", (e) => errors.push(`O10 partner: ${e.message}`));
   pp.on("dialog", (d) => d.accept());
   await signIn(pp, "admin@setup-partner.test");
-  await pp.goto(BASE + "/#/firm");
+  await pp.goto(APP + "#/firm");
   await pp.reload();
   await pp.waitForSelector('button[data-act="agreement-accept"]');
   check("the partner sees the agreement as a draft pending legal review:", (await pp.getByText("Draft, pending legal review").count()) >= 1);
@@ -1554,7 +1587,7 @@ await axeCheck(ap3, "public intake (ar)");
   const mp2 = await mob.newPage();
   mp2.on("pageerror", (e) => errors.push(`O10 mobile: ${e.message}`));
   await signIn(mp2, "founder@mkwadvisors.test");
-  await mp2.goto(BASE + "/#/settings");
+  await mp2.goto(APP + "#/settings");
   await mp2.reload();
   await mp2.waitForSelector('form[data-form="holiday-set"]');
   await mp2.locator('#nav button[aria-controls="nav-setup"]').click();
@@ -1573,7 +1606,7 @@ await axeCheck(ap3, "public intake (ar)");
   const mpart = await mobPartner.newPage();
   mpart.on("pageerror", (e) => errors.push(`O10 mobile partner: ${e.message}`));
   await signIn(mpart, "admin@setup-partner.test");
-  await mpart.goto(BASE + "/#/firm");
+  await mpart.goto(APP + "#/firm");
   await mpart.reload();
   await mpart.waitForSelector("text=Partner Network Agreement");
   check("partner agreement at 390 px has no horizontal overflow:", !(await mpart.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
@@ -1588,7 +1621,7 @@ await axeCheck(ap3, "public intake (ar)");
 writeFileSync(`${OUT}/axe.json`, JSON.stringify(axeResults, null, 2));
 // Back to English for the mobile shots that follow, after one Arabic phone shot
 const mar = await (await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 })).newPage();
-await mar.goto(BASE + "/");
+await mar.goto(APP);
 await mar.locator('button[data-email="founder@sample-client.test"]').click();
 await mar.locator('form[data-form="verify"] button[type="submit"]').click();
 await mar.waitForSelector("#nav > :is(a, .navgroup)");
@@ -1603,12 +1636,12 @@ await client.waitForSelector('html[dir="ltr"]');
 const mf = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
 const mfp = await mf.newPage();
 mfp.on("pageerror", (e) => errors.push(`mobile founder: ${e.message}`));
-await mfp.goto(BASE + "/");
+await mfp.goto(APP);
 await mfp.locator('button[data-email="founder@mkwadvisors.test"]').click();
 await mfp.locator('form[data-form="verify"] button[type="submit"]').click();
 await mfp.waitForSelector("#nav > :is(a, .navgroup)");
 for (const [route, name] of [["people", "20-mobile-people"], ["settings", "21-mobile-settings"], ["catalogue", "27-mobile-catalogue"], ["rules", "28-mobile-rules"], ["partners", "33-mobile-partners-runs"], ["scoping", "40-mobile-scoping"], ["agent", "41-mobile-ai-queue"], ["delays", "47-mobile-delays"], ["dashboard", "53-mobile-dashboard"], ["compliance", "54-mobile-compliance"]]) {
-  await mfp.goto(BASE + "/#/" + route); await mfp.reload();
+  await mfp.goto(APP + "#/" + route); await mfp.reload();
   await mfp.waitForSelector("main h1");
   await mfp.waitForTimeout(600);
   const over = await mfp.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
@@ -1619,13 +1652,13 @@ for (const [route, name] of [["people", "20-mobile-people"], ["settings", "21-mo
 // The new partner's firm page at phone width
 const mpp = await (await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 })).newPage();
 mpp.on("pageerror", (e) => errors.push(`mobile partner: ${e.message}`));
-await mpp.goto(BASE + "/");
+await mpp.goto(APP);
 await mpp.fill('form[data-form="request-code"] input[name="email"]', partnerEmail);
 await mpp.locator('form[data-form="request-code"] button[type="submit"]').click();
 await mpp.waitForSelector('form[data-form="verify"]');
 await mpp.locator('form[data-form="verify"] button[type="submit"]').click();
 await mpp.waitForSelector("#nav > :is(a, .navgroup)");
-await mpp.goto(BASE + "/#/firm"); await mpp.reload();
+await mpp.goto(APP + "#/firm"); await mpp.reload();
 await mpp.waitForSelector("main h1");
 await mpp.waitForTimeout(600);
 check("firm page at 390 px has no horizontal overflow:", !(await mpp.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));

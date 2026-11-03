@@ -209,12 +209,19 @@ outcomes:
     # Released by the owner on 3 Nov 2026 ("yes fix them and merge when green").
   - id: E13
     title: Recommendation trust (the public order on approved facts only; a lead only for an approved place)
-    status: verified-pending-merge
+    status: merged  # camayank/mkw-uae-growth#34, 3 Nov 2026
     contract: outcomes/E13-recommendation-trust.md
     depends_on: [E8, E11]
     needs_from_owner: [Arabic wording]
     # Released by the owner on 3 Nov 2026 ("yes", to E13 as proposed after the portal assessment), with the decision
     # "Approved facts only" (D95).
+  - id: E14
+    title: Front door (the public homepage at /, the workspace at /app/, old addresses kept, search basics)
+    status: verified-pending-merge
+    contract: outcomes/E14-front-door.md
+    depends_on: [E11, E13]
+    needs_from_owner: [domain and DNS]
+    # Released by the owner on 3 Nov 2026 ("start E14").
 
 # Roadmap from docs/VISION.md (18 Oct 2026). Order of work: O11, O12, O13 before the pilot; then O7 (launch gate);
 # then O14, O15, O16. Renumbered on 18 Oct 2026 when the owner released O10 as Real data and staging.

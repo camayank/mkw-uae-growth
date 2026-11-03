@@ -15,7 +15,7 @@ const ref = (id: unknown) => String(id ?? "").slice(0, 8).toUpperCase();
 
 /** Returns null for templates with no Arabic version (the notifier then falls back to English). */
 export function renderTemplateAr(template: TemplateName, vars: Vars, appUrl: string): Rendered | null {
-  const link = (path: string) => `${appUrl.replace(/\/$/, "")}/#${path}`;
+  const link = (path: string) => `${appUrl.replace(/\/$/, "")}/app/#${path}`; // E14: the workspace is at /app/
   const sign = `\n\n${BRAND_AR.signOff}`;
   switch (template) {
     case "login_code":

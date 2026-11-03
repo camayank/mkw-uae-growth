@@ -880,7 +880,9 @@ canvas of 3 Nov 2026 and its review round.)
   factors: a start date (one optional question on the selector, read by the scores only), a clear activity,
   investment size, expected revenue, a payroll. The segments are unchanged.
 - Erasure and anonymisation clear the adviser's free text on the lead (the override, its reason, the closure
-  reason) along with the rest, since an adviser may type a person's details there.
+  reason) along with the rest, since an adviser may type a person's details there. For the same reason the
+  audit row of an override records only that it changed (`{ overridden }`), never its wording, which lives in the
+  erasable lead fields and notes (as follow-ups already do): the audit chain is never edited (rule 8).
 - The next best action is a rule over the lead's state (status, readiness, call request, owner, follow-ups, what the
   request became), returning one action and the reason; it is computed on read, never stored, so it is always
   current. The adviser overrides it with a reason, audited; the override is shown beside the rule's suggestion and

@@ -1,5 +1,5 @@
 // Tasees workspace: ops module (split from app.js in O12; plain ES modules, no build step).
-import { $app, MILESTONE_LABEL, OBLIGATION_KINDS, act, aed, api, badge, date, dateTime, download, esc, flag, isClient, nameOf, obligationLabel, obligationTone, pct, render, role, seesMargin, state, table, kpiTile, words } from "./core.js";
+import { $app, MILESTONE_LABEL, OBLIGATION_KINDS, act, aed, api, badge, date, dateTime, download, esc, flag, isClient, nameOf, obligationLabel, obligationTone, pct, pickLang, render, role, seesMargin, state, table, kpiTile, words } from "./core.js";
 
 export async function renderDelays() {
   const q = await api("GET", "/api/ops/delays");
@@ -405,12 +405,12 @@ export async function renderRequest(id) {
     const h = await api("GET", "/api/client/home");
     const r = h.requests.find((x) => x.id === id);
     if (!r || !r.advice) {
-      $app.innerHTML = `<p><a href="#/">← Overview</a></p><h1>Our advice</h1><p class="muted">${r?.adviceStatus === "pending_review" ? "A person at MKW Advisors is checking the advice for your case; it appears here once approved." : r?.obligationId ? "This is your renewal request: partner firms price it and your offers appear on the overview; nothing is filed until you accept one." : "No advice for this request."}</p>${r?.assessmentId ? `<p class="small muted">It started from your saved result on our public page.</p>` : ""}${r && r.mode === "new_company" ? `<p><a class="btn sm" href="/api/client/requests/${r.id}/report.pdf" download>Download the preliminary report (PDF)</a></p>` : ""}`;
+      $app.innerHTML = `<p><a href="#/">← Overview</a></p><h1>Our advice</h1><p class="muted">${r?.adviceStatus === "pending_review" ? "A person at MKW Advisors is checking the advice for your case; it appears here once approved." : r?.obligationId ? "This is your renewal request: partner firms price it and your offers appear on the overview; nothing is filed until you accept one." : "No advice for this request."}</p>${r?.assessmentId ? `<p class="small muted">It started from your saved result on our public page.</p>` : ""}${r && r.mode === "new_company" ? `<p><a class="btn sm" href="/api/client/requests/${r.id}/report.pdf${pickLang() === "ar" ? "?lang=ar" : ""}" download>Download the preliminary report (PDF)</a></p>` : ""}`;
       return;
     }
     $app.innerHTML = `<p><a href="#/">← Overview</a></p><h1>Our advice for your request</h1><p class="muted">Reviewed by MKW Advisors on ${date(r.adviceReviewedAt)}. Confidence is shown for each statement.</p>${r.assessmentId ? `<p class="small muted">This request started from your saved result on our public page; the advice here was built afresh on the rules and data of the day, and a person reviewed it.</p>` : ""}
     ${inShort(r.advice)}
-    <p class="noprint"><a class="btn sm" href="/api/client/requests/${r.id}/report.pdf" download>Download the reviewed report (PDF)</a> <span class="small muted">The same advice as a document, with the reviewer and date on it.</span></p>
+    <p class="noprint"><a class="btn sm" href="/api/client/requests/${r.id}/report.pdf${pickLang() === "ar" ? "?lang=ar" : ""}" download>Download the reviewed report (PDF)</a> <span class="small muted">The same advice as a document, with the reviewer and date on it.</span></p>
     <details class="reasoning" open><summary>The reasoning: every structure, place and obligation, with its confidence</summary>${adviceHtml(r.advice)}</details>`;
     return;
   }

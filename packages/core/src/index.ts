@@ -23,3 +23,4 @@ export * from "./coverage.ts";
 export * from "./report.ts";
 export * from "./quick.ts";
 export * from "./documents.ts";
+export * from "./report-ar.ts";

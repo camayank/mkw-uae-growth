@@ -264,8 +264,8 @@ in a browser; everything listed here is not.
 
 ## E7D: reporting and advisory experiences
 
-101. **The report is plain text in a PDF**: the in-house writer draws monospaced Latin text only, so no logo, no
-     table rules and no Arabic (O15). The content is complete; the design is an owner choice (D88).
+101. ~~**The report is plain text in a PDF.**~~ Closed by E16 (D98): a designed PDF with header, tables, tags,
+     sources and page footers, in English or Arabic. Invoices, credit notes and offers keep the text writer (gap 3b).
 102. **The reviewer's name appears only on the client's report**, never on the public one, which names no person.
 103. **A booked call is a record and a queued follow-up**, not a calendar invitation; the adviser sends the invitation
      outside the platform and writes the time here.
@@ -351,6 +351,17 @@ in a browser; everything listed here is not.
      last, "send it only if the firm asks for it again" (D97). Whether an approved step's open requests should close
      by themselves is a delivery rule for ops, not changed here; the demo seeds such a case.
 128. **The new Arabic strings for E15 are drafts** until the Arabic reviewer signs them off (with gaps 111, 116, 119).
+
+## E16: report design
+
+129. **The Arabic report's wording is a draft** until the Arabic reviewer signs it off (with gaps 111, 116, 119, 128).
+     The engine's own statements stay in English inside it, as on the Arabic page.
+130. **Copying Arabic text out of the PDF can change a joined letter** (تقرير can paste as تقرتر), because of how the
+     font's shaped letters map back to text. What is drawn is right; search and copy-paste of Arabic in the PDF may
+     not be.
+131. **The smoke test reads the report's words only where poppler is installed** (pdftotext); elsewhere it checks
+     the PDF's structure and fonts, and the API tests read the drawn text.
+132. **The report shows the T mark drawn in the PDF**, not an artwork logo: there is no logo file on record yet.
 
 ## E9: workspace look
 

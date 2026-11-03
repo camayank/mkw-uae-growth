@@ -325,7 +325,7 @@ function showResult(p, recovered = null) {
       if (!savedCode) await save();
       track("report_printed");
       const a = document.createElement("a");
-      a.href = `/api/public/assessments/${encodeURIComponent(savedCode)}/report.pdf`;
+      a.href = `/api/public/assessments/${encodeURIComponent(savedCode)}/report.pdf${isAr() ? "?lang=ar" : ""}`; // E16: the report in the page's language
       a.download = "";
       document.body.appendChild(a); a.click(); a.remove();
     } catch (e) { $("save-msg").hidden = false; $("save-msg").textContent = e.message; } finally { $("report").disabled = false; }

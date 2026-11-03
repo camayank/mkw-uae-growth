@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { asPlatform } from "../src/lib/context.ts";
+import { asPlatform, type SessionUser } from "../src/lib/context.ts";
 import { createSession } from "../src/lib/auth.ts";
+import { clientReportPdf, publicReportPdf } from "../src/services/report.ts";
 import { makeEnv, type TestEnv } from "./helpers.ts";
 
 /**
@@ -8,7 +9,12 @@ import { makeEnv, type TestEnv } from "./helpers.ts";
  * client's report is their own only, preliminary until a person approves the advice and reviewed after, naming the
  * reviewer; booking a call is ops and founder only, audited, and turns the call request into a queued follow-up.
  */
-const pdfText = (buf: string) => buf.replace(/\\\(/g, "(").replace(/\\\)/g, ")");
+/**
+ * E16: the report is a designed PDF (pdfkit) with embedded Noto fonts; its text is glyph codes, so what it says is read
+ * from the text the renderer drew, through the same service the route calls, and the download is checked as a PDF.
+ */
+const isDesignedPdf = (body: string) => body.startsWith("%PDF-1.") && /\/FontFile2/.test(body) && /NotoSans/.test(body) && body.trimEnd().endsWith("%%EOF");
+const publicText = async (env: TestEnv, code: string, lang: "en" | "ar" = "en") => asPlatform(env.db, null, (tx) => publicReportPdf(tx, code, lang));
 const MONEY = /margin|partner cost|payout|rate card|commission|professional fee|partnerUnit/i;
 
 describe("the assessment report and the consultation booking (E7D)", () => {
@@ -19,6 +25,37 @@ describe("the assessment report and the consultation booking (E7D)", () => {
   });
   afterAll(() => env.db.close());
 
+  // First: the test after it exhausts the public report's rate limit.
+  it("the report in Arabic only where Arabic is available: the public one after the sign-off, a client's when Arabic is open to them (E16)", async () => {
+    const { code } = (await env.call("anon", "POST", "/api/public/assessments", { answers })).body;
+    // Before the Arabic sign-off: asking for Arabic gives the English report.
+    expect((await publicText(env, code, "ar")).lang).toBe("en");
+    let r = await env.send("anon", "GET", `/api/public/assessments/${code}/report.pdf?lang=ar`);
+    expect(String(r.headers["content-disposition"])).not.toMatch(/-ar\.pdf/);
+    const client = (await env.call("client", "GET", "/api/me")).body as SessionUser;
+    const req = await env.call("client", "POST", "/api/requests", { answers: { mode: "new_company", jurisdiction: "not_sure", ...answers } });
+    expect((await clientReportPdf(env.db, client, req.body.id, "ar")).lang).toBe("en");
+    // The founder records the Arabic reviewer's sign-off: the Arabic report is offered.
+    expect((await env.call("founder", "POST", "/api/admin/arabic/review", { reviewed: true, reviewedBy: "A. Reviewer", note: "test" })).status).toBe(200);
+    const ar = await publicText(env, code, "ar");
+    expect(ar.lang).toBe("ar");
+    const text = ar.text.join(" ");
+    expect(text).toContain("تقرير تقييم الكيان في الإمارات");
+    expect(text).toContain("ملف نشاطك التجاري");
+    expect(text).toMatch(/صفحة 1 من \d+/);
+    expect(text).not.toMatch(MONEY);
+    r = await env.send("anon", "GET", `/api/public/assessments/${code}/report.pdf?lang=ar`);
+    expect(r.status).toBe(200);
+    expect(isDesignedPdf(String(r.body))).toBe(true);
+    expect(/NotoSansArabic/.test(String(r.body))).toBe(true);
+    expect(String(r.headers["content-disposition"])).toMatch(/uae-entity-assessment-PRE-[0-9A-F]{8}-ar\.pdf/);
+    expect((await clientReportPdf(env.db, client, req.body.id, "ar")).lang).toBe("ar");
+    // A partner never gets an assessment report, in any language.
+    expect((await env.send("setup", "GET", `/api/client/requests/${req.body.id}/report.pdf?lang=ar`)).status).toBe(403);
+    // Back to unreviewed for the tests that follow.
+    expect((await env.call("founder", "POST", "/api/admin/arabic/review", { reviewed: false, note: "test over" })).status).toBe(200);
+  });
+
   it("the public report: a PDF of the saved result, preliminary, rate-limited, nothing written and not a return visit", async () => {
     const { code } = (await env.call("anon", "POST", "/api/public/assessments", { answers })).body;
     const before = { audit: await count("audit_events"), outbox: await count("outbox") };
@@ -26,14 +63,19 @@ describe("the assessment report and the consultation booking (E7D)", () => {
     expect(r.status).toBe(200);
     expect(String(r.headers["content-type"])).toMatch(/application\/pdf/);
     expect(String(r.headers["content-disposition"])).toMatch(/attachment; filename="uae-entity-assessment-PRE-[0-9A-F]{8}\.pdf"/);
-    const text = pdfText(String(r.body));
-    expect(text.startsWith("%PDF-1.4")).toBe(true);
+    expect(isDesignedPdf(String(r.body))).toBe(true);
+    expect(String(r.body)).not.toContain(code); // the recovery code never appears in the document, not even its metadata
+    const file = await publicText(env, code);
+    expect(file.lang).toBe("en");
+    const text = file.text.join(" ");
     expect(text).toContain("Tasees, by MKW Advisors");
     expect(text).toContain("UAE Entity Assessment Report");
     expect(text).toMatch(/PRELIMINARY: general information from your answers/);
-    expect(text).toContain("YOUR BUSINESS PROFILE");
-    expect(text).toContain("JURISDICTIONS COMPARED");
-    expect(text).not.toContain(code); // the recovery code never appears in the document
+    expect(text).toContain("Your business profile");
+    expect(text).toContain("Jurisdictions compared");
+    expect(text).toContain("Official sources");
+    expect(text).toMatch(/Page 1 of \d+/);
+    expect(text).not.toContain(code);
     expect(text).not.toMatch(/AED [\d,]+ to AED/); // nothing is approved for public display in a fresh demo
     expect(text).not.toMatch(MONEY);
     expect(await count("audit_events")).toBe(before.audit);
@@ -55,12 +97,14 @@ describe("the assessment report and the consultation booking (E7D)", () => {
     let p = await env.send("client", "GET", `/api/client/requests/${id}/report.pdf`);
     expect(p.status).toBe(200);
     expect(String(p.headers["content-type"])).toMatch(/application\/pdf/);
-    let text = pdfText(String(p.body));
+    expect(isDesignedPdf(String(p.body))).toBe(true);
+    const client = (await env.call("client", "GET", "/api/me")).body as SessionUser;
+    let text = (await clientReportPdf(env.db, client, id)).text.join(" ");
     expect(text).toMatch(/PRELIMINARY: your request is with MKW Advisors for review/);
     expect(text).toContain("Company: ");
     expect(text).not.toMatch(/REVIEWED by/);
     expect(text).not.toMatch(/\[(verified rule|rule of thumb|UNCERTAIN)\]|Recommended structure|AED [\d,]+ to AED/); // the unapproved advice stays out
-    expect(text).toMatch(/\[TO BE VERIFIED\]/);
+    expect(text).toMatch(/\bTO BE VERIFIED\b/); // drawn as a label
     expect((await env.send("client", "GET", "/api/client/requests/not-a-uuid/report.pdf")).status).toBe(404);
     // A services request for the existing company has no assessment behind it: no report, and the page offers no link.
     const svc = await env.call("client", "POST", "/api/requests", { answers: { mode: "services", emirate: "Dubai", services: ["VAT-RET"] } });
@@ -79,7 +123,8 @@ describe("the assessment report and the consultation booking (E7D)", () => {
     // A person approves the advice: the report becomes the reviewed one, with every confidence label and the reviewer.
     expect((await env.call("ops", "POST", `/api/ops/requests/${id}/scoping/approve`, {})).status).toBe(200);
     p = await env.send("client", "GET", `/api/client/requests/${id}/report.pdf`);
-    text = pdfText(String(p.body));
+    expect(isDesignedPdf(String(p.body))).toBe(true);
+    text = (await clientReportPdf(env.db, client, id)).text.join(" ");
     expect(text).toMatch(/REVIEWED by .+ at MKW Advisors on \d{4}-\d{2}-\d{2}/);
     expect(text).toContain("Recommended structure: Free zone company");
     expect(text).toMatch(/\[(UNCERTAIN|rule of thumb|verified rule)\]/);

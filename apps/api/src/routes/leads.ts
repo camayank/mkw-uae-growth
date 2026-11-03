@@ -47,7 +47,8 @@ export function registerLeadRoutes(ctx: RouteContext) {
     throttle(req, "public-report", 30);
     const code = String(req.params.code ?? "").trim();
     if (!/^[A-Za-z0-9]{10}$/.test(code)) return reply.code(404).send({ error: "not_found", message: "No saved result with that code" });
-    const { pdf, filename } = await asPlatform(db, null, (tx) => publicReportPdf(tx, code));
+    const lang = (req.query as { lang?: string }).lang === "ar" ? "ar" : "en";
+    const { pdf, filename } = await asPlatform(db, null, (tx) => publicReportPdf(tx, code, lang));
     reply.header("content-disposition", `attachment; filename="${filename}"`);
     return reply.type("application/pdf").send(pdf);
   });

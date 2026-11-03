@@ -21,6 +21,8 @@ RUN pnpm install --frozen-lockfile --prod
 COPY --from=build /app/packages/core/dist packages/core/dist
 COPY --from=build /app/apps/api/dist apps/api/dist
 COPY apps/api/migrations apps/api/migrations
+# E16: the report's fonts (Noto Sans and Noto Sans Arabic, SIL Open Font License; apps/api/assets/fonts/OFL.txt).
+COPY apps/api/assets apps/api/assets
 COPY apps/web/public apps/web/public
 # The AWS RDS certificate authorities, so a managed Postgres connection is verified, not just encrypted:
 # DATABASE_URL=...?sslmode=verify-full&sslrootcert=/etc/ssl/certs/rds-global-bundle.pem (O10; RDS for PostgreSQL 15+

@@ -95,6 +95,7 @@ describe("the pilot journeys A to F (E7E)", () => {
     d = (await env.call("ops", "GET", `/api/ops/pipeline/leads/${state.leadId}`)).body;
     expect(d.status).toBe("consultation");
     expect(d.nextAction.action).toBe("Follow up after the call");
+    expect(d.notes.some((n: any) => n.kind === "followup" && /Call booked for/.test(n.body) && !n.done_at)).toBe(true); // the call is a queued follow-up
     // The founder signs in as the new client; the advice is held until a person approves it.
     env.tokens.pilot = await createSession(env.db, founder.email);
     state.clientUserId = (await env.call("pilot", "GET", "/api/me")).body.id;
@@ -211,25 +212,27 @@ describe("the pilot journeys A to F (E7E)", () => {
     expect(e.payments.find((p: any) => p.kind === "balance").status).toBe("pending");
     const payout = e.payouts[0];
     expect((await env.call("finance", "POST", `/api/ops/payouts/${payout.id}/release`)).status).toBe(409);
+    let ok = 0;
     for (const who of ["setup", "corp", "tax"]) {
       const r = await env.call(who, "POST", `/api/payouts/${payout.id}/invoice`, { number: "INV-PILOT-1", amountAed: payout.amount / 100, fileName: "inv.pdf", contentBase64: pdf });
-      expect([200, 403, 404, 409]).toContain(r.status);
+      if (r.status === 200) ok += 1;
     }
+    expect(ok).toBe(1); // exactly the partner the payout belongs to
     expect((await env.call("ops", "POST", `/api/ops/payouts/${payout.id}/release`)).status).toBe(403);
     expect((await env.call("finance", "POST", `/api/ops/payouts/${payout.id}/release`)).status).toBe(200);
     // The remaining payouts go through a payout run: each needs its partner's invoice and bank details, finance
     // exports the bank file and marks the run paid; nothing moves money by itself.
-    for (const who of state.partners) await env.call(who, "PUT", "/api/partner/bank", { beneficiary: `${who} LLC`, iban: "AE07 0331 2345 6789 0123 456", bank: "Emirates NBD" });
+    for (const who of state.partners) expect((await env.call(who, "PUT", "/api/partner/bank", { beneficiary: `${who} LLC`, iban: "AE07 0331 2345 6789 0123 456", bank: "Emirates NBD" })).status).toBe(200);
     e = await eng("ops");
     const remaining = e.payouts.filter((p: any) => p.status === "eligible");
     expect(remaining.length).toBeGreaterThan(0);
     for (const p of remaining) {
-      let uploaded = false;
+      let uploaded = 0;
       for (const who of state.partners) {
         const r = await env.call(who, "POST", `/api/payouts/${p.id}/invoice`, { number: `INV-PILOT-${p.id.slice(0, 6)}`, amountAed: p.amount / 100, fileName: "inv.pdf", contentBase64: pdf });
-        if (r.status === 200) uploaded = true;
+        if (r.status === 200) uploaded += 1;
       }
-      expect(uploaded).toBe(true);
+      expect(uploaded).toBe(1); // one partner per payout, never another's
     }
     expect((await env.call("ops", "POST", "/api/ops/payout-runs")).status).toBe(403);
     const run = await env.call("finance", "POST", "/api/ops/payout-runs");
@@ -240,6 +243,10 @@ describe("the pilot journeys A to F (E7E)", () => {
     expect((await env.call("finance", "POST", `/api/ops/payout-runs/${run.body.id}/paid`, { bankReference: "BULK-PILOT-1" })).status).toBe(200);
     e = await eng("ops");
     expect(e.payouts.every((p: any) => p.status === "released")).toBe(true);
+    // Everything addressed to a partner comes from MKW Advisors and never carries the name Tasees (rule 10).
+    const toPartners = env.emails.filter((m) => [EMAILS.setup, EMAILS.corp, EMAILS.tax].includes(m.to as any));
+    expect(toPartners.length).toBeGreaterThan(0);
+    for (const m of toPartners) { expect(m.fromName).toBe("MKW Advisors"); expect(`${m.subject} ${m.text}`).not.toMatch(/Tasees/); }
     // Every paid amount was recorded by a person with a bank reference; the provider double charged nothing.
     const paid = (await asPlatform(env.db, null, (tx) => tx.query<{ provider_ref: string | null }>("select provider_ref from payments where engagement_id = $1 and status = 'paid'", [state.engagementId]))).rows;
     expect(paid.length).toBeGreaterThan(0);
@@ -260,8 +267,10 @@ describe("the pilot journeys A to F (E7E)", () => {
     const finance = await env.call("finance", "GET", `/api/ops/offers/${state.offerId}`);
     expect(JSON.stringify(finance.body)).toMatch(/margin/i);
     expect(JSON.stringify((await env.call("ops", "GET", `/api/ops/offers/${state.offerId}`)).body)).not.toMatch(/"margin/);
-    const coverage = (await env.call("founder", "GET", "/api/admin/coverage")).body;
-    expect(coverage.kpis ?? coverage).toBeTruthy();
+    const coverage = await env.call("founder", "GET", "/api/admin/coverage");
+    expect(coverage.status).toBe(200);
+    expect(coverage.body.places.total).toBeGreaterThan(0);
+    expect(coverage.body.fields).toBeTruthy();
     expect((await env.call("pilot", "GET", "/api/admin/coverage")).status).toBe(403);
     const funnel = (await env.call("founder", "GET", "/api/ops/pipeline/funnel")).body;
     expect(funnel.totals.won + funnel.totals.lost + funnel.totals.leadsAll).toBeGreaterThan(0);

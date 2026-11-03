@@ -1,0 +1,10 @@
+
+ RUN  v4.1.12 /home/user/mkw-e7e/apps/api
+
+
+ Test Files  34 passed (34)
+      Tests  357 passed (357)
+   Start at  07:19:44
+   Duration  78.97s (transform 4.27s, setup 0ms, import 14.62s, tests 214.57s, environment 3ms)
+
+EXIT 0

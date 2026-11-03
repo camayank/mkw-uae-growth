@@ -1,6 +1,6 @@
 # E7E quality and security regression
 
-Run on 3 Nov 2026 on branch `outcome/E7E-pilot-readiness` (E7A to E7D plus E7E), in the development container
+Run on 3 Nov 2026 on branch `outcome/E7E-pilot-readiness` at the merged head (E7A to E7D with their final review fixes, plus E7E), in the development container
 (Node 22, pnpm 10, PostgreSQL 16 at a local socket, Chromium through Playwright 1.64.1). Three states, nothing
 claimed beyond them: **executed here** (the command ran in this environment, with its result), **CI** (the same
 check runs on every pull request in `.github/workflows/ci.yml`; cited where it cannot run here), **blocked** (needs
@@ -12,12 +12,12 @@ an input only the owner can provide). No cloud resource, spend, message, payment
 | --- | --- | --- | --- |
 | 1 | Install | executed here | `pnpm install` from the registry after the tooling upgrade (D89), lockfile updated; `pnpm install --frozen-lockfile --offline` in a clean worktree: clean |
 | 2 | Typecheck | executed here | `pnpm typecheck`: clean in `packages/core` and `apps/api` on vitest 4 and the new Node types |
-| 3 | Unit and API tests, PGlite | executed here | `pnpm test`: core __CORE__ tests, __COREFILES__ files; api __API__ pass, 1 skipped (PostgreSQL-only), __APIFILES__ files, including the six pilot journeys; `tests-pglite.txt` |
-| 4 | API tests, PostgreSQL 16 | executed here | `TEST_DATABASE_URL=… npx vitest run`: __PG__ of __PG__ pass (the races and the lost-connection test run for real); `tests-pg16.txt` |
-| 5 | Browser smoke test on a fresh demo | executed here | `scripts/smoke.mjs` with Playwright 1.64.1 against this build: __SMOKE__ checks OK, 0 failed; `smoke-log.txt` |
-| 6 | Phone width and accessibility | executed here | 390 px checks inside the smoke run; axe (WCAG 2.1 AA) on __AXE__ screens at 1280 and 390 px: 0 violations; `axe.json` |
-| 7 | Audit chain of the smoke run | executed here | `pnpm verify:audit` on the smoke demo's database: intact, __AUDIT__ events; `verify-audit.txt` |
-| 8 | Load test, allocation and payouts on PostgreSQL 16 | executed here | `pnpm --filter @tasees/api load 40 10`: every invariant holds; `load-test.md` |
+| 3 | Unit and API tests, PGlite | executed here | `pnpm test`: core 131 tests, 14 files; api 356 pass, 1 skipped (PostgreSQL-only), 34 files, including the six pilot journeys; `tests-pglite.txt` |
+| 4 | API tests, PostgreSQL 16 | executed here | `TEST_DATABASE_URL=… npx vitest run`: 357 of 357 pass (the races and the lost-connection test run for real); `tests-pg16.txt` |
+| 5 | Browser smoke test on a fresh demo | executed here | `scripts/smoke.mjs` with Playwright 1.64.1 against this build: 257 checks OK, 0 failed; `smoke-log.txt` |
+| 6 | Phone width and accessibility | executed here | 390 px checks inside the smoke run; axe (WCAG 2.1 AA) on 48 screens at 1280 and 390 px: 0 violations; `axe.json` |
+| 7 | Audit chain of the smoke run | executed here | `pnpm verify:audit` on the smoke demo's database: intact, 112 events; `verify-audit.txt` |
+| 8 | Load test, allocation and payouts on PostgreSQL 16 | executed here | `pnpm --filter @tasees/api load 40 10`: 40 engagements, 10 at a time, every invariant holds (one payout per stage, none above the priced cost, one run from two presses, capacity respected, chain intact over 426 events); `load-test.md` |
 | 9 | Dependency audit | executed here | `pnpm audit`: no known vulnerabilities (everything); `pnpm audit --prod`: none; `audit.txt`. Before E7E: 18 advisories in development tools (gap 44); none after the upgrade (D89) |
 | 10 | Infrastructure synthesises | executed here | `pnpm --dir infra synth:check`: both stacks synthesise with example values, no AWS call |
 | 11 | Container image builds and answers health checks | CI | The Docker daemon is not reachable in this container; the `image` job runs on every pull request and passed on E7D's (camayank/mkw-uae-growth#27) |
@@ -46,9 +46,9 @@ it today, so a finding is written as a failing test next to them.
 
 | Item | Tried by |
 | --- | --- |
-| 1 Read another party's money through any route, export, notification, file or the contract | `security.test.ts` (RLS and column grants as each role); `flow.test.ts` (client sees prices, never cost or margin; partner sees cost, never price; ops never margin); `pdpl.test.ts` (exports carry no other party's figures, audit payloads stripped); `delivery.test.ts` (offer PDF names no partner); `reporting.test.ts` (dashboard and accounting export by role); `contract.test.ts` (no money field in a response the role may not see); journeys C, D, E |
+| 1 Read another party's money through any route, export, notification, file or the contract | `security.test.ts` (RLS and column grants as each role); `flow.test.ts` (client sees prices, never cost or margin; partner sees cost, never price; ops never margin); `pdpl.test.ts` (exports carry no other party's figures, audit payloads stripped); `delivery.test.ts` (offer PDF names no partner); `reporting.test.ts` (dashboard and accounting export by role); `lead-to-tasees.test.ts` (no partner cost or margin reaches the lead pipeline, the funnel or the client); journeys C, D, E |
 | 2 Cross-organisation access by id | `security.test.ts` (no rows of another client's engagement; a partner sees nothing before allocation); `journey.test.ts` (another client sees none of this client's actions, offers, engagements); `delivery.test.ts` (files by party, another partner 404); `report.test.ts` (another client 404 on the report); journeys B, D |
-| 3 Sign-in: brute force, session reuse, fixation, public intake abuse | `security.test.ts` (one-time code, wrong code, code limits per account); `admin.test.ts` (deactivation ends sessions); `pdpl.test.ts` (erasure kills sessions, the old address gets no code); `scoping.test.ts` (intake rate limit per IP, X-Forwarded-For only behind a trusted proxy, body caps); `leads.test.ts` and `report.test.ts` (public routes throttled per IP) |
+| 3 Sign-in: brute force, session reuse, fixation, public intake abuse | `security.test.ts` (one-time code, wrong code, code limits per account); `admin.test.ts` (deactivation ends sessions); `pdpl.test.ts` (erasure kills sessions, the old address gets no code); `scoping.test.ts` (intake rate limit per IP, X-Forwarded-For only behind a trusted proxy); `hardening.test.ts` (body caps); `public-selector.test.ts` and `report.test.ts` (public routes throttled per IP) |
 | 4 Role escalation | `security.test.ts` (role changes through the API refused); `admin.test.ts` (invites, roles, the last-founder guard); `coverage.test.ts` and `jurisdiction.test.ts` (founder-only classification and verification) |
 | 5 Bypass a state rule: evidence, payouts above cost, double payout, audit tampering | `flow.test.ts` (no submission without evidence, QA before approval, release only against an invoice, once); `payments.test.ts`, `concurrency.test.ts` and the load test (one payout per stage, never above the priced cost, one run from two presses); `pdpl.test.ts` and `hardening.test.ts` (a changed audit row is detected and alerted); journey D |
 | 6 Webhook forgery and replay; idempotency keys across people or routes | `flow.test.ts` and `payments.test.ts` (unsigned 401, signature window, replay); `hardening.test.ts` (keys per person, same key on a different request refused, repeat while the first runs, keys forgotten after a day and on erasure) |

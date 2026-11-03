@@ -940,7 +940,7 @@ canvas of 3 Nov 2026 and its review round.)
   the founder of MKW, the data subject). The contract's own wording for its journeys A to F is held in the owner's
   prompt; if the list differs, the suite is renamed, not rebuilt (an owner decision on the outcome).
 - Development tooling (gap 44): vitest 2.1.8 to 4.1.12 with vite pinned at 7.3.7 (vitest 4 accepts vite 6 to 8 and
-  the lockfile had kept 5.4, which carries the advisories), tsx 4.19.2 to 4.23.15 (esbuild 0.25), playwright 1.49.1
+  the lockfile had kept 5.4, which carries the advisories), tsx 4.19.2 to 4.23.15 (esbuild 0.28.2), playwright 1.49.1
   to 1.64.1, `@types/node` 22.10.2 to 22.20.5 for vite's peer range. All exact (rule 11); `pnpm audit` is clean for
   everything and for production alone. Licences unchanged (MIT, Apache-2.0 for playwright). Every suite was rerun on
   PGlite and PostgreSQL 16 and the smoke test on the new browser driver before this was recorded. To remove: pin the

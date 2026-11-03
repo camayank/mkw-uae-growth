@@ -71,7 +71,7 @@ Evidence recorded on 3 Nov 2026, after the review fixes (`docs/evidence/E8/`):
 
 - `pnpm test`: core 139 passed (15 files); api 359 passed, 1 skipped (35 files), on PGlite (`tests-pglite.txt`).
   `pnpm typecheck` clean. `docs/openapi.json` refreshed; the contract test passes.
-- `scripts/smoke.mjs` against a fresh demo: 277 checks OK, 0 failed (`smoke-log.txt`; 257 before E8).
+- `scripts/smoke.mjs` against a fresh demo: 279 checks OK, 0 failed (`smoke-log.txt`; 257 before E8).
 - axe on 50 screens, 0 violations, including "quick match result (E8)" and "quick match map at 390 px (E8)"
   (`axe.json`).
 - Screenshots: `103-quick-match-desktop.png` (1280 px, the result), `104-quick-match-map-phone.png` and
@@ -86,7 +86,11 @@ full assessment (the engine was run on one emirate's places); the evidence folde
 preference" emirate could reach pricing and allocation; an emirate with no place on record read as "nothing fits";
 a late count could redraw the quick match over the full questions; a failed count left an old match under new
 answers; focus was lost on the side panel's links; the visa counter recorded an answer the founder never gave; and
-some new strings had no Arabic. All are fixed with a test or smoke check where one applies; the ordering of places
+some new strings had no Arabic. The Codex review of the pull request then found two slow-response races: a
+match for earlier answers could show under new ones (with the exact-price action and the review form), and a count
+arriving after the founder left for the full questions could overwrite their answers. A match now shows only for the
+answers it was computed from, and leaving the quick match drops any count on its way; the smoke test slows the
+platform's answers to prove both. All are fixed with a test or smoke check where one applies; the ordering of places
 by unapproved data is recorded as gap 112.
 
 ## Dependencies

@@ -694,7 +694,27 @@ const pp = await pub.newPage();
     check("the answers read back with a change link each, and the profile is complete (E8):", /Software or technology/.test(await sel.locator("#quick-answers").innerText()) && /Up to AED 25,000/.test(await sel.locator("#quick-answers").innerText()) && (await sel.locator("#quick-pct").innerText()) === "100%");
     await shot(sel, "103-quick-match-desktop");
     await axeCheck(sel, "quick match result (E8)");
+    // Slow answers from the platform (Codex review of E8): a match on its way for new answers never shows the earlier
+    // place, and a count still on its way when the founder leaves for the full questions never touches their answers.
+    await sel.route("**/api/public/quick", async (r) => { await new Promise((ok) => setTimeout(ok, 1500)); await r.continue(); });
+    await sel.locator('#quick-answers button[data-go="4"]').click();
+    await sel.locator('[data-band="up_to_50k"]').click();
+    await sel.locator("#quick-next").click();
+    check("while the match for new answers is on its way, no earlier place, exact-price action or review form is shown (E8):", /Finding your match/.test(await sel.locator("#quick-step").innerText()) && (await sel.locator("#quick-price").count()) === 0 && (await sel.locator("#review").isHidden()));
+    await sel.waitForSelector("#quick-step .best h3");
+    await sel.locator('#quick-answers button[data-go="4"]').click();
+    await sel.locator("#quick-next").click(); // the same answers: the match shows at once and a fresh count is on its way
+    await sel.waitForSelector("#quick-full");
     await sel.locator("#quick-full").click();
+    await sel.waitForSelector("#questions:not([hidden]) .choice");
+    await sel.locator("#back").click();
+    await sel.locator('.choice[data-val="trading"]').click();
+    await sel.waitForTimeout(2200);
+    await sel.locator("#next").click();
+    await sel.locator("#back").click();
+    check("a count that arrives after the founder left for the full questions does not overwrite their answers (E8):", (await sel.locator('.choice[data-val="trading"]').getAttribute("aria-pressed")) === "true" && (await sel.locator("#quick").isHidden()));
+    await sel.unroute("**/api/public/quick");
+    await sel.locator("#next").click();
     await sel.waitForSelector("#questions:not([hidden]) .choice");
     await sel.waitForTimeout(600); // a count still on its way must not redraw the quick match over the questions
     check("the full comparison opens at the first question the quick match did not ask, answers kept, with no review form under it (E8):", /Question 2 of 11/.test(await sel.locator("#progress").innerText()) && /Where are your customers/.test(await sel.locator("#qtitle").innerText()) && (await sel.locator("#review").isHidden()) && (await sel.locator("#quick").isHidden()));

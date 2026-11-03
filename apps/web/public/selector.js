@@ -118,6 +118,8 @@ function show(view) {
   $("review").hidden = !(view === "result" || (view === "quick" && quick.step === 5));
   $("recover").hidden = view === "questions" || view === "quick";
   $("main").classList.toggle("wide", view === "quick");
+  // Leaving the quick match drops any count still on its way, so it can neither redraw nor touch the answers.
+  if (view !== "quick") quickSeq++;
 }
 
 function render() {
@@ -386,7 +388,7 @@ $("to-landing").addEventListener("click", () => { savedCode = null; show("landin
 function restartAll() {
   for (const k of Object.keys(answers)) delete answers[k];
   answers.emirate = "Dubai"; i = 0; savedCode = null; lastResult = null;
-  Object.assign(quick, { step: 1, activity: null, emirate: undefined, visas: null, budget: null, data: null, failed: false });
+  Object.assign(quick, { step: 1, activity: null, emirate: undefined, visas: null, budget: null, data: null, dataFor: null, failed: false });
   $("review").reset(); $("review").querySelector("button[type=submit]").disabled = false; $("rmsg").hidden = true;
   show("landing"); window.scrollTo(0, 0); $("quick-start").focus();
 }
@@ -451,10 +453,13 @@ const QSTATUS = { ELIGIBLE_VERIFIED: ["ok", "fits your answers"], ELIGIBLE_CONDI
 const qbadge = (s) => `<span class="badge ${QSTATUS[s]?.[0] ?? ""}">${esc(QSTATUS[s]?.[1] ?? words(s))}</span>`;
 
 // The quick answers: emirate undefined is unanswered, null is "anywhere".
-const quick = { step: 1, activity: null, emirate: undefined, visas: null, budget: null, data: null, failed: false };
+const quick = { step: 1, activity: null, emirate: undefined, visas: null, budget: null, data: null, dataFor: null, failed: false };
 let quickSeq = 0;
 const answeredCount = () => [quick.activity, quick.emirate !== undefined, quick.visas != null, quick.budget].filter(Boolean).length;
 const activityLabel = (id) => QUESTIONS.activity.options.find((o) => o[0] === id)?.[1] ?? words(id);
+// A match is shown only for the answers it was computed from: while a newer request is on its way, the result, the
+// exact-price action and the review form wait, so a request never pairs new answers with an earlier place.
+const fresh = () => (quick.data && quick.dataFor === JSON.stringify(quickBody()) ? quick.data : null);
 const quickBody = () => ({ ...(quick.activity ? { activity: quick.activity } : {}), ...(quick.emirate !== undefined ? { emirate: quick.emirate } : {}), ...(quick.visas != null ? { visas: quick.visas } : quick.step === 3 ? { visas: 1 } : {}), ...(quick.budget ? { budget: quick.budget } : {}) });
 
 // The quick answers as the full questionnaire and the review request read them. Once the match is shown, the request
@@ -463,7 +468,7 @@ const quickBody = () => ({ ...(quick.activity ? { activity: quick.activity } : {
 function syncAnswers() {
   if (quick.activity) answers.activity = quick.activity;
   if (quick.emirate) answers.emirate = quick.emirate;
-  const best = quick.step === 5 ? quick.data?.best : null;
+  const best = quick.step === 5 ? fresh()?.best : null;
   if (best) { answers.emirate = best.emirate; answers.freeZone = best.zone; }
   if (quick.visas != null) answers.visas = quick.visas;
   const band = BANDS.find((b) => b[0] === quick.budget);
@@ -472,12 +477,14 @@ function syncAnswers() {
 
 async function refreshQuick() {
   const seq = ++quickSeq;
+  const asked = JSON.stringify(quickBody());
   try {
-    const res = await fetch("/api/public/quick", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(quickBody()) });
+    const res = await fetch("/api/public/quick", { method: "POST", headers: { "content-type": "application/json" }, body: asked });
     const data = await res.json();
-    if (seq !== quickSeq) return; // a later answer already asked again
+    if (seq !== quickSeq) return; // a later answer asked again, or the founder left the quick match
     if (!res.ok) throw new Error(data.message || "Something went wrong");
     quick.data = data;
+    quick.dataFor = asked;
     quick.failed = false;
     syncAnswers();
     $("quick-msg").hidden = true;
@@ -547,7 +554,7 @@ function quickStepHtml() {
 }
 
 function quickResultHtml() {
-  const d = quick.data;
+  const d = fresh();
   if (!d) return `<div class="qhead"><p class="eyebrow">Your match</p><h2 id="quick-title" tabindex="-1">${quick.failed ? "Your match could not be loaded" : "Finding your match…"}</h2>${quick.failed ? `<button type="button" class="btn" id="quick-retry">Try again</button>` : ""}</div>`;
   const where = quick.emirate ?? "the UAE";
   const legend = `<div class="notice small" role="note"><b>Preliminary, general information, not advice.</b> <span data-no-i18n>${esc(d.disclaimer)}</span>${d.asOf ? ` Rules and place data as of ${esc(d.asOf)}.` : ""}</div>
@@ -589,7 +596,7 @@ function renderQuick({ keepFocus = false } = {}) {
   $("quick-next").disabled = !answered;
   $("quick-next").textContent = quick.step === 4 ? "See my match" : "Next";
   $("quick-back").textContent = quick.step === 5 ? "Change my answers" : "Back";
-  $("review").hidden = quick.step !== 5;
+  $("review").hidden = quick.step !== 5 || !fresh();
   quickPanel();
   bindQuick();
   if (isAr()) { translateTree($("quick")); if (quick.step === 5) translateTree($("review")); }

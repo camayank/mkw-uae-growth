@@ -888,3 +888,22 @@ canvas of 3 Nov 2026 and its review round.)
   and realised revenue (payments received) against the pipeline (proposals published and not yet decided). Client
   totals only; finance, clients and partners cannot read it. The demo seeds no funnel rows.
 
+**D88. The assessment report is the page as a document, in two kinds, from the repository's own PDF writer.** (E7D.)
+
+- A report is built in core (`packages/core/src/report.ts`) from the same data the screen reads: the preliminary
+  kind from the public view (D80, so only approved statements and figures appear and the rest reads "to be
+  verified"), the reviewed kind from the advice a named person approved for the client. Each section the contract
+  asks for is there (profile, structures, jurisdictions with evidence labels, rejected alternatives, licences and
+  obligations, cross-border risks for a specialist, unresolved questions, the recommendation and its limits, the
+  official sources, approved guidance on the preliminary kind, next steps), and the status line on top says which
+  kind it is: "PRELIMINARY, not reviewed by a person, not advice" or "REVIEWED by <name> on <date>".
+- The PDF is the in-house text writer (D26): monospaced, Latin only, no dependency. A designed document is a later
+  choice; the content would not change. The reference on the document is a prefix of the row id, never the
+  recovery code, which stays the capability it is.
+- The public report is served for a saved result by its code (rate-limited, counting the recovery); the client's
+  report is read as the client (row-level security and the column grants decide what they see) with the reviewer's
+  name looked up by the platform for that one request. Nothing is emailed; the person downloads it.
+- Booking a call is a record on the lead (when, for when, by whom), a status move to consultation, and a follow-up
+  due at that time that reaches the queue; no calendar provider (rules 7 and 11, an owner decision). The booker
+  owns the lead when nobody did.
+

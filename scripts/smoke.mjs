@@ -524,6 +524,12 @@ check("client sees each option's eligibility and why other places do not fit:", 
 check("client sees the date the advice's rules and data stand at (E2):", /Rules and place data as of \d/.test(clientAdvice) && /licensed by /.test(clientAdvice));
 // U1: two sentences before the reasoning, built from the engine's own labelled text; the full advice folds below, open.
 check("the advice opens with a plain summary and the points to confirm before the reasoning (U1):", /fits what you told us|No option fits/.test(await client.locator("main .summary h2").innerText()) && (await client.locator("main .confirm > div").count()) >= 1 && (await client.locator("main .confirm > div").count()) <= 2 && (await client.locator("main details.reasoning[open]").count()) === 1);
+// E7D: the reviewed report, as a PDF, from the client's advice page.
+check("the client's advice page offers the reviewed report (E7D):", (await client.locator('a[href$="/report.pdf"]').count()) === 1 && /Download the reviewed report/.test(await client.locator("main").innerText()));
+{
+  const pdf = await client.evaluate(async () => { const r = await fetch(document.querySelector('a[href$="/report.pdf"]').getAttribute("href")); return { type: r.headers.get("content-type"), text: await r.text() }; });
+  check("the reviewed report is a PDF naming the reviewer, with every section and no money internals (E7D):", /application\/pdf/.test(pdf.type) && pdf.text.startsWith("%PDF") && /REVIEWED by .+ at MKW Advisors/.test(pdf.text) && /JURISDICTIONS COMPARED/.test(pdf.text) && !/margin|payout/i.test(pdf.text));
+}
 await shot(client, "36-client-advice");
 await axeCheck(client, "client advice with eligibility (E1)");
 {
@@ -712,6 +718,11 @@ const pp = await pub.newPage();
   await sel.locator("#save").click();
   await eventually("saving the result returns a recovery code (E4):", async () => /Saved: code [A-Z2-9]{10}/.test(await sel.locator("#save").innerText()));
   const savedCode = (await sel.locator("#save").innerText()).match(/[A-Z2-9]{10}/)[0];
+  {
+    // E7D: the preliminary report for the saved result, as a PDF, labelled preliminary, with the approved place's figures.
+    const pdf = await sel.evaluate(async (code) => { const r = await fetch(`/api/public/assessments/${code}/report.pdf`); return { type: r.headers.get("content-type"), text: await r.text() }; }, savedCode);
+    check("the preliminary report downloads as a PDF with the label, the sections and only approved figures (E7D):", /application\/pdf/.test(pdf.type) && pdf.text.startsWith("%PDF") && /PRELIMINARY: general information/.test(pdf.text) && /YOUR BUSINESS PROFILE/.test(pdf.text) && /AED 12,000 to AED 20,000 \[CHECKED\]/.test(pdf.text) && /\[TO BE VERIFIED\]/.test(pdf.text) && !/margin|payout/i.test(pdf.text) && (await sel.locator("#report").count()) === 1);
+  }
   const rec = await pub.newPage();
   rec.on("pageerror", (e) => errors.push(`selector recover: ${e.message}`));
   await rec.goto(BASE + `/selector.html?code=${savedCode}`);
@@ -746,6 +757,12 @@ const pp = await pub.newPage();
   check("the lead page shows purchase readiness and commercial value with their evidence, and the next best action with its reason (E7C):", /Purchase readiness \d+/.test(leadPage) && /Commercial value \d+/.test(leadPage) && /Base 10 plus/.test(leadPage) && /asked for a call/.test(leadPage) && /Wants to start\s+within a month/.test(leadPage) && /Next best action: /.test(leadPage) && (await ops.locator('form[data-form="lead-next-action"]').count()) === 1);
   await ops.locator('form[data-form="lead-next-action"] input[name="action"]').fill("Wait for their documents");
   await ops.locator('form[data-form="lead-next-action"] input[name="reason"]').fill("Travelling until the 20th");
+  await ops.locator('form[data-form="lead-consultation"] input[name="at"]').fill("2027-01-12T10:30");
+  await ops.locator('form[data-form="lead-consultation"] input[name="note"]').fill("Teams link in the calendar");
+  await ops.locator('form[data-form="lead-consultation"] button[type="submit"]').click();
+  await ops.waitForTimeout(700);
+  log.push("booking: " + (await toastText(ops)));
+  await eventually("the call is booked: the lead is in consultation with a follow-up for that time (E7D):", async () => /Booked for 12 Jan 2027/.test(await ops.locator("main").innerText()) && /Call booked for/.test(await ops.locator("main").innerText()));
   await ops.locator('form[data-form="lead-next-action"] button[type="submit"]').click();
   await ops.waitForTimeout(700);
   log.push("next action: " + (await toastText(ops)));

@@ -193,7 +193,7 @@ const requirePipeline = (actor: SessionUser) => {
 
 const LEAD_COLUMNS = `l.id, l.email, l.name, l.company, l.phone_given, l.assessment_id, l.answers, l.source, l.segment, l.complexity, l.intent, l.high_intent, l.consultation, l.status,
   l.owner_user_id, u.name as owner_name, l.client_org_id, l.request_id, l.intake_lead_id, l.created_at, l.updated_at,
-  l.score_evidence, l.next_action_override, l.next_action_reason, l.next_action_at, l.first_contact_at, l.closed_reason,
+  l.score_evidence, l.next_action_override, l.next_action_reason, l.next_action_at, l.first_contact_at, l.closed_reason, l.consultation_booked_for, l.consultation_booked_at,
   exists (select 1 from offers f where f.request_id = l.request_id and f.status in ('published', 'accepted')) as offer_published,
   exists (select 1 from offers f where f.request_id = l.request_id and f.status = 'accepted') as offer_accepted,
   exists (select 1 from engagements e where e.request_id = l.request_id) as engagement_exists,
@@ -243,6 +243,7 @@ const leadRow = (x: Record<string, unknown>) => ({
   updatedAt: x.updated_at,
   // E7C: the evidence behind the scores, the computed next best action and the adviser's override.
   scoreEvidence: x.score_evidence ?? null,
+  consultationBookedFor: x.consultation_booked_for ?? null,
   firstContactAt: x.first_contact_at ?? null,
   closedReason: x.closed_reason ?? null,
   nextAction: nextBestAction({
@@ -603,5 +604,25 @@ export async function funnelReport(tx: Queryable, actor: SessionUser) {
     turnaround: { toFirstContactDays: turnaround.to_contact_days == null ? null : Math.round(Number(turnaround.to_contact_days) * 10) / 10, contacted: num(turnaround.contacted), toProposalDays: turnaround.to_proposal_days == null ? null : Math.round(Number(turnaround.to_proposal_days) * 10) / 10, proposed: num(turnaround.proposed) },
     attention: attention.rows.map((x) => ({ id: x.id, company: x.company, status: x.status, intent: num(x.intent), owner: x.owner ?? null, days: Math.round(Number(x.days) * 10) / 10, why: !x.owner_user_id ? "unassigned" : x.followup_due ? "follow-up overdue" : "no contact for two days" })),
   };
+}
+
+// E7D: booking the call a lead asked for ---------------------------------------------------------------
+
+export async function bookConsultation(tx: Queryable, actor: SessionUser, id: string, at: string, note = "") {
+  requirePipeline(actor);
+  const l = await loadLead(tx, id);
+  if (["converted", "closed"].includes(l.status)) throw conflict("This lead is closed or converted; nothing to book");
+  const when = new Date(at);
+  if (Number.isNaN(when.getTime())) throw badRequest("The call needs a date and time");
+  await tx.query(
+    `update leads set consultation_booked_at = app_now(), consultation_booked_for = $2, consultation_booked_by = $3, consultation = coalesce(consultation, '{}'::jsonb),
+       status = case when status in ('new', 'routed', 'contacted') then 'consultation' else status end, first_contact_at = coalesce(first_contact_at, app_now()),
+       owner_user_id = coalesce(owner_user_id, $3), updated_at = app_now() where id = $1`,
+    [id, when.toISOString(), actor.id],
+  );
+  const f = (await tx.query<{ id: number }>("insert into lead_notes (lead_id, author_user_id, kind, body, due_at) values ($1, $2, 'followup', $3, $4) returning id", [id, actor.id, `Call booked for ${when.toISOString().slice(0, 16).replace("T", " ")} UTC${note ? `: ${note.trim().slice(0, 400)}` : ""}`, when.toISOString()])).rows[0]!;
+  await tx.query("insert into lead_notes (lead_id, author_user_id, kind, body) values ($1, $2, 'status', $3)", [id, actor.id, `${l.status} → consultation: call booked`]);
+  await audit(tx, actor, "lead.consultation_booked", "lead", id, { at: when.toISOString(), followupId: num(f.id) });
+  return { ok: true, followupId: num(f.id) };
 }
 

@@ -9,6 +9,7 @@ import { loadCalendar } from "../services/calendar.ts";
 import { createRequest, IntakeSchema, previewRequest } from "../services/requests.ts";
 import { clientHome, clientOffer, clientOfferProposal, opsEngagement, partyEngagement } from "../services/views.ts";
 import type { RouteContext } from "./context.ts";
+import { clientReportPdf } from "../services/report.ts";
 
 /** The catalogue, the client's own screens and the shared engagement view. */
 export function registerClientRoutes(ctx: RouteContext) {
@@ -54,6 +55,13 @@ export function registerClientRoutes(ctx: RouteContext) {
     });
   });
 
+  // E7D: the client's assessment report, reviewed once the advice is approved, preliminary until then.
+  app.get<{ Params: { id: string } }>("/api/client/requests/:id/report.pdf", async (req, reply) => {
+    const user = requireRole(req, ...CLIENT_ROLES);
+    const { pdf, filename } = await clientReportPdf(db, user, req.params.id);
+    reply.header("content-disposition", `attachment; filename="${filename}"`);
+    return reply.type("application/pdf").send(pdf);
+  });
   app.get<{ Params: { id: string } }>("/api/client/offers/:id", async (req) => {
     const user = requireRole(req, ...CLIENT_ROLES);
     const offer = (await clientOffer(db, user, req.params.id)) as Parameters<typeof clientOfferProposal>[2];

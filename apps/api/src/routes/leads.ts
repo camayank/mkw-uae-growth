@@ -3,8 +3,9 @@ import { cleanAttribution, type AdviceInput } from "@tasees/core";
 import { PLATFORM_ROLES, requireRole } from "../lib/auth.ts";
 import { asPlatform } from "../lib/context.ts";
 import { publicAssess } from "../services/public.ts";
+import { publicReportPdf } from "../services/report.ts";
 import { IntakeSchema } from "../services/requests.ts";
-import { addLeadNote, assignLead, completeFollowup, CONSENT_TEXTS, FUNNEL_STAGES, funnelReport, getRouting, leadAnalytics, leadDetail, LEAD_STATUSES, listLeads, recordFunnelEvents, recoverAssessment, saveAssessment, SEGMENTS, setFollowup, setLeadStatus, setNextAction, setRouting, withdrawConsent } from "../services/leads.ts";
+import { addLeadNote, assignLead, bookConsultation, completeFollowup, CONSENT_TEXTS, FUNNEL_STAGES, funnelReport, getRouting, leadAnalytics, leadDetail, LEAD_STATUSES, listLeads, recordFunnelEvents, recoverAssessment, saveAssessment, SEGMENTS, setFollowup, setLeadStatus, setNextAction, setRouting, withdrawConsent } from "../services/leads.ts";
 import type { RouteContext } from "./context.ts";
 
 /** Lead intelligence (E4): saved assessments, the lead pipeline, routing, analytics. Nothing here sends anything. */
@@ -41,6 +42,15 @@ export function registerLeadRoutes(ctx: RouteContext) {
   });
   // The consent texts the public pages show, so the page and the record always agree on the version.
   app.get("/api/public/consent-texts", async () => CONSENT_TEXTS);
+  // E7D: the preliminary report for a saved result, as a PDF; the recovery code is the capability, as for recovery.
+  app.get<{ Params: { code: string } }>("/api/public/assessments/:code/report.pdf", async (req, reply) => {
+    throttle(req, "public-report", 30);
+    const code = String(req.params.code ?? "").trim();
+    if (!/^[A-Za-z0-9]{10}$/.test(code)) return reply.code(404).send({ error: "not_found", message: "No saved result with that code" });
+    const { pdf, filename } = await asPlatform(db, null, (tx) => publicReportPdf(tx, code));
+    reply.header("content-disposition", `attachment; filename="${filename}"`);
+    return reply.type("application/pdf").send(pdf);
+  });
   // E7C: anonymous funnel measurement from the public page. A random per-session id, the stage and a step key; the
   // attribution is the same the page already sends. Nothing identifies a person; repeats are ignored.
   const FunnelBody = z.object({ visitor: z.string().regex(/^[A-Za-z0-9_-]{8,32}$/), events: z.array(z.object({ stage: z.enum(FUNNEL_STAGES), key: z.string().max(40).optional() })).min(1).max(40), attribution: Attribution.optional() });
@@ -53,6 +63,13 @@ export function registerLeadRoutes(ctx: RouteContext) {
   app.get("/api/ops/pipeline/funnel", async (req) => {
     const user = requireRole(req, "ops", "founder");
     return asPlatform(db, user, (tx) => funnelReport(tx, user));
+  });
+  // E7D: the adviser books the call a lead asked for; a follow-up due at that time reaches the queue.
+  const ConsultationBody = z.object({ at: z.string().min(8).max(40), note: z.string().max(500).default("") });
+  app.post<{ Params: { id: string } }>("/api/ops/pipeline/leads/:id/consultation", { config: { body: ConsultationBody } }, async (req) => {
+    const user = requireRole(req, "ops", "founder");
+    const body = ConsultationBody.parse(req.body);
+    return asPlatform(db, user, (tx) => bookConsultation(tx, user, z.string().uuid().parse(req.params.id), body.at, body.note));
   });
   const NextActionBody = z.object({ action: z.string().max(120).nullable(), reason: z.string().max(500).default("") });
   app.post<{ Params: { id: string } }>("/api/ops/pipeline/leads/:id/next-action", { config: { body: NextActionBody } }, async (req) => {

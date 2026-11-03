@@ -344,6 +344,8 @@ export const AR = {
   "For a cross-border specialist": "لمختص في الشؤون العابرة للحدود",
   "What would sharpen this": "ما الذي يجعل النتيجة أدق",
   "Print or save this page": "اطبع هذه الصفحة أو احفظها",
+  "Print this page": "اطبع هذه الصفحة",
+  "Download the report (PDF)": "نزّل التقرير (PDF)",
   "Start again": "ابدأ من جديد",
   "Save my result": "احفظ نتيجتي",
   "to be verified by a person": "قيد التحقق من قبل شخص",

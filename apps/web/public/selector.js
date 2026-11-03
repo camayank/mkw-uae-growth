@@ -86,8 +86,6 @@ const visitor = (() => {
   } catch { return Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => "abcdefghijklmnopqrstuvwxyz0123456789"[b % 36]).join(""); }
 })();
 attribution.visitor = visitor;
-// The page's own campaign when no UTM names one, so the funnel's visitor rows and its lead rows meet on one key.
-attribution.campaign = attribution.campaign || "selector";
 let pending = [];
 let flushTimer = null;
 const sent = new Set();

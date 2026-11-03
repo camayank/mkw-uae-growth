@@ -57,18 +57,27 @@ describe("funnel measurement, qualification and the conversion dashboard (E7C)",
       env.call("anon", "POST", "/api/public/intake", { company: "Funnel Ventures", name: "F. Founder", email: "funnel-founder@example.test", consent: true, consentVersion: "2026-11-selector-v1", campaign: "nov-launch", attribution: { source: "google", campaign: "nov-launch", visitor }, assessmentCode: code, answers: { mode: "new_company", jurisdiction: "not_sure", ...answers }, consultation: { wanted: true, times: "mornings" }, ...extra });
     const leadsBefore = await count(env, "leads");
     expect((await review()).status).toBe(200);
-    expect((await review()).status).toBe(200); // the same person, the same case, a minute later
+    const after1 = { held: await count(env, "intake_leads"), emails: env.emails.length, outbox: await count(env, "outbox"), consents: await count(env, "consents") };
+    expect((await review({ marketingConsent: true })).status).toBe(200); // the same person, the same case, a minute later
     expect(await count(env, "leads")).toBe(leadsBefore + 1);
+    // Nothing else is created or sent for the repeat; the consents decided this time are appended to the one lead.
+    expect(await count(env, "intake_leads")).toBe(after1.held);
+    expect(env.emails.length).toBe(after1.emails);
+    expect(await count(env, "outbox")).toBe(after1.outbox);
+    expect(await count(env, "consents")).toBe(after1.consents + 3);
     const l = (await env.call("ops", "GET", "/api/ops/pipeline/leads")).body.find((x: any) => x.company === "Funnel Ventures");
     expect(l.source.visitor).toBe(visitor);
     expect(l.highIntent).toBe(true);
     expect(l.scoreEvidence.readiness.map((f: any) => f.factor)).toEqual(expect.arrayContaining(["budget given", "wants to start within a month", "asked for a call", "a clear activity"]));
-    expect(l.scoreEvidence.value.length).toBeGreaterThanOrEqual(0);
-    expect(10 + l.scoreEvidence.readiness.reduce((n: number, f: any) => n + f.points, 0)).toBeGreaterThanOrEqual(l.intent);
+    expect(l.scoreEvidence.readiness.length).toBeGreaterThanOrEqual(4);
+    expect(l.intent).toBe(Math.min(100, 10 + l.scoreEvidence.readiness.reduce((n: number, f: any) => n + f.points, 0)));
+    expect(l.complexity).toBe(Math.min(100, 10 + l.scoreEvidence.value.reduce((n: number, f: any) => n + f.points, 0)));
     expect(l.nextAction).toMatchObject({ action: "Assign an owner", urgent: true });
     expect(l.nextActionOverride).toBeNull();
     const detail = (await env.call("ops", "GET", `/api/ops/pipeline/leads/${l.id}`)).body;
     expect(detail.notes.some((n: any) => /Asked again with the same answers/.test(n.body))).toBe(true);
+    expect(detail.consentHistory.filter((c: any) => c.purpose === "marketing").map((c: any) => c.given)).toEqual([false, true]);
+    expect(detail.consents.marketing).toBe(true);
     expect((await asPlatform(env.db, null, (tx) => tx.query("select 1 from audit_events where action = 'lead.duplicate_ignored'"))).rows).toHaveLength(1);
     // A different case from the same person is a new lead.
     expect((await review({ assessmentCode: undefined, answers: { mode: "new_company", jurisdiction: "not_sure", ...answers, activity: "trading", visas: 5 } })).status).toBe(200);
@@ -98,14 +107,14 @@ describe("funnel measurement, qualification and the conversion dashboard (E7C)",
   });
 
   it("the funnel report follows a source from the first visit to accepted revenue, counts each stage once, and names the leads that need a person", async () => {
-    // A second visitor who starts and stops at the visas question, from a newsletter.
-    await events("v2abcdefghij", [{ stage: "visited" }, { stage: "assessment_started" }, { stage: "step_reached", key: "activity" }, { stage: "step_reached", key: "visas" }], { source: "newsletter" });
+    // A second visitor who starts and stops at the premises question (sent after visas, which sorts later), from a newsletter.
+    await events("v2abcdefghij", [{ stage: "visited" }, { stage: "assessment_started" }, { stage: "step_reached", key: "activity" }, { stage: "step_reached", key: "visas" }, { stage: "step_reached", key: "premises" }], { source: "newsletter" });
     let f = (await env.call("founder", "GET", "/api/ops/pipeline/funnel")).body;
     const g = f.bySource.find((r: any) => r.source === "google" && r.campaign === "nov-launch");
     expect(g).toMatchObject({ visitors: 1, started: 1, completed: 1, viewed: 1, saved: 1, leads: 2, consultations: 2, qualified: 2, proposals: 0, accepted: 0, engagements: 0, revenueFils: 0, realisedFils: 0, pipelineFils: 0 });
     expect(f.bySource.find((r: any) => r.source === "newsletter")).toMatchObject({ visitors: 1, started: 1, completed: 0, leads: 0 });
     expect(f.totals).toMatchObject({ visitors: 2, started: 2, completed: 1, completionRate: 50, abandonmentRate: 50, won: 0, lost: 1 });
-    expect(f.abandonment).toEqual([{ step: "visas", visitors: 1 }]);
+    expect(f.abandonment).toEqual([{ step: "premises", visitors: 1 }]);
     expect(f.lostReasons).toEqual([{ reason: "Chose another adviser", leads: 1 }]);
     expect(f.turnaround.contacted).toBe(1);
     expect(f.turnaround.toFirstContactDays).toBeGreaterThanOrEqual(0);
@@ -115,13 +124,17 @@ describe("funnel measurement, qualification and the conversion dashboard (E7C)",
     // Through Tasees: approve, build, publish, accept; the stages follow, counted once per request and offer.
     const l = (await env.call("ops", "GET", "/api/ops/pipeline/leads")).body.find((x: any) => x.company === "Funnel Ventures" && x.status === "contacted");
     expect((await env.call("ops", "POST", `/api/ops/requests/${l.requestId}/scoping/approve`, {})).status).toBe(200);
-    const built = await env.call("ops", "POST", `/api/ops/requests/${l.requestId}/build-offers`, { tiers: ["standard"] });
+    const built = await env.call("ops", "POST", `/api/ops/requests/${l.requestId}/build-offers`, { tiers: ["standard", "priority"] });
     expect(built.status, JSON.stringify(built.body)).toBe(200);
-    expect((await env.call("ops", "POST", `/api/ops/offers/${built.body.offerIds[0]}/publish`)).status).toBe(200);
+    expect(built.body.offerIds.length).toBeGreaterThanOrEqual(1);
+    for (const id of built.body.offerIds) expect((await env.call("ops", "POST", `/api/ops/offers/${id}/publish`)).status).toBe(200);
     f = (await env.call("ops", "GET", "/api/ops/pipeline/funnel")).body;
     let gg = f.bySource.find((r: any) => r.source === "google" && r.campaign === "nov-launch");
     expect(gg).toMatchObject({ proposals: 1, accepted: 0 });
-    expect(gg.pipelineFils).toBeGreaterThan(0);
+    // The pipeline counts the request once (its highest published tier), not every tier.
+    const totals = (await asPlatform(env.db, null, (tx) => tx.query<{ t: number }>("select client_total_fils::int as t from offers where request_id = $1 and status = 'published'", [l.requestId]))).rows.map((x) => Number(x.t));
+    expect(gg.pipelineFils).toBe(Math.max(...totals));
+    if (totals.length > 1) expect(gg.pipelineFils).toBeLessThan(totals.reduce((a, b) => a + b, 0));
     expect((await env.call("ops", "GET", `/api/ops/pipeline/leads/${l.id}`)).body.nextAction.action).toBe("Chase the proposal");
     expect(f.turnaround.proposed).toBe(1);
     // The founder of Funnel Ventures signs in as the new client and accepts (the review created the account).

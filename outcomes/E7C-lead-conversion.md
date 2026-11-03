@@ -1,6 +1,6 @@
 # E7C Lead conversion intelligence: funnel, qualification, conversion dashboard, lead-to-Tasees regression
 
-Status: in-progress (branch `outcome/E7C-lead-conversion`, built on E7B; released by the owner on 3 Nov 2026 with the E7
+Status: verified-pending-merge (branch `outcome/E7C-lead-conversion`, built on E7B, camayank/mkw-uae-growth#25; released by the owner on 3 Nov 2026 with the E7
 contract, phase 3 "Lead generation and revenue intelligence")
 
 ## Business result
@@ -20,11 +20,13 @@ the owner intact, proven by a regression suite.
    contact detail. One row per visitor, stage and key (a unique index), so repeats never double-count. The later
    stages (consultation requested, lead, qualified, proposal issued, accepted, engagement, revenue) are derived from
    the platform's own records, never sent by the browser. The review request carries the visitor id in its
-   attribution, which joins the two halves. A measurement notice on the page says what is counted (owner wording,
-   default labelled).
-2. **Duplicate leads.** A second review request from the same email within a day with the same answers adds a note
-   to the existing lead instead of a second lead; a different case makes a new lead. Conversion events are counted
-   once per request and per offer (derived from records, so nothing can be sent twice).
+   attribution; it stays on the lead only, and the funnel joins a lead to its measured session by it. A measurement
+   notice on the page says what is counted (owner wording, default labelled).
+2. **Duplicate leads.** A second review request from the same email and company within a day with the same answers
+   adds a note and the consents decided this time to the existing lead instead of a second lead, and creates and
+   sends nothing else; a different case makes a new lead. Conversion events are counted once per request and per
+   offer (derived from records, so nothing can be sent twice); the pipeline counts a request once, at its highest
+   published tier.
 3. **Two scores with evidence** (`packages/core/src/leads.ts`): purchase readiness (budget, start date, clear
    activity, visa need, call requested, saved and returned, phone given) and commercial value (regulated activity,
    cross-border ownership, corporate owner, investment size, holding or multi-entity, industrial premises, ongoing
@@ -52,8 +54,8 @@ the owner intact, proven by a regression suite.
 
 ## Acceptance evidence
 
-- Core: scores deterministic, bounded, with evidence that sums to the score; the next best action covers every
-  status; no commercial input.
+- Core: scores deterministic, bounded, with evidence that sums to the score up to the cap; the next best action
+  covers every status; no commercial input.
 - API: events are anonymous (the row holds stage, step, source and a random id only), de-duplicated, rate-limited and
   written by nobody signed in; a double submission makes one lead; the funnel report follows a visitor from the first
   visit to accepted revenue and counts each stage once; overdue and unassigned high-intent leads are listed; the
@@ -89,4 +91,23 @@ the owner intact, proven by a regression suite.
 | Screens | `98-funnel.png` (1280 px, full page), `99-mobile-funnel.png` (390 px), `87-lead-detail.png` (scores with evidence, next best action with the override), `86-leads-pipeline.png` (the next-action column) |
 | Audit chain | `pnpm verify:audit` on the smoke demo: intact, 111 events |
 | Records | D87; KNOWN-GAPS 96–100; `docs/DESIGN.md` rows; `docs/ENTITY-PROGRAMME.md` rows and paragraph |
+
+## Independent review
+
+A separate reviewer read the whole diff before the pull request, with a throwaway probe over the test helpers and no
+repository changes. It confirmed the events hold nothing personal and write no audit or outbox row, the notice is
+accurate, the scores read no commercial input and the start date never reaches the engine, the routes and grants are
+right, and the regression suite covers each risk the contract lists. Applied before the pull request:
+- **Must-fix.** The last question reached was chosen alphabetically (now the last sent); the pipeline summed every
+  published tier of a request (now the highest, once); a duplicate submission still created a held enquiry and sent
+  the sign-in email (the duplicate check now runs first and stops everything); a changed case under the same saved
+  code was swallowed (the saved-code branch is gone: only identical answers, email and company are a duplicate).
+- **Should-fix.** The repeat's consents are appended to the one lead; the company is part of the duplicate rule; the
+  visitor id is used (the funnel joins a lead to its measured session by it) and no longer written to the request
+  or the audit payload; the page's invented "selector" campaign is gone; the lead page shows the start date; the
+  evidence wording says "capped at 100"; funnel rows are pruned on a fixed horizon whether or not retention is
+  confirmed; three assertions that could not fail were replaced and the abandonment and pipeline tests now exercise
+  the order and the tiers.
+- **Noted.** "Of visitors" can exceed 100 percent for platform stages fed from other pages; the override has no
+  status guard (harmless); finance is excluded from the funnel by choice.
 

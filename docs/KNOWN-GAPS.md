@@ -265,7 +265,9 @@ in a browser; everything listed here is not.
 ## E7C: lead conversion intelligence
 
 96. **Funnel figures start at zero on the pilot's first day** and only count what the public page sends; a visitor
-    whose browser blocks session storage or scripts is not counted. Nothing is estimated to fill the gap.
+    whose browser blocks session storage or scripts is not counted. Nothing is estimated to fill the gap. The rate
+    limit on the events endpoint is per IP (300 batches per quarter hour), so a large office behind one address can
+    lose events silently; the page never retries.
 97. **"Qualified" is a definition, not a judgement**: high readiness (60 or more), or a person moved the lead to
     consultation or converted, or contacted with a request open (`QUALIFIED` in `services/leads.ts`). The pilot's
     conversions should decide whether the threshold is right; the scores themselves stay heuristics (gap 70).

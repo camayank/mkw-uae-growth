@@ -863,14 +863,19 @@ canvas of 3 Nov 2026 and its review round.)
   contact detail, and no audit or outbox row, because nobody acts on it. One row per visitor, stage and step (a
   unique index), so a repeat never counts twice. The later stages (consultation, lead, qualified, proposal, accepted,
   engagement, revenue) are derived from the platform's records, counted once per request and offer, never sent by
-  the browser. The review request carries the same id in its attribution, which joins the two halves. The page says
-  what is measured (owner wording, default labelled). Rows older than the leads retention period are deleted with the
-  retention run; they hold nothing personal, so this is housekeeping.
-- A second review request from the same email within a day with the same answers (or the same saved result) is the
-  same lead: the existing lead takes a note, keeps a call request if one is added, and nothing else is created. A
-  different case from the same person is a new lead, as before.
+  the browser; the pipeline counts a request once, at its highest published tier. The review request carries the
+  same id in its attribution; it is kept on the lead only (not on the request, not in the audit payload) and the
+  funnel joins a lead to its measured session by it, so a lead counts under the label of the session it came from.
+  The page says what is measured (owner wording, default labelled). Rows older than 400 days are deleted on every
+  retention sweep whether or not the personal-data periods are confirmed, and older than the leads period once they
+  are; they hold nothing personal, so this is housekeeping.
+- A second review request from the same email and company within a day with the same answers is the same lead: the
+  existing lead takes a note, keeps a call request if one is added (the first times given stay), has the consents
+  decided this time appended, and nothing else is created or sent: no held enquiry, no account, no request, no
+  email. A changed answer, another company or a later day is a new case and a new lead, as before.
 - The two scores keep their columns (`intent`, `complexity`) and gain their evidence: the factors and points behind
-  each, stored on the lead and shown on its page under the labels purchase readiness and commercial value. New
+  each (base 10 plus the points, capped at 100), stored on the lead and shown on its page under the labels purchase
+  readiness and commercial value. New
   factors: a start date (one optional question on the selector, read by the scores only), a clear activity,
   investment size, expected revenue, a payroll. The segments are unchanged.
 - The next best action is a rule over the lead's state (status, readiness, call request, owner, follow-ups, what the

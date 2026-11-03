@@ -625,13 +625,13 @@ export async function renderLead(id) {
       ${l.requestId ? `<p class="small"><a href="#/request/${l.requestId}">Open the request's scoping</a></p>` : l.intakeLeadId ? `<p class="small muted">The email already had an account; the enquiry is held in the <a href="#/agent">AI queue</a>.</p>` : ""}
     </div>
     <div class="card"><h2>What they answered</h2>
-      <table>${answer("Activity", a.activity)}${answer("Customers", words(a.customers))}${answer("Visas", a.visas)}${answer("Premises", a.premises)}${answer("Budget", a.budgetAed ? aed(a.budgetAed * 100) : null)}${answer("Emirate", a.emirate)}${answer("Place in mind", a.freeZone)}${answer("Owners", a.ownerType)}${answer("Tax resident abroad", a.foreignTaxResident === true ? "yes" : a.foreignTaxResident === false ? "no" : null)}</table>
+      <table>${answer("Activity", a.activity)}${answer("Customers", words(a.customers))}${answer("Visas", a.visas)}${answer("Premises", a.premises)}${answer("Budget", a.budgetAed ? aed(a.budgetAed * 100) : null)}${answer("Emirate", a.emirate)}${answer("Place in mind", a.freeZone)}${answer("Owners", a.ownerType)}${answer("Tax resident abroad", a.foreignTaxResident === true ? "yes" : a.foreignTaxResident === false ? "no" : null)}${answer("Wants to start", { "1_month": "within a month", "3_months": "within three months", later: "later, exploring" }[a.startWithin] ?? null)}</table>
       <p class="small muted">Segment ${esc(SEGMENT_LABEL[l.segment] ?? l.segment)}. Scores order attention; they decide nothing.</p>
     </div>
   </div>
   <div class="grid cols-2" style="margin-top:16px">
-    <div class="card"><h2>Purchase readiness ${l.intent}${l.highIntent ? ` ${badge("ok", "high")}` : ""}</h2><p class="small muted">Base 10 plus:</p>${evidenceList(l.scoreEvidence?.readiness)}</div>
-    <div class="card"><h2>Commercial value ${l.complexity}</h2><p class="small muted">Base 10 plus:</p>${evidenceList(l.scoreEvidence?.value)}</div>
+    <div class="card"><h2>Purchase readiness ${l.intent}${l.highIntent ? ` ${badge("ok", "high")}` : ""}</h2><p class="small muted">Base 10 plus the points below, capped at 100:</p>${evidenceList(l.scoreEvidence?.readiness)}</div>
+    <div class="card"><h2>Commercial value ${l.complexity}</h2><p class="small muted">Base 10 plus the points below, capped at 100:</p>${evidenceList(l.scoreEvidence?.value)}</div>
   </div>
   <form class="card next-action" data-form="lead-next-action" data-id="${l.id}" style="margin-top:16px"><h2>Next best action: ${esc(l.nextActionOverride?.action ?? l.nextAction?.action ?? "")} ${l.nextAction?.urgent && !l.nextActionOverride ? badge("warn", "today") : ""}</h2>
     <p class="small">${l.nextActionOverride ? `Set by hand: <span data-no-i18n>${esc(l.nextActionOverride.reason ?? "")}</span> (${dateTime(l.nextActionOverride.at)}). The rule suggests: <b>${esc(l.nextAction?.action ?? "")}</b>, because ${esc(l.nextAction?.why ?? "")}` : esc(l.nextAction?.why ?? "")}</p>

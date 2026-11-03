@@ -743,7 +743,7 @@ const pp = await pub.newPage();
   await eventually("the lead's status change is recorded in its history (E4):", async () => /new → contacted: Called; sending the comparison/.test(await ops.locator("main").innerText()));
   // E7C: the lead carries the evidence behind its scores and a next best action; the adviser overrides it with a reason.
   const leadPage = await ops.locator("main").innerText();
-  check("the lead page shows purchase readiness and commercial value with their evidence, and the next best action with its reason (E7C):", /Purchase readiness \d+/.test(leadPage) && /Commercial value \d+/.test(leadPage) && /Base 10 plus/.test(leadPage) && /asked for a call/.test(leadPage) && /Next best action: /.test(leadPage) && (await ops.locator('form[data-form="lead-next-action"]').count()) === 1);
+  check("the lead page shows purchase readiness and commercial value with their evidence, and the next best action with its reason (E7C):", /Purchase readiness \d+/.test(leadPage) && /Commercial value \d+/.test(leadPage) && /Base 10 plus/.test(leadPage) && /asked for a call/.test(leadPage) && /Wants to start\s+within a month/.test(leadPage) && /Next best action: /.test(leadPage) && (await ops.locator('form[data-form="lead-next-action"]').count()) === 1);
   await ops.locator('form[data-form="lead-next-action"] input[name="action"]').fill("Wait for their documents");
   await ops.locator('form[data-form="lead-next-action"] input[name="reason"]').fill("Travelling until the 20th");
   await ops.locator('form[data-form="lead-next-action"] button[type="submit"]').click();
@@ -755,7 +755,7 @@ const pp = await pub.newPage();
   await ops.goto(BASE + "/#/funnel"); await ops.reload();
   await ops.waitForSelector('main h1:text-is("Funnel")');
   const funnel = await ops.locator("main").innerText();
-  check("the Funnel page counts the selector's visits, starts, completions and saves and follows them to the lead (E7C):", /visitors/.test(funnel) && /completed of started/.test(funnel) && /By source and campaign/.test(funnel) && /selector/.test(funnel) && /Qualified means/.test(funnel) && !/payout|partner cost|AED [\d,]+ margin/i.test(funnel));
+  check("the Funnel page counts the selector's visits, starts, completions and saves and follows them to the lead (E7C):", /visitors/.test(funnel) && /completed of started/.test(funnel) && /By source and campaign/.test(funnel) && /direct/.test(funnel) && /Qualified means/.test(funnel) && !/payout|partner cost|AED [\d,]+ margin/i.test(funnel) && /\bdirect\s+–\s+[1-9]/.test(await ops.locator("main").innerText()));
   check("the Funnel page lists the high-readiness lead that needs a person (E7C):", /Selector Smoke Co/.test(funnel) && /unassigned|overdue|no contact/.test(funnel));
   await shot(ops, "98-funnel");
   await axeCheck(ops, "funnel (E7C)");

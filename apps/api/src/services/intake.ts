@@ -6,7 +6,7 @@ import type { Notifier } from "../lib/notify.ts";
 import type { AiModel } from "../lib/ai.ts";
 import { draftScopeForRequest } from "./drafts.ts";
 import { createRequest, IntakeSchema } from "./requests.ts";
-import { CONSENT_TEXTS, createLead, firstTouchAttribution } from "./leads.ts";
+import { CONSENT_TEXTS, createLead, findDuplicateLead, firstTouchAttribution } from "./leads.ts";
 import { adviseNow } from "./scoping.ts";
 import { cleanAttribution, type AdviceInput } from "@tasees/core";
 import { conflict, forbidden, notFound } from "../lib/errors.ts";
@@ -55,7 +55,8 @@ export async function publicIntake(tx: Queryable, input: PublicIntake, ip: strin
   const consent = { given: true, at: new Date().toISOString(), version: input.consentVersion, channel: "public_intake", ip };
   // First touch wins: a saved result's campaign stays with the lead and the request it becomes.
   const attribution = await firstTouchAttribution(tx, input.assessmentCode, cleanAttribution({ ...(input.attribution ?? {}), campaign: input.attribution?.campaign ?? input.campaign, referrer: input.attribution?.referrer ?? input.referrer }));
-  const source = { channel: "public_intake", campaign: attribution.campaign, referrer: attribution.referrer, phone: input.phone ? "provided" : "none", attribution };
+  const { visitor: _visitor, ...requestAttribution } = attribution;
+  const source = { channel: "public_intake", campaign: attribution.campaign, referrer: attribution.referrer, phone: input.phone ? "provided" : "none", attribution: requestAttribution };
   // What the engine makes of the answers feeds the lead's complexity: contradictions, missing facts, no viable option.
   const assessed = input.answers.mode === "new_company" ? await adviseNow(tx, input.answers as AdviceInput) : null;
   const signals = assessed ? { contradictions: assessed.contradictions?.length ?? 0, missingFacts: assessed.missingFacts?.length ?? 0, noViableOption: !!assessed.noViableOption } : {};
@@ -65,6 +66,12 @@ export async function publicIntake(tx: Queryable, input: PublicIntake, ip: strin
       consents: { service: { version: input.consentVersion }, marketing: { given: input.marketingConsent, version: CONSENT_TEXTS.marketing.version }, partnerDisclosure: { given: input.partnerDisclosureConsent, version: CONSENT_TEXTS.partner_disclosure.version } },
       consultation: input.consultation ?? null, ip, outcome,
     });
+  // E7C: the same person sending the same case again within a day is one lead and nothing else: no held enquiry, no
+  // account, no request and no email; the existing lead takes the note and the consents.
+  if (await findDuplicateLead(tx, email, company, input.answers as AdviceInput)) {
+    await lead({});
+    return { ok: true };
+  }
   const existing = (await tx.query<{ id: string }>("select id from users where email = $1", [email])).rows[0];
   if (existing) {
     // Held for a person. Nothing is written as the account holder, their consent record stays as it was, and

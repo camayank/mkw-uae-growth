@@ -125,22 +125,37 @@ export async function setRouting(tx: Queryable, actor: SessionUser, routing: Rec
 /** The window in which a second review request with the same email and answers is the same lead (E7C). */
 export const DUPLICATE_WINDOW_HOURS = 24;
 
+/**
+ * E7C: a double submission (same email, same company, the same answers, within a day) is the same lead. The lookup
+ * is separate so the intake can stop before it creates a held enquiry or sends anything.
+ */
+export async function findDuplicateLead(tx: Queryable, email: string, company: string, answers: AdviceInput): Promise<{ id: string; segment: Segment; owner_user_id: string | null } | null> {
+  return (
+    (
+      await tx.query<{ id: string; segment: Segment; owner_user_id: string | null }>(
+        `select id, segment, owner_user_id from leads where email = $1 and lower(company) = lower($2) and status not in ('anonymised', 'closed', 'converted')
+           and created_at > app_now() - make_interval(hours => ${DUPLICATE_WINDOW_HOURS}) and answers = $3::jsonb order by created_at desc limit 1`,
+        [email.trim().toLowerCase(), company.trim(), JSON.stringify(answers)],
+      )
+    ).rows[0] ?? null
+  );
+}
+
 export async function createLead(tx: Queryable, input: NewLead): Promise<{ id: string; segment: Segment; owner: string | null; duplicateOf?: string }> {
   const session = await assessmentByCode(tx, input.assessmentCode);
   const score = scoreLead(input.answers, { ...input.signals, recovered: session?.recovered ?? 0, phoneGiven: input.phoneGiven, consultationRequested: !!input.consultation?.wanted });
   const email = input.email.trim().toLowerCase();
-  // E7C: a double submission (same person, same case, within a day) is one lead, not two: the existing lead takes a
-  // note and the count of asks, and nothing else is created. A different case from the same person is a new lead.
-  const dup = (
-    await tx.query<{ id: string; segment: Segment; owner_user_id: string | null }>(
-      `select id, segment, owner_user_id from leads where email = $1 and status not in ('anonymised', 'closed', 'converted') and created_at > app_now() - make_interval(hours => ${DUPLICATE_WINDOW_HOURS})
-         and (answers = $2::jsonb or ($3::uuid is not null and assessment_id = $3::uuid)) order by created_at desc limit 1`,
-      [email, JSON.stringify(input.answers), session?.id ?? null],
-    )
-  ).rows[0];
+  // A double submission is one lead: the existing lead takes a note, keeps a call request if one is added (the first
+  // times given stay), and its consents are appended as decided this time; nothing else is created.
+  const dup = await findDuplicateLead(tx, email, input.company, input.answers);
   if (dup) {
-    await tx.query("insert into lead_notes (lead_id, author_user_id, kind, body) values ($1, null, 'note', $2)", [dup.id, `Asked again with the same answers${input.consultation?.wanted ? ", and asked for a call" : ""}; counted once.`]);
+    await tx.query("insert into lead_notes (lead_id, author_user_id, kind, body) values ($1, null, 'note', $2)", [dup.id, `Asked again with the same answers${input.consultation?.wanted ? ", and asked for a call (the first preferred times are kept)" : ""}; counted once.`]);
     await tx.query("update leads set updated_at = app_now(), consultation = coalesce(consultation, $2::jsonb) where id = $1", [dup.id, input.consultation?.wanted ? JSON.stringify({ times: (input.consultation.times ?? "").slice(0, 300), at: new Date().toISOString() }) : null]);
+    const again = async (purpose: "service" | "marketing" | "partner_disclosure", given: boolean, version: string) =>
+      tx.query("insert into consents (subject_kind, subject_id, purpose, given, version, channel) values ('lead', $1, $2, $3, $4, 'public_intake')", [dup.id, purpose, given, version]);
+    await again("service", true, input.consents.service.version);
+    await again("marketing", !!input.consents.marketing?.given, input.consents.marketing?.version ?? CONSENT_TEXTS.marketing.version);
+    await again("partner_disclosure", !!input.consents.partnerDisclosure?.given, input.consents.partnerDisclosure?.version ?? CONSENT_TEXTS.partner_disclosure.version);
     await audit(tx, null, "lead.duplicate_ignored", "lead", dup.id, { withinHours: DUPLICATE_WINDOW_HOURS });
     return { id: dup.id, segment: dup.segment, owner: dup.owner_user_id, duplicateOf: dup.id };
   }
@@ -166,7 +181,8 @@ export async function createLead(tx: Queryable, input: NewLead): Promise<{ id: s
   await consent("marketing", !!input.consents.marketing?.given, input.consents.marketing?.version ?? CONSENT_TEXTS.marketing.version);
   await consent("partner_disclosure", !!input.consents.partnerDisclosure?.given, input.consents.partnerDisclosure?.version ?? CONSENT_TEXTS.partner_disclosure.version);
   if (owner) await tx.query("insert into lead_notes (lead_id, author_user_id, kind, body) values ($1, null, 'assigned', $2)", [r.id, `Routed to the owner for ${score.segment.replace("_", " ")} leads`]);
-  await audit(tx, null, "lead.created", "lead", r.id, { segment: score.segment, complexity: score.complexity, intent: score.intent, highIntent: score.highIntent, factors: score.factors, owner, session: !!session, consultation: !!input.consultation?.wanted, source: cleanAttribution(input.attribution as Record<string, unknown>) });
+  const { visitor: _v, ...auditSource } = cleanAttribution(input.attribution as Record<string, unknown>);
+  await audit(tx, null, "lead.created", "lead", r.id, { segment: score.segment, complexity: score.complexity, intent: score.intent, highIntent: score.highIntent, factors: score.factors, owner, session: !!session, consultation: !!input.consultation?.wanted, source: auditSource });
   return { id: r.id, segment: score.segment, owner };
 }
 
@@ -394,6 +410,9 @@ export async function anonymiseOldLeads(tx: Queryable, actor: SessionUser | null
   const dueLeads = `from leads l where l.status <> 'anonymised' and l.created_at < ${cutoff} and not (${BECAME_CLIENT})`;
   const dueAssessments = `from assessments a where a.status <> 'anonymised' and a.created_at < ${cutoff}
     and not exists (select 1 from leads l where l.assessment_id = a.id and (l.status = 'anonymised' or (${BECAME_CLIENT})) and l.status <> 'anonymised')`;
+  // E7C: funnel rows hold nothing personal; they are pruned on a fixed horizon (400 days) whether or not the
+  // personal-data periods are confirmed, so the table never grows without bound.
+  await tx.query("delete from funnel_events where at < app_now() - interval '400 days'");
   if (!applied) {
     const l = (await tx.query<{ n: number }>(`select count(*)::int as n ${dueLeads}`)).rows[0]!.n;
     const a = (await tx.query<{ n: number }>(`select count(*)::int as n ${dueAssessments}`)).rows[0]!.n;
@@ -406,7 +425,7 @@ export async function anonymiseOldLeads(tx: Queryable, actor: SessionUser | null
     )
   ).rows;
   for (const l of leads) await tx.query("update lead_notes set body = '' where lead_id = $1", [l.id]);
-  // E7C: funnel rows older than the period go too; they hold no personal data, and the dashboard reads live rows.
+  // E7C: with the period confirmed, funnel rows older than it go too.
   await tx.query(`delete from funnel_events where at < ${cutoff}`);
   // The held intake copy of an anonymised lead (an email that already had an account) goes with it, and leaves the
   // ops queue: nobody will act on an enquiry whose details are gone.
@@ -504,8 +523,11 @@ export async function funnelReport(tx: Queryable, actor: SessionUser) {
      v as (select source, campaign, count(*)::int as visitors, sum(case when started then 1 else 0 end)::int as started, sum(case when completed then 1 else 0 end)::int as completed,
          sum(case when viewed then 1 else 0 end)::int as viewed, sum(case when compared then 1 else 0 end)::int as compared, sum(case when printed then 1 else 0 end)::int as printed, sum(case when saved then 1 else 0 end)::int as saved
        from vis group by source, campaign),
+     lv as (select l.id, v.source as vsource, v.campaign as vcampaign from leads l join vis v on v.visitor = l.source->>'visitor'),
      ld as (
-       select coalesce(l.source->>'source', 'direct') as source, coalesce(l.source->>'campaign', '') as campaign,
+       -- A lead whose browser session was measured counts under that session's label, so the two halves meet; a
+       -- lead with no measured session (another page, a held enquiry) counts under its own recorded source.
+       select coalesce(lv.vsource, nullif(l.source->>'source', ''), 'direct') as source, coalesce(lv.vcampaign, l.source->>'campaign', '') as campaign,
          count(*)::int as leads,
          sum(case when l.consultation is not null then 1 else 0 end)::int as consultations,
          sum(case when ${QUALIFIED} then 1 else 0 end)::int as qualified,
@@ -514,8 +536,9 @@ export async function funnelReport(tx: Queryable, actor: SessionUser) {
          sum(case when exists (select 1 from engagements e where e.request_id = l.request_id) then 1 else 0 end)::int as engagements,
          coalesce(sum((select sum(f.client_total_fils) from offers f where f.request_id = l.request_id and f.status = 'accepted')), 0)::bigint as revenue_fils,
          coalesce(sum((select sum(p.amount_fils) from payments p join engagements e on e.id = p.engagement_id where e.request_id = l.request_id and p.status = 'paid')), 0)::bigint as realised_fils,
-         coalesce(sum((select sum(f.client_total_fils) from offers f where f.request_id = l.request_id and f.status = 'published')), 0)::bigint as pipeline_fils
-       from leads l where l.status <> 'anonymised' group by 1, 2)
+         -- One proposal per request: the client accepts one tier, so the pipeline counts the highest published tier once.
+         coalesce(sum((select max(f.client_total_fils) from offers f where f.request_id = l.request_id and f.status = 'published')), 0)::bigint as pipeline_fils
+       from leads l left join lv on lv.id = l.id where l.status <> 'anonymised' group by 1, 2)
      select coalesce(v.source, ld.source) as source, coalesce(v.campaign, ld.campaign) as campaign,
        coalesce(v.visitors, 0) as visitors, coalesce(v.started, 0) as started, coalesce(v.completed, 0) as completed, coalesce(v.viewed, 0) as viewed, coalesce(v.compared, 0) as compared, coalesce(v.printed, 0) as printed, coalesce(v.saved, 0) as saved,
        coalesce(ld.leads, 0) as leads, coalesce(ld.consultations, 0) as consultations, coalesce(ld.qualified, 0) as qualified, coalesce(ld.proposals, 0) as proposals, coalesce(ld.accepted, 0) as accepted, coalesce(ld.engagements, 0) as engagements,
@@ -523,7 +546,7 @@ export async function funnelReport(tx: Queryable, actor: SessionUser) {
      from v full outer join ld on ld.source = v.source and ld.campaign = v.campaign order by revenue_fils desc, leads desc, visitors desc, source, campaign`,
   );
   const abandon = await tx.query<{ key: string; n: number }>(
-    `with last as (select visitor, max(key) filter (where stage = 'step_reached') as key from funnel_events group by visitor having bool_or(stage = 'assessment_started') and not bool_or(stage = 'assessment_completed'))
+    `with last as (select visitor, (array_agg(key order by id desc) filter (where stage = 'step_reached'))[1] as key from funnel_events group by visitor having bool_or(stage = 'assessment_started') and not bool_or(stage = 'assessment_completed'))
      select coalesce(key, '(first question)') as key, count(*)::int as n from last group by 1 order by n desc`,
   );
   const outcomes = await tx.query<Record<string, unknown>>(

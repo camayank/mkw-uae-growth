@@ -38,7 +38,7 @@ export interface LeadScore {
   highIntent: boolean;
   /** Why, in a person's words (both scores together, as E4 recorded them). */
   factors: string[];
-  /** E7C: the evidence behind each score; the points of each list sum to that score less its base of 10. */
+  /** E7C: the evidence behind each score: base 10 plus these points, capped at 100 (a list can add up to more). */
   evidence: { readiness: ScoreFactor[]; value: ScoreFactor[] };
 }
 

@@ -168,7 +168,8 @@ export function reviewedReport(a: Advice, answers: AdviceInput, meta: ReportMeta
       ],
     },
     { heading: "Jurisdictions compared", lines: a.places.length ? a.places.flatMap(placeLines) : ["No place fits every answer."] },
-    { heading: "Rejected alternatives", lines: (a.excluded ?? []).length ? (a.excluded ?? []).map((x) => { const f = (x.findings ?? []).find((y) => y.outcome === "fail"); return `${x.zone}: does not fit${f ? `; ${f.text}` : ""}`; }) : ["None."] },
+    // A rejection carries its finding with the confidence label, as on the advice page.
+    { heading: "Rejected alternatives", lines: (a.excluded ?? []).length ? (a.excluded ?? []).map((x) => { const f = (x.findings ?? []).find((y) => y.outcome === "fail"); return `${x.zone}: does not fit${f ? `; ${finding(f)}` : ""}`; }) : ["None."] },
     { heading: "Licences, approvals and what follows after setup", lines: [...a.licences, ...a.obligations].map(reasoned) },
     { heading: "Cross-border risks for a specialist", lines: (a.crossBorder ?? []).length ? (a.crossBorder ?? []).map((r) => `${reasoned(r)} [SPECIALIST REVIEW]`) : ["None raised by the answers."] },
     { heading: "Unresolved questions", lines: unresolved.length ? unresolved : ["None."] },

@@ -1,6 +1,6 @@
 import { createHash, randomInt } from "node:crypto";
 import { cleanAttribution, nextBestAction, scoreLead, type AdviceInput, type Attribution, type LeadSignals, type Segment } from "@tasees/core";
-import { audit, type SessionUser } from "../lib/context.ts";
+import { audit, lockAuditChain, type SessionUser } from "../lib/context.ts";
 import { num, type Queryable } from "../lib/db.ts";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.ts";
 import { getRetention } from "./admin.ts";
@@ -299,6 +299,9 @@ export async function leadDetail(tx: Queryable, actor: SessionUser, id: string) 
 }
 
 async function loadLead(tx: Queryable, id: string) {
+  // Lock order (O13): the row lock below is followed by an audit, so the audit-chain lock comes first; the handoff
+  // (convertHeldLead) takes it first too, so a booking and a conversion of the same lead queue instead of deadlocking.
+  await lockAuditChain(tx);
   const l = (await tx.query<{ id: string; status: string; owner_user_id: string | null }>("select id, status, owner_user_id from leads where id = $1 for update", [id])).rows[0];
   if (!l) throw notFound("Lead not found");
   if (l.status === "anonymised") throw conflict("This lead was anonymised under the retention rule");

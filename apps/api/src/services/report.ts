@@ -26,7 +26,8 @@ export async function publicReportPdf(tx: Queryable, code: string): Promise<{ pd
 }
 
 /**
- * The client's own request: the reviewed report once the advice is approved, a preliminary one from the answers until
+ * The client's own request (a new-company one: a services request for an existing company has no assessment behind it,
+ * so there is no report for it): the reviewed report once the advice is approved, a preliminary one from the answers until
  * then. The request is read as the client (row-level security and the column grants decide what they see, and
  * `app_approved_advice` returns the advice only once approved); the reviewer's name, which the client role cannot
  * read, is looked up by the platform for the one request the client could read.
@@ -35,7 +36,7 @@ export async function clientReportPdf(db: Database, user: SessionUser, requestId
   const r = await asUser(db, user, async (tx) => {
     const row = (
       await tx.query<{ id: string; answers: AdviceInput; advice: Advice | null; advice_reviewed_at: string | null; company: string }>(
-        "select r.id, r.answers, app_approved_advice(r.id) as advice, r.advice_reviewed_at::text as advice_reviewed_at, o.name as company from requests r join orgs o on o.id = r.client_org_id where r.id = $1",
+        "select r.id, r.answers, app_approved_advice(r.id) as advice, r.advice_reviewed_at::text as advice_reviewed_at, o.name as company from requests r join orgs o on o.id = r.client_org_id where r.id = $1 and r.answers->>'mode' = 'new_company'",
         [requestId],
       )
     ).rows[0];

@@ -62,6 +62,13 @@ describe("the assessment report and the consultation booking (E7D)", () => {
     expect(text).not.toMatch(/\[(verified rule|rule of thumb|UNCERTAIN)\]|Recommended structure|AED [\d,]+ to AED/); // the unapproved advice stays out
     expect(text).toMatch(/\[TO BE VERIFIED\]/);
     expect((await env.send("client", "GET", "/api/client/requests/not-a-uuid/report.pdf")).status).toBe(404);
+    // A services request for the existing company has no assessment behind it: no report, and the page offers no link.
+    const svc = await env.call("client", "POST", "/api/requests", { answers: { mode: "services", emirate: "Dubai", services: ["VAT-RET"] } });
+    expect(svc.status, JSON.stringify(svc.body)).toBe(200);
+    expect((await env.send("client", "GET", `/api/client/requests/${svc.body.id}/report.pdf`)).status).toBe(404);
+    const home = (await env.call("client", "GET", "/api/client/home")).body;
+    expect(home.requests.find((x: any) => x.id === svc.body.id).mode).toBe("services");
+    expect(home.requests.find((x: any) => x.id === id).mode).toBe("new_company");
     // Another client, a partner and an anonymous caller cannot read it.
     const other = await env.call("ops", "POST", "/api/ops/clients", { company: "Other Trading LLC", ownerName: "Other Owner", ownerEmail: "other-owner@example.test" });
     expect(other.status).toBe(200);

@@ -97,7 +97,7 @@ re-assert rule 2 (payout at or below the priced cost) and rule 3 (integer fils),
 
 ## Dependencies and risks
 
-- Depends on E7A to E7D (E7C and E7D open; this branch is built on E7D).
+- Depends on E7A to E7D (all merged to `main` on 3 Nov 2026; this branch was built on E7D and retargeted to `main`).
 - Risk: a tooling upgrade changes test behaviour. Mitigated by running every suite on both databases and the smoke
   test after it; the versions are pinned (rule 11).
 - Risk: the journeys pass on synthetic data and the in-memory adapters, not on staging. Stated plainly in the record.

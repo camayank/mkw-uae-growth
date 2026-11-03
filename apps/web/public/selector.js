@@ -274,7 +274,7 @@ let compared = [];
 function showResult(p, recovered = null) {
   lastResult = p;
   const rec = p.structure.recommendation;
-  const head = rec && p.structure.confirmed ? `Structure: ${STRUCTURE[rec] ?? words(rec)}` : p.noViableOption ? "No structure fits every answer yet" : "The structure is to be confirmed by a person";
+  const head = p.noViableOption ? "No structure fits every answer yet" : rec && p.structure.confirmed ? `Structure: ${STRUCTURE[rec] ?? words(rec)}` : "The structure is to be confirmed by a person";
   // Compared by default: the place the founder named, then the best-ranked places that fit, three in all.
   const fitting = p.places.filter((x) => x.status !== "INELIGIBLE");
   const named = answers.freeZone ? fitting.filter((x) => x.zone.toLowerCase() === answers.freeZone.toLowerCase() || (x.authority ?? "").toLowerCase() === answers.freeZone.toLowerCase()) : [];

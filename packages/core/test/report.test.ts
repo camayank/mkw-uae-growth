@@ -93,6 +93,20 @@ describe("the assessment report (E7D)", () => {
     for (const l of reportLines(r)) expect(l.length, l).toBeLessThanOrEqual(82);
   });
 
+  it("preliminary when no option fits: no pathway and no recommendation, even with everything approved", () => {
+    // The conclusion rests on every rule that excluded a place, so each is a rule and approved for display.
+    const allRules: ScopingRule[] = [...rules, ...["structure.no_viable_option", "place.visa_capacity", "structure.offshore_no_premises"].map((key) => ({ key, kind: "structure" as const, statement: key, parameters: {}, sourceUrl: "", confidence: "verified" as const, verifiedBy: "A. Qualified", verifiedAt: "2026-11-01" }))];
+    const { freeZone: _named, ...rest } = answers; // no place named: every place fails the budget
+    const tight = advise({ ...rest, visas: 1, budgetAed: 1_000 }, allRules, zones, "2026-11-03");
+    expect(tight.noViableOption).toBe(true);
+    const p = publicView(tight, new Set(allRules.map((r) => r.key)), new Set(zones.map((x) => x.name)), "2026-11-03");
+    expect(p.noViableOption).toBe(true);
+    const text = reportLines(preliminaryReport(p, { ...rest, visas: 1, budgetAed: 1_000 }, { reference: "PRE-ABCD1234", date: "2026-11-03" })).join("\n");
+    expect(text).toMatch(/No structure fits every answer yet: a specialist at MKW Advisors\s+looks at the case\./); // the line may wrap
+    expect(text).toContain("No recommendation is made on this page");
+    expect(text).not.toMatch(/Pathway that fits your answers|The answers point to/);
+  });
+
   it("wraps long lines at the width and keeps the indent", () => {
     const w = wrap("  " + "word ".repeat(40).trim(), 40);
     expect(w.length).toBeGreaterThan(4);

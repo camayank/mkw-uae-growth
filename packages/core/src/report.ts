@@ -88,7 +88,9 @@ function pubPlaceLines(p: PublicPlace): string[] {
 
 /** The preliminary report: what the public page shows, and nothing more. */
 export function preliminaryReport(p: PublicAssessment, answers: AdviceInput, meta: ReportMeta): Report {
-  const rec = p.structure.recommendation && p.structure.confirmed ? STRUCTURE[p.structure.recommendation] ?? words(p.structure.recommendation) : null;
+  // "No option fits" takes precedence over a confirmed pathway: the structure the engine names then is an explanation
+  // for the specialist, not a recommendation (as the reviewed report and the page's call to action already say).
+  const rec = !p.noViableOption && p.structure.recommendation && p.structure.confirmed ? STRUCTURE[p.structure.recommendation] ?? words(p.structure.recommendation) : null;
   const fitting = p.places.filter((x) => x.status !== "INELIGIBLE");
   const unresolved = [...p.missingFacts.map((m) => `[DATA MISSING] ${m}`), ...p.contradictions.map((c) => `[ANSWERS TO CHECK] ${c}`)];
   const sections: ReportSection[] = [

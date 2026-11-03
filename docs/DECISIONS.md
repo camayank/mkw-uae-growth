@@ -900,10 +900,12 @@ canvas of 3 Nov 2026 and its review round.)
 - The PDF is the in-house text writer (D26): monospaced, Latin only, no dependency. A designed document is a later
   choice; the content would not change. The reference on the document is a prefix of the row id, never the
   recovery code, which stays the capability it is.
-- The public report is served for a saved result by its code (rate-limited, counting the recovery); the client's
+- The public report is served for a saved result by its code (rate-limited, writing nothing: a download is not a
+  return visit, so the recovery count the lead score reads is untouched); the client's
   report is read as the client (row-level security and the column grants decide what they see) with the reviewer's
   name looked up by the platform for that one request. Nothing is emailed; the person downloads it.
 - Booking a call is a record on the lead (when, for when, by whom), a status move to consultation, and a follow-up
   due at that time that reaches the queue; no calendar provider (rules 7 and 11, an owner decision). The booker
-  owns the lead when nobody did.
+  owns the lead when nobody did. Times are Gulf Standard Time: the lead page sends the entered time as +04:00 and
+  the follow-up note says "GST". A rebooking closes the earlier call's follow-up so the queue shows one call.
 

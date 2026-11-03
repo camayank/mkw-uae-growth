@@ -65,7 +65,7 @@ export function registerLeadRoutes(ctx: RouteContext) {
     return asPlatform(db, user, (tx) => funnelReport(tx, user));
   });
   // E7D: the adviser books the call a lead asked for; a follow-up due at that time reaches the queue.
-  const ConsultationBody = z.object({ at: z.string().min(8).max(40), note: z.string().max(500).default("") });
+  const ConsultationBody = z.object({ at: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/, "date and time").max(40), note: z.string().max(500).default("") });
   app.post<{ Params: { id: string } }>("/api/ops/pipeline/leads/:id/consultation", { config: { body: ConsultationBody } }, async (req) => {
     const user = requireRole(req, "ops", "founder");
     const body = ConsultationBody.parse(req.body);

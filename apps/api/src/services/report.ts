@@ -3,7 +3,7 @@ import { asPlatform, asUser, type SessionUser } from "../lib/context.ts";
 import type { Database, Queryable } from "../lib/db.ts";
 import { notFound } from "../lib/errors.ts";
 import { textPdf } from "../lib/pdf.ts";
-import { recoverAssessment } from "./leads.ts";
+import { readAssessment } from "./leads.ts";
 import { publicAssess } from "./public.ts";
 
 /**
@@ -17,7 +17,7 @@ const today = async (tx: Queryable) => (await tx.query<{ d: string }>("select gu
 const ref = (id: string, prefix: string) => `${prefix}-${id.replace(/-/g, "").slice(0, 8).toUpperCase()}`;
 
 export async function publicReportPdf(tx: Queryable, code: string): Promise<{ pdf: Buffer; filename: string }> {
-  const saved = await recoverAssessment(tx, code);
+  const saved = await readAssessment(tx, code);
   if (!saved) throw notFound("No saved result with that code");
   const result = await publicAssess(tx, saved.answers);
   const date = await today(tx);

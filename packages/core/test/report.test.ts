@@ -88,5 +88,9 @@ describe("the assessment report (E7D)", () => {
       expect(l.startsWith("  ")).toBe(true);
     }
     expect(wrap("short", 40)).toEqual(["short"]);
+    // A word longer than the width (a source URL) is split, never drawn off the page.
+    const url = "  Official source: https://example.gov.ae/" + "a".repeat(100);
+    for (const l of wrap(url, 82)) expect(l.length).toBeLessThanOrEqual(82);
+    expect(wrap(url, 82).join("").replace(/\s/g, "")).toBe(url.replace(/\s/g, ""));
   });
 });

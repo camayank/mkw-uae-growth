@@ -19,7 +19,7 @@ describe("the assessment report and the consultation booking (E7D)", () => {
   });
   afterAll(() => env.db.close());
 
-  it("the public report: a PDF of the saved result, preliminary, rate-limited, nothing written but the recovery count", async () => {
+  it("the public report: a PDF of the saved result, preliminary, rate-limited, nothing written and not a return visit", async () => {
     const { code } = (await env.call("anon", "POST", "/api/public/assessments", { answers })).body;
     const before = { audit: await count("audit_events"), outbox: await count("outbox") };
     const r = await env.send("anon", "GET", `/api/public/assessments/${code}/report.pdf`);
@@ -38,6 +38,8 @@ describe("the assessment report and the consultation booking (E7D)", () => {
     expect(text).not.toMatch(MONEY);
     expect(await count("audit_events")).toBe(before.audit);
     expect(await count("outbox")).toBe(before.outbox);
+    // A download is not a return visit: the recovery counter the lead score reads is untouched.
+    expect((await asPlatform(env.db, null, (tx) => tx.query("select recovered from assessments"))).rows[0]).toEqual({ recovered: 0 });
     expect((await env.send("anon", "GET", "/api/public/assessments/ZZZZZZZZZZ/report.pdf")).status).toBe(404);
     expect((await env.send("anon", "GET", "/api/public/assessments/nope/report.pdf")).status).toBe(404);
     // Rate-limited per IP.
@@ -57,6 +59,9 @@ describe("the assessment report and the consultation booking (E7D)", () => {
     expect(text).toMatch(/PRELIMINARY: your request is with MKW Advisors for review/);
     expect(text).toContain("Company: ");
     expect(text).not.toMatch(/REVIEWED by/);
+    expect(text).not.toMatch(/\[(verified rule|rule of thumb|UNCERTAIN)\]|Recommended structure|AED [\d,]+ to AED/); // the unapproved advice stays out
+    expect(text).toMatch(/\[TO BE VERIFIED\]/);
+    expect((await env.send("client", "GET", "/api/client/requests/not-a-uuid/report.pdf")).status).toBe(404);
     // Another client, a partner and an anonymous caller cannot read it.
     const other = await env.call("ops", "POST", "/api/ops/clients", { company: "Other Trading LLC", ownerName: "Other Owner", ownerEmail: "other-owner@example.test" });
     expect(other.status).toBe(200);
@@ -83,6 +88,7 @@ describe("the assessment report and the consultation booking (E7D)", () => {
     const at = new Date(env.clock.now.getTime() + 2 * 86_400_000).toISOString();
     expect((await env.call("finance", "POST", `/api/ops/pipeline/leads/${l.id}/consultation`, { at })).status).toBe(403);
     expect((await env.call("ops", "POST", `/api/ops/pipeline/leads/${l.id}/consultation`, { at: "not a date" })).status).toBe(400);
+    expect((await env.call("ops", "POST", `/api/ops/pipeline/leads/${l.id}/consultation`, { at: "2027-01-12" })).status).toBe(400); // a date needs a time
     const b = await env.call("ops", "POST", `/api/ops/pipeline/leads/${l.id}/consultation`, { at, note: "Zoom link sent by the adviser" });
     expect(b.status).toBe(200);
     const d = (await env.call("ops", "GET", `/api/ops/pipeline/leads/${l.id}`)).body;
@@ -90,14 +96,20 @@ describe("the assessment report and the consultation booking (E7D)", () => {
     expect(d.consultationBookedFor).toBeTruthy();
     expect(d.firstContactAt).toBeTruthy();
     expect(d.owner).toBeTruthy(); // the booker owns it when nobody did
-    expect(d.notes.some((n: any) => n.kind === "followup" && /Call booked for/.test(n.body) && !n.done_at)).toBe(true);
+    expect(d.notes.some((n: any) => n.kind === "followup" && /Call booked for .* GST/.test(n.body) && !n.done_at)).toBe(true);
+    // Rebooking closes the earlier follow-up: one open call in the queue, the status unchanged.
+    expect((await env.call("ops", "POST", `/api/ops/pipeline/leads/${l.id}/consultation`, { at: new Date(env.clock.now.getTime() + 4 * 86_400_000).toISOString() })).status).toBe(200);
+    const d2 = (await env.call("ops", "GET", `/api/ops/pipeline/leads/${l.id}`)).body;
+    expect(d2.notes.filter((n: any) => n.kind === "followup" && /Call booked for/.test(n.body) && !n.done_at)).toHaveLength(1);
+    expect(d2.notes.some((n: any) => n.kind === "status" && n.body === "call rebooked")).toBe(true);
+    expect(d2.notes.some((n: any) => n.kind === "status" && /consultation → consultation/.test(n.body))).toBe(false);
     expect(d.nextAction.action).toBe("Follow up after the call");
-    expect((await asPlatform(env.db, null, (tx) => tx.query("select data from audit_events where action = 'lead.consultation_booked'"))).rows).toHaveLength(1);
+    expect((await asPlatform(env.db, null, (tx) => tx.query("select data from audit_events where action = 'lead.consultation_booked'"))).rows).toHaveLength(2);
     // The call request leaves the queue; the follow-up appears there once due.
     let q = (await env.call("ops", "GET", "/api/ops/queue")).body;
     expect(q.items.some((x: any) => x.kind === "consultation" && /Call Me Co/.test(x.detail))).toBe(false);
     const saved = env.clock.now;
-    env.clock.now = new Date(saved.getTime() + 3 * 86_400_000);
+    env.clock.now = new Date(saved.getTime() + 5 * 86_400_000); // past the rebooked time
     try {
       q = (await env.call("ops", "GET", "/api/ops/queue")).body;
       expect(q.items.some((x: any) => /Call booked for/.test(x.detail ?? "") || x.kind === "followup")).toBe(true);

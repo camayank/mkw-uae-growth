@@ -2,7 +2,7 @@
  * The UAE Entity Assessment Report (E7D): the same assessment a founder sees on screen, as a document they can keep
  * and send. Two kinds, from real application data only:
  * - preliminary, from the public view (D80: only approved statements and figures, the rest "to be verified"), with
- *   no person's review behind it, and it says so on every page;
+ *   no person's review behind it, and it says so at the top and in the closing note;
  * - reviewed, from the advice a named person at MKW Advisors approved for the client, with the reviewer and date.
  *
  * Pure: builds a structure of sections and lines; the API turns the lines into the text PDF. Never a partner cost,
@@ -115,7 +115,7 @@ export function preliminaryReport(p: PublicAssessment, answers: AdviceInput, met
     {
       heading: "Recommendation, subject to review",
       lines: [
-        rec ? `The answers point to a ${rec.toLowerCase()}. A person at MKW Advisors confirms it against the current rules before anything is priced.` : "No recommendation is made on this page; a person at MKW Advisors reviews the case first.",
+        rec ? `The answers point to: ${rec}. A person at MKW Advisors confirms it against the current rules before anything is priced.` : "No recommendation is made on this page; a person at MKW Advisors reviews the case first.",
         `${p.approved.statements} of ${p.approved.ofStatements} statements and ${p.approved.places} of ${p.approved.ofPlaces} places in this report have been checked by a named person for public display; the rest are marked to be verified.`,
       ],
     },
@@ -198,7 +198,9 @@ export function wrap(line: string, width = 82): string[] {
   const indent = line.match(/^\s*/)![0];
   const out: string[] = [];
   let cur = "";
-  for (const word of line.trim().split(/\s+/)) {
+  const room = Math.max(8, width - indent.length);
+  const words = line.trim().split(/\s+/).flatMap((w) => (w.length > room ? (w.match(new RegExp(`.{1,${room}}`, "g")) ?? [w]) : [w])); // a long URL is split, never drawn off the page
+  for (const word of words) {
     const next = cur ? `${cur} ${word}` : word;
     if ((indent + next).length > width && cur) { out.push(indent + cur); cur = word; } else cur = next;
   }

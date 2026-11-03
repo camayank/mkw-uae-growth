@@ -25,14 +25,15 @@ the call a lead asked for from the lead's page, and the booking lands in the que
    test walks the output.
 2. **Download**: the PDF is written by the repository's own text PDF writer (D26: no dependency). Public:
    `GET /api/public/assessments/:code/report.pdf` on a saved result (the page saves first when needed), rate-limited,
-   writes nothing but the recovery count. Client: `GET /api/client/requests/:id/report.pdf`, the reviewed report once
+   writes nothing (a download is not a return visit; the recovery count the lead score reads stays). Client: `GET /api/client/requests/:id/report.pdf`, the reviewed report once
    the advice is approved, otherwise a preliminary one from the answers only with "pending review" on it; only the
    client's own requests (row-level security).
 3. **Print**: the page's print view stays; the report button downloads the PDF and counts as the funnel's printed
    stage.
 4. **Consultation booking**: `POST /api/ops/pipeline/leads/:id/consultation` with the date and time and a note
    records the booking on the lead (who booked, when, for when), moves the lead to consultation, adds a follow-up
-   due at that time (so it reaches the queue) and audits it. No calendar provider; the adviser writes the time.
+   due at that time (so it reaches the queue) and audits it. No calendar provider; the adviser writes the time, in
+   Gulf Standard Time (the page sends +04:00; the note says GST). A rebooking closes the earlier follow-up.
 
 ## Exclusions
 
@@ -60,6 +61,8 @@ the call a lead asked for from the lead's page, and the booking lands in the que
 ## Owner decisions
 
 - The report wording and the disclaimer lines (defaults, labelled).
+- The reviewed report names the reviewer to the client (today: yes, as the advice page's "Reviewed by" date does
+  not; the client may forward the document, so confirm staff names may appear on it).
 - Whether the adviser's review status should also name the reviewer to the public (today: never; only the client).
 
 ## Rollback

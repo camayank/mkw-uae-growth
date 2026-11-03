@@ -64,6 +64,12 @@ export async function recoverAssessment(tx: Queryable, code: string): Promise<{ 
   return { id: r.id, answers: r.answers, savedAt: r.created_at, recovered: num(r.recovered) + 1 };
 }
 
+/** E7D: read a saved result without counting a return visit (the report download is not "coming back"). */
+export async function readAssessment(tx: Queryable, code: string): Promise<{ id: string; answers: AdviceInput } | null> {
+  const r = (await tx.query<{ id: string; answers: AdviceInput; status: string }>("select id, answers, status from assessments where code_hash = $1", [hash(code)])).rows[0];
+  return !r || r.status === "anonymised" ? null : { id: r.id, answers: r.answers };
+}
+
 async function assessmentByCode(tx: Queryable, code: string | undefined): Promise<{ id: string; recovered: number; source: Attribution } | null> {
   if (!code) return null;
   const r = (await tx.query<{ id: string; recovered: number; source: Attribution }>("select id, recovered, source from assessments where code_hash = $1 and status <> 'anonymised'", [hash(code)])).rows[0];
@@ -614,14 +620,19 @@ export async function bookConsultation(tx: Queryable, actor: SessionUser, id: st
   if (["converted", "closed"].includes(l.status)) throw conflict("This lead is closed or converted; nothing to book");
   const when = new Date(at);
   if (Number.isNaN(when.getTime())) throw badRequest("The call needs a date and time");
+  if (when.getTime() < Date.now() - 366 * 86_400_000 || when.getTime() > Date.now() + 2 * 366 * 86_400_000) throw badRequest("The call must be within a year of today");
   await tx.query(
     `update leads set consultation_booked_at = app_now(), consultation_booked_for = $2, consultation_booked_by = $3, consultation = coalesce(consultation, '{}'::jsonb),
        status = case when status in ('new', 'routed', 'contacted') then 'consultation' else status end, first_contact_at = coalesce(first_contact_at, app_now()),
        owner_user_id = coalesce(owner_user_id, $3), updated_at = app_now() where id = $1`,
     [id, when.toISOString(), actor.id],
   );
-  const f = (await tx.query<{ id: number }>("insert into lead_notes (lead_id, author_user_id, kind, body, due_at) values ($1, $2, 'followup', $3, $4) returning id", [id, actor.id, `Call booked for ${when.toISOString().slice(0, 16).replace("T", " ")} UTC${note ? `: ${note.trim().slice(0, 400)}` : ""}`, when.toISOString()])).rows[0]!;
-  await tx.query("insert into lead_notes (lead_id, author_user_id, kind, body) values ($1, $2, 'status', $3)", [id, actor.id, `${l.status} → consultation: call booked`]);
+  // A rebooking closes the earlier call's follow-up so the queue shows one call, not two.
+  await tx.query("update lead_notes set done_at = app_now() where lead_id = $1 and kind = 'followup' and done_at is null and body like 'Call booked for %'", [id]);
+  const gulf = when.toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Dubai" });
+  const f = (await tx.query<{ id: number }>("insert into lead_notes (lead_id, author_user_id, kind, body, due_at) values ($1, $2, 'followup', $3, $4) returning id", [id, actor.id, `Call booked for ${gulf} GST${note ? `: ${note.trim().slice(0, 400)}` : ""}`, when.toISOString()])).rows[0]!;
+  if (l.status !== "consultation") await tx.query("insert into lead_notes (lead_id, author_user_id, kind, body) values ($1, $2, 'status', $3)", [id, actor.id, `${l.status} → consultation: call booked`]);
+  else await tx.query("insert into lead_notes (lead_id, author_user_id, kind, body) values ($1, $2, 'status', 'call rebooked')", [id, actor.id]);
   await audit(tx, actor, "lead.consultation_booked", "lead", id, { at: when.toISOString(), followupId: num(f.id) });
   return { ok: true, followupId: num(f.id) };
 }

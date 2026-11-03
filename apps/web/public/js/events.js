@@ -453,7 +453,7 @@ document.addEventListener("submit", (ev) => {
   if (kind === "lead-assign") return act(() => api("POST", `/api/ops/pipeline/leads/${id}/assign`, { ownerUserId: String(fd.get("ownerUserId") || "") || null, note: String(fd.get("note") || "") }), "Owner recorded");
   if (kind === "lead-status") return act(() => api("POST", `/api/ops/pipeline/leads/${id}/status`, { status: String(fd.get("status")), note: String(fd.get("note") || "") }), "Status recorded");
   if (kind === "lead-note") return act(() => api("POST", `/api/ops/pipeline/leads/${id}/note`, { body: String(fd.get("body") || "") }), "Note added");
-  if (kind === "lead-consultation") return act(() => api("POST", `/api/ops/pipeline/leads/${id}/consultation`, { at: new Date(String(fd.get("at"))).toISOString(), note: String(fd.get("note") || "") }), "Call booked; it appears in the queue when due");
+  if (kind === "lead-consultation") return act(() => api("POST", `/api/ops/pipeline/leads/${id}/consultation`, { at: `${String(fd.get("at"))}:00+04:00`, note: String(fd.get("note") || "") }), "Call booked; it appears in the queue when due");
   if (kind === "lead-next-action") { const action = String(fd.get("action") || "").trim(); return act(() => api("POST", `/api/ops/pipeline/leads/${id}/next-action`, { action: action || null, reason: String(fd.get("reason") || "") }), action ? "Next action set" : "Override cleared"); }
   if (kind === "lead-followup") return act(() => api("POST", `/api/ops/pipeline/leads/${id}/followup`, { dueAt: `${String(fd.get("dueAt"))}T09:00:00+04:00`, body: String(fd.get("body") || "") }), "Follow-up set; it appears in the queue when due");
   if (kind === "lead-withdraw") {

@@ -757,12 +757,6 @@ const pp = await pub.newPage();
   check("the lead page shows purchase readiness and commercial value with their evidence, and the next best action with its reason (E7C):", /Purchase readiness \d+/.test(leadPage) && /Commercial value \d+/.test(leadPage) && /Base 10 plus/.test(leadPage) && /asked for a call/.test(leadPage) && /Wants to start\s+within a month/.test(leadPage) && /Next best action: /.test(leadPage) && (await ops.locator('form[data-form="lead-next-action"]').count()) === 1);
   await ops.locator('form[data-form="lead-next-action"] input[name="action"]').fill("Wait for their documents");
   await ops.locator('form[data-form="lead-next-action"] input[name="reason"]').fill("Travelling until the 20th");
-  await ops.locator('form[data-form="lead-consultation"] input[name="at"]').fill("2027-01-12T10:30");
-  await ops.locator('form[data-form="lead-consultation"] input[name="note"]').fill("Teams link in the calendar");
-  await ops.locator('form[data-form="lead-consultation"] button[type="submit"]').click();
-  await ops.waitForTimeout(700);
-  log.push("booking: " + (await toastText(ops)));
-  await eventually("the call is booked: the lead is in consultation with a follow-up for that time (E7D):", async () => /Booked for 12 Jan 2027/.test(await ops.locator("main").innerText()) && /Call booked for/.test(await ops.locator("main").innerText()));
   await ops.locator('form[data-form="lead-next-action"] button[type="submit"]').click();
   await ops.waitForTimeout(700);
   log.push("next action: " + (await toastText(ops)));
@@ -787,6 +781,18 @@ const pp = await pub.newPage();
     await axeCheck(mf, "funnel at 390 px (E7C)");
     await mfc.close();
   }
+  // E7D: the adviser books the call from the lead page; the lead moves to consultation with a follow-up for that time.
+  await ops.goto(BASE + "/#/leads"); await ops.reload();
+  await ops.waitForSelector('main h1:text-is("Leads")');
+  await ops.locator('a[href^="#/leads/"]').first().click();
+  await ops.waitForSelector('form[data-form="lead-consultation"]');
+  await ops.locator('form[data-form="lead-consultation"] input[name="at"]').fill("2027-01-12T10:30");
+  await ops.locator('form[data-form="lead-consultation"] input[name="note"]').fill("Teams link in the calendar");
+  await ops.locator('form[data-form="lead-consultation"] button[type="submit"]').click();
+  await ops.waitForTimeout(700);
+  log.push("booking: " + (await toastText(ops)));
+  await eventually("the call is booked: the lead is in consultation with a follow-up for that time (E7D):", async () => /Booked for 12 Jan, \d\d:\d\d GST/.test(await ops.locator("main").innerText()) && /Call booked for/.test(await ops.locator("main").innerText()));
+
   const mlead = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, storageState: await ops.context().storageState() });
   const ml = await mlead.newPage();
   ml.on("pageerror", (e) => errors.push(`leads mobile: ${e.message}`));

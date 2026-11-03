@@ -78,3 +78,15 @@ the owner intact, proven by a regression suite.
 ## Rollback
 
 - Revert the pull request. Migration 021 adds a table and nullable columns.
+
+## Evidence
+
+| Claim | Evidence |
+| --- | --- |
+| Tests | `pnpm typecheck` clean; `pnpm test`: 127 core + 347 API (1 PostgreSQL-only test skipped on PGlite) = 474 (E7B: 125 + 338). New: `packages/core/test/leads.test.ts` (E7C block: evidence sums to the score, the new factors, monotone start date, the next best action for every state); `apps/api/test/funnel.test.ts` (anonymous and de-duplicated events, no audit or outbox row, roles; a double submission is one lead; the evidence and the next action on the lead; the override audited and cleared; first contact and closure recorded; the funnel report from the first visit to accepted revenue with counts once per request and offer, abandonment, lost reasons, turnaround, the attention list, no money field); `apps/api/test/lead-to-tasees.test.ts` (one test per 3D risk); the OpenAPI contract regenerated |
+| Smoke | `docs/evidence/E7C/smoke-log.txt`: 251 checks OK on a fresh demo (E7B: 243), 8 marked E7C: the measurement notice; the lead page's evidence and next best action; the override beside the rule's suggestion; the Funnel page counting the selector's own visits through to the lead and naming the lead that needs a person; axe and no overflow at 390 px |
+| Accessibility | `axe.json`: 47 screens at 1280 and 390 px, 0 violations (E7B: 45) |
+| Screens | `98-funnel.png` (1280 px, full page), `99-mobile-funnel.png` (390 px), `87-lead-detail.png` (scores with evidence, next best action with the override), `86-leads-pipeline.png` (the next-action column) |
+| Audit chain | `pnpm verify:audit` on the smoke demo: intact, 111 events |
+| Records | D87; KNOWN-GAPS 96–100; `docs/DESIGN.md` rows; `docs/ENTITY-PROGRAMME.md` rows and paragraph |
+

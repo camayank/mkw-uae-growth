@@ -1097,3 +1097,21 @@ owner on 3 Nov 2026: "start E14".)
 - **Search.** The public pages carry a canonical link, made absolute from `APP_URL` when it is set. `robots.txt`
   keeps `/app/` and `/api/` out of search, and `/sitemap.xml` lists `/` and `/intake.html` (no sitemap until
   `APP_URL` is set). The workspace and the 404 page carry `noindex`.
+
+**D97. A client's documents come in three groups: needed now, needed later and already sent.** (E15, released by the
+owner on 3 Nov 2026: "start E15", after the portal assessment's point on the 13-document upload.)
+
+- Every line's first step asks for its documents when the offer is accepted (O6). So a company with a licence, two
+  visas, a bank account and VAT was asked for 13 at once: one intimidating total, some for steps weeks away.
+- **The rule** (`documentPlan` in `packages/core/src/documents.ts`, pure). Needed now is:
+  - anything sent back;
+  - anything for a step due today or already late;
+  - the documents for the step due first among those still waiting, with every step due the same day.
+
+  Needed later is the rest, step by step in due order, each with its date. Uploading the current batch brings the
+  next one forward, so "now" is never empty while something is missing. Already sent is what is uploaded or received.
+- **The next action** counts only what is needed now ("Upload 4 documents"). It says how many more are needed later and
+  from when, and carries the date of the steps it is for. The client's engagement view carries the plan, and the page
+  draws it: the documents needed now first, the later ones folded by step with "Expected by", what was sent folded
+  last. Early upload stays possible.
+- Partners and MKW staff see the documents as before; the plan is the client's.

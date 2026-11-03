@@ -2,7 +2,7 @@ import { clientNextActions, clientTimeline, clientWhatsNext } from "./journey.ts
 import { dbToday, loadDeliverables, loadGovernmentFees } from "./repo.ts";
 import { CLIENT_REVIEW_DAYS } from "./engagements.ts";
 import { opsQueue } from "./queue.ts";
-import { milestonesFor, paymentPlan, serialize, UAE_CALENDAR, type Role, type WorkCalendar } from "@tasees/core";
+import { documentPlan, milestonesFor, paymentPlan, serialize, UAE_CALENDAR, type DocumentStatus, type Role, type WorkCalendar } from "@tasees/core";
 import { asPlatform, asUser, type SessionUser } from "../lib/context.ts";
 import { num, type Database, type Queryable } from "../lib/db.ts";
 import { notFound } from "../lib/errors.ts";
@@ -188,6 +188,16 @@ export function partyEngagement(db: Database, user: SessionUser, engagementId: s
       lines: lines.rows.map((l) => serialize("engagementLine", user.role, camel(l))),
       milestones: milestones.rows.map(camel),
       documentRequests: documentRequests.rows.map(camel),
+      // E15: the client's documents as needed now, needed later (by step) and already sent.
+      ...(user.orgType === "client"
+        ? {
+            documentPlan: documentPlan(
+              documentRequests.rows.map((d) => ({ id: d.id as string, milestoneId: d.milestone_id as string, status: d.status as DocumentStatus })),
+              (await tx.query<{ id: string; seq: number; due_date: string | null }>("select id, seq, due_date::text as due_date from milestones where engagement_id = $1", [engagementId])).rows.map((m) => ({ id: m.id, seq: num(m.seq), dueDate: m.due_date })),
+              (await tx.query<{ d: string }>("select gulf(app_now())::text as d")).rows[0]!.d.slice(0, 10),
+            ),
+          }
+        : {}),
       delays: delays.rows.map((d) => serialize("delay", user.role, camel(d) as Record<string, unknown>)),
       ...(user.orgType === "client" ? { credits: credits.rows.map((c) => serialize("guaranteeCredit", user.role, { ...(camel(c) as Record<string, unknown>), amount: num((c as { amount_fils: number }).amount_fils) })) } : {}),
       rating: rating ? serialize("rating", user.role, camel(rating) as Record<string, unknown>) : null,

@@ -1,4 +1,4 @@
-import { addWorkingDays, type WorkCalendar } from "@tasees/core";
+import { addWorkingDays, documentPlan, type WorkCalendar } from "@tasees/core";
 import { num, type Queryable } from "../lib/db.ts";
 import { CLIENT_REVIEW_DAYS } from "./engagements.ts";
 
@@ -10,7 +10,7 @@ import { CLIENT_REVIEW_DAYS } from "./engagements.ts";
  *   offer      an offer to decide, before it expires
  *   payment    a payment due (the deposit starts the work; the balance closes it)
  *   approve    a step MKW has checked, waiting for the client (approved automatically after five working days)
- *   documents  documents a partner asked for, still missing or sent back
+ *   documents  documents a partner asked for, still missing or sent back: only those needed now (E15)
  *   filing     a confirmed compliance date within 30 days with no filing evidence yet
  */
 export type NextActionKind = "offer" | "payment" | "change" | "approve" | "documents" | "filing";
@@ -134,27 +134,38 @@ export async function clientNextActions(tx: Queryable, now: Date, cal: WorkCalen
       ref: m.id,
     });
   }
-  const docs = await tx.query<{ engagement_id: string; kind: string; status: string; decision_note: string | null; step: string }>(
-    `select d.engagement_id, d.kind, d.status, d.decision_note, m.name as step from document_requests d join milestones m on m.id = d.milestone_id
+  // E15: only what is needed now counts; the rest is said to come later, from the date its first step is due.
+  const docs = await tx.query<{ id: string; engagement_id: string; milestone_id: string; kind: string; status: "requested" | "rejected"; decision_note: string | null; step: string; seq: number; due_date: string | null }>(
+    `select d.id, d.engagement_id, d.milestone_id, d.kind, d.status, d.decision_note, m.name as step, m.seq, m.due_date::text as due_date
+       from document_requests d join milestones m on m.id = d.milestone_id
       where d.status in ('requested', 'rejected') and ($1::uuid is null or d.engagement_id = $1) order by d.created_at`,
     [only],
   );
   const byEngagement = new Map<string, typeof docs.rows>();
   for (const d of docs.rows) byEngagement.set(d.engagement_id, [...(byEngagement.get(d.engagement_id) ?? []), d]);
-  for (const [eid, list] of byEngagement) {
+  for (const [eid, all] of byEngagement) {
+    const plan = documentPlan(
+      all.map((d) => ({ id: d.id, milestoneId: d.milestone_id, status: d.status })),
+      all.map((d) => ({ id: d.milestone_id, seq: num(d.seq), dueDate: d.due_date })),
+      today,
+    );
+    const list = plan.now.map((id) => all.find((d) => d.id === id)!);
+    const laterCount = plan.later.reduce((n, l) => n + l.ids.length, 0);
+    const laterFrom = plan.later[0]?.dueDate ?? null;
     const back = list.filter((d) => d.status === "rejected");
     // Each kind once (a passport copy asked for three steps is one thing to find), and how many steps wait.
     const kinds = [...new Set(list.map((d) => docWords(d.kind)))];
     const steps = new Set(list.map((d) => d.step)).size;
     const waiting = steps > 1 ? `${steps} steps cannot finish without them` : `${list[0]!.step} cannot finish without ${list.length > 1 ? "them" : "it"}`;
+    const later = laterCount ? ` ${laterCount} more ${laterCount > 1 ? "are" : "is"} needed later${laterFrom ? `, from ${fmt(laterFrom)}` : ""}.` : "";
     actions.push({
       kind: "documents",
       title: `Upload ${list.length} document${list.length > 1 ? "s" : ""}`,
       why: back.length
-        ? `${capital([...new Set(back.map((d) => docWords(d.kind)))].join(", "))} ${back.length > 1 ? "were" : "was"} sent back. ${capital(waiting)}.`
-        : `${capital(kinds.join(", "))}. ${capital(waiting)}.`,
+        ? `${capital([...new Set(back.map((d) => docWords(d.kind)))].join(", "))} ${back.length > 1 ? "were" : "was"} sent back. ${capital(waiting)}.${later}`
+        : `${capital(kinds.join(", "))}. ${capital(waiting)}.${later}`,
       link: `#/engagement/${eid}`,
-      due: null,
+      due: plan.nowBy,
       engagementId: eid,
       ref: eid,
       detail: back[0]?.decision_note ?? null,

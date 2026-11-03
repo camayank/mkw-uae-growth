@@ -278,7 +278,13 @@ function renderClientEngagement(e, parts) {
     </div></li>`;
   };
   const docs = e.documentRequests ?? [];
-  const missing = docs.filter((r) => ["requested", "rejected"].includes(r.status)).length;
+  // E15: the documents as needed now, needed later (by step, with its date) and already sent, from the platform's plan.
+  const open = (r) => ["requested", "rejected"].includes(r.status);
+  const plan = e.documentPlan ?? { now: docs.filter(open).map((r) => r.id), nowBy: null, later: [], submitted: docs.filter((r) => !open(r)).map((r) => r.id) };
+  const byId = new Map(docs.map((r) => [r.id, r]));
+  const stepName = (mid) => e.milestones.find((m) => m.id === mid)?.name ?? "this step";
+  const missing = plan.now.length;
+  const laterCount = plan.later.reduce((n, l) => n + l.ids.length, 0);
   const docItem = (r) => {
     const status =
       r.status === "received"
@@ -299,14 +305,19 @@ function renderClientEngagement(e, parts) {
             : ""
       }</li>`;
   };
+  const byStep = (ids) => {
+    const groups = new Map();
+    for (const id of ids) { const r = byId.get(id); if (r) groups.set(r.milestoneId, [...(groups.get(r.milestoneId) ?? []), r]); }
+    return [...groups].map(([mid, rs]) => `<h3 class="checklist-step">Needed for ${esc(stepName(mid))}</h3><ul class="checklist">${rs.map(docItem).join("")}</ul>`).join("");
+  };
   // U1: the documents fold away once none is outstanding; steps stay open (they are the record); the rest folds.
   const checklist = docs.length
     ? panel(
-        `Documents we need from you ${missing ? badge("pending", `${missing} to upload`) : badge("ok", "complete")}`,
+        `Documents we need from you ${missing ? badge("pending", `${missing} to upload now`) : laterCount ? badge("info", "nothing needed now") : badge("ok", "complete")}`,
         `<p class="small muted">Each file is checked here before it is sent: PDF, a photo, Word or Excel, up to ${Math.round(uploadRules.maxBytes / 1024 / 1024)} MB. Files are stored in the UAE and shared only with the firm doing the work.</p>
-      ${[...new Set(docs.map((r) => r.milestoneId))]
-        .map((mid) => `<h3 class="checklist-step">Needed for ${esc(e.milestones.find((m) => m.id === mid)?.name ?? "this step")}</h3><ul class="checklist">${docs.filter((r) => r.milestoneId === mid).map(docItem).join("")}</ul>`)
-        .join("")}`,
+      ${missing ? `<section class="docs-now" id="docs-now"><h3>Needed now</h3><p class="small muted">For the steps that come first. The rest are below, with the date each step is expected; upload them early if you have them.</p>${byStep(plan.now)}</section>` : laterCount ? `<p class="small" id="docs-now">Nothing is needed from you right now. The documents below are for later steps; upload them early if you have them.</p>` : ""}
+      ${laterCount ? `<details class="docs-later" id="docs-later"${missing ? "" : " open"}><summary><b>Needed later: ${laterCount}</b></summary>${plan.later.map((l) => `<h3 class="checklist-step">Needed for ${esc(stepName(l.milestoneId))}</h3>${l.dueDate ? `<p class="small muted">Expected by ${date(l.dueDate)}</p>` : ""}<ul class="checklist">${l.ids.map((id) => byId.get(id)).filter(Boolean).map(docItem).join("")}</ul>`).join("")}</details>` : ""}
+      ${plan.submitted.length ? `<details class="docs-sent" id="docs-sent"><summary><b>Already sent: ${plan.submitted.length}</b></summary><ul class="checklist">${plan.submitted.map((id) => byId.get(id)).filter(Boolean).map(docItem).join("")}</ul></details>` : ""}`,
         { id: "docs", open: missing > 0 },
       )
     : "";

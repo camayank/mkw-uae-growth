@@ -29,7 +29,8 @@ dark console bar for staff. Nothing a screen says changes, and every number on i
 
 ## Exclusions
 
-- The staff sidebar (gap 113), the partner scorecard panels (gap 114), and the canvas's invented figures.
+- The staff sidebar (the owner kept the grouped menu, gap 113), the partner scorecard panels (gap 114), and the
+  canvas's invented figures.
 - Any new data, endpoint or wording of a rule, a price or advice.
 - Web fonts (D91).
 
@@ -66,7 +67,7 @@ U1 (workspace redesign), E8 (the flag drawings, gap 107). No new library.
 
 ## Owner decisions
 
-- Sidebar or grouped bar for staff (gap 113). The flag artwork (gap 107). The Arabic labels (gap 116).
+- Decided: staff keep the grouped menu (3 Nov 2026). Open: the flag artwork (gap 107); the Arabic labels (gap 116).
 
 ## Rollback
 

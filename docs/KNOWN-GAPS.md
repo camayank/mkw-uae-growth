@@ -317,8 +317,8 @@ in a browser; everything listed here is not.
 
 ## E9: workspace look
 
-113. **The staff console's sidebar from the canvas is not built**: staff keep the grouped one-row menu (O10) on a
-     dark bar. Moving to a sidebar is an owner decision (D91).
+113. ~~**The staff console's sidebar from the canvas is not built.**~~ Decided by the owner on 3 Nov 2026: staff keep
+     the grouped one-row menu (O10), on the dark bar (D91).
 114. **The partner screens get the shared look only** (the bar, the flag colours, gold progress, the M mark); the
      canvas's partner scorecard and evidence-progress panels are not built, and neither are the canvas's invented
      figures on any screen (D91).

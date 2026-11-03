@@ -994,8 +994,8 @@ canvas of 3 Nov 2026 and its review round.)
   the newest open request with its advice and offers); a step the platform cannot see is never marked done. Advice
   is a step only for a new company.
 - The staff console keeps the grouped one-row menu decided in O10 (four entries, menus by keyboard), now on a dark
-  bar with icons and a gold marker; the canvas's sidebar is an owner decision (gap 113), because it changes how
-  fifteen pages are reached and what the O10 checks hold.
+  bar with icons and a gold marker. The owner chose this over the canvas's sidebar on 3 Nov 2026 ("keep the grouped
+  staff menu").
 - The brand mark is T for Tasees only for clients and signed-out visitors; partners and staff see M for MKW Advisors
   (rule 10: nothing addressed to a partner carries Tasees, and the letter on the mark was the last place it did).
 - System fonts stay (no web font: no new dependency, nothing loaded from a third party on a client's screen).

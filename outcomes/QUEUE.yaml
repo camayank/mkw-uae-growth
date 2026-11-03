@@ -184,7 +184,7 @@ outcomes:
     status: verified-pending-merge
     contract: outcomes/E9-workspace-look.md
     depends_on: [E8, U1]
-    needs_from_owner: [staff menu as a sidebar or the grouped bar, flag artwork check, Arabic wording]
+    needs_from_owner: [flag artwork check, Arabic wording]  # staff menu: the owner kept the grouped bar, 3 Nov 2026
     # Released by the owner on 3 Nov 2026 ("now build the restyled client and staff screens into the app").
 
 # Roadmap from docs/VISION.md (18 Oct 2026). Order of work: O11, O12, O13 before the pilot; then O7 (launch gate);

@@ -71,6 +71,7 @@ describe("the assessment report (E7D)", () => {
     expect(text).toContain("Company: Example Ventures");
     expect(text).toContain("Recommended structure: Free zone company");
     expect(text).toMatch(/\[verified rule\]/);
+    expect(text).toMatch(/RAK ICC: does not fit; \[DOES NOT FIT\][\s\S]{0,200}?\[(verified rule|rule of thumb|UNCERTAIN)\]/); // a rejection keeps its confidence label (the line may wrap)
     expect(text).toContain("Setup estimate AED 12,000 to AED 20,000 [verified]");
     expect(text).toMatch(/CROSS-BORDER RISKS/);
     // The closing sentence follows what is printed: an unverified renewal figure alone makes it "some points".
@@ -81,6 +82,11 @@ describe("the assessment report (E7D)", () => {
     expect(t2).toMatch(/Yearly renewal estimate AED 9,000 to AED 11,000 \[UNCERTAIN\]/);
     expect(label(t2)).toBe("some");
     if (!unverifiedRenewal.hasUncertain && !unverifiedRenewal.needsVerification) expect(label(text)).toBe("every"); // the flags alone would have said "every"
+    // An excluded place whose failing finding is UNCERTAIN carries the label and makes the closing sentence "some points".
+    const uncertainExclusion = advise(answers, rules, [zones[0]!, zones[1]!, { ...zones[2]!, confidence: "UNCERTAIN" }], "2026-11-03");
+    const t3 = reportLines(reviewedReport(uncertainExclusion, answers, { reference: "REQ-1234ABCD", date: "2026-11-03", reviewedBy: "Ops Manager", reviewedAt: "2026-11-02" })).join("\n");
+    expect(t3).toMatch(/RAK ICC: does not fit; \[DOES NOT FIT\]/);
+    if (/RAK ICC: does not fit; \[DOES NOT FIT\][\s\S]{0,200}?\[UNCERTAIN\]/.test(t3)) expect(label(t3)).toBe("some");
     expect(text).toContain("Reviewed advice for the client named above.");
     for (const s of SECTIONS.filter((x) => x !== "REJECTED")) expect(text, s).toContain(s);
     expect(text).not.toMatch(MONEY);

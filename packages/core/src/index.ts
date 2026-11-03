@@ -22,3 +22,4 @@ export * from "./guidance.ts";
 export * from "./coverage.ts";
 export * from "./report.ts";
 export * from "./quick.ts";
+export * from "./documents.ts";

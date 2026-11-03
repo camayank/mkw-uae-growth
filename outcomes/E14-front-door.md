@@ -1,6 +1,6 @@
 # E14 Front door: the public homepage at /, the workspace at /app/
 
-Status: verified-pending-merge (branch `outcome/E14-front-door`, on `main` at 6369b66 with E13 merged; released by
+Status: merged (camayank/mkw-uae-growth#35, 3 Nov 2026; previously verified-pending-merge, branch `outcome/E14-front-door`, on `main` at 6369b66 with E13 merged; released by
 the owner on 3 Nov 2026: "start E14", after the portal assessment's point on public routing)
 
 ## Business result

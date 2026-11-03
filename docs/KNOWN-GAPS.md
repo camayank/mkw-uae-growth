@@ -340,6 +340,18 @@ in a browser; everything listed here is not.
 124. **The privacy consent text recorded for the homepage still says "selector.html"** (`2026-11-selector-v1`). It is
      the wording a founder agreed to, kept as recorded; a new consent version would name the new address.
 
+## E15: client documents
+
+125. **A document asked for once per line is uploaded once per line.** A passport copy wanted for the licence, two
+     visas and the bank account is four uploads. "Now" shows only the first step's, but sharing one file across steps
+     (and possibly across partner firms) would need the client's consent per firm; it is not built.
+126. **The acceptance emails still list every document**, one email per line (O6). The screen and the next action
+     group them; the emails are unchanged.
+127. **A document still asked for on a step already approved stays open.** It is no longer needed now: it is listed
+     last, "send it only if the firm asks for it again" (D97). Whether an approved step's open requests should close
+     by themselves is a delivery rule for ops, not changed here; the demo seeds such a case.
+128. **The new Arabic strings for E15 are drafts** until the Arabic reviewer signs them off (with gaps 111, 116, 119).
+
 ## E9: workspace look
 
 113. ~~**The staff console's sidebar from the canvas is not built.**~~ Decided by the owner on 3 Nov 2026: staff keep

@@ -1194,6 +1194,32 @@ await eventually("partner moved to pilot with a verified licence:", async () => 
 await client.goto(engagementUrl); await client.reload();
 await client.waitForSelector('form[data-form="doc-upload"]');
 check("client is asked for documents per step:", (await client.locator('form[data-form="doc-upload"]').count()) >= 1);
+// E15: the documents as needed now, needed later and already sent, from the platform's plan; the next action counts
+// only what is needed now.
+const engId = engagementUrl.split("/").pop();
+const engView = await (await client.request.get(`${BASE}/api/engagements/${engId}`)).json();
+const docPlan = engView.documentPlan;
+// Checked against the steps themselves, not the plan alone (independent review of E15): nothing needed now belongs to
+// a step already approved, and the step it is for is the open step due first among those still waiting.
+{
+  const stepOfDoc = (id) => engView.milestones.find((m) => m.id === engView.documentRequests.find((r) => r.id === id).milestoneId);
+  const openWaiting = engView.documentRequests.filter((r) => r.status === "requested" && stepOfDoc(r.id).status !== "client_approved");
+  const firstDue = openWaiting.map((r) => String(stepOfDoc(r.id).dueDate).slice(0, 10)).sort()[0];
+  check("nothing needed now belongs to an approved step; the first open step's documents are the ones needed now (E15):",
+    docPlan.now.every((id) => stepOfDoc(id).status !== "client_approved") &&
+    openWaiting.filter((r) => String(stepOfDoc(r.id).dueDate).slice(0, 10) === firstDue).every((r) => docPlan.now.includes(r.id)));
+}
+const laterDocs = docPlan.later.reduce((n, l) => n + l.ids.length, 0);
+const homeActions = (await (await client.request.get(`${BASE}/api/client/home`)).json()).nextActions;
+const docAction = homeActions.find((a) => a.kind === "documents" && a.engagementId === engId);
+check("the client's documents are grouped: needed now first, the rest later by step with its date (E15):",
+  docPlan.now.length > 0 && (await client.locator("#docs-now ul.checklist > li").count()) === docPlan.now.length &&
+  (laterDocs === 0 || ((await client.locator("#docs-later ul.checklist > li").count()) === laterDocs && /Needed later: \d+/.test(await client.locator("#docs-later summary").innerText()) && /Expected by/.test(await client.locator("#docs-later").textContent()))) &&
+  new RegExp(`${docPlan.now.length} to upload now`).test(await client.locator("#docs").innerText()));
+const aheadDocs = docPlan.later.filter((l) => !l.approved).reduce((n, l) => n + l.ids.length, 0);
+check("the client's next action counts only the documents needed now, and later only for steps still to come (E15):", !!docAction && docAction.title === `Upload ${docPlan.now.length} document${docPlan.now.length > 1 ? "s" : ""}` && (aheadDocs === 0 ? !/needed later/.test(docAction.why) : new RegExp(`${aheadDocs} more (?:is|are) needed later`).test(docAction.why)));
+log.push(`documents: ${docPlan.now.length} now, ${laterDocs} later, ${docPlan.submitted.length} sent`);
+await shot(client, "118-client-documents-grouped");
 // O12: the checklist checks a file before it leaves the page: a wrong type is refused on the spot, nothing is sent.
 await client.setInputFiles('form[data-form="doc-upload"] input[name="file"] >> nth=0', { name: "scan.exe", mimeType: "application/octet-stream", buffer: Buffer.from("MZ") });
 await eventually("a wrong file type is refused before upload, beside the item:", async () => /cannot be uploaded/.test(await client.locator("ul.checklist .field-msg").first().innerText()));
@@ -1203,7 +1229,20 @@ await client.setInputFiles('form[data-form="doc-upload"] input[name="file"] >> n
 await client.locator('form[data-form="doc-upload"] button[type="submit"]').first().click();
 await client.waitForTimeout(800);
 check("client document uploaded:", (await toastHas(client, /Uploaded/)));
+await eventually("an uploaded document moves to already sent, and the count needed now falls (E15):", async () => /Already sent: 1/.test(await client.locator("#docs-sent summary").innerText().catch(() => "")) && (docPlan.now.length === 1 || new RegExp(`${docPlan.now.length - 1} to upload now`).test(await client.locator("#docs").innerText())));
 await shot(client, "45-client-documents");
+{
+  const dp = await (await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, storageState: await client.context().storageState() })).newPage();
+  dp.on("pageerror", (e) => errors.push(`documents phone: ${e.message}`));
+  await dp.goto(engagementUrl);
+  await dp.waitForSelector("#docs");
+  await dp.evaluate(() => { const d = document.getElementById("docs"); if (d && d.tagName === "DETAILS") d.open = true; });
+  check("the grouped documents at 390 px have no horizontal overflow (E15):", !(await dp.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
+  await axeCheck(dp, "client documents grouped at 390 px (E15)");
+  await dp.locator("#docs").scrollIntoViewIfNeeded();
+  await shot(dp, "119-mobile-client-documents");
+  await dp.context().close();
+}
 const pdfRes = await client.request.get(BASE + "/api/client/offers/" + standard[1].split("/").pop() + "/pdf");
 check("offer PDF downloads for the client:", pdfRes.status() === 200 && (await pdfRes.text()).startsWith("%PDF") && !/Example Setup/.test(await pdfRes.text()));
 // Partner marks the document received

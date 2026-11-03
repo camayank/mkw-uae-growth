@@ -283,6 +283,11 @@ ul.checklist form { margin-top: var(--space-2); }
 .dropzone.over, .dropzone:focus-within { border-color: var(--brand); background: var(--brand-soft); }
 .dropzone input[type="file"] { width: 100%; }
 .checklist-step { font-size: var(--text-sm); color: var(--muted); margin: var(--space-4) 0 0; text-transform: uppercase; letter-spacing: 0.04em; }
+/* E15: the client's documents as needed now, needed later and already sent. */
+.docs-now > h3:first-child { margin: var(--space-4) 0 var(--space-1); }
+.docs-later, .docs-sent { margin-top: var(--space-4); padding-top: var(--space-3); border-top: 1px solid var(--line); }
+.docs-later > summary, .docs-sent > summary { cursor: pointer; padding: var(--space-1) 0; }
+.docs-later > summary > h3, .docs-sent > summary > h3 { display: inline; font-size: var(--text-md, 1rem); margin: 0; }
 /* In the checklist each upload is one compact row: the drop zone, its message, and the button. */
 form.upload-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-1) var(--space-2); align-items: center; }
 form.upload-row .dropzone { flex-direction: row; flex-wrap: wrap; align-items: center; padding: var(--space-2); }

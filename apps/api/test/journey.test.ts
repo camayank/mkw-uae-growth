@@ -83,11 +83,21 @@ describe("client journey", () => {
     // Each kind of document once, and how many steps wait for them.
     expect(h.nextActions[0].why).toMatch(/passport copy/i);
     expect(h.nextActions[0].why.match(/passport copy/gi)).toHaveLength(1);
-    expect(h.nextActions[0].why).toMatch(/\d+ steps cannot finish without them\.$/);
+    // E15: only the documents needed now count; the rest are said to come later, from the date their step is due.
+    const plan = (await env.call("client", "GET", `/api/engagements/${engagementId}`)).body.documentPlan;
+    expect(plan.now.length).toBeGreaterThan(0);
+    expect(h.nextActions[0].title).toBe(`Upload ${plan.now.length} document${plan.now.length > 1 ? "s" : ""}`);
+    expect(h.nextActions[0].due).toBe(plan.nowBy);
+    const laterCount = plan.later.filter((l: any) => !l.approved).reduce((n: number, l: any) => n + l.ids.length, 0);
+    expect(laterCount).toBeGreaterThan(0);
+    expect(h.nextActions[0].why).toMatch(new RegExp(`cannot finish without (?:it|them)\\. ${laterCount} more (?:is|are) needed later, from \\d{1,2} [A-Z][a-z]{2} \\d{4}\\.$`));
+    expect(plan.submitted).toEqual([]);
     // Monday 26 October is declared a holiday: five working days from Monday 19th now end on Tuesday 27th.
     expect((await env.call("founder", "PUT", "/api/admin/holidays", { date: "2026-10-26", name: "Test holiday", status: "confirmed", reason: "test" })).status).toBe(200);
     const m = e.milestones[0];
     const who = partnerKey(e.lines.find((l: any) => l.code === m.code).partner);
+    // E15: the plan is the client's; the partner's view of the engagement does not carry it.
+    expect((await env.call(who, "GET", `/api/engagements/${engagementId}`)).body.documentPlan).toBeUndefined();
     for (const type of m.evidenceRequired) await env.call(who, "POST", `/api/milestones/${m.id}/evidence`, { type, fileName: `${type}.pdf`, contentBase64: pdf });
     await env.call(who, "POST", `/api/milestones/${m.id}/submit`);
     // While MKW checks, the timeline says so; nothing is asked of the client for it yet.

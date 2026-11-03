@@ -223,7 +223,7 @@ in a browser; everything listed here is not.
     scope templates, the same for every tier. The screen therefore calls the tier "Priority" and promises no pace
     (raised in the U1 review). Carrying the quoted working days into offer lines, the proposal and the delivery plan is
     an API and schema change for a later outcome.
-86. **The browser tab title says "Tasees" for partners.** `document.title` follows the heading with " · Tasees" for
+86. ~~**The browser tab title says "Tasees" for partners.**~~ Closed by E9: the suffix follows the audience (D91). `document.title` follows the heading with " · Tasees" for
     every signed-in role (`js/core.js`), so a partner's tab carries the client brand; the page itself is branded MKW
     Advisors Partner Network. Pre-dates U1; noted in its review. Fix: pick the suffix by audience.
 87. **Arabic entries missing for some E5 and E6 client strings.** The gap list the Arabic reviewer sees, read by the
@@ -322,7 +322,7 @@ in a browser; everything listed here is not.
 114. **The partner screens get the shared look only** (the bar, the flag colours, gold progress, the M mark); the
      canvas's partner scorecard and evidence-progress panels are not built, and neither are the canvas's invented
      figures on any screen (D91).
-115. **The journey tracker reads one piece of work**: the first live engagement, else the newest open request. A
+115. **The journey tracker reads one piece of work**: the newest live engagement, else the newest open request. A
      client with several at once sees the others in their cards below it, not in the tracker.
 116. **The new Arabic labels for the journey are drafts** until the Arabic reviewer signs them off (with gap 111).
 

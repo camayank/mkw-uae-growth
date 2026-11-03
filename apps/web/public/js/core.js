@@ -100,7 +100,9 @@ window.addEventListener("resize", () => {
 export let lastAnnounced = "";
 export function announceRoute() {
   const h1 = $app.querySelector("h1")?.textContent?.trim();
-  document.title = h1 ? `${h1} · Tasees` : "Tasees workspace";
+  // The tab carries the brand the reader has (gap 86, rule 10): Tasees for clients and visitors, MKW Advisors otherwise.
+  const brand = state.me && !isClient() ? "MKW Advisors" : "Tasees";
+  document.title = h1 ? `${h1} · ${brand}` : `${brand} workspace`;
   const key = location.hash;
   if (key !== lastAnnounced) {
     lastAnnounced = key;
@@ -191,7 +193,8 @@ const KPI_ICON = {
   alert: '<path d="M12 3 2 20h20z"/><path d="M12 10v4"/><path d="M12 17h.01"/>',
   flag: '<path d="M5 21V4"/><path d="M5 4h12l-2 4 2 4H5"/>',
 };
-/** A KPI tile: the figure, its label, an optional line under it and an icon. */
+/** A KPI tile: the figure, its label, an optional line under it and an icon. `label`, `value` and `sub` are HTML: callers
+ *  pass constants, numbers or already-escaped markup (`aed`, `badge`), never raw user text. */
 export const kpiTile = (label, value, sub = "", ico = "") =>
   `<div class="kpi">${KPI_ICON[ico] ? `<span class="ico" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${KPI_ICON[ico]}</svg></span>` : ""}<b>${value}</b><span>${label}</span>${sub ? `<br>${sub}` : ""}</div>`;
 

@@ -997,6 +997,8 @@ canvas of 3 Nov 2026 and its review round.)
   bar with icons and a gold marker. The owner chose this over the canvas's sidebar on 3 Nov 2026 ("keep the grouped
   staff menu").
 - The brand mark is T for Tasees only for clients and signed-out visitors; partners and staff see M for MKW Advisors
-  (rule 10: nothing addressed to a partner carries Tasees, and the letter on the mark was the last place it did).
+  (rule 10: nothing addressed to a partner carries Tasees). The browser tab's title follows the same rule, "· MKW
+  Advisors" for partners and staff (gap 86 closed). Before the first render after a reload the static page still
+  shows the T for an instant, until the session is read.
 - System fonts stay (no web font: no new dependency, nothing loaded from a third party on a client's screen).
 

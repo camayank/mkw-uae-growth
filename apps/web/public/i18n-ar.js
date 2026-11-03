@@ -158,6 +158,8 @@ export const AR = {
   "Loading…": "جارٍ التحميل…",
   "Skip to content": "انتقل إلى المحتوى",
   // E9 workspace look: the client's journey tracker (draft until the Arabic reviewer signs it off)
+  "expired: ask for a fresh offer": "انتهت صلاحيته: اطلب عرضاً جديداً",
+  "an issue is open": "توجد مشكلة مفتوحة",
   "Where your work stands": "أين وصل عملك",
   "Deposit": "الدفعة المقدمة",
   "Delivery": "التنفيذ",

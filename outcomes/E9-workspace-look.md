@@ -50,11 +50,30 @@ dark console bar for staff. Nothing a screen says changes, and every number on i
 Evidence recorded on 3 Nov 2026 (`docs/evidence/E9/`):
 
 - `pnpm test`: core 139 passed; api 359 passed, 1 skipped, on PGlite (`tests-pglite.txt`). `pnpm typecheck` clean.
-- `scripts/smoke.mjs` against a fresh demo: 288 checks OK, 0 failed (`smoke-log.txt`; 279 after E8).
+- `scripts/smoke.mjs` against a fresh demo: 290 checks OK, 0 failed (`smoke-log.txt`; 279 after E8).
 - axe on 52 screens, 0 violations, including "client home with the journey and the money panel (E9)" and "staff
   dashboard with icon tiles (E9)" (`axe.json`).
 - Screenshots: `106-client-home-journey.png`, `13-client-engagement-approved.png`, `107-staff-dashboard.png`,
   `61-console-menu.png` (1280 px); `75-mobile-client-home.png`, `77-mobile-client-timeline.png` (390 px).
+
+## Reviews
+
+- Codex: a services request stores advice "none", which read as an Advice step "being checked". The step now shows
+  only when there is advice to review, with a smoke check.
+- Independent review: fixed
+  - two steps "now" at once (pending advice with a published offer);
+  - an expired offer said to be "being priced";
+  - headings larger on phones;
+  - two gold buttons on the engagement page;
+  - the tab title still saying Tasees to partners and staff (gap 86 closed);
+  - the gold progress fill below 3:1 contrast (a darker `--gold-fill`);
+  - the selector's question counter clipped by the shared `.progress` class (renamed `.qcount`);
+  - the step details hidden from screen readers on phones;
+  - a dispute shown as plain delivery;
+  - a menu-icon check that could pass falsely;
+  - unused styles; doc wording.
+- Recorded rather than changed: the static T before the first render after a reload (D91); a completed engagement
+  with a newer cancelled one reads as all done (the cancelled one is not current work).
 
 ## Dependencies
 

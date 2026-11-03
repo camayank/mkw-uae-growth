@@ -273,7 +273,7 @@ function renderClientEngagement(e, parts) {
       ${t.detail ? `<div class="small">Your words: <span data-no-i18n>${esc(t.detail)}</span></div>` : ""}
       ${step ? parts.delayLine(step) : ""}
       ${evidence.length ? `<div class="small">Evidence: ${evidence.map((x) => `<a href="/api/evidence/${x.id}/file" target="_blank" rel="noopener">${esc(x.fileName)}</a>`).join(" · ")}</div>` : ""}
-      ${t.kind === "step" && t.state === "now" ? `<div class="actions"><button class="sm primary gold" data-act="ms-review" data-id="${t.ref}" data-approve="1" aria-describedby="tl-${esc(t.ref)}">Approve</button><button class="sm danger" data-act="ms-review" data-id="${t.ref}" data-approve="0" aria-describedby="tl-${esc(t.ref)}">Raise an issue</button></div>` : ""}
+      ${t.kind === "step" && t.state === "now" ? `<div class="actions"><button class="sm primary" data-act="ms-review" data-id="${t.ref}" data-approve="1" aria-describedby="tl-${esc(t.ref)}">Approve</button><button class="sm danger" data-act="ms-review" data-id="${t.ref}" data-approve="0" aria-describedby="tl-${esc(t.ref)}">Raise an issue</button></div>` : ""}
       ${pay && pay.status === "pending" && pay.payUrl ? `<div class="actions"><a class="btn sm primary" href="${esc(pay.payUrl)}">Pay by card</a></div>` : ""}
     </div></li>`;
   };

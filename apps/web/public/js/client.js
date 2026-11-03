@@ -48,7 +48,7 @@ export function clientJourney(h) {
       ["Offer accepted", "done"],
       ["Deposit", paid ? "done" : "now", paid ? "" : "due now"],
       ["Partner assigned", working ? "done" : paid ? "now" : "todo", paid && !working ? "MKW Advisors is assigning" : ""],
-      ["Delivery", working ? "now" : "todo", working ? `${e.approved} of ${e.milestones} steps approved` : ""],
+      ["Delivery", working ? "now" : "todo", e.status === "disputed" ? "an issue is open" : working ? `${e.approved} of ${e.milestones} steps approved` : ""],
       ["Complete", "todo"],
     ];
   }
@@ -58,18 +58,28 @@ export function clientJourney(h) {
   const offers = h.offers.filter((o) => o.requestId === r.id && o.status !== "withdrawn");
   const published = offers.some((o) => o.status === "published");
   const accepted = offers.some((o) => o.status === "accepted");
+  // "Being priced" only while MKW is pricing; an offer that lapsed is said as such (accepting it is refused).
+  const pricing = !published && !accepted && (["draft", "scoped", "quoting"].includes(r.status) || offers.some((o) => ["draft", "ops_review"].includes(o.status)));
+  const expired = !published && !accepted && !pricing && offers.some((o) => o.status === "expired");
   // Advice is a step only when there is advice to review ("none" is stored for a services request: no advice at all).
   const advice = r.adviceStatus === "pending_review" || r.adviceStatus === "approved";
   const adviceDone = r.adviceStatus === "approved";
-  return [
+  const steps = [
     ["Request", "done"],
     ...(advice ? [["Advice", adviceDone ? "done" : "now", adviceDone ? "" : "being checked by a person"]] : []),
-    ["Offer", accepted ? "done" : published ? "now" : advice && !adviceDone ? "todo" : "now", published && !accepted ? "ready to review" : !published && !accepted && (!advice || adviceDone) ? "being priced" : ""],
+    ["Offer", accepted ? "done" : advice && !adviceDone ? "todo" : "now", published ? "ready to review" : expired ? "expired: ask for a fresh offer" : pricing ? "being priced" : ""],
     ["Deposit", accepted ? "now" : "todo"],
     ["Delivery", "todo"],
     ["Complete", "todo"],
   ];
+  return oneNow(steps);
 }
+
+/** One step is current: an offer can be published while advice is still being checked, so later "now"s wait. */
+const oneNow = (steps) => {
+  let seen = false;
+  return steps.map(([n, st, what]) => (st === "now" ? (seen ? [n, "todo", what] : ((seen = true), [n, st, what])) : [n, st, what]));
+};
 
 export async function renderClientHome() {
   // The statement and the calendar are the client's own too; a failure in either leaves the overview standing.

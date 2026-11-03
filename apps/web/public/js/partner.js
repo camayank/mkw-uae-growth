@@ -1,5 +1,5 @@
 // Tasees workspace: partner module (split from app.js in O12; plain ES modules, no build step).
-import { $app, act, aed, api, badge, date, dateTime, deliverables, esc, isPartner, isPlatform, legalBlock, nameOf, role, table, words } from "./core.js";
+import { $app, act, aed, api, badge, date, dateTime, deliverables, esc, flag, isPartner, isPlatform, kpiTile, legalBlock, nameOf, role, table, words } from "./core.js";
 
 /** How long is left to answer an offer, as a chip (U1). */
 export const timeLeft = (deadline) => {
@@ -22,29 +22,31 @@ export const expiryBadge = (iso, soonDays = 30) => {
 
 export async function renderPartnerHome() {
   const h = await api("GET", "/api/partner/home");
-  const offered = h.allocations.filter((a) => !a.acceptedAt && !a.declinedAt && !a.timedOutAt);
+  // Soonest reply-by first (the list comes newest first); the gold Accept goes to the most urgent offer still open.
+  const offered = h.allocations.filter((a) => !a.acceptedAt && !a.declinedAt && !a.timedOutAt).sort((x, y) => new Date(x.deadline) - new Date(y.deadline));
+  const urgent = offered.find((a) => new Date(a.deadline).getTime() > Date.now())?.id;
   const active = h.allocations.filter((a) => a.acceptedAt);
   const rfqs = h.rfqs.filter((q) => q.status === "open" && !q.submitted);
   const admin = role() === "partner_admin";
   const status = h.firm?.status ?? "prospect";
   $app.innerHTML = `
   <div class="row between"><h1>Work from MKW Advisors</h1>${status !== "signed" ? `<p class="notice small" style="margin:0">${badge(status)} ${status === "paused" ? "No new work is offered until MKW Advisors lifts the pause." : status === "pilot" ? "Up to three jobs at a time until five are delivered on time." : `Complete your application and documents on <a href="#/firm">Your firm</a>.`}</p>` : ""}</div>
-  <div class="kpis">
-    <div class="kpi"><b>${offered.length}</b><span>Offers waiting for your answer</span></div>
-    <div class="kpi"><b>${active.filter((a) => a.engagementStatus !== "completed").length}</b><span>Engagements in delivery</span></div>
-    <div class="kpi"><b>${rfqs.length}</b><span>Requests for a price</span></div>
-    <div class="kpi"><b>${aed(h.payouts.filter((p) => p.status === "eligible").reduce((s, p) => s + p.amount, 0))}</b><span>Payouts due to you</span></div>
-    <div class="kpi"><b>${h.firm?.latestScore ?? h.firm?.quality ?? "–"}</b><span>Quality score · <a href="#/firm">scorecard</a></span></div>
+  <div class="kpis lead-kpis">
+    ${kpiTile("Offers waiting for your answer", offered.length, "", "alert")}
+    ${kpiTile("Engagements in delivery", active.filter((a) => a.engagementStatus !== "completed").length, "", "list")}
+    ${kpiTile("Requests for a price", rfqs.length, "", "tax")}
+    ${kpiTile("Payouts due to you", aed(h.payouts.filter((p) => p.status === "eligible").reduce((s, p) => s + p.amount, 0)), "", "cash")}
+    ${kpiTile(`Quality score · <a href="#/performance">scorecard</a>`, esc(h.firm?.latestScore ?? h.firm?.quality ?? "–"), "", "shield")}
   </div>
   <div class="stack">
     <div class="card flush" style="border-inline-start: 4px solid var(--accent)"><div class="row between" style="padding: 16px 18px 0"><h2 style="padding:0">Offered to you</h2><span class="small muted">You have 4 working hours to answer; after that the work goes to the next firm.</span></div>
       ${table(
         ["Where", "Work", "#Your payout", "Reply by", ""],
         offered.map(
-          (a) => `<tr><td><b>${esc(a.brief?.emirate ?? "")}</b>${a.brief?.freeZone ? `<br><span class="small muted">${esc(a.brief.freeZone)}</span>` : ""}</td>
+          (a) => `<tr><td>${flag(a.brief?.emirate)}<b>${esc(a.brief?.emirate ?? "")}</b>${a.brief?.freeZone ? `<br><span class="small muted">${esc(a.brief.freeZone)}</span>` : ""}</td>
           <td>${esc((a.brief?.lines ?? a.codes.map((c) => ({ code: c, qty: 1 }))).map((l) => `${l.name ?? nameOf(l.code)}${l.qty > 1 ? ` ×${l.qty}` : ""}`).join(", "))}<br><span class="small muted">Step dates and the client's documents are in the brief once you accept.</span></td>
           <td class="num"><b>${aed(a.payoutTotal)}</b><br><span class="small muted">your fees; government fees not included</span></td><td><b>${dateTime(a.deadline)}</b><br>${timeLeft(a.deadline)}</td>
-          <td style="white-space:nowrap">${admin ? `<button class="primary" data-act="alloc" data-id="${a.id}" data-decision="accept">Accept</button> <button data-act="alloc" data-id="${a.id}" data-decision="decline">Decline</button>` : `<span class="small muted">Your admin replies</span>`}</td></tr>`,
+          <td style="white-space:nowrap">${admin ? `<button class="primary${a.id === urgent ? " gold" : ""}" data-act="alloc" data-id="${a.id}" data-decision="accept">Accept</button> <button data-act="alloc" data-id="${a.id}" data-decision="decline">Decline</button>` : `<span class="small muted">Your admin replies</span>`}</td></tr>`,
         ),
         "Nothing waiting. New work arrives here and by email; you have 4 working hours to reply.",
       )}
@@ -76,7 +78,7 @@ export async function renderPartnerHome() {
       ${table(
         ["Where", "Work", "Accepted", "Status", ""],
         active.filter((a) => a.engagementStatus !== "completed").map(
-          (a) => `<tr><td><b>${esc(a.brief?.emirate ?? "")}</b></td><td>${esc(a.codes.map(nameOf).join(", "))}</td><td>${date(a.acceptedAt)}</td>
+          (a) => `<tr><td>${flag(a.brief?.emirate)}<b>${esc(a.brief?.emirate ?? "")}</b></td><td>${esc(a.codes.map(nameOf).join(", "))}</td><td>${date(a.acceptedAt)}</td>
           <td>${badge(a.engagementStatus ?? "in_delivery")}</td><td><a class="btn sm" href="#/engagement/${a.engagementId}">Open</a></td></tr>`,
         ),
         "No work in delivery.",
@@ -199,15 +201,15 @@ export async function renderPartnerPerformance() {
   const pay = (s) => d.payouts.find((p) => p.status === s)?.total ?? 0;
   $app.innerHTML = `<h1>Your performance</h1>
   <p class="muted">What MKW Advisors sees of your firm: jobs, on-time delivery, payouts and the weekly scorecard that decides who gets work.</p>
-  <div class="kpis">
-    <div class="kpi"><b>${by("in_delivery") + by("allocating") + by("disputed")}</b><span>Jobs in delivery</span></div>
-    <div class="kpi"><b>${by("completed")}</b><span>Jobs completed</span></div>
-    <div class="kpi"><b>${(d.milestones.onTimeRate * 100).toFixed(0)}%</b><span>Steps on time (${d.milestones.onTime} of ${d.milestones.done})</span></div>
-    <div class="kpi"><b>${d.milestones.late}</b><span>Steps late now</span></div>
-    <div class="kpi"><b>${aed(pay("released"))}</b><span>Paid to you</span></div>
-    <div class="kpi"><b>${aed(pay("eligible"))}</b><span>Due now (invoice us)</span></div>
-    <div class="kpi"><b>${d.rating.average ?? "–"}</b><span>Client rating (${d.rating.count})</span></div>
-    <div class="kpi"><b>${d.scorecards[0]?.score ?? "–"}</b><span>Quality score</span></div>
+  <div class="kpis lead-kpis">
+    ${kpiTile("Quality score: decides who gets work", esc(d.scorecards[0]?.score ?? "–"), d.scorecards[0]?.provisional ? badge("UNCERTAIN", "provisional") : "", "shield")}
+    ${kpiTile(`Steps on time (${d.milestones.onTime} of ${d.milestones.done})`, `${(d.milestones.onTimeRate * 100).toFixed(0)}%`, `<div class="progress" aria-hidden="true"><span style="width:${Math.round(d.milestones.onTimeRate * 100)}%"></span></div>`, "clock")}
+    ${kpiTile("Steps late now", d.milestones.late, "", "alert")}
+    ${kpiTile("Jobs in delivery", by("in_delivery") + by("allocating") + by("disputed"), "", "list")}
+    ${kpiTile("Jobs completed", by("completed"), "", "check")}
+    ${kpiTile("Paid to you", aed(pay("released")), "", "out")}
+    ${kpiTile("Due now (invoice us)", aed(pay("eligible")), "", "cash")}
+    ${kpiTile(`Client rating (${d.rating.count})`, esc(d.rating.average ?? "–"), "", "check")}
   </div>
   <div class="card flush"><h2>Scorecard trend</h2>${table(["Computed", "#Score", "On time", "First-pass QA", "Disputes", "Strikes", "Rating"], d.scorecards.map((c) => `<tr><td class="small">${date(c.computedAt)}${c.provisional ? ` ${badge("UNCERTAIN", "provisional")}` : ""}</td><td class="num"><b>${c.score}</b></td><td class="num">${c.inputs.milestonesOnTime}/${c.inputs.milestonesDone}</td><td class="num">${c.inputs.qaFirstPass}/${c.inputs.qaSubmissions}</td><td class="num">${c.inputs.disputes}</td><td class="num">${c.inputs.slaStrikes}</td><td class="num">${c.inputs.rating ?? "–"}</td></tr>`), "No scorecard yet; MKW Advisors computes it weekly.")}</div>`;
 }
@@ -218,6 +220,7 @@ export async function renderPartnerPayouts() {
   const bank = h.bank ?? {};
   $app.innerHTML = `<h1>Payouts</h1>
   <p class="muted">Paid in three stages (kick-off, key step, completion) in MKW Advisors' weekly payout run, once the client has paid and your invoice for the stage is on file. Upload your invoice to MKW Advisors for each payout below.</p>
+  ${(() => { const sum = (st) => h.payouts.filter((p) => p.status === st).reduce((n, p) => n + p.amount, 0); return `<div class="kpis lead-kpis">${kpiTile("Due now: invoice us", aed(sum("eligible")), "", "cash")}${kpiTile("Paid to you", aed(sum("released")), "", "out")}${kpiTile("Not yet payable", aed(sum("pending")), "", "clock")}${sum("withheld") ? kpiTile("Withheld", aed(sum("withheld")), "", "alert") : ""}</div>`; })()}
   <div class="card flush">${table(
     ["Engagement", "Stage", "#Amount", "Status", "Your invoice", "Released"],
     h.payouts.map(

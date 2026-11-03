@@ -181,11 +181,18 @@ outcomes:
     # Released by the owner on 3 Nov 2026 ("then build the new selector into the app") after the canvas selector.
   - id: E9
     title: Workspace look (the restyled client and staff screens from the design canvas)
-    status: verified-pending-merge
+    status: merged  # camayank/mkw-uae-growth#30, 3 Nov 2026
     contract: outcomes/E9-workspace-look.md
     depends_on: [E8, U1]
     needs_from_owner: [flag artwork check, Arabic wording]  # staff menu: the owner kept the grouped bar, 3 Nov 2026
     # Released by the owner on 3 Nov 2026 ("now build the restyled client and staff screens into the app").
+  - id: E10
+    title: Partner look (the partner screens in the restyled look)
+    status: verified-pending-merge
+    contract: outcomes/E10-partner-look.md
+    depends_on: [E9]
+    needs_from_owner: []
+    # Released by the owner on 3 Nov 2026 ("now restyle the partner screens too").
 
 # Roadmap from docs/VISION.md (18 Oct 2026). Order of work: O11, O12, O13 before the pilot; then O7 (launch gate);
 # then O14, O15, O16. Renumbered on 18 Oct 2026 when the owner released O10 as Real data and staging.

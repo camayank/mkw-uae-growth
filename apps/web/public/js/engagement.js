@@ -11,13 +11,13 @@ export async function renderEngagement(id) {
   const nextOpenId = ms.find((m) => ["pending", "in_progress", "qa_rejected"].includes(m.status))?.id;
   const partnerNames = (e.parties ?? []).filter((p) => p.party === "partner").map((p) => p.name);
 
-  const milestoneActions = (m, { work: withWork = true } = {}) => {
+  const milestoneActions = (m, { work: withWork = true, goldSubmit = false } = {}) => {
     const out = [];
     if (isPartner() && withWork && ["pending", "in_progress", "qa_rejected"].includes(m.status)) {
       const work = `<form class="row" data-form="evidence" data-id="${m.id}">
         <select name="type" style="width:auto">${(m.evidenceRequired ?? []).map((t) => `<option value="${esc(t)}">${esc(words(t))}</option>`).join("")}<option value="other">other</option></select>
         <input type="file" name="file" required style="width:auto;max-width:100%" /><button class="sm" type="submit">Upload</button><p class="field-msg small" aria-live="polite"></p></form>
-        <div class="actions"><button class="sm primary" data-act="ms-submit" data-id="${m.id}">Submit for checking</button></div>`;
+        <div class="actions"><button class="sm primary${goldSubmit ? " gold" : ""}" data-act="ms-submit" data-id="${m.id}">Submit for checking</button></div>`;
       // The step in hand shows its tools; later steps keep them folded away.
       if (m.status !== "pending" || m.id === nextOpenId) {
         if (m.status === "pending") out.push(`<button class="sm" data-act="ms-start" data-id="${m.id}">Start</button>`);
@@ -358,7 +358,7 @@ function renderPartnerEngagement(e, parts) {
         ${next.qaNote ? `<p class="small">MKW note: <span data-no-i18n>${esc(next.qaNote)}</span></p>` : ""}
         ${parts.docsFor(next.id).length ? `<p class="small muted">Client documents for this step: ${parts.docsFor(next.id).filter((r) => r.status === "received").length}/${parts.docsFor(next.id).length} received</p>` : ""}
         ${parts.evidenceFor(next.id).length ? `<p class="small">Uploaded: ${parts.evidenceFor(next.id).map((x) => `<a href="/api/evidence/${x.id}/file" target="_blank" rel="noopener">${esc(x.fileName)}</a>`).join(" · ")}</p>` : ""}
-        ${parts.milestoneActions(next)}
+        ${parts.milestoneActions(next, { goldSubmit: true })}
         ${waiting.length || docsOpen || toReceive ? `<ul class="todo">${toReceive ? `<li>${badge("warn", "yours")}<span>${toReceive} client document${toReceive > 1 ? "s" : ""} uploaded: <a href="#docs" data-act="jump" data-target="docs">confirm you received ${toReceive > 1 ? "them" : "it"}</a></span></li>` : ""}${waiting.map((m) => `<li>${badge("info", m.status === "qa_passed" ? "with the client" : "with MKW")}<span>${esc(m.name)}: ${m.status === "qa_passed" ? "checked, waiting for the client's approval" : "evidence with MKW Advisors for checking"}</span></li>`).join("")}${docsOpen ? `<li>${badge("pending", "waiting")}<span>${docsOpen} client document${docsOpen > 1 ? "s" : ""} outstanding; the delay is attributed to the client</span></li>` : ""}</ul>` : ""}
       </section>`
     : `<section class="nextaction calm" aria-labelledby="next-h"><p class="eyebrow">Your next step</p><h2 id="next-h">Nothing needed from you right now</h2><p>${waiting.length ? `${waiting.length} step${waiting.length > 1 ? "s are" : " is"} with MKW Advisors or the client; the next one opens when it is approved.` : e.engagement.status === "completed" ? "Every step is approved; the engagement is complete." : "Steps appear when the deposit is paid and the work is allocated."}</p></section>`;
@@ -380,8 +380,9 @@ function renderPartnerEngagement(e, parts) {
   const fees = e.lines.reduce((n, l) => n + (l.partnerUnitCost ?? 0) * l.qty, 0);
   $app.innerHTML = `
   <p><a href="#/">← Work</a></p>
-  <div class="row between"><h1>Engagement · ${esc(e.engagement.emirate)}${e.engagement.freeZone ? ` · ${esc(e.engagement.freeZone)}` : ""}</h1>${badge(e.engagement.status)}</div>
+  <div class="row between"><h1>Engagement · ${flag(e.engagement.emirate)}${esc(e.engagement.emirate)}${e.engagement.freeZone ? ` · ${esc(e.engagement.freeZone)}` : ""}</h1>${badge(e.engagement.status)}</div>
   <p class="muted">${parts.done} of ${ms.length} steps approved · opened ${date(e.engagement.createdAt)} · the client's contact details are hidden; message through this page</p>
+  <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="${ms.length}" aria-valuenow="${parts.done}" aria-label="${parts.done} of ${ms.length} steps approved"><span style="width:${ms.length ? Math.round((parts.done / ms.length) * 100) : 0}%"></span></div>
   <div class="grid cols-2 eng">
     <div class="stack">
       ${nextCard}

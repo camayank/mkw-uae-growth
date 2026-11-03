@@ -231,6 +231,7 @@ for (const email of ["admin@setup-partner.test", "admin@corporate-services.test"
   const n = await p.locator('button[data-act="alloc"][data-decision="accept"]').count();
   if (n && !log.some((l) => l.startsWith("shot-partner"))) {
     check("the partner's offer row carries a reply countdown, the payout, and no client price (U1):", /min left|reply time passed/.test(await p.locator("main").innerText()) && /your fees; government fees not included/.test(await p.locator("main").innerText()) && !/client price|margin|clientTotal|AED 0\.00/i.test(await p.locator("main").innerText()));
+    check("exactly one Accept is gold, on the offer whose reply time ends first (E10):", (await p.locator('button.gold[data-act="alloc"][data-decision="accept"]').count()) === 1);
     await shot(p, "10-partner-offered-work"); log.push("shot-partner");
   }
   for (let i = 0; i < n; i++) {
@@ -250,6 +251,7 @@ for (const p of partnerPages) {
   const first = p.locator('form[data-form="evidence"]').first();
   // The pinned card holds the open step's form; later steps keep theirs folded in the list, so the page has one visible form.
   check("the partner's next step is pinned with its evidence upload (U1):", (await p.locator(".nextaction h2").count()) === 1 && (await p.locator('.nextaction form[data-form="evidence"]').count()) === 1 && (await p.locator('form[data-form="evidence"]:visible').count()) === 1);
+  check("the partner's next step has one gold action, Submit for checking (E10):", (await p.locator('.nextaction button.gold[data-act="ms-submit"]').count()) === 1 && (await p.locator("main button.gold").count()) === 1);
   const types = await first.locator('select[name="type"] option').evaluateAll((os) => os.map((o) => o.value).filter((v) => v !== "other"));
   for (const t of types) {
     await p.locator('form[data-form="evidence"]').first().locator('select[name="type"]').selectOption(t);
@@ -265,7 +267,9 @@ for (const p of partnerPages) {
   await p.waitForTimeout(700);
   const txt = await p.locator("main").innerText();
   check("partner page shows no client price or margin:", !/client price|margin|AED 4,200/i.test(txt));
-  await shot(p, "11-partner-engagement");
+  check("the partner's engagement carries the emirate's flag and the steps approved as a progress bar (E10):", (await p.locator("main h1 .flag svg").count()) === 1 && (await p.locator('main > .progress[role="progressbar"]').count()) === 1);
+  await p.evaluate(() => window.scrollTo(0, 0));
+  await p.screenshot({ path: `${OUT}/11-partner-engagement.png`, fullPage: false }); log.push("11-partner-engagement");
   worked = true;
 }
 
@@ -1243,6 +1247,53 @@ await eventually("the next obligation rolled forward:", async () => (await ops.l
 await partnerPages[0].goto(BASE + "/#/performance"); await partnerPages[0].reload();
 await partnerPages[0].waitForSelector('main h1:text-is("Your performance")');
 check("partner performance page has no client or margin figures:", !/margin|client price/i.test(await partnerPages[0].locator("main").innerText()));
+// E10: the partner's screens in the shared look: the dark MKW Advisors bar, icon tiles with the quality score on the
+// dark panel first, the payouts summed by state, flags beside each emirate, and never Tasees.
+{
+  const pg = partnerPages[0];
+  check("the partner's menu stays on one row at 1280 px (E10):", await pg.evaluate(() => { const t = [...document.querySelectorAll("#nav > a")].map((e) => e.getBoundingClientRect().top); return t.length === 5 && Math.max(...t) - Math.min(...t) < 4; }));
+  check("the partner's bar is dark with the M mark and the scorecard leads the performance tiles (E10):", (await pg.evaluate(() => getComputedStyle(document.querySelector(".top")).backgroundColor)) === "rgb(22, 32, 28)" && (await pg.locator(".brand .mark").innerText()) === "M" && /Quality score/.test(await pg.locator(".kpis.lead-kpis .kpi").first().innerText()) && (await pg.locator(".kpis .kpi .ico").count()) === 8 && !/Tasees/.test(await pg.locator("body").innerText()));
+  await pg.screenshot({ path: `${OUT}/108-partner-performance.png`, fullPage: false });
+  log.push("108-partner-performance");
+  await axeCheck(pg, "partner performance with the scorecard tiles (E10)");
+  await pg.goto(BASE + "/#/payouts"); await pg.reload();
+  await pg.waitForSelector('main h1:text-is("Payouts")');
+  // The tiles add up the rows below: due now is the sum of the eligible payouts in the table, read from the page.
+  const sums = await pg.evaluate(() => {
+    const fils = (t) => Math.round(Number(String(t).replace(/[^0-9.]/g, "")) * 100);
+    const rows = [...document.querySelectorAll("main table tbody tr")].map((tr) => ({ amount: fils(tr.children[2]?.textContent), status: tr.children[3]?.textContent ?? "" }));
+    const tile = (label) => fils([...document.querySelectorAll(".kpis .kpi")].find((k) => k.textContent.includes(label))?.querySelector("b")?.textContent ?? "");
+    return { due: tile("Due now: invoice us"), paid: tile("Paid to you"), eligible: rows.filter((r) => /eligible/.test(r.status)).reduce((n, r) => n + r.amount, 0), released: rows.filter((r) => /released/.test(r.status)).reduce((n, r) => n + r.amount, 0) };
+  });
+  check("the partner's payouts are summed by state on tiles, due now first, and the sums match the rows (E10):", /Due now: invoice us/.test(await pg.locator(".kpis.lead-kpis .kpi").first().innerText()) && sums.due === sums.eligible && sums.paid === sums.released && !/Tasees/.test(await pg.locator("body").innerText()));
+  await pg.screenshot({ path: `${OUT}/110-partner-payouts.png`, fullPage: false }); log.push("110-partner-payouts");
+  await pg.goto(BASE + "/#/home"); await pg.reload();
+  await pg.waitForSelector('main h1:text-is("Work from MKW Advisors")');
+  const delivery = pg.locator("main .card.flush", { has: pg.locator('h2:text-is("In delivery")') }).locator("table tbody tr");
+  check("the partner's work shows a flag beside each emirate in delivery and icon tiles (E10):", (await delivery.count()) >= 1 && (await delivery.locator(".flag svg").count()) === (await delivery.count()) && (await pg.locator(".kpis.lead-kpis .kpi .ico").count()) === 5 && !/Tasees/.test(await pg.locator("body").innerText()));
+  await pg.screenshot({ path: `${OUT}/109-partner-work.png`, fullPage: false });
+  log.push("109-partner-work");
+  await axeCheck(pg, "partner work with icon tiles and flags (E10)");
+  // Phone width: the dark top bar over the light tab bar, on performance, payouts and the engagement.
+  const ph = await (await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, storageState: await pg.context().storageState() })).newPage();
+  ph.on("pageerror", (e) => errors.push(`E10 partner phone: ${e.message}`));
+  for (const [route, ready, name] of [["#/performance", 'main h1:text-is("Your performance")', "111-mobile-partner-performance"], ["#/payouts", 'main h1:text-is("Payouts")', "112-mobile-partner-payouts"], [engagementUrl.slice(engagementUrl.indexOf("#")), "main h1", "113-mobile-partner-engagement"]]) {
+    await ph.goto(BASE + "/" + route); await ph.reload(); await ph.waitForSelector(ready); await ph.waitForTimeout(400);
+    // SMOKE_WIDE_FONT=1 renders these pages in DejaVu Sans, the wider font CI's Linux runner uses, to reproduce its widths.
+    if (process.env.SMOKE_WIDE_FONT) await ph.addStyleTag({ content: "* { font-family: \"DejaVu Sans\", sans-serif !important; }" });
+    // Name what sticks out, so a failure on another machine's fonts says where to look.
+    const state = await ph.evaluate(() => {
+      const inScroller = (e) => { for (let x = e.parentElement; x; x = x.parentElement) if (/auto|scroll|hidden/.test(getComputedStyle(x).overflowX)) return true; return false; };
+      const sticking = [...new Set([...document.querySelectorAll("main *")].filter((e) => e.getBoundingClientRect().right > innerWidth + 1 && !inScroller(e)).map((e) => `${e.tagName.toLowerCase()}.${String(e.className).replace(/ /g, ".")}${e.getAttribute("type") ? `[${e.getAttribute("type")}]` : ""}`))].slice(0, 6);
+      return { scroll: document.documentElement.scrollWidth, width: innerWidth, nav: getComputedStyle(document.getElementById("nav")).backgroundColor, top: getComputedStyle(document.querySelector(".top")).backgroundColor, sticking };
+    });
+    log.push(`${name}: page ${state.scroll}/${state.width} px, tab bar ${state.nav}, top bar ${state.top}${state.sticking.length ? `, wider than the screen: ${state.sticking.join(", ")}` : ""}`);
+    check(`${name} at 390 px has no horizontal overflow and a light tab bar under the dark top bar (E10):`, state.scroll <= state.width + 1 && state.nav !== "rgb(22, 32, 28)" && state.top === "rgb(22, 32, 28)");
+    await ph.screenshot({ path: `${OUT}/${name}.png`, fullPage: false }); log.push(name);
+  }
+  await axeCheck(ph, "partner engagement at 390 px (E10)");
+  await ph.context().close();
+}
 await shot(partnerPages[0], "52-partner-performance");
 
 // Arabic and accessibility (O9): sign-off gate, Arabic client screens, axe-core on key screens, keyboard-only path

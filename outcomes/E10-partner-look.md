@@ -1,6 +1,6 @@
 # E10 Partner look: the partner screens in the restyled look
 
-Status: verified-pending-merge (branch `outcome/E10-partner-look`, on `main` at dbedb52 with E9 merged; released by
+Status: merged (camayank/mkw-uae-growth#31, 3 Nov 2026; previously verified-pending-merge, branch `outcome/E10-partner-look`, on `main` at dbedb52 with E9 merged; released by
 the owner on 3 Nov 2026: "now restyle the partner screens too")
 
 ## Business result

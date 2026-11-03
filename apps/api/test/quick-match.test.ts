@@ -43,6 +43,7 @@ describe("the quick match (E8)", () => {
     expect(Object.keys(m.onRecord)).toEqual(Object.keys(m.byEmirate));
     expect([m.best, ...m.alternatives].every((p: any) => p.conditions === 0)).toBe(true); // no unapproved condition is counted
     expect(m.noViableOption).toBe(false);
+    expect(Object.values(m.byType).every((t: any) => t.fromFils === null)).toBe(true); // E11: no price before approval
     expect(JSON.stringify(m)).not.toMatch(/AED|costM|visaQuota|timelineDays|ruleKey|outcome|authority|sourceUrl/);
     for (const s of walk(m)) expect(s, s).not.toMatch(/margin|partner_?(unit|cost|org|id)|payout|rate_?card|professional_?fils|commission|digest|lastFactId/i);
     // Anywhere: every place on record is still open, and nothing was written by any of it.
@@ -61,6 +62,7 @@ describe("the quick match (E8)", () => {
     const ifza = [open.best, ...open.alternatives].find((p: any) => p.zone === "IFZA");
     expect(ifza).toMatchObject({ toBeVerified: false, figures: { costMinFils: 1_600_000, costMaxFils: 2_000_000 }, sourceUrl: "https://ifza.com/" });
     expect(open.approved.places).toBe(1);
+    expect(open.byType.free_zone).toMatchObject({ fromFils: 1_600_000, fromZone: "IFZA" }); // E11: only the approved IFZA, named
     // Under 15,000 IFZA fails the budget, but the rule saying so is not approved: it stays open, to be verified.
     const low = (await quick({ ...tech, budget: "up_to_15k" })).body;
     expect(low.options).toBe(open.options);

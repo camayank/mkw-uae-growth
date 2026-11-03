@@ -306,8 +306,8 @@ in a browser; everything listed here is not.
      what makes them move; nothing is estimated in between.
 109. **The budget bands are defaults** (15,000, 25,000, 50,000, more): an owner decision, changed in
      `QUICK_BUDGETS`.
-110. **The canvas restyle is built for the selector only.** The homepage's package cards and map teaser, and the
-     client, partner and staff screens in the new look, are on the design canvas and not yet in the app.
+110. ~~**The canvas restyle is built for the selector only.**~~ Closed by E9, E10 and E11: the client, staff, partner
+     and homepage screens are in the new look (D91 to D93).
 112. **The order of places uses the engine's statuses and estimates, approved or not**, as the full assessment's list
      already does: an unapproved budget condition or a lower unapproved estimate can put one place ahead of another,
      while neither the condition nor the figure is shown. The quick match makes that order a headline ("the place to

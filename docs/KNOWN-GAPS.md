@@ -207,6 +207,19 @@ in a browser; everything listed here is not.
 80. **Staging checks were not run.** No cloud account exists (gap 6a); `docs/evidence/E6/VERIFICATION.md` lists each
     blocked check and what unblocks it. The container image build is verified by CI only.
 
+## E7A: public product UX
+
+88. **Guidance notes are drafts until the founder approves them**, so a fresh demo and the pilot start with no
+    general guidance on the public page; the result says notes appear once a named person approves the wording.
+    The notes are listed on the Scoping page with their text.
+89. **The homepage and the "why we ask" lines are a draft of the owner's marketing voice**, English first; the
+    Arabic entries are drafts under the reviewer gate (gap 1). The smoke test checks the Arabic homepage heading only.
+90. **The comparison can only show what the catalogue holds.** Facilities, renewal figures, activity lists and
+    authority names are "not on record" or "to be verified" for every seeded place until E7B records them; the
+    three-year estimate needs both setup and renewal figures approved.
+91. **No funnel events are recorded on the public page** (visitor, assessment started, result viewed, compared,
+    saved): E7C, with the consent wording the owner settles.
+
 ## O7: launch-gate preparation
 
 43. ~~zod 3 has a memory-exhaustion advisory.~~ Closed by S1: zod 4.6.7 (D71); the body caps stay as defence in depth.

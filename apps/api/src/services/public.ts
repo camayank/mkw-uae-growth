@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { advise, ENGINE_FIELDS, ENGINE_TEXTS_VERSION, engineTextsByRule, publicView, type AdviceInput, type PublicAssessment, type ScopingRule } from "@tasees/core";
+import { advise, ENGINE_FIELDS, ENGINE_TEXTS_VERSION, engineTextsByRule, GUIDES, publicView, selectGuides, type AdviceInput, type Guide, type PublicAssessment, type ScopingRule } from "@tasees/core";
 import { audit, type SessionUser } from "../lib/context.ts";
 import { num, type Queryable } from "../lib/db.ts";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.ts";
@@ -27,6 +27,7 @@ export const placeVersion = (p: Place): string =>
     listed: [p.activitiesListed ?? null, p.activitiesListedConfidence ?? null],
     activities: p.activities,
     authority: p.authority ?? null,
+    source: p.sourceUrl ?? "",
     confidence: p.confidence,
     stale: !!p.stale,
     evidence: [...ENGINE_FIELDS, "renewal_cost", "activities_listed"].map((f) => p.evidence?.[f]?.factId ?? null),
@@ -46,9 +47,12 @@ export function engineTexts(rules: ScopingRule[]): Map<string, string[]> {
 /** A rule's public-display version: its verification version, the confidence it deserves today, and its wording. */
 export const ruleVersion = (r: { version: number; confidence: string }, texts: string[]): string => `${r.version}:${r.confidence}:${digest([ENGINE_TEXTS_VERSION, texts])}`;
 
+/** E7A: a guidance note's public-display version is its wording; an edited note lapses the approval. */
+export const guideVersion = (g: Guide): string => digest([g.title, g.text]);
+
 interface ApprovalRow {
   id: number;
-  subject_kind: "rule" | "place";
+  subject_kind: "rule" | "place" | "guide";
   subject: string;
   version: string;
   note: string;
@@ -102,39 +106,45 @@ export async function displayOverview(tx: Queryable, loaded?: { rules: Awaited<R
       return { key: r.key, kind: r.kind, statement: r.statement, confidence: r.confidence, stale: r.stale, version: r.version, texts: t, display: stateOf(approvals.get(`rule:${r.key}`), ruleVersion(r, t)) };
     }),
     places: places.map((p) => ({ name: p.name, emirate: p.emirate, type: p.type, confidence: p.confidence, stale: !!p.stale, display: stateOf(approvals.get(`place:${p.name}`), placeVersion(p)) })),
+    // E7A: the general guidance notes, each a draft until the founder approves its wording.
+    guides: GUIDES.map((g) => ({ id: g.id, title: g.title, text: g.text, about: g.about, display: stateOf(approvals.get(`guide:${g.id}`), guideVersion(g)) })),
   };
 }
 
 /** The sets the public view is filtered with, as things stand now. */
-export async function approvedNow(tx: Queryable, loaded?: { rules: Awaited<ReturnType<typeof loadRules>>; places: Place[] }): Promise<{ rules: Set<string>; places: Set<string> }> {
+export async function approvedNow(tx: Queryable, loaded?: { rules: Awaited<ReturnType<typeof loadRules>>; places: Place[] }): Promise<{ rules: Set<string>; places: Set<string>; guides: Set<string> }> {
   const o = await displayOverview(tx, loaded);
-  return { rules: new Set(o.rules.filter((r) => r.display.approved).map((r) => r.key)), places: new Set(o.places.filter((p) => p.display.approved).map((p) => p.name)) };
+  return { rules: new Set(o.rules.filter((r) => r.display.approved).map((r) => r.key)), places: new Set(o.places.filter((p) => p.display.approved).map((p) => p.name)), guides: new Set(o.guides.filter((g) => g.display.approved).map((g) => g.id)) };
 }
 
-export async function approveForDisplay(tx: Queryable, actor: SessionUser, kind: "rule" | "place", subject: string, note: string) {
+export type DisplayKind = "rule" | "place" | "guide";
+const ENTITY: Record<DisplayKind, string> = { rule: "scoping_rule", place: "zone", guide: "guide" };
+
+export async function approveForDisplay(tx: Queryable, actor: SessionUser, kind: DisplayKind, subject: string, note: string) {
   if (actor.role !== "founder") throw forbidden("Only the founder approves what the public selector shows");
   const o = await displayOverview(tx);
-  const item = kind === "rule" ? o.rules.find((r) => r.key === subject) : o.places.find((p) => p.name === subject);
+  const item = kind === "rule" ? o.rules.find((r) => r.key === subject) : kind === "place" ? o.places.find((p) => p.name === subject) : o.guides.find((g) => g.id === subject);
   if (!item) throw notFound(`No ${kind} ${subject}`);
   if (item.display.approved) throw conflict("This version is already approved for public display");
-  // What the public may see must be what a person has checked: an UNCERTAIN rule or place cannot be approved.
-  if (item.confidence === "UNCERTAIN") throw badRequest(`${kind === "rule" ? "The rule" : "The place"} is UNCERTAIN: verify it (or mark it a rule of thumb) with a source before approving it for public display`);
+  // What the public may see must be what a person has checked: an UNCERTAIN rule or place cannot be approved. A
+  // guidance note is general information with no rule behind it: the founder's approval is the check (D85).
+  if ("confidence" in item && item.confidence === "UNCERTAIN") throw badRequest(`${kind === "rule" ? "The rule" : "The place"} is UNCERTAIN: verify it (or mark it a rule of thumb) with a source before approving it for public display`);
   if ((item as { stale?: boolean }).stale) throw badRequest(`${kind === "rule" ? "The rule's verification" : "The place's evidence"} is past its re-verification date: check it again before approving it for public display`);
   // An approval of a newer version supersedes the earlier one, so exactly one approval is ever live per subject.
   await tx.query("update public_approvals set revoked_by = $3, revoked_at = app_now(), revoke_note = 'superseded by a newer version' where subject_kind = $1 and subject = $2 and revoked_at is null", [kind, subject, actor.id]);
   const r = (
     await tx.query<{ id: number }>("insert into public_approvals (subject_kind, subject, version, note, approved_by) values ($1,$2,$3,$4,$5) returning id", [kind, subject, item.display.version, note.trim(), actor.id])
   ).rows[0]!;
-  await audit(tx, actor, "public_display.approved", kind === "rule" ? "scoping_rule" : "zone", subject, { approvalId: num(r.id), version: item.display.version, note: note.trim() });
+  await audit(tx, actor, "public_display.approved", ENTITY[kind], subject, { approvalId: num(r.id), version: item.display.version, note: note.trim() });
   return { ok: true, version: item.display.version };
 }
 
-export async function revokeDisplay(tx: Queryable, actor: SessionUser, kind: "rule" | "place", subject: string, note: string) {
+export async function revokeDisplay(tx: Queryable, actor: SessionUser, kind: DisplayKind, subject: string, note: string) {
   if (actor.role !== "founder") throw forbidden("Only the founder revokes public display");
   const live = (await tx.query<{ id: number }>("select id from public_approvals where subject_kind = $1 and subject = $2 and revoked_at is null order by id desc limit 1", [kind, subject])).rows[0];
   if (!live) throw conflict("Nothing is approved for public display here");
   await tx.query("update public_approvals set revoked_by = $2, revoked_at = app_now(), revoke_note = $3 where id = $1", [live.id, actor.id, note.trim()]);
-  await audit(tx, actor, "public_display.revoked", kind === "rule" ? "scoping_rule" : "zone", subject, { approvalId: num(live.id), note: note.trim() });
+  await audit(tx, actor, "public_display.revoked", ENTITY[kind], subject, { approvalId: num(live.id), note: note.trim() });
   return { ok: true };
 }
 
@@ -149,5 +159,12 @@ export async function publicAssess(tx: Queryable, answers: AdviceInput): Promise
   const { dataVersion } = await engineInputs(tx);
   const advice = { ...advise({ ...answers, mode: "new_company" }, rules, places.map(engineZone), asOf), dataVersion };
   const ok = await approvedNow(tx, { rules, places });
-  return publicView(advice, ok.rules, ok.places, asOf);
+  const view = publicView(advice, ok.rules, ok.places, asOf);
+  // E7A: general guidance chosen from the answers and what the public may see of the engine's conclusions; only
+  // notes the founder approved are included, and they carry no figure (a core test enforces the wording).
+  const guidance = selectGuides({
+    activity: answers.activity, customers: answers.customers, visas: answers.visas, premises: answers.premises, ownerType: answers.ownerType, foreignTaxResident: answers.foreignTaxResident,
+    recommendation: view.structure.recommendation, structuresOpen: view.structures.filter((s) => s.status !== "INELIGIBLE").map((s) => s.structure),
+  }).filter((g) => ok.guides.has(g.id)).map((g) => ({ id: g.id, title: g.title, text: g.text, about: g.about }));
+  return { ...view, guidance };
 }

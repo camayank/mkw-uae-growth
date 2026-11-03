@@ -159,3 +159,17 @@ blocked) and `docs/evidence/E6/SCENARIOS.md` (every contract scenario and check 
   renewal comparison for an existing licence. Each is tested for honest behaviour: a person decides.
 - **Blocked** (gap 80): staging and every live check, until the owner's AWS account, domain and SES exist (O7).
 
+## 6. E7: commercial launch readiness (released 3 Nov 2026)
+
+The owner's E7 contract ("Commercial launch readiness and product excellence") continues the programme in five
+outcomes, each its own reviewed pull request: E7A public product UX, E7B jurisdiction data operations, E7C lead
+conversion intelligence, E7D reporting and advisory experiences, E7E commercial pilot readiness. Phase 0 of E7 was
+run on `main` at `92ca94b` and is recorded in `outcomes/E7A-public-product-ux.md`, with the E7 acceptance criteria
+mapped to what exists (works, partial, missing, later).
+
+**E7A** (`outcomes/E7A-public-product-ux.md`, D85): the selector becomes the product's homepage; the questions are
+ordered by industry with a reason each; the result reads as a decision with a side-by-side comparison; general
+guidance notes are approved for public display like rules (kind `guide`); an approved place shows its official source
+and facilities. The gap matrix above changes in one row: "Downloadable report; consultation" stays partial (the
+report is E7D); "Public, no-registration assessment" gains the homepage, the comparison and the guidance.
+

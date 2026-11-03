@@ -1535,7 +1535,8 @@
                     "type": "string",
                     "enum": [
                       "rule",
-                      "place"
+                      "place",
+                      "guide"
                     ]
                   },
                   "subject": {
@@ -1601,7 +1602,8 @@
                     "type": "string",
                     "enum": [
                       "rule",
-                      "place"
+                      "place",
+                      "guide"
                     ]
                   },
                   "subject": {

@@ -56,6 +56,9 @@ export interface PlaceAssessment {
   renewalMaxFils?: number | null;
   renewalConfidence?: Confidence;
   stale?: boolean;
+  /** E7A: the official source behind the place's figures, and the facilities on record (null: not on record). */
+  sourceUrl?: string;
+  facilities?: string[] | null;
 }
 
 /** Whether the place the founder named is this one: by its name, its authority's name or any alias (E2). */
@@ -241,6 +244,8 @@ export function assessPlace(z: Zone, structure: StructureAssessment, a: AdviceIn
     ...(z.authority !== undefined ? { authority: z.authority } : {}),
     ...(z.renewalMinFils != null ? { renewalMinFils: z.renewalMinFils, renewalMaxFils: z.renewalMaxFils ?? z.renewalMinFils, renewalConfidence: z.renewalConfidence ?? "UNCERTAIN" } : {}),
     ...(z.stale ? { stale: true } : {}),
+    ...(z.sourceUrl ? { sourceUrl: z.sourceUrl } : {}),
+    ...(z.facilities !== undefined ? { facilities: z.facilities } : {}),
   };
 }
 

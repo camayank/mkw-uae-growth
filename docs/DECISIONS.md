@@ -782,3 +782,25 @@ reviewed" and "structures only, no figures". This is the documented resolution o
   blocked with what unblocks it (`docs/evidence/E6/VERIFICATION.md`). No staging or live readiness is claimed
   without the owner's accounts.
 
+**D85. The public product reads as a decision, and general guidance is approved like a rule.** (E7A; D84 is U1's.)
+
+- `selector.html` is the product's homepage as well as its questionnaire: value proposition, one call to action,
+  industry entry points, how it works, and what the page does not do. Every existing link and test keeps the URL.
+- The questions are ordered by what matters first for the industry chosen; each says why it is asked; two optional
+  questions the engine already reads (a structure in mind, expected revenue) are asked rather than defaulted. The
+  engine and the rules are unchanged: the order and the wording live on the page.
+- The result is a profile with an edit link per answer, a legend of six labels (checked, with conditions, general
+  information, to be verified, data missing, specialist review), the structures as pathways, the places as cards with
+  a side-by-side table of up to five, and one next action. A three-year figure appears only when both the setup and
+  the renewal figures are approved, and is labelled an estimate. A cell with no record says "not on record".
+- An approved place also shows its official source link and the facilities on record; both are part of the place's
+  approved version (`placeVersion`), so a changed link or a new facilities fact lapses the approval.
+- General guidance notes (`packages/core/src/guidance.ts`) are educational wording with no figure, rate, fee or
+  statutory verb (a core test enforces the words). Each is a draft until the founder approves its version, a digest
+  of its wording, through the same `public_approvals` table (kind `guide`, migration 019); an edited note lapses the
+  approval. Unlike a rule, a note has no verification behind it: the founder's approval is the named person's check,
+  because the note states nothing about any case. The public sees approved notes only, labelled "general
+  information". Selection reads the answers and which structures the public may still see as open, nothing else.
+- The ten acceptance criteria of the E7 contract are tracked in `outcomes/E7A-public-product-ux.md` (Phase 0 table);
+  funnel events, reports and dashboards are E7C and E7D, not hidden in this outcome.
+

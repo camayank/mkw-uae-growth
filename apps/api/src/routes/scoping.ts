@@ -89,7 +89,7 @@ export function registerScopingRoutes(ctx: RouteContext) {
     const user = requireRole(req, ...PLATFORM_ROLES);
     return asPlatform(db, user, (tx) => displayOverview(tx));
   });
-  const PublicDisplayBody = z.object({ kind: z.enum(["rule", "place"]), subject: z.string().min(1).max(120), note: z.string().max(500).default("") });
+  const PublicDisplayBody = z.object({ kind: z.enum(["rule", "place", "guide"]), subject: z.string().min(1).max(120), note: z.string().max(500).default("") });
   app.post("/api/admin/public-display/approve", { config: { body: PublicDisplayBody } }, async (req) => {
     const user = requireRole(req, "founder");
     const body = PublicDisplayBody.parse(req.body);

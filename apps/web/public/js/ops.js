@@ -478,6 +478,7 @@ export async function renderScoping() {
   <div class="kpis">
     <div class="kpi"><b>${pub.rules.filter((r) => r.display.approved).length} / ${pub.rules.length}</b><span>rules the public selector may show</span></div>
     <div class="kpi"><b>${pub.places.filter((p) => p.display.approved).length} / ${pub.places.length}</b><span>places with public figures</span></div>
+    <div class="kpi"><b>${(pub.guides ?? []).filter((g) => g.display.approved).length} / ${(pub.guides ?? []).length}</b><span>guidance notes the public may read</span></div>
     <div class="kpi"><b>${cat.places.filter((p) => p.active).length}</b><span>places offered; ${cat.places.filter((p) => !p.active).length} waiting for figures</span></div>
     <div class="kpi"><b>${stalePlaces}</b><span>places with stale evidence</span></div>
     <div class="kpi"><b>${duePlaces + cat.rules.due.length}</b><span>due for re-check in 30 days</span></div>
@@ -504,6 +505,12 @@ export async function renderScoping() {
     ["Place", "Type", "#Visas", "#Cost from", "#Cost to", "#Days", "Known for", "Confidence", "Verified", ...(founder ? ["Record verification"] : [])],
     o.zones.map((z) => `<tr><td>${esc(z.name)}<br><span class="small muted">${esc(z.emirate)}</span></td><td class="small">${esc(words(z.type))}</td><td class="num">${z.visaQuota}</td><td class="num">${aed(z.costMin)}</td><td class="num">${aed(z.costMax)}</td><td class="num">${z.timelineDays}</td>
       <td class="small">${esc((z.activities ?? []).join(", "))}</td><td>${confBadge(z.confidence)}${z.stale ? ` ${badge("UNCERTAIN", "stale")}` : ""}${z.placeholder ? `<br><span class="small muted">no figures yet</span>` : ""}</td><td class="small">${z.verifiedBy ? `${esc(z.verifiedBy)}<br><span class="muted">${date(z.verifiedAt)}</span>` : "–"}</td>${founder ? `<td>${verifyForm("zone", z.name, z.confidence)}</td>` : ""}</tr>`),
+  )}</div>
+  <div class="card flush" style="margin-top:16px"><h2 style="padding:16px 18px 0">General guidance on the public selector (E7A)</h2>
+  <p class="small muted" style="padding:0 18px">Short educational notes the selector shows beside a founder's result, chosen from their answers. Each is general information with no figure, rate or statutory conclusion, and a draft until you approve its wording; an edited note lapses the approval. Read the wording before approving: it is what the public reads, labelled "general information".</p>
+  ${table(
+    ["Note", "About", "Wording", "Public"],
+    (pub.guides ?? []).map((g) => `<tr><td><b>${esc(g.title)}</b><br><span class="small mono muted">${esc(g.id)}</span></td><td class="small">${esc(g.about)}</td><td class="small" data-no-i18n>${esc(g.text)}</td><td>${displayCell("guide", g.id, g.display, "draft")}</td></tr>`),
   )}</div>`;
 }
 

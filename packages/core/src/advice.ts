@@ -83,6 +83,9 @@ export interface Candidate {
   renewalMaxFils?: number | null;
   renewalConfidence?: Confidence;
   stale?: boolean;
+  /** E7A: the official source and the facilities on record, for the public comparison of an approved place. */
+  sourceUrl?: string;
+  facilities?: string[] | null;
 }
 
 /** E2: the rules and catalogue data an advice was computed from. */
@@ -239,6 +242,8 @@ const asCandidate = (p: PlaceAssessment): Candidate => ({
   ...(p.authority !== undefined ? { authority: p.authority } : {}),
   ...(p.renewalMinFils != null ? { renewalMinFils: p.renewalMinFils, renewalMaxFils: p.renewalMaxFils ?? p.renewalMinFils, renewalConfidence: p.renewalConfidence ?? "UNCERTAIN" } : {}),
   ...(p.stale ? { stale: true } : {}),
+  ...(p.sourceUrl ? { sourceUrl: p.sourceUrl } : {}),
+  ...(p.facilities !== undefined ? { facilities: p.facilities } : {}),
 });
 
 /** Answers that cannot both be true. The engine never resolves these by guessing; a person asks the founder. */

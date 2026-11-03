@@ -88,7 +88,7 @@ describe("client journey", () => {
     expect(plan.now.length).toBeGreaterThan(0);
     expect(h.nextActions[0].title).toBe(`Upload ${plan.now.length} document${plan.now.length > 1 ? "s" : ""}`);
     expect(h.nextActions[0].due).toBe(plan.nowBy);
-    const laterCount = plan.later.reduce((n: number, l: any) => n + l.ids.length, 0);
+    const laterCount = plan.later.filter((l: any) => !l.approved).reduce((n: number, l: any) => n + l.ids.length, 0);
     expect(laterCount).toBeGreaterThan(0);
     expect(h.nextActions[0].why).toMatch(new RegExp(`cannot finish without (?:it|them)\\. ${laterCount} more (?:is|are) needed later, from \\d{1,2} [A-Z][a-z]{2} \\d{4}\\.$`));
     expect(plan.submitted).toEqual([]);

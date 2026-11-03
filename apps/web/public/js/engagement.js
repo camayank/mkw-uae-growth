@@ -308,7 +308,7 @@ function renderClientEngagement(e, parts) {
   const byStep = (ids) => {
     const groups = new Map();
     for (const id of ids) { const r = byId.get(id); if (r) groups.set(r.milestoneId, [...(groups.get(r.milestoneId) ?? []), r]); }
-    return [...groups].map(([mid, rs]) => `<h3 class="checklist-step">Needed for ${esc(stepName(mid))}</h3><ul class="checklist">${rs.map(docItem).join("")}</ul>`).join("");
+    return [...groups].map(([mid, rs]) => `<h4 class="checklist-step">Needed for ${esc(stepName(mid))}</h4><ul class="checklist">${rs.map(docItem).join("")}</ul>`).join("");
   };
   // U1: the documents fold away once none is outstanding; steps stay open (they are the record); the rest folds.
   const checklist = docs.length
@@ -316,9 +316,9 @@ function renderClientEngagement(e, parts) {
         `Documents we need from you ${missing ? badge("pending", `${missing} to upload now`) : laterCount ? badge("info", "nothing needed now") : badge("ok", "complete")}`,
         `<p class="small muted">Each file is checked here before it is sent: PDF, a photo, Word or Excel, up to ${Math.round(uploadRules.maxBytes / 1024 / 1024)} MB. Files are stored in the UAE and shared only with the firm doing the work.</p>
       ${missing ? `<section class="docs-now" id="docs-now"><h3>Needed now</h3><p class="small muted">For the steps that come first. The rest are below, with the date each step is expected; upload them early if you have them.</p>${byStep(plan.now)}</section>` : laterCount ? `<p class="small" id="docs-now">Nothing is needed from you right now. The documents below are for later steps; upload them early if you have them.</p>` : ""}
-      ${laterCount ? `<details class="docs-later" id="docs-later"${missing ? "" : " open"}><summary><b>Needed later: ${laterCount}</b></summary>${plan.later.map((l) => `<h3 class="checklist-step">Needed for ${esc(stepName(l.milestoneId))}</h3>${l.dueDate ? `<p class="small muted">Expected by ${date(l.dueDate)}</p>` : ""}<ul class="checklist">${l.ids.map((id) => byId.get(id)).filter(Boolean).map(docItem).join("")}</ul>`).join("")}</details>` : ""}
-      ${plan.submitted.length ? `<details class="docs-sent" id="docs-sent"><summary><b>Already sent: ${plan.submitted.length}</b></summary><ul class="checklist">${plan.submitted.map((id) => byId.get(id)).filter(Boolean).map(docItem).join("")}</ul></details>` : ""}`,
-        { id: "docs", open: missing > 0 },
+      ${laterCount ? `<details class="docs-later" id="docs-later"${missing ? "" : " open"}><summary><h3>Needed later: ${laterCount}</h3></summary>${plan.later.map((l) => `<h4 class="checklist-step">Needed for ${esc(stepName(l.milestoneId))}</h4>${l.approved ? `<p class="small muted">This step is already approved: send it only if the firm asks for it again.</p>` : l.dueDate ? `<p class="small muted">Expected by ${date(l.dueDate)}</p>` : ""}<ul class="checklist">${l.ids.map((id) => byId.get(id)).filter(Boolean).map(docItem).join("")}</ul>`).join("")}</details>` : ""}
+      ${plan.submitted.length ? `<details class="docs-sent" id="docs-sent"><summary><h3>Already sent: ${plan.submitted.length}</h3></summary><ul class="checklist">${plan.submitted.map((id) => byId.get(id)).filter(Boolean).map(docItem).join("")}</ul></details>` : ""}`,
+        { id: "docs", open: missing > 0 || laterCount > 0 },
       )
     : "";
   const pending = (e.payments ?? []).filter((p) => p.status === "pending");

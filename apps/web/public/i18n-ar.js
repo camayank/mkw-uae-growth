@@ -143,6 +143,7 @@ export const AR = {
   "Documents we need from you": "المستندات التي نحتاجها منك",
   // E15 (draft until the Arabic reviewer signs it off)
   "Needed now": "مطلوبة الآن",
+  "This step is already approved: send it only if the firm asks for it again.": "هذه الخطوة معتمدة بالفعل: أرسله فقط إذا طلبته الشركة مرة أخرى.",
   "nothing needed now": "لا شيء مطلوب الآن",
   "For the steps that come first. The rest are below, with the date each step is expected; upload them early if you have them.": "للخطوات التي تأتي أولاً. البقية أدناه مع التاريخ المتوقع لكل خطوة؛ يمكنك رفعها مبكراً إن كانت لديك.",
   "Nothing is needed from you right now. The documents below are for later steps; upload them early if you have them.": "لا شيء مطلوب منك الآن. المستندات أدناه للخطوات اللاحقة؛ يمكنك رفعها مبكراً إن كانت لديك.",

@@ -1197,7 +1197,18 @@ check("client is asked for documents per step:", (await client.locator('form[dat
 // E15: the documents as needed now, needed later and already sent, from the platform's plan; the next action counts
 // only what is needed now.
 const engId = engagementUrl.split("/").pop();
-const docPlan = (await (await client.request.get(`${BASE}/api/engagements/${engId}`)).json()).documentPlan;
+const engView = await (await client.request.get(`${BASE}/api/engagements/${engId}`)).json();
+const docPlan = engView.documentPlan;
+// Checked against the steps themselves, not the plan alone (independent review of E15): nothing needed now belongs to
+// a step already approved, and the step it is for is the open step due first among those still waiting.
+{
+  const stepOfDoc = (id) => engView.milestones.find((m) => m.id === engView.documentRequests.find((r) => r.id === id).milestoneId);
+  const openWaiting = engView.documentRequests.filter((r) => r.status === "requested" && stepOfDoc(r.id).status !== "client_approved");
+  const firstDue = openWaiting.map((r) => String(stepOfDoc(r.id).dueDate).slice(0, 10)).sort()[0];
+  check("nothing needed now belongs to an approved step; the first open step's documents are the ones needed now (E15):",
+    docPlan.now.every((id) => stepOfDoc(id).status !== "client_approved") &&
+    openWaiting.filter((r) => String(stepOfDoc(r.id).dueDate).slice(0, 10) === firstDue).every((r) => docPlan.now.includes(r.id)));
+}
 const laterDocs = docPlan.later.reduce((n, l) => n + l.ids.length, 0);
 const homeActions = (await (await client.request.get(`${BASE}/api/client/home`)).json()).nextActions;
 const docAction = homeActions.find((a) => a.kind === "documents" && a.engagementId === engId);
@@ -1205,7 +1216,8 @@ check("the client's documents are grouped: needed now first, the rest later by s
   docPlan.now.length > 0 && (await client.locator("#docs-now ul.checklist > li").count()) === docPlan.now.length &&
   (laterDocs === 0 || ((await client.locator("#docs-later ul.checklist > li").count()) === laterDocs && /Needed later: \d+/.test(await client.locator("#docs-later summary").innerText()) && /Expected by/.test(await client.locator("#docs-later").textContent()))) &&
   new RegExp(`${docPlan.now.length} to upload now`).test(await client.locator("#docs").innerText()));
-check("the client's next action counts only the documents needed now (E15):", !!docAction && docAction.title === `Upload ${docPlan.now.length} document${docPlan.now.length > 1 ? "s" : ""}` && (laterDocs === 0 || /more (?:is|are) needed later/.test(docAction.why)));
+const aheadDocs = docPlan.later.filter((l) => !l.approved).reduce((n, l) => n + l.ids.length, 0);
+check("the client's next action counts only the documents needed now, and later only for steps still to come (E15):", !!docAction && docAction.title === `Upload ${docPlan.now.length} document${docPlan.now.length > 1 ? "s" : ""}` && (aheadDocs === 0 ? !/needed later/.test(docAction.why) : new RegExp(`${aheadDocs} more (?:is|are) needed later`).test(docAction.why)));
 log.push(`documents: ${docPlan.now.length} now, ${laterDocs} later, ${docPlan.submitted.length} sent`);
 await shot(client, "118-client-documents-grouped");
 // O12: the checklist checks a file before it leaves the page: a wrong type is refused on the spot, nothing is sent.

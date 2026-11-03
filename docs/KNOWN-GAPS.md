@@ -347,8 +347,9 @@ in a browser; everything listed here is not.
      (and possibly across partner firms) would need the client's consent per firm; it is not built.
 126. **The acceptance emails still list every document**, one email per line (O6). The screen and the next action
      group them; the emails are unchanged.
-127. **A document still asked for on a step already approved stays needed now** (the demo seeds such a case). Whether
-     an approved step's open requests should close is a delivery rule for ops, not changed here.
+127. **A document still asked for on a step already approved stays open.** It is no longer needed now: it is listed
+     last, "send it only if the firm asks for it again" (D97). Whether an approved step's open requests should close
+     by themselves is a delivery rule for ops, not changed here; the demo seeds such a case.
 128. **The new Arabic strings for E15 are drafts** until the Arabic reviewer signs them off (with gaps 111, 116, 119).
 
 ## E9: workspace look

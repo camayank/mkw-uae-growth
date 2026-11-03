@@ -135,8 +135,8 @@ export async function clientNextActions(tx: Queryable, now: Date, cal: WorkCalen
     });
   }
   // E15: only what is needed now counts; the rest is said to come later, from the date its first step is due.
-  const docs = await tx.query<{ id: string; engagement_id: string; milestone_id: string; kind: string; status: "requested" | "rejected"; decision_note: string | null; step: string; seq: number; due_date: string | null }>(
-    `select d.id, d.engagement_id, d.milestone_id, d.kind, d.status, d.decision_note, m.name as step, m.seq, m.due_date::text as due_date
+  const docs = await tx.query<{ id: string; engagement_id: string; milestone_id: string; kind: string; status: "requested" | "rejected"; decision_note: string | null; step: string; seq: number; due_date: string | null; step_status: string }>(
+    `select d.id, d.engagement_id, d.milestone_id, d.kind, d.status, d.decision_note, m.name as step, m.seq, m.due_date::text as due_date, m.status as step_status
        from document_requests d join milestones m on m.id = d.milestone_id
       where d.status in ('requested', 'rejected') and ($1::uuid is null or d.engagement_id = $1) order by d.created_at`,
     [only],
@@ -146,12 +146,15 @@ export async function clientNextActions(tx: Queryable, now: Date, cal: WorkCalen
   for (const [eid, all] of byEngagement) {
     const plan = documentPlan(
       all.map((d) => ({ id: d.id, milestoneId: d.milestone_id, status: d.status })),
-      all.map((d) => ({ id: d.milestone_id, seq: num(d.seq), dueDate: d.due_date })),
+      all.map((d) => ({ id: d.milestone_id, seq: num(d.seq), dueDate: d.due_date, approved: d.step_status === "client_approved" })),
       today,
     );
     const list = plan.now.map((id) => all.find((d) => d.id === id)!);
-    const laterCount = plan.later.reduce((n, l) => n + l.ids.length, 0);
-    const laterFrom = plan.later[0]?.dueDate ?? null;
+    if (!list.length) continue; // only documents left open on steps already approved: nothing holds up work
+    // Later means steps still to come: documents left on approved steps are not counted as expected.
+    const ahead = plan.later.filter((l) => !l.approved);
+    const laterCount = ahead.reduce((n, l) => n + l.ids.length, 0);
+    const laterFrom = ahead[0]?.dueDate ?? null;
     const back = list.filter((d) => d.status === "rejected");
     // Each kind once (a passport copy asked for three steps is one thing to find), and how many steps wait.
     const kinds = [...new Set(list.map((d) => docWords(d.kind)))];

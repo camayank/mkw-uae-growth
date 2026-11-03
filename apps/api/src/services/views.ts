@@ -193,7 +193,7 @@ export function partyEngagement(db: Database, user: SessionUser, engagementId: s
         ? {
             documentPlan: documentPlan(
               documentRequests.rows.map((d) => ({ id: d.id as string, milestoneId: d.milestone_id as string, status: d.status as DocumentStatus })),
-              (await tx.query<{ id: string; seq: number; due_date: string | null }>("select id, seq, due_date::text as due_date from milestones where engagement_id = $1", [engagementId])).rows.map((m) => ({ id: m.id, seq: num(m.seq), dueDate: m.due_date })),
+              (await tx.query<{ id: string; seq: number; due_date: string | null; status: string }>("select id, seq, due_date::text as due_date, status from milestones where engagement_id = $1", [engagementId])).rows.map((m) => ({ id: m.id, seq: num(m.seq), dueDate: m.due_date, approved: m.status === "client_approved" })),
               (await tx.query<{ d: string }>("select gulf(app_now())::text as d")).rows[0]!.d.slice(0, 10),
             ),
           }

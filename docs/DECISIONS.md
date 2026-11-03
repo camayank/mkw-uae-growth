@@ -1109,9 +1109,14 @@ owner on 3 Nov 2026: "start E15", after the portal assessment's point on the 13-
   - the documents for the step due first among those still waiting, with every step due the same day.
 
   Needed later is the rest, step by step in due order, each with its date. Uploading the current batch brings the
-  next one forward, so "now" is never empty while something is missing. Already sent is what is uploaded or received.
-- **The next action** counts only what is needed now ("Upload 4 documents"). It says how many more are needed later and
-  from when, and carries the date of the steps it is for. The client's engagement view carries the plan, and the page
+  next one forward, so "now" is never empty while a step not yet approved is missing a document. Already sent is
+  what is uploaded or received.
+- A document still open on a step the client already approved never counts as needed now. It is listed last among
+  the later ones, with "send it only if the firm asks for it again". Found by the independent review of E15: such a
+  step, due first, had pushed the documents that hold up real work aside, and the next action said it "cannot
+  finish".
+- **The next action** counts only what is needed now ("Upload 8 documents" on the demo engagement). It says how many more are needed later (for steps still to come) and
+  from when, and carries the most urgent date among the steps it is for. The client's engagement view carries the plan, and the page
   draws it: the documents needed now first, the later ones folded by step with "Expected by", what was sent folded
   last. Early upload stays possible.
 - Partners and MKW staff see the documents as before; the plan is the client's.

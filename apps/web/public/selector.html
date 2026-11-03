@@ -110,6 +110,13 @@
     .tile b { font-size: 0.98rem; } .tile small { color: var(--muted); font-size: 0.82rem; }
     .uaemap { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; padding: 14px; border-radius: 16px; background: linear-gradient(180deg, #e4eef1, #eef2ec); border: 1px solid var(--line); }
     .uaemap .sea { align-self: center; font-size: 0.8rem; font-style: italic; color: #4b6a7a; }
+    /* E12: the map is geography, so it keeps west on the left on the Arabic page too; its labels still read right to
+       left. The small Arabic name under each emirate repeats the translated name there, so it is hidden. */
+    .uaemap { direction: ltr; }
+    [dir="rtl"] .uaemap .em, [dir="rtl"] .uaemap .sea { direction: rtl; }
+    [dir="rtl"] .uaemap .em .ar { display: none; }
+    /* On a phone the map is a two-column list, not a map: there it reads right to left like the rest of the page. */
+    @media (max-width: 600px) { [dir="rtl"] .uaemap { direction: rtl; } }
     .em { display: flex; flex-direction: column; justify-content: space-between; gap: 4px; padding: 9px; min-height: 72px; border: 2px solid #c9d3cc; border-radius: 12px; background: #fff; color: #16201c; font: inherit; text-align: start; cursor: pointer; transition: transform .12s; }
     .em:hover { transform: scale(1.03); }
     .em[aria-pressed="true"] { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); box-shadow: 0 8px 20px rgba(14, 91, 76, 0.28); }

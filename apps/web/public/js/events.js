@@ -126,6 +126,7 @@ document.addEventListener("click", (ev) => {
     jump: () => {
       ev.preventDefault();
       const target = document.getElementById(el.dataset.target);
+      if (target instanceof HTMLDetailsElement) target.open = true; // a folded panel opens before it is shown (U1)
       target?.scrollIntoView({ behavior: "smooth", block: "start" });
       target?.focus({ preventScroll: true });
     },

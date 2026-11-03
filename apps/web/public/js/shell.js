@@ -28,8 +28,21 @@ export function navFor() {
   ];
 }
 
+// Icons for the phone tab bar (U1): shown only when the menu becomes a bottom bar for clients and partners.
+const ICON = {
+  home: '<path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/>',
+  new: '<path d="M12 5v14"/><path d="M5 12h14"/>',
+  compliance: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18"/><path d="M8 3v4"/><path d="M16 3v4"/>',
+  statement: '<path d="M6 3h9l5 5v13H6z"/><path d="M9 13h6"/><path d="M9 17h6"/>',
+  performance: '<path d="M4 19V9"/><path d="M10 19V5"/><path d="M16 19v-8"/><path d="M22 19H2"/>',
+  firm: '<path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/>',
+  rates: '<path d="M4 4h16v16H4z"/><path d="M8 9h8"/><path d="M8 13h8"/><path d="M8 17h5"/>',
+  payouts: '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/>',
+};
+const icon = (p) => (ICON[p] ? `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[p]}</svg>` : "");
+
 /** A link in the menu bar, marked when it is the page on screen. */
-export const navLink = (p, label, page) => `<a href="#/${p}" class="${page === p ? "on" : ""}" ${page === p ? 'aria-current="page"' : ""}>${esc(label)}</a>`;
+export const navLink = (p, label, page) => `<a href="#/${p}" class="${page === p ? "on" : ""}" ${page === p ? 'aria-current="page"' : ""}>${icon(p)}<span>${esc(label)}</span></a>`;
 
 /** A disclosure menu (button + list of links): opens on click, Enter or Space; Escape closes and returns focus. */
 export function navGroup(g, page) {
@@ -73,6 +86,8 @@ export function chrome() {
   const { page } = route();
   state.lang = pickLang();
   applyLang();
+  // Who is looking decides the menu's shape on a phone (U1): clients and partners get a tab bar, staff the grouped menu.
+  document.body.dataset.audience = !state.me ? "" : isClient() ? "client" : isPartner() ? "partner" : "platform";
   if (!state.me) {
     $nav.innerHTML = "";
     $who.innerHTML = langSwitch();

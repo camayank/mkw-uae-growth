@@ -285,6 +285,10 @@ export function legalBlock(doc, heading) {
     <details><summary class="small">Read the full text</summary><div class="legal-text">${mdToHtml(doc.body)}</div></details></div>`;
 }
 
+/** A folding panel (U1): a card whose heading carries its state, open or closed. `title` and `state` are HTML. */
+export const panel = (title, body, { state = "", open = false, id = "" } = {}) =>
+  `<details class="panel"${open ? " open" : ""}${id ? ` id="${id}" tabindex="-1"` : ""}><summary><h2>${title}</h2>${state ? `<span class="state">${state}</span>` : ""}</summary><div class="panel-body">${body}</div></details>`;
+
 export const table = (head, rows, empty = "Nothing here yet.") =>
   rows.length
     ? `<div class="table-wrap"><table><thead><tr>${head.map((h) => `<th class="${h.startsWith("#") ? "num" : ""}">${esc(h.replace(/^#/, ""))}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table></div>`

@@ -1,15 +1,34 @@
 // Tasees workspace: partner module (split from app.js in O12; plain ES modules, no build step).
 import { $app, act, aed, api, badge, date, dateTime, deliverables, esc, isPartner, isPlatform, legalBlock, nameOf, role, table, words } from "./core.js";
 
+/** How long is left to answer an offer, as a chip (U1). */
+export const timeLeft = (deadline) => {
+  const ms = new Date(deadline).getTime() - Date.now();
+  if (!(ms > 0)) return badge("bad", "reply time passed");
+  const h = Math.floor(ms / 3_600_000);
+  const m = Math.floor((ms % 3_600_000) / 60_000);
+  return badge("warn", `${h ? `${h} h ` : ""}${m} min left`);
+};
+/** Days until a date, negative when past. */
+const daysUntil = (iso) => Math.ceil((new Date(`${String(iso).slice(0, 10)}T00:00:00Z`).getTime() - Date.now()) / 86_400_000);
+/** An expiry chip for a licence, policy or rate card (U1): expired, renew soon, or nothing. */
+export const expiryBadge = (iso, soonDays = 30) => {
+  if (!iso) return "";
+  const d = daysUntil(iso);
+  if (d < 0) return badge("bad", `expired ${date(iso)}`);
+  if (d <= soonDays) return badge("warn", `renew within ${d} day${d === 1 ? "" : "s"}`);
+  return "";
+};
+
 export async function renderPartnerHome() {
   const h = await api("GET", "/api/partner/home");
   const offered = h.allocations.filter((a) => !a.acceptedAt && !a.declinedAt && !a.timedOutAt);
   const active = h.allocations.filter((a) => a.acceptedAt);
   const rfqs = h.rfqs.filter((q) => q.status === "open" && !q.submitted);
   const admin = role() === "partner_admin";
+  const status = h.firm?.status ?? "prospect";
   $app.innerHTML = `
-  <h1>Work from MKW Advisors</h1>
-  ${h.firm && h.firm.status !== "signed" ? `<p class="notice small">Your firm is <b>${esc(words(h.firm.status ?? "prospect"))}</b>${h.firm.status === "paused" ? "; no new work is offered until MKW Advisors lifts the pause" : h.firm.status === "pilot" ? ": up to three jobs at a time until five are delivered on time" : ": complete your application and documents on <a href=\"#/firm\">Your firm</a>"}.</p>` : ""}
+  <div class="row between"><h1>Work from MKW Advisors</h1>${status !== "signed" ? `<p class="notice small" style="margin:0">${badge(status)} ${status === "paused" ? "No new work is offered until MKW Advisors lifts the pause." : status === "pilot" ? "Up to three jobs at a time until five are delivered on time." : `Complete your application and documents on <a href="#/firm">Your firm</a>.`}</p>` : ""}</div>
   <div class="kpis">
     <div class="kpi"><b>${offered.length}</b><span>Offers waiting for your answer</span></div>
     <div class="kpi"><b>${active.filter((a) => a.engagementStatus !== "completed").length}</b><span>Engagements in delivery</span></div>
@@ -18,17 +37,18 @@ export async function renderPartnerHome() {
     <div class="kpi"><b>${h.firm?.latestScore ?? h.firm?.quality ?? "–"}</b><span>Quality score · <a href="#/firm">scorecard</a></span></div>
   </div>
   <div class="stack">
-    <div class="card flush"><h2>Offered to you</h2>
+    <div class="card flush" style="border-inline-start: 4px solid var(--accent)"><div class="row between" style="padding: 16px 18px 0"><h2 style="padding:0">Offered to you</h2><span class="small muted">You have 4 working hours to answer; after that the work goes to the next firm.</span></div>
       ${table(
         ["Where", "Work", "#Your payout", "Reply by", ""],
         offered.map(
-          (a) => `<tr><td>${esc(a.brief?.emirate ?? "")}${a.brief?.freeZone ? ` · ${esc(a.brief.freeZone)}` : ""}</td>
-          <td>${esc((a.brief?.lines ?? a.codes.map((c) => ({ code: c, qty: 1 }))).map((l) => `${l.name ?? nameOf(l.code)}${l.qty > 1 ? ` ×${l.qty}` : ""}`).join(", "))}</td>
-          <td class="num">${aed(a.payoutTotal)}</td><td>${dateTime(a.deadline)}</td>
-          <td>${admin ? `<button class="sm primary" data-act="alloc" data-id="${a.id}" data-decision="accept">Accept</button> <button class="sm" data-act="alloc" data-id="${a.id}" data-decision="decline">Decline</button>` : `<span class="small muted">Your admin replies</span>`}</td></tr>`,
+          (a) => `<tr><td><b>${esc(a.brief?.emirate ?? "")}</b>${a.brief?.freeZone ? `<br><span class="small muted">${esc(a.brief.freeZone)}</span>` : ""}</td>
+          <td>${esc((a.brief?.lines ?? a.codes.map((c) => ({ code: c, qty: 1 }))).map((l) => `${l.name ?? nameOf(l.code)}${l.qty > 1 ? ` ×${l.qty}` : ""}`).join(", "))}<br><span class="small muted">Step dates and the client's documents are in the brief once you accept.</span></td>
+          <td class="num"><b>${aed(a.payoutTotal)}</b><br><span class="small muted">your fees; government fees not included</span></td><td><b>${dateTime(a.deadline)}</b><br>${timeLeft(a.deadline)}</td>
+          <td style="white-space:nowrap">${admin ? `<button class="primary" data-act="alloc" data-id="${a.id}" data-decision="accept">Accept</button> <button data-act="alloc" data-id="${a.id}" data-decision="decline">Decline</button>` : `<span class="small muted">Your admin replies</span>`}</td></tr>`,
         ),
         "Nothing waiting. New work arrives here and by email; you have 4 working hours to reply.",
       )}
+      ${offered.length ? `<p class="small muted pad" style="padding-top:0">Accepting commits your firm to the step dates in the brief. The brief and the steps open once the deposit is paid; the client's contact details stay hidden and messages go through the engagement page.</p>` : ""}
     </div>
     <div class="card flush"><h2>Requests for a price</h2>
       ${
@@ -54,13 +74,15 @@ export async function renderPartnerHome() {
     </div>
     <div class="card flush"><h2>In delivery</h2>
       ${table(
-        ["Accepted", "Where", "Work", "Status", ""],
-        active.map(
-          (a) => `<tr><td>${date(a.acceptedAt)}</td><td>${esc(a.brief?.emirate ?? "")}</td><td>${esc(a.codes.map(nameOf).join(", "))}</td>
-          <td>${badge(a.engagementStatus ?? "in_delivery")}</td><td><a href="#/engagement/${a.engagementId}">Open</a></td></tr>`,
+        ["Where", "Work", "Accepted", "Status", ""],
+        active.filter((a) => a.engagementStatus !== "completed").map(
+          (a) => `<tr><td><b>${esc(a.brief?.emirate ?? "")}</b></td><td>${esc(a.codes.map(nameOf).join(", "))}</td><td>${date(a.acceptedAt)}</td>
+          <td>${badge(a.engagementStatus ?? "in_delivery")}</td><td><a class="btn sm" href="#/engagement/${a.engagementId}">Open</a></td></tr>`,
         ),
         "No work in delivery.",
       )}
+      ${active.some((a) => a.engagementStatus === "completed") ? `<details class="more pad" style="padding-top:0"><summary>${active.filter((a) => a.engagementStatus === "completed").length} completed</summary>${table(["Where", "Work", "Accepted", ""], active.filter((a) => a.engagementStatus === "completed").map((a) => `<tr><td>${esc(a.brief?.emirate ?? "")}</td><td>${esc(a.codes.map(nameOf).join(", "))}</td><td>${date(a.acceptedAt)}</td><td><a href="#/engagement/${a.engagementId}">Open</a></td></tr>`))}</details>` : ""}
+      <p class="small muted pad" style="padding-top:0">A step five working days late raises a credit to the client from that step's share of the fee; delays caused by the client are attributed and do not count.</p>
     </div>
   </div>`;
 }
@@ -100,7 +122,7 @@ export async function renderFirm(orgId) {
   const all = await deliverables();
   const emirates = ["Dubai", "Abu Dhabi", "Sharjah", "Ajman", "Ras Al Khaimah", "Umm Al Quwain", "Fujairah", "All"];
   const latest = f.scorecards?.[0];
-  const docRow = (d) => `<tr><td>${esc(words(d.kind))}${d.reference ? `<br><span class="small muted">${esc(d.reference)}</span>` : ""}</td><td class="small"><a href="/api/partner-documents/${d.id}/file" target="_blank" rel="noopener">${esc(d.fileName)}</a><br><span class="muted">${dateTime(d.uploadedAt)}</span></td><td class="small">${d.expiresOn ? date(d.expiresOn) : "–"}</td>
+  const docRow = (d) => `<tr><td>${esc(words(d.kind))}${d.reference ? `<br><span class="small muted">${esc(d.reference)}</span>` : ""}</td><td class="small"><a href="/api/partner-documents/${d.id}/file" target="_blank" rel="noopener">${esc(d.fileName)}</a><br><span class="muted">${dateTime(d.uploadedAt)}</span></td><td class="small">${d.expiresOn ? date(d.expiresOn) : "–"}${d.expiresOn && d.status === "verified" ? `<br>${expiryBadge(d.expiresOn)}` : ""}</td>
     <td>${badge(d.status === "verified" ? "ok" : d.status === "rejected" ? "bad" : d.status === "superseded" ? "expired" : "UNCERTAIN", d.status === "uploaded" ? "awaiting MKW check" : words(d.status))}${d.note ? `<br><span class="small muted">${esc(d.note)}</span>` : ""}</td>
     <td>${canAct && d.status === "uploaded" ? `<button class="sm primary" data-act="doc-review" data-id="${d.id}" data-decision="verified">Verify</button> <button class="sm" data-act="doc-review" data-id="${d.id}" data-decision="rejected">Reject</button>` : ""}</td></tr>`;
   $app.innerHTML = `
@@ -150,12 +172,26 @@ export async function renderFirm(orgId) {
           <td>${mine && admin && u.role === "partner_staff" && u.status !== "erased" ? `<button class="sm" data-act="staff-active" data-id="${u.id}" data-active="${u.status === "active" ? "0" : "1"}">${u.status === "active" ? "Remove" : "Reactivate"}</button>` : ""}</td></tr>`))}
         ${mine && admin ? `<form class="pad row" data-form="staff-invite" style="padding-top:8px"><input name="name" placeholder="Name" required minlength="2" style="max-width:200px" /><input name="email" type="email" placeholder="Work email" required style="max-width:260px" /><button class="sm" type="submit">Add staff</button></form><p class="small muted pad" style="padding-top:0">Staff can work steps and upload evidence; only you accept work, set prices and bank details.</p>` : ""}
       </div>
-      <div class="card flush"><h2>Scorecard</h2>
+      <div class="card flush"><h2>Scorecard${latest ? ` · <span class="num">${latest.score}</span> <span class="small muted">of 100${latest.provisional ? ", provisional" : ""}</span>` : ""}</h2>
+        ${latest ? scoreBars(latest.inputs) : ""}
         ${table(["Computed", "#Score", "On time", "First-pass QA", "Disputes", "Strikes", "Rating"], (f.scorecards ?? []).map((c) => `<tr><td class="small">${date(c.computedAt ?? c.computed_at)}${c.provisional ? ` ${badge("UNCERTAIN", "provisional")}` : ""}</td><td class="num"><b>${c.score}</b></td><td class="num">${c.inputs.milestonesOnTime}/${c.inputs.milestonesDone}</td><td class="num">${c.inputs.qaFirstPass}/${c.inputs.qaSubmissions}</td><td class="num">${c.inputs.disputes}</td><td class="num">${c.inputs.slaStrikes}</td><td class="num">${c.inputs.rating ?? "–"}</td></tr>`), "Recomputed weekly from the last 90 days: on-time 40, first-pass QA 20, disputes 15, acceptance strikes 15, client rating 10.")}
       </div>
     </div>
   </div>`;
 }
+
+/** The latest scorecard's inputs as bars (U1): what the score is made of, at a glance. */
+const scoreBars = (i) => {
+  const bar = (label, num, den, text) => {
+    const pct = den ? Math.round((num / den) * 100) : 0;
+    return `<div><div class="row between"><span>${esc(label)}</span><span class="small muted num">${esc(text ?? `${num} of ${den} · ${pct}%`)}</span></div><div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}" aria-label="${esc(label)}"><span style="width:${pct}%"></span></div></div>`;
+  };
+  return `<div class="scorebars pad" style="padding-top:0">
+    ${bar("Delivered on time", i.milestonesOnTime, i.milestonesDone)}
+    ${bar("Evidence accepted first time", i.qaFirstPass, i.qaSubmissions)}
+    ${bar("Client rating", i.rating ?? 0, 5, i.rating == null ? "no rating yet" : `${i.rating} of 5`)}
+    <p class="small muted" style="margin:0">Recomputed weekly from the last 90 days: on-time 40, first-pass QA 20, disputes 15 (${i.disputes}), acceptance strikes 15 (${i.slaStrikes}), client rating 10. The score decides who is offered work first, together with capacity and fit.</p></div>`;
+};
 
 export async function renderPartnerPerformance() {
   const d = await api("GET", "/api/partner/dashboard");
@@ -211,12 +247,12 @@ export async function renderRateCards() {
   const h = await api("GET", "/api/partner/home");
   const admin = role() === "partner_admin";
   $app.innerHTML = `<h1>Your rate card</h1>
-  <p class="muted">Standing prices MKW Advisors can use to offer your services without asking each time. Each card is valid for 90 days. Quote your own fee; government fees are taken from MKW's official fee table.</p>
+  <p class="muted">Standing prices MKW Advisors can use to offer your services without asking each time. Each card is valid for 90 days from the day you save it; an expired card stops new offers for that service until you save it again. Changes apply to new offers only; accepted work keeps its fees. Quote your own fee; government fees are taken from MKW's official fee table.</p>
   <div class="card flush">${table(
     ["Service", "#Your fee", "#Govt fee stated", "#Third party", "#Days", "Not included", "Valid to"],
     h.rateCards.map(
       (c) => `<tr><td>${esc(c.name)}</td><td class="num">${aed(c.professional)}</td><td class="num">${aed(c.govStated)}</td><td class="num">${aed(c.thirdParty)}</td>
-      <td class="num">${c.workingDays}</td><td class="small">${esc((c.exclusions ?? []).join("; ") || "–")}</td><td>${date(c.validTo)}</td></tr>`,
+      <td class="num">${c.workingDays}</td><td class="small">${esc((c.exclusions ?? []).join("; ") || "–")}</td><td>${date(c.validTo)}${expiryBadge(c.validTo, 14) ? `<br>${expiryBadge(c.validTo, 14)}` : ""}</td></tr>`,
     ),
     "No rate cards yet.",
   )}</div><br>

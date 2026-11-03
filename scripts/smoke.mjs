@@ -17,7 +17,14 @@ const OUT = process.env.OUT ?? "./smoke-shots";
  * the drawn text either way). The file and its first page are kept with the screenshots.
  */
 const designedPdf = (buf, arabic = false) => buf.subarray(0, 7).toString("latin1") === "%PDF-1." && /FontFile2/.test(buf.toString("latin1")) && /NotoSans/.test(buf.toString("latin1")) && (!arabic || /NotoSansArabic/.test(buf.toString("latin1"))) && (buf.toString("latin1").match(/\/Type \/Page\b/g) ?? []).length >= 2;
-const pdfWords = (buf) => { try { return execFileSync("pdftotext", ["-", "-"], { input: buf }).toString().replace(/\s+/g, " "); } catch { return null; } };
+// Without pdftotext the report's words cannot be read here: that fails, unless SMOKE_NO_PDFTOTEXT=1 says to skip them
+// (the API tests read the drawn text either way). CI installs poppler (independent review of E16).
+const pdfWords = (buf) => {
+  try { return execFileSync("pdftotext", ["-", "-"], { input: buf }).toString().replace(/\s+/g, " "); } catch {
+    if (process.env.SMOKE_NO_PDFTOTEXT === "1") { log.push("report words NOT read: pdftotext missing, skipped by SMOKE_NO_PDFTOTEXT=1"); return null; }
+    return "";
+  }
+};
 const keepPdf = (buf, name) => {
   writeFileSync(`${OUT}/${name}.pdf`, buf);
   try { execFileSync("pdftoppm", ["-r", "90", "-png", "-f", "1", "-l", "2", `${OUT}/${name}.pdf`, `${OUT}/${name}`]); log.push(`${name} (pdf and pages)`); } catch { log.push(`${name} (pdf)`); }

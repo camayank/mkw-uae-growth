@@ -75,7 +75,7 @@ An Arabic-speaking founder can have it in Arabic, laid out right to left, once A
 
 Evidence recorded on 3 Nov 2026 (`docs/evidence/E16/`):
 
-- `pnpm test` (`tests-pglite.txt`): core 154 passed (18 files); API 366 passed, 1 skipped (36 files), on PGlite.
+- `pnpm test` (`tests-pglite.txt`): core 154 passed (18 files); API 369 passed, 1 skipped (37 files), on PGlite.
 - `pnpm typecheck`: clean (`typecheck.txt`).
 - `pnpm audit --prod`: no known vulnerabilities (`audit.txt`).
 - `scripts/smoke.mjs` against a fresh demo: 326 checks OK, 0 failed (`smoke-log.txt`; 325 after E15).
@@ -83,6 +83,32 @@ Evidence recorded on 3 Nov 2026 (`docs/evidence/E16/`):
   - `120-report-preliminary` (with IFZA approved);
   - `121-report-reviewed`;
   - `122-report-preliminary-ar`.
+
+## Independent review
+
+Nothing blocking. The privacy rule (D80), the money rule and the Arabic sign-off rule hold. The reviewer probed the
+table, the sources, the metadata and the language rule.
+
+Fixed:
+- **Smoke strictness.** Without pdftotext, the smoke test passed its word checks without reading the words. It now
+  fails, unless `SMOKE_NO_PDFTOTEXT=1`, and CI installs poppler.
+- **Tall items.** An item or table row taller than a page ran over the footer. Paragraphs now flow line by line
+  across pages, and table cells are capped.
+- **Licences in D98.** The record said every package was MIT; it now lists each licence as declared.
+- **Stray direction marks** in the PDF metadata.
+- **An empty table** made the renderer throw.
+- **Data with line breaks or direction marks** broke the Arabic profile line or the island balance.
+- **Headings** could be stranded at the foot of a page.
+- **Amounts** could split across lines.
+
+New renderer tests (`apps/api/test/report-pdf.test.ts`):
+- a 2,000-word item flows over six pages with every word drawn;
+- empty tables and sections render;
+- odd data (line breaks, tabs, direction marks, emoji, Chinese characters, a 500-character cell) renders in both
+  languages;
+- the metadata carries no direction mark.
+
+Recorded: the Arabic grammar points for the reviewer (gap 129); characters outside the fonts (gap 133).
 
 ## Dependencies
 
@@ -97,7 +123,7 @@ E7D (the report), E13 (the public order). New libraries recorded in D98.
   - the pages were checked by eye.
 
   Copy-paste of Arabic from the PDF can change a joined letter (gap 130).
-- **File size.** The fonts are embedded as subsets: a report is about 20 KB in English and 50 KB in Arabic.
+- **File size.** The fonts are embedded as subsets: a report is about 25 KB in English and 70 KB in Arabic.
 
 ## Owner decisions
 

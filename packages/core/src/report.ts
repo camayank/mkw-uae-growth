@@ -116,7 +116,7 @@ export function preliminaryReport(p: PublicAssessment, answers: AdviceInput, met
   const fitting = p.places.filter((x) => x.status !== "INELIGIBLE");
   const unresolved = [...p.missingFacts.map((m) => `[DATA MISSING] ${m}`), ...p.contradictions.map((c) => `[ANSWERS TO CHECK] ${c}`)];
   const sections: ReportSection[] = [
-    { heading: "Your business profile", lines: [...(meta.company ? [`Company: ${meta.company}`] : []), ...profileLines(answers)] },
+    { heading: "Your business profile", lines: [...(meta.company ? [`Company: ${meta.company.replace(/\s+/g, " ").trim()}`] : []), ...profileLines(answers)] },
     {
       heading: "Structures compared",
       lines: [
@@ -193,7 +193,7 @@ export function reviewedReport(a: Advice, answers: AdviceInput, meta: ReportMeta
   const rec = a.structure.recommendation ? STRUCTURE[a.structure.recommendation] ?? words(a.structure.recommendation) : null;
   const unresolved = [...(a.missingFacts ?? []).map((m) => `[DATA MISSING] ${m}`), ...(a.contradictions ?? []).map((c) => `[ANSWERS TO CHECK] ${c}`)];
   const sections: ReportSection[] = [
-    { heading: "Your business profile", lines: [...(meta.company ? [`Company: ${meta.company}`] : []), ...profileLines(answers)] },
+    { heading: "Your business profile", lines: [...(meta.company ? [`Company: ${meta.company.replace(/\s+/g, " ").trim()}`] : []), ...profileLines(answers)] },
     {
       heading: "Structures compared",
       lines: [

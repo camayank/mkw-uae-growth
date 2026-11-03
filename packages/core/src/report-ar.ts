@@ -10,7 +10,11 @@
 import type { Report, ReportSection } from "./report.ts";
 
 /** Left-to-right isolate: English data inside Arabic text. The PDF renderer reads the marks and does not draw them. */
-export const ltr = (s: string) => (s ? `⁦${s}⁩` : s);
+export const ltr = (s: string) => {
+  // Data is cleaned first: its own direction marks would unbalance the island, and a line break or tab is a space.
+  const clean = s.replace(/[\u202A-\u202E\u2066-\u2069]/g, "").replace(/\s+/g, " ");
+  return clean ? `\u2066${clean}\u2069` : clean;
+};
 
 const HEADINGS: Record<string, string> = {
   "Your business profile": "ملف نشاطك التجاري",
@@ -192,7 +196,9 @@ const PATTERNS: Array<[RegExp, (m: RegExpMatchArray) => string]> = [
 ];
 
 /** One line of the report in Arabic; anything the report did not write itself stays as written, isolated. */
-function line(l: string): string {
+function line(raw: string): string {
+  // A line is one line: a tab or line break from data is a space, so the patterns still recognise it.
+  const l = raw.replace(/[\t\r\n]+/g, " ");
   if (!l) return l;
   if (EXACT[l]) return EXACT[l]!;
   for (const [re, fn] of PATTERNS) {

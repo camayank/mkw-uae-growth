@@ -1133,10 +1133,18 @@ owner on 3 Nov 2026: "start E15", after the portal assessment's point on the 13-
     addresses.
   - `@types/pdfkit` 0.17.7, for development only.
 
-  Together that is 30 production packages. The fonts are Noto Sans and Noto Sans Arabic, regular and bold (about
-  1.6 MB), committed in `apps/api/assets/fonts` with their licence (`OFL.txt`) and copied into the container image.
-- **Licences.** pdfkit, fontkit, bidi-js and their dependencies are MIT. The Noto fonts are under the SIL Open Font
-  License 1.1, which allows embedding them in documents.
+  Together the lockfile gains 21 packages, 20 for production. The fonts are Noto Sans and Noto Sans Arabic, regular
+  and bold (about 1.6 MB), committed in `apps/api/assets/fonts` with their licence (`OFL.txt`) and copied into the
+  container image.
+- **Licences** (each package's own declaration):
+  - MIT: pdfkit, fontkit, bidi-js, @noble/hashes, @noble/ciphers, @types/pdfkit and 12 more;
+  - Apache-2.0: @swc/helpers (a fontkit helper);
+  - 0BSD: tslib;
+  - png-js 2.0.0 declares no licence field, and its LICENSE file is MIT.
+
+  All of these allow commercial use and bundling. Apache-2.0 asks that its notice be kept, which the installed package
+  does. The Noto fonts are under the SIL Open Font License 1.1, which allows embedding them in documents. Corrected
+  after the independent review of E16, which found the first wording ("all MIT") wrong.
 - **Maintenance.** pdfkit and fontkit are maintained, with releases in 2026; bidi-js had a release in 2026.
   pdf-lib was considered and set aside, because it has not been released since 2022.
 - **Security.** `pnpm audit --prod` finds no known vulnerability (`docs/evidence/E16/audit.txt`). The renderer reads

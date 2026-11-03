@@ -355,13 +355,18 @@ in a browser; everything listed here is not.
 ## E16: report design
 
 129. **The Arabic report's wording is a draft** until the Arabic reviewer signs it off (with gaps 111, 116, 119, 128).
-     The engine's own statements stay in English inside it, as on the Arabic page.
+     The engine's own statements stay in English inside it, as on the Arabic page. Known for the reviewer: counts use
+     the singular ("7 يوم عمل", "2 تأشيرة" where the plural or dual reads better), and an approved statement that itself
+     contains "; " inside a structure line is split into two islands.
 130. **Copying Arabic text out of the PDF can change a joined letter** (تقرير can paste as تقرتر), because of how the
      font's shaped letters map back to text. What is drawn is right; search and copy-paste of Arabic in the PDF may
      not be.
 131. **The smoke test reads the report's words only where poppler is installed** (pdftotext); elsewhere it checks
      the PDF's structure and fonts, and the API tests read the drawn text.
 132. **The report shows the T mark drawn in the PDF**, not an artwork logo: there is no logo file on record yet.
+133. **Characters outside the two fonts draw as empty boxes** (an emoji or Chinese characters in a company name); the
+     report still renders. A table cell is cut at 160 characters so a row always fits a page; the report's cells are
+     names, statuses and amounts, far shorter.
 
 ## E9: workspace look
 

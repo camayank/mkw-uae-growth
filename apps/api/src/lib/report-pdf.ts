@@ -23,6 +23,7 @@ const WIDTH = PAGE.w - 2 * PAGE.margin;
 
 const ARABIC = /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/;
 const CONTROL = /[‎‏‪-‮⁦-⁩]/;
+const CONTROLS = new RegExp(CONTROL.source, "g");
 const NEUTRAL = /[\s.,:;!?()[\]"'«»،؛؟\-–—/·]/;
 
 type Kind = "ar" | "la";
@@ -36,9 +37,12 @@ const TAG_STYLE: Array<[RegExp, string, string]> = [
   [/./, C.gold, C.goldBg],
 ];
 
+/** The PDF's metadata: the title with the reference (never the recovery code) and the status, without direction marks. */
+export const reportInfo = (r: Report) => ({ Title: `${r.title} ${r.reference}`.replace(CONTROLS, ""), Author: "MKW Advisors", Subject: r.statusLine.replace(CONTROLS, ""), Creator: "Tasees platform" });
+
 export function reportPdf(r: Report): Promise<{ pdf: Buffer; text: string[] }> {
   const rtl = r.lang === "ar";
-  const doc = new PDFDocument({ size: "A4", margins: { top: 0, bottom: 0, left: 0, right: 0 }, bufferPages: true, autoFirstPage: true, info: { Title: `${r.title} ${r.reference}`, Author: "MKW Advisors", Subject: r.statusLine.replace(CONTROL, ""), Creator: "Tasees platform" } });
+  const doc = new PDFDocument({ size: "A4", margins: { top: 0, bottom: 0, left: 0, right: 0 }, bufferPages: true, autoFirstPage: true, info: reportInfo(r) });
   doc.registerFont("la", join(FONTS, "NotoSans-Regular.ttf"));
   doc.registerFont("la-b", join(FONTS, "NotoSans-Bold.ttf"));
   doc.registerFont("ar", join(FONTS, "NotoSansArabic-Regular.ttf"));
@@ -108,12 +112,23 @@ export function reportPdf(r: Report): Promise<{ pdf: Buffer; text: string[] }> {
     }
   };
 
-  /** A paragraph wrapped to a width (in logical order), each line laid out by the bidi algorithm; returns its height. */
-  const para = (text: string, x: number, y: number, width: number, opts: { size?: number; bold?: boolean; color?: string; align?: "left" | "right"; dry?: boolean } = {}) => {
+  let y = 0;
+  const bottom = PAGE.h - PAGE.margin - PAGE.footer;
+  const newPage = () => { doc.addPage(); y = PAGE.margin; };
+  const room = (h: number) => { if (y + h > bottom) newPage(); };
+
+  /**
+   * A paragraph wrapped to a width (in logical order), each line laid out by the bidi algorithm; returns its height.
+   * With `flow`, it is drawn from the current position line by line, moving to a new page whenever the next line does
+   * not fit, so nothing runs over the footer however long it is (independent review of E16).
+   */
+  const para = (raw: string, x: number, at: number, width: number, opts: { size?: number; bold?: boolean; color?: string; align?: "left" | "right"; dry?: boolean; flow?: boolean } = {}) => {
+    // One line of text: tabs and line breaks from data become spaces; an amount ("AED 12,000") never splits.
+    const text = raw.replace(/[\t\r\n]+/g, " ").replace(/AED (\d)/g, "AED\u00A0$1");
     const size = opts.size ?? 9.5;
     const bold = opts.bold ?? false;
     const lh = size * (rtl || ARABIC.test(text) ? 1.75 : 1.45);
-    const words = text.split(/(\s+)/).filter((w) => w.length);
+    const words = text.split(/( +)/).filter((w) => w.length);
     const lines: string[] = [];
     let cur = "";
     for (const w of words) {
@@ -142,14 +157,18 @@ export function reportPdf(r: Report): Promise<{ pdf: Buffer; text: string[] }> {
       if (p) parts.push(p);
       return parts;
     });
-    if (!opts.dry) fitted.forEach((l, n) => { drawLine(l, x, y + n * lh, width, size, bold, opts.color ?? C.ink, opts.align ?? (rtl ? "right" : "left")); drawn.push(l.replace(new RegExp(CONTROL.source, "g"), "")); });
+    if (opts.dry) return fitted.length * lh;
+    const draw = (l: string, ly: number) => {
+      drawLine(l, x, ly, width, size, bold, opts.color ?? C.ink, opts.align ?? (rtl ? "right" : "left"));
+      drawn.push(l.replace(CONTROLS, "").replace(/\u00A0/g, " "));
+    };
+    if (opts.flow) {
+      for (const l of fitted) { room(lh); draw(l, y); y += lh; }
+      return fitted.length * lh;
+    }
+    fitted.forEach((l, n) => draw(l, at + n * lh));
     return fitted.length * lh;
   };
-
-  let y = 0;
-  const bottom = PAGE.h - PAGE.margin - PAGE.footer;
-  const newPage = () => { doc.addPage(); y = PAGE.margin; };
-  const room = (h: number) => { if (y + h > bottom) newPage(); };
 
   // Header: the brand band, the title, the reference and date, the status banner.
   doc.rect(0, 0, PAGE.w, 104).fill(C.brand);
@@ -169,6 +188,7 @@ export function reportPdf(r: Report): Promise<{ pdf: Buffer; text: string[] }> {
 
   const table = (t: ReportTable) => {
     const n = t.columns.length;
+    if (!n) return;
     // The place and the estimate get more room than the counts.
     const weights = t.columns.map((_, i) => (i === 0 ? 1.5 : i === 3 ? 1.6 : i === 5 ? 1.2 : i === 4 ? 0.7 : 1));
     const sum = weights.reduce((a, b) => a + b, 0);
@@ -176,7 +196,9 @@ export function reportPdf(r: Report): Promise<{ pdf: Buffer; text: string[] }> {
     const xs = widths.map((_, i) => PAGE.margin + widths.slice(0, i).reduce((a, b) => a + b, 0));
     const order = rtl ? [...Array(n).keys()].reverse() : [...Array(n).keys()];
     const colX = (i: number) => (rtl ? xs[n - 1 - order.indexOf(i)]! : xs[i]!);
-    const row = (cells: string[], header: boolean): void => {
+    const row = (all: string[], header: boolean): void => {
+      // A cell is a name, a status or an amount; a longer one is cut so a row always fits on a page.
+      const cells = all.map((c) => (c.length > 160 ? `${c.slice(0, 157)}…` : c));
       const h = Math.max(...cells.map((c, i) => para(c, 0, 0, widths[i]! - 10, { size: 8.5, bold: header, dry: true }))) + 10;
       // A table that runs onto the next page repeats its header there.
       if (!header && y + h > bottom) { newPage(); row(t.columns, true); }
@@ -199,26 +221,26 @@ export function reportPdf(r: Report): Promise<{ pdf: Buffer; text: string[] }> {
     const m = body.match(/^\[([^\]]+)\] ([\s\S]*)$/);
     const width = WIDTH - indent;
     if (!m) {
-      const h = para(body, 0, 0, width, { size: indent ? 8.5 : 9.5, dry: true });
-      room(h + 3);
-      para(body, rtl ? PAGE.margin : PAGE.margin + indent, y, width, { size: indent ? 8.5 : 9.5, color: indent ? C.muted : C.ink });
-      y += h + 3;
+      para(body, rtl ? PAGE.margin : PAGE.margin + indent, 0, width, { size: indent ? 8.5 : 9.5, color: indent ? C.muted : C.ink, flow: true });
+      y += 3;
       return;
     }
     const [, tag, text] = m;
-    const [, fg, bg] = TAG_STYLE.find(([re]) => re.test(tag!.replace(CONTROL, "")))!;
+    const [, fg, bg] = TAG_STYLE.find(([re]) => re.test(tag!.replace(CONTROLS, "")))!;
     const tagW = Math.min(150, measure(tag!, 7.5, true) + 10);
-    const h = Math.max(14, para(text!, 0, 0, width - tagW - 6, { size: 9, dry: true }));
-    room(h + 4);
+    room(16);
+    const top = y;
     const tagX = rtl ? PAGE.margin + WIDTH - indent - tagW : PAGE.margin + indent;
     doc.roundedRect(tagX, y + 1, tagW, 12.5, 3).fill(bg);
     para(tag!, tagX + 5, y + 2.5, tagW - 10, { size: 7.5, bold: true, color: fg });
-    para(text!, rtl ? PAGE.margin : tagX + tagW + 6, y, width - tagW - 6, { size: 9 });
-    y += h + 4;
+    para(text!, rtl ? PAGE.margin : tagX + tagW + 6, 0, width - tagW - 6, { size: 9, flow: true });
+    if (y < top + 14) y = top + 14;
+    y += 4;
   };
 
   for (const s of r.sections) {
-    room(40);
+    // A heading never sits alone at the foot of a page: it needs room for itself and a first line or table row.
+    room(s.table ? 90 : 60);
     para(s.heading, PAGE.margin, y, WIDTH, { size: 12.5, bold: true, color: C.brand });
     y += 21;
     doc.moveTo(PAGE.margin, y).lineTo(PAGE.margin + WIDTH, y).lineWidth(1).strokeColor(C.brand).stroke();
@@ -228,8 +250,7 @@ export function reportPdf(r: Report): Promise<{ pdf: Buffer; text: string[] }> {
     for (const l of s.lines) item(l);
     y += 12;
   }
-  room(40);
-  y += para(r.closing, PAGE.margin, y, WIDTH, { size: 8.5, color: C.muted });
+  para(r.closing, PAGE.margin, 0, WIDTH, { size: 8.5, color: C.muted, flow: true });
 
   // The footer on every page: the brand, the reference, the label and the page.
   const pages = doc.bufferedPageRange();

@@ -36,6 +36,8 @@ jobs:
 
       - name: Install Chromium for the smoke test
         run: npx playwright install --with-deps chromium
+      - name: Install poppler, so the smoke test reads the report PDFs' words (E16)
+        run: sudo apt-get update -q && sudo apt-get install -y -q poppler-utils
 
       - name: Seed demo data and start the compiled server
         run: |

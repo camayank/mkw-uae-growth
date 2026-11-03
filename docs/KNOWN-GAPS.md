@@ -308,12 +308,23 @@ in a browser; everything listed here is not.
      `QUICK_BUDGETS`.
 110. ~~**The canvas restyle is built for the selector only.**~~ Closed by E9, E10 and E11: the client, staff, partner
      and homepage screens are in the new look (D91 to D93).
-112. **The order of places uses the engine's statuses and estimates, approved or not**, as the full assessment's list
-     already does: an unapproved budget condition or a lower unapproved estimate can put one place ahead of another,
-     while neither the condition nor the figure is shown. The quick match makes that order a headline ("the place to
-     look at first"), labelled "to be verified by a person" until the place is approved. Ranking only on approved
-     facts would change the full assessment too; it is an owner decision.
+112. ~~**The order of places uses the engine's statuses and estimates, approved or not.**~~ Closed by E13 (D95, the
+     owner's decision of 3 Nov 2026): every public screen orders places on approved facts and the founder's answers
+     only, and the quick match names a place to review first only when a person approved it. Staff keep the engine's
+     order.
 111. **The new Arabic strings are drafts** until the Arabic reviewer signs them off, like the rest of the dictionary.
+
+## E13: recommendation trust
+
+118. **With nothing approved, the public order is the founder's answers, then the name.** So the first places listed
+     can be ones a person would rule out at once (a financial centre for a software business, say), because the rule
+     that rules them out is not approved for public display yet. The page says so ("listed by your answers, then by
+     name") and names no lead. Approving the structure and place rules and the first-wave places (gap 92) is what
+     gives the public order meaning; nothing is estimated in between.
+119. **The new Arabic strings for E13 are drafts** until the Arabic reviewer signs them off (with gaps 111 and 116).
+120. **A review request sent from a quick match without a lead names no place**, only the emirate of the first place
+     listed (as before when the founder chose "anywhere"): the founder did not choose that place, so the reviewer
+     picks. With a lead, the approved place is sent as the place they have in mind, as in E8.
 
 ## E9: workspace look
 

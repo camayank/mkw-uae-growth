@@ -52,14 +52,23 @@ describe("the contract's scenarios, end to end", () => {
   const lines = (offerId: string) => asPlatform(env.db, null, async (tx) => (await tx.query<{ code: string }>("select code from offer_lines where offer_id = $1 order by code", [offerId])).rows.map((r) => r.code));
   /**
    * The public result and the review for the same answers must agree on what is eligible: one engine, two readers.
-   * The public list carries the fitting places first, in the review's order, then the excluded ones as "to be
-   * verified" (an exclusion's reason is public only once its rule is approved for display, D80).
+   * The public list carries every place the review lists, and the excluded ones as "to be verified" (an exclusion's
+   * reason is public only once its rule is approved for display, D80). E13 (D95): its order uses only what the public
+   * may see, so with nothing approved it is the founder's answers (the emirate), then the name.
    */
+  const samePlacesPublicOrder = (a: any, p: any, answers: Record<string, unknown>) => {
+    const zones = p.places.map((x: any) => x.zone);
+    for (const x of a.places) expect(zones).toContain(x.zone);
+    const em = (answers.emirate as string | undefined) ?? "Dubai";
+    const rest = answers.freeZone ? p.places.filter((x: any) => x.zone !== p.places[0].zone) : p.places;
+    const want = [...rest].sort((x: any, y: any) => Number(y.emirate === em) - Number(x.emirate === em) || x.zone.localeCompare(y.zone));
+    expect(rest.map((x: any) => x.zone)).toEqual(want.map((x: any) => x.zone));
+  };
   const sameEngine = async (answers: Record<string, unknown>) => {
     const a = await advice({ jurisdiction: "not_sure", ...answers });
     const p = (await publicAssess(answers)).body;
     expect(p.places.length).toBeGreaterThan(0); // the excluded places are listed too, as "to be verified"
-    expect(p.places.slice(0, a.places.length).map((x: any) => x.zone)).toEqual(a.places.map((x: any) => x.zone));
+    samePlacesPublicOrder(a, p, answers);
     expect(p.places.every((x: any) => x.toBeVerified && !x.figures)).toBe(true);
     return { a, p };
   };
@@ -109,7 +118,7 @@ describe("the contract's scenarios, end to end", () => {
     expect((await env.call("setup", "GET", `/api/ops/requests/${r.id}/scoping`)).status).toBe(403);
     // The public selector gives the same places for the same answers, confirms nothing and shows no figure.
     const p = (await publicAssess(answers)).body;
-    expect(p.places.slice(0, a.places.length).map((x: any) => x.zone)).toEqual(a.places.map((x: any) => x.zone));
+    samePlacesPublicOrder(a, p, answers);
     expect(p.structure).toMatchObject({ confirmed: false, recommendation: null });
     expect(p.places.every((x: any) => x.toBeVerified && !x.figures)).toBe(true);
   });

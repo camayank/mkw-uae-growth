@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { advise, publicView, QUICK_BUDGETS, QUICK_EMIRATES, quickInput, quickMatch, type QuickAnswers, type QuickBudget, type ScopingRule, type Zone } from "../src/index.ts";
+import { publicAssessment, QUICK_BUDGETS, QUICK_EMIRATES, quickInput, quickMatch, type QuickAnswers, type QuickBudget, type ScopingRule, type Zone } from "../src/index.ts";
 
 /**
- * E8 quick match: four answers to the place to look at first, with live counts. It is the full assessment's engine
+ * E8 quick match: four answers to the places worth reviewing, with live counts. It is the full assessment's engine
  * and public filter (D80) on fewer answers: nothing unapproved is stated, a count falls only on an approved exclusion,
- * and the place shown first is the engine's own ranking.
+ * and the places come in the public order (E13, D95), with a lead only for an approved place.
  */
 const KEYS = ["structure.free_zone_default", "structure.offshore_no_visas", "structure.holding", "structure.no_viable_option", "structure.no_viable_place", "structure.preferred_excluded", "place.visa_capacity", "place.visa_package", "place.cost_estimate", "place.budget", "place.activity_listed", "obligation.corporate_tax", "obligation.ct_qfzp"];
 const rules: ScopingRule[] = KEYS.map((key) => ({ key, kind: "structure", statement: key, parameters: {}, sourceUrl: "", confidence: "verified", verifiedBy: "A", verifiedAt: "2026-11-01" }));
@@ -41,23 +41,26 @@ describe("the quick match (E8)", () => {
       expect(Object.values(m.byEmirate).reduce((a, b) => a + b, 0), label).toBe(zones.length);
       expect(m.approved, label).toEqual({ places: 0, ofPlaces: m.options });
       if (m.best) expect(m.best.toBeVerified && !m.best.figures, label).toBe(true);
+      // E13: nothing approved, so no place is presented as the one to review first.
+      expect(m.lead, label).toBe(false);
     }
   });
 
-  it("the quick match agrees with the full assessment over every place: its structure, its conclusion and which place leads", () => {
+  it("the quick match agrees with the full public assessment: its structure, its conclusion, its count and which place comes first", () => {
     const withAjman = [...zones, z("Ajman DED", "Ajman", "mainland", 2, 15_000, 30_000, ["trading"])];
     for (const zs of [zones, withAjman])
       for (const approvals of [[NONE, NONE], [ALL_RULES, new Set(zs.map((x) => x.name))], [ALL_RULES, NONE]] as const)
         for (const q of [...cases, { activity: "tech" as const, emirate: "Ajman", visas: 1 }, { activity: "tech" as const, emirate: "Ajman", visas: 1, budget: "up_to_15k" as const }]) {
           const label = JSON.stringify({ q, places: zs.length, rules: approvals[0].size, approved: approvals[1].size });
           const m = quickMatch(q, rules, zs, approvals[0], approvals[1], AS_OF);
-          const full = publicView(advise(quickInput(q), rules, zs, AS_OF), approvals[0], approvals[1], AS_OF);
+          const full = publicAssessment(quickInput(q), rules, zs, approvals[0], approvals[1], AS_OF);
           expect(m.structure, label).toEqual({ recommendation: full.structure.recommendation, confirmed: full.structure.confirmed });
           expect(m.noViableOption, label).toBe(full.noViableOption);
-          // The full view lists its first five fits; when one of them is in the chosen emirate, the quick match leads with it.
-          const open = full.places.filter((p) => p.status !== "INELIGIBLE");
-          const firstHere = q.emirate ? open.find((p) => p.emirate === q.emirate) : open[0];
-          if (firstHere && full.places.indexOf(firstHere) < 5) expect(m.best?.zone, label).toBe(firstHere.zone);
+          // E13: the full comparison opens on the same first place in the chosen emirate (or across the UAE), every time.
+          const firstHere = q.emirate ? full.places.find((p) => p.emirate === q.emirate) : full.places[0];
+          expect(m.best?.zone, label).toBe((firstHere ?? full.places[0])?.zone);
+          expect(m.options, label).toBe(q.emirate ? full.places.filter((p) => p.emirate === q.emirate).length : full.places.length);
+          expect(m.lead, label).toBe(!!m.best && !m.best.toBeVerified);
           if (q.emirate && m.best) expect(m.best.emirate === q.emirate, label).toBe(!m.bestElsewhere);
           if (approvals[1].size === 0) expect([m.best, ...m.alternatives].every((p) => !p || (p.conditions === 0 && !p.figures)), label).toBe(true);
         }

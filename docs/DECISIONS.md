@@ -1044,3 +1044,21 @@ canvas of 3 Nov 2026 and its review round.)
   translated there and would show twice.
 - On a phone the map is a two-column list rather than a map, so there it follows the page's direction.
 
+**D95. The public order of places uses approved facts and the founder's answers only.** (E13, the owner's decision of
+3 Nov 2026: "Approved facts only".)
+
+- Before, the public list and the quick match followed the engine's order, which uses every status and estimate on
+  record, approved or not. An unapproved condition or a lower unapproved estimate could put one place ahead of another
+  while the public saw neither, and the quick match made that order a headline ("the place to look at first").
+- Now `publicOrder` (`packages/core/src/public.ts`) is the engine's order computed on what the public may see: the
+  confirmed structure, the public status, the founder's answers (the place they named, the emirate) and, for an
+  approved place only, its approved record (activities, visa package) and lowest estimate; then the name. With
+  everything approved it equals the engine's order; with nothing approved it is the answers, then the name. Core tests
+  hold both, and that changing an unapproved place's estimate, activities, facilities or visa package never moves it.
+- The public assessment now runs over every place on record (`publicAssessment`), not the advice's first five, which
+  the engine chose on everything it holds. The preliminary report and the saved result read the same order.
+- The quick match presents a place as "a place worth reviewing first" only when a named person approved it for public
+  display; otherwise it shows "places to review", three side by side, with no lead. Counts say "not yet ruled out",
+  never that places fit, because a count falls only on an approved exclusion.
+- Staff (the review, the offers, allocation) keep the engine's full order. The page's "No preference: show me the best
+  value anywhere" became "No preference: anywhere in the UAE".

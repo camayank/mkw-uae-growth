@@ -34,8 +34,10 @@ export async function issueLoginCode(db: Database, email: string): Promise<{ cod
       return true;
     }
     await tx.query("update login_codes set used_at = now() where email = $1 and used_at is null", [normalised]);
+    // The expiry is stamped with the clock now that the lock is held, not the transaction's start (now()): the code
+    // issued last always expires last, so it is the newest when verified (Codex review of E17).
     await tx.query(
-      `insert into login_codes (email, code_hash, expires_at) values ($1, $2, now() + interval '${CODE_MINUTES} minutes')`,
+      `insert into login_codes (email, code_hash, expires_at) values ($1, $2, clock_timestamp() + interval '${CODE_MINUTES} minutes')`,
       [normalised, sha256(`${normalised}:${code}`)],
     );
     return true;

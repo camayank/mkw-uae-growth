@@ -54,6 +54,13 @@ Also fixed:
 
 Recorded: timing differences (gap 134).
 
+## Codex review
+
+One finding, fixed. A code's expiry used the transaction's start time, so a request that waited for the lock could
+issue a code that sorted before the one it had just invalidated. The expiry is now stamped with the clock after the
+lock is held. The race needs two connections interleaving inside a transaction, which the test database cannot drive,
+so it is fixed by construction: the timestamp is taken under the lock.
+
 ## Dependencies
 
 None. No new library, no migration.

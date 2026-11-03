@@ -1195,6 +1195,10 @@ after the owner's transformation mandate named the defect: "Investigate the repo
   - The path with no live code now compares the hash too, so it takes about as long as the others.
   - A correct code for an account deactivated in the meantime gets the same refusal as any other failure.
   - The new message and the throttle message have draft Arabic.
+- **Found by the Codex review of E17, and fixed.** A code's expiry used `now()`, the time its transaction started. A
+  request that started first but took the lock second could therefore insert a code expiring before the one it had
+  just invalidated, and verifying would pick the invalidated one. The expiry is now stamped with `clock_timestamp()`
+  after the lock is held, so the code issued last always expires last.
 - **What remains.** The time a request takes can still differ a little between a known and an unknown email, above
   all when asking for a code, since a known email sends one (gap 134). The answer itself is the same.
 - **Tests** (`apps/api/test/sign-in.test.ts`):

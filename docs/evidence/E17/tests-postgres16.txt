@@ -4,6 +4,6 @@
 
  Test Files  2 passed (2)
       Tests  13 passed (13)
-   Start at  19:31:20
-   Duration  2.63s (transform 1.33s, setup 0ms, import 2.01s, tests 2.49s, environment 0ms)
+   Start at  19:40:27
+   Duration  3.58s (transform 1.78s, setup 0ms, import 2.77s, tests 3.24s, environment 0ms)
 

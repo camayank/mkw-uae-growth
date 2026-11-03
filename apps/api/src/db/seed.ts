@@ -62,8 +62,10 @@ export async function seedCatalogue(db: Database): Promise<void> {
     for (const [place, authority] of Object.entries(PLACE_AUTHORITY)) {
       await tx.query("update zones set authority_id = $2 where name = $1 and authority_id is null", [place, authority]);
     }
-    // E7B: the first commercial wave, flagged for the verifier; a placeholder place stays inactive whatever its priority.
-    for (const place of FIRST_WAVE) await tx.query("update zones set priority = 1 where name = $1 and priority is null", [place]);
+    // E7B: the first commercial wave, flagged for the verifier once; a priority the founder clears later stays cleared
+    // across restarts (the marker in settings says the wave was applied). A placeholder stays inactive whatever its priority.
+    const wave = await tx.query("insert into settings (key, value) values ('catalogue_first_wave', '{\"applied\": true}'::jsonb) on conflict (key) do nothing returning key");
+    if (wave.rows.length) for (const place of FIRST_WAVE) await tx.query("update zones set priority = 1 where name = $1 and priority is null", [place]);
   });
 }
 

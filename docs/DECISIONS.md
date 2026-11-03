@@ -849,7 +849,8 @@ canvas of 3 Nov 2026 and its review round.)
   with the Value left blank, so what the verifier sends back is what the importer reads, and importing the backlog
   untouched writes nothing.
 - The first commercial wave is a priority flag on fifteen places by name, chosen to cover the seven service lines the
-  contract names. Two places (KEZAD, JAFZA) are added by name only and stay inactive until their figures are
+  contract names. The seed applies it once (a marker in settings), so a priority the founder clears stays cleared
+  across restarts. Two places (KEZAD, JAFZA) are added by name only and stay inactive until their figures are
   recorded. The flag orders the verifier's work; it verifies nothing and changes no figure or recommendation.
 - No official page was read in this outcome (the container has no internet access): the data pipeline is ready and
   the backlog names what to obtain; filling it is the named verifier's work, through the importer.

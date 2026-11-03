@@ -530,9 +530,10 @@ export const QUALIFIED = `(l.high_intent or l.status in ('consultation', 'conver
  * (visitors) and the platform's (leads to revenue); completion and abandonment; won and lost; revenue by segment;
  * turnaround; the leads that need a person; realised revenue against the pipeline.
  */
-/** One lead per request carries its commercial outcomes: the first (by creation) that reached it, so a request two
- *  leads point at (the handoff attaches every lead of a saved result) counts its offers, engagement and revenue once. */
-const ATTRIBUTED = "att as (select distinct on (request_id) id from leads where request_id is not null and status <> 'anonymised' order by request_id, created_at, id)";
+/** One lead per request carries its commercial outcomes, so a request two leads point at (the handoff attaches every
+ *  lead of a saved result) counts its offers, engagement and revenue once: the lead with a measured browser session
+ *  first (that is what the funnel joins on), then the earliest, then the id so the choice is stable. */
+const ATTRIBUTED = "att as (select distinct on (request_id) id from leads where request_id is not null and status <> 'anonymised' order by request_id, (source->>'visitor') is null, created_at, id)";
 
 export async function funnelReport(tx: Queryable, actor: SessionUser) {
   requirePipeline(actor);

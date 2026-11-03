@@ -44,6 +44,7 @@ const app = await buildApp({
   trustProxy: process.env.TRUST_PROXY && process.env.TRUST_PROXY !== "0" ? process.env.TRUST_PROXY : false,
   webhookSecret: process.env.PAYMENT_WEBHOOK_SECRET,
   webDir: process.env.WEB_DIR ?? join(here, "../../web/public"),
+  appUrl: process.env.APP_URL || undefined,
   logger: process.env.LOG !== "0",
   alertEmail: process.env.ALERT_EMAIL || undefined,
   startedAt,

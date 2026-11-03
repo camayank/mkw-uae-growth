@@ -65,7 +65,7 @@ describe("templates and branding", () => {
     const r = renderTemplate("payment_due", "client", SAMPLE_VARS, "https://app.test/");
     expect(r.subject).toBe("Deposit of AED 12,345.50 to start your engagement");
     expect(r.body).toContain("reference 66666666");
-    expect(r.body).toContain("https://app.test/#/engagement/66666666-7777-8888-9999-000000000000");
+    expect(r.body).toContain("https://app.test/app/#/engagement/66666666-7777-8888-9999-000000000000"); // E14
     const a = renderTemplate("allocation_offered", "partner", SAMPLE_VARS, "https://app.test");
     expect(a.body).toContain("20 Oct, 10:00 GST");
     expect(renderTemplate("login_code", "client", SAMPLE_VARS, "x").inApp).toBe(false);

@@ -69,7 +69,7 @@ async function openTestDatabase(): Promise<Database> {
 
 export async function makeEnv(
   start = new Date("2026-10-19T06:00:00Z"),
-  extra: Partial<Pick<AppOptions, "trustProxy" | "logger" | "alertEmail" | "startedAt">> = {},
+  extra: Partial<Pick<AppOptions, "trustProxy" | "logger" | "alertEmail" | "startedAt" | "webDir" | "appUrl">> = {},
 ): Promise<TestEnv> {
   const db = await openTestDatabase();
   await migrate(db);

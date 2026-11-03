@@ -77,7 +77,7 @@ export function memoryProvider(secret: string, appUrl = "http://localhost:8787",
     kind: "memory",
     links,
     async createLink(req) {
-      const link = { url: `${appUrl.replace(/\/$/, "")}/#/pay/${req.paymentId}`, providerRef: `link_${randomUUID().slice(0, 8)}` };
+      const link = { url: `${appUrl.replace(/\/$/, "")}/app/#/pay/${req.paymentId}`, providerRef: `link_${randomUUID().slice(0, 8)}` };
       links.push({ ...link, amountFils: req.amountFils });
       return link;
     },

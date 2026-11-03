@@ -20,7 +20,7 @@ Needs Node 22 and pnpm 10.
 ```bash
 pnpm install
 pnpm seed          # catalogue, margin rules and demo parties (invented firm names) into ./apps/api/data/pglite
-pnpm dev           # http://localhost:8787 with development sign-in (codes shown on screen)
+pnpm dev           # http://localhost:8787: the public homepage; the workspace at /app/ with development sign-in (codes shown on screen)
 pnpm test          # 438 tests: pricing, allocation, rules, full HTTP flow, database security, races, contract, PDPL, the 26 contract scenarios
 pnpm typecheck
 pnpm build         # compiles to dist/; `pnpm start` then runs the compiled build (what production and the Dockerfile run)

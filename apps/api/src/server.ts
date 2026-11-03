@@ -42,6 +42,8 @@ export interface AppOptions {
   trustProxy?: string | false;
   webhookSecret?: string;
   webDir?: string;
+  /** The public web address (APP_URL), for the public pages' canonical links, robots.txt and the sitemap (E14). */
+  appUrl?: string;
   /** MKW's alert address (ALERT_EMAIL, O13). */
   alertEmail?: string;
   /** When this process started: a platform whose jobs never ran is late this long after it (O13). */
@@ -171,7 +173,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   registerSystemRoutes(ctx);
 
   // Web app ------------------------------------------------------------------
-  if (opts.webDir) registerStatic(app, opts.webDir);
+  if (opts.webDir) registerStatic(app, opts.webDir, opts.appUrl);
 
   return app;
 }
@@ -218,19 +220,54 @@ const TYPES: Record<string, string> = {
   ".json": "application/json",
 };
 
-function registerStatic(app: FastifyInstance, dir: string) {
+/**
+ * The web pages (E14, D96). The public homepage is the site's front door at `/`; the workspace (clients, partners,
+ * MKW staff) lives at `/app/`, its files served from the same folder; the public intake stays at `/intake.html`.
+ * Old addresses keep working: `/selector.html` and `/index.html` redirect permanently, and a workspace link sent
+ * before E14 (`/#/…`) is forwarded by the homepage to `/app/#/…`. Anything else is a 404 page, not the workspace.
+ */
+const PUBLIC_PAGES = new Set(["selector.html", "intake.html"]);
+
+function registerStatic(app: FastifyInstance, dir: string, appUrl?: string) {
   const root = resolve(dir);
-  app.get("/*", async (req: FastifyRequest, reply: FastifyReply) => {
-    const url = (req.params as { "*": string })["*"] || "index.html";
-    if (url.startsWith("api/")) return reply.status(404).send({ error: "not_found", message: "No such endpoint" });
-    let path = normalize(join(root, url));
-    if (!path.startsWith(root)) return reply.status(404).send();
-    try {
-      if (!(await stat(path)).isFile()) path = join(root, "index.html");
-    } catch {
-      path = join(root, "index.html");
-    }
+  const base = (appUrl ?? "").replace(/\/$/, "");
+  const query = (url: string) => (url.includes("?") ? url.slice(url.indexOf("?")) : "");
+  const send = async (reply: FastifyReply, file: string, status = 200) => {
+    let body: Buffer | string = await readFile(join(root, file));
+    // The public pages name their address in full once the deployment says what it is (APP_URL).
+    if (base && PUBLIC_PAGES.has(file)) body = body.toString("utf8").replace('<link rel="canonical" href="', `<link rel="canonical" href="${base}`);
     reply.header("cache-control", "no-cache");
-    return reply.type(TYPES[extname(path)] ?? "application/octet-stream").send(await readFile(path));
+    return reply.status(status).type(TYPES[extname(file)] ?? "application/octet-stream").send(body);
+  };
+  const isFile = async (file: string) => {
+    const path = normalize(join(root, file));
+    if (!path.startsWith(root + "/") && path !== root) return false;
+    try {
+      return (await stat(path)).isFile();
+    } catch {
+      return false;
+    }
+  };
+  // Search engines: the public pages only; the workspace and the API are not for indexing.
+  app.get("/robots.txt", async (_req, reply) =>
+    reply.type("text/plain; charset=utf-8").header("cache-control", "no-cache").send(`User-agent: *\nDisallow: /app/\nDisallow: /api/\n${base ? `Sitemap: ${base}/sitemap.xml\n` : ""}`),
+  );
+  app.get("/sitemap.xml", async (_req, reply) => {
+    if (!base) return reply.status(404).send({ error: "not_found", message: "No sitemap until APP_URL is set" });
+    const urls = ["/", "/intake.html"].map((u) => `<url><loc>${base}${u}</loc></url>`).join("");
+    return reply.type("application/xml; charset=utf-8").header("cache-control", "no-cache").send(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${urls}</urlset>`);
+  });
+  app.get("/*", async (req: FastifyRequest, reply: FastifyReply) => {
+    const url = (req.params as { "*": string })["*"] ?? "";
+    if (url.startsWith("api/")) return reply.status(404).send({ error: "not_found", message: "No such endpoint" });
+    if (url === "selector.html") return reply.redirect("/" + query(req.url), 301);
+    if (url === "index.html" || url === "app") return reply.redirect("/app/" + query(req.url), 301);
+    if (url === "") return send(reply, "selector.html");
+    if (url === "app/") return send(reply, "index.html");
+    // The workspace's own files, relative to /app/ (styles, scripts); the same files are also at the root.
+    const file = url.startsWith("app/") ? url.slice(4) : url;
+    if (file !== "404.html" && (await isFile(file))) return send(reply, normalize(file));
+    if (url.startsWith("app/")) return send(reply, "index.html");
+    return send(reply, "404.html", 404);
   });
 }

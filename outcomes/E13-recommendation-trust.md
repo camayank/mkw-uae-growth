@@ -1,6 +1,6 @@
 # E13 Recommendation trust: the public order on approved facts only
 
-Status: verified-pending-merge (branch `outcome/E13-recommendation-trust`, on `main` at 403fcc5 with E12 merged;
+Status: merged (camayank/mkw-uae-growth#34, 3 Nov 2026; previously verified-pending-merge, branch `outcome/E13-recommendation-trust`, on `main` at 403fcc5 with E12 merged;
 released by the owner on 3 Nov 2026: "yes" to E13 as proposed after the portal assessment, with the decision
 "Approved facts only" on the ranking, D95)
 

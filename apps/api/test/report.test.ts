@@ -88,7 +88,7 @@ describe("the assessment report and the consultation booking (E7D)", () => {
     let last = 200;
     for (let i = 0; i < 40 && last !== 429; i++) last = (await env.send("anon", "GET", `/api/public/assessments/${code}/report.pdf`)).status;
     expect(last).toBe(429);
-  });
+  }, 60_000); // E16: up to 30 designed reports are rendered before the rate limit answers 429; CI is slower than a laptop
 
   it("the client's report: own requests only, preliminary until the advice is approved, reviewed after with the reviewer named", async () => {
     const r = await env.call("client", "POST", "/api/requests", { answers: { mode: "new_company", jurisdiction: "not_sure", ...answers } });

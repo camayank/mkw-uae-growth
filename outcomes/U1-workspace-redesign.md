@@ -1,6 +1,6 @@
 # U1 Client and partner workspace redesign
 
-Status: in progress (branch `outcome/U1-workspace-redesign`; released by the owner on 3 Nov 2026: "now build these
+Status: verified-pending-merge (branch `outcome/U1-workspace-redesign`; released by the owner on 3 Nov 2026: "now build these
 designs into the web app", after the design canvas and its review round of the same day)
 
 ## Business result
@@ -65,3 +65,26 @@ phone with a tab bar. Nothing a role could not see before becomes visible.
 ## Rollback
 
 - Revert the pull request: web files, the smoke test and documents only.
+
+## Evidence
+
+| Claim | Evidence |
+| --- | --- |
+| Tests | `pnpm typecheck` clean; `pnpm test`: 105 core + 333 API (1 skipped on PGlite) = 438, unchanged: no API change |
+| Smoke | `docs/evidence/U1/smoke-log.txt`: 220 checks OK on a fresh demo (E6: 213), the 7 new ones marked U1: the partner's offer row carries a reply countdown and no client price; the partner's next step is pinned with its evidence upload; the client engagement opens on the next action and folds the rest into panels; the client and partner menus are bottom tab bars at 390 px; the advice opens with a plain summary before the reasoning; axe on the partner's work page at 390 px |
+| Accessibility | `axe.json`: 41 screens at 1280 and 390 px, 0 violations |
+| Screens | `36-client-advice.png` (In short above the reasoning), `13-client-engagement-approved.png` (next action, messages, panels), `07-client-offer.png`, `11-partner-engagement.png` (pinned next step), `10-partner-offered-work.png` (countdown), `75-mobile-client-home.png` and `93-mobile-partner-work.png` (tab bars at 390 px), `81-mobile-client-advice.png` |
+| Audit chain | `pnpm verify:audit` on the smoke demo: intact |
+| Patterns | `docs/DESIGN.md` rows marked U1; D84; KNOWN-GAPS 81–84 |
+
+## Independent review
+
+(Recorded below once the reviewer reports.)
+
+## Could not verify
+
+- **How real founders and partner firms read the new pages**: the pilot will tell; the screens were tested by rule
+  and by the browser suite, not by people.
+- **The offer switch with several published tiers** in the browser: the demo builds one published offer, so that path
+  is covered by the markup and the conditional smoke check only.
+

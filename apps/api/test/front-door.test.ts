@@ -32,6 +32,9 @@ describe("the front door and the workspace's address (E14)", () => {
     expect(home.body).toContain('id="quick-start"');
     expect(home.body).toContain('<link rel="canonical" href="https://tasees.test/" />');
     expect(home.body).toContain('<script src="forward.js"></script>');
+    // The homepage's script is loaded by forward.js, so a forwarded old link never runs it.
+    expect(home.body).not.toContain('src="selector.js"');
+    expect((await get(env, "/forward.js")).body).toContain('s.src = "selector.js"');
     // Without APP_URL the canonical link stays relative.
     expect((await get(bare, "/")).body).toContain('<link rel="canonical" href="/" />');
     const intake = await get(env, "/intake.html");
@@ -67,11 +70,19 @@ describe("the front door and the workspace's address (E14)", () => {
     expect(missing.status).toBe(404);
     expect(missing.body).toContain("We could not find that page");
     expect(missing.body).not.toContain("<title>Tasees workspace</title>");
-    expect((await get(env, "/404.html")).status).toBe(404);
-    for (const url of ["/../package.json", "/%2e%2e/%2e%2e/package.json", "/app/../../package.json", "/app/%2e%2e/%2e%2e/apps/api/package.json"]) {
+    // The 404 page is served only as a 404, however the path is written.
+    for (const url of ["/404.html", "/./404.html", "/js/../404.html", "/app/404.html"]) {
       const r = await get(env, url);
-      expect(r.body, url).not.toContain('"name": "@tasees');
+      expect([r.status, r.body.includes("We could not find that page") || r.body.includes("<title>Tasees workspace</title>")], url).toEqual([url.startsWith("/app/") ? 200 : 404, true]);
     }
+    // apps/api/package.json exists two folders above the web folder: no spelling of the path reaches it.
+    for (const url of ["/%2e%2e/%2e%2e/api/package.json", "/app/%2e%2e/%2e%2e/%2e%2e/api/package.json", "/..%2f..%2fapi%2fpackage.json", "/%252e%252e/%252e%252e/api/package.json", "/..%5c..%5capi%5cpackage.json", "/app/..%2f..%2f..%2fapi%2fpackage.json"]) {
+      const r = await get(env, url);
+      expect(r.body, url).not.toContain('"@tasees/api"');
+      expect(r.status === 404 || r.body.includes("<title>Tasees workspace</title>"), url).toBe(true);
+    }
+    // The public pages are served at the root only: under /app/ the path is the workspace's.
+    for (const url of ["/app/selector.html", "/app/intake.html"]) expect((await get(env, url)).body, url).toContain("<title>Tasees workspace</title>");
     // Under /app/ an unknown path is the workspace (its routes are in the fragment), as before.
     expect((await get(env, "/app/anything")).body).toContain("<title>Tasees workspace</title>");
     // The API keeps its JSON 404.

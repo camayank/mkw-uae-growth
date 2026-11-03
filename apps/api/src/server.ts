@@ -264,9 +264,11 @@ function registerStatic(app: FastifyInstance, dir: string, appUrl?: string) {
     if (url === "index.html" || url === "app") return reply.redirect("/app/" + query(req.url), 301);
     if (url === "") return send(reply, "selector.html");
     if (url === "app/") return send(reply, "index.html");
-    // The workspace's own files, relative to /app/ (styles, scripts); the same files are also at the root.
-    const file = url.startsWith("app/") ? url.slice(4) : url;
-    if (file !== "404.html" && (await isFile(file))) return send(reply, normalize(file));
+    // The workspace's own files, relative to /app/ (styles, scripts); the same files are also at the root. The public
+    // pages are served at the root only, and the 404 page only as a 404.
+    const inApp = url.startsWith("app/");
+    const file = normalize(inApp ? url.slice(4) : url);
+    if (file !== "404.html" && !(inApp && PUBLIC_PAGES.has(file)) && (await isFile(file))) return send(reply, file);
     if (url.startsWith("app/")) return send(reply, "index.html");
     return send(reply, "404.html", 404);
   });

@@ -78,6 +78,23 @@ Evidence recorded on 3 Nov 2026 (`docs/evidence/E14/`):
   - `117-mobile-not-found.png` (390 px);
   - `95-public-home.png` (the homepage, now at `/`).
 
+## Independent review
+
+Nothing blocking: path traversal, open redirects and header injection were probed against the running demo, and none
+got through. Fixed:
+- **Forwarding:** a forwarded old link ran the homepage's script, which counted a funnel visit and showed a partner
+  the homepage for a moment. The homepage's script is now loaded by `forward.js` only when it is not forwarding, and
+  the page stays hidden while it forwards. A smoke check proves no public request is made.
+- **Rollback text:** the rollback instructions were wrong.
+- **Traversal test:** it now aims at a file that exists.
+- **404 page:** it could be served with status 200 through `/./404.html`.
+- **Public pages under `/app/`:** they were also served there.
+- **Stale address:** the staff Scoping page still linked to `/selector.html`.
+- **404 wording:** the page said "Sign in to the Tasees workspace" and now says "Sign in".
+- **DEPLOY's `WEB_DIR` row.**
+
+Recorded: the funnel's landing path for the homepage changes from `/selector.html` to `/` (D96).
+
 ## Dependencies
 
 E11 (homepage), E13. No new library.
@@ -95,5 +112,7 @@ E11 (homepage), E13. No new library.
 
 ## Rollback
 
-Revert the merge. The emails sent in the meantime point at `/app/#/…`, which after a rollback opens the workspace
-through the old fallback (an unknown path served the workspace before E14).
+Revert the merge, and keep one rewrite in its place: `/app/` and `/app/<file>` served as `/` and `/<file>`. The
+emails and payment links sent in the meantime point at `/app/#/…`. Without the rewrite, the old server would answer
+`/app/app.js` and `/app/styles.css` with the workspace's HTML, and the browser would refuse them, so those links would
+open a blank workspace (independent review of E14). No migration, no data.

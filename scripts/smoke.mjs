@@ -96,11 +96,20 @@ await (await import("node:fs/promises")).mkdir(OUT, { recursive: true });
 
 // Client: new request
 const client = await session("founder@sample-client.test");
-// E14: a workspace link sent before the move (/#/…) opens the same screen at /app/.
-await client.goto(BASE + "/#/home");
-await client.waitForURL(/\/app\/#\/home$/);
-await client.waitForSelector("#nav > :is(a, .navgroup)");
-check("an old workspace link (/#/home) forwards to /app/#/home, signed in (E14):", new URL(client.url()).pathname === "/app/");
+// E14: a workspace link sent before the move (/#/…) opens the same screen at /app/, without running the homepage:
+// no funnel event, no public request (independent review of E14).
+{
+  const publicCalls = [];
+  const onRequest = (r) => { if (r.url().includes("/api/public/") || r.url().endsWith("/selector.js")) publicCalls.push(r.url()); };
+  client.on("request", onRequest);
+  await client.goto(BASE + "/#/home");
+  await client.waitForURL(/\/app\/#\/home$/);
+  await client.waitForSelector("#nav > :is(a, .navgroup)");
+  await client.waitForTimeout(1200);
+  client.off("request", onRequest);
+  check("an old workspace link (/#/home) forwards to /app/#/home, signed in, with no homepage script or public request (E14):", new URL(client.url()).pathname === "/app/" && publicCalls.length === 0);
+  if (publicCalls.length) log.push("public calls while forwarding: " + publicCalls.join(", "));
+}
 await client.goto(APP + "#/new");
 await client.waitForSelector('form[data-form="intake"]');
 // O12: a conversation, one question at a time, with the plan building beside it.

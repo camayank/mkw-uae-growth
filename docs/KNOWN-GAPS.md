@@ -308,6 +308,11 @@ in a browser; everything listed here is not.
      `QUICK_BUDGETS`.
 110. **The canvas restyle is built for the selector only.** The homepage's package cards and map teaser, and the
      client, partner and staff screens in the new look, are on the design canvas and not yet in the app.
+112. **The order of places uses the engine's statuses and estimates, approved or not**, as the full assessment's list
+     already does: an unapproved budget condition or a lower unapproved estimate can put one place ahead of another,
+     while neither the condition nor the figure is shown. The quick match makes that order a headline ("the place to
+     look at first"), labelled "to be verified by a person" until the place is approved. Ranking only on approved
+     facts would change the full assessment too; it is an owner decision.
 111. **The new Arabic strings are drafts** until the Arabic reviewer signs them off, like the rest of the dictionary.
 
 ## O7: launch-gate preparation

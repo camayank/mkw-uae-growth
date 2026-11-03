@@ -44,17 +44,30 @@ describe("the quick match (E8)", () => {
     }
   });
 
-  it("the place shown first is the full assessment's first place on the same answers, among the chosen emirate's places", () => {
-    for (const q of cases) {
-      const m = quickMatch(q, rules, zones, ALL_RULES, ALL_PLACES, AS_OF);
-      const local = q.emirate ? zones.filter((x) => x.emirate === q.emirate) : zones;
-      const inEmirate = publicView(advise(quickInput(q), rules, local, AS_OF), ALL_RULES, ALL_PLACES, AS_OF).places.filter((p) => p.status !== "INELIGIBLE");
-      const everywhere = publicView(advise(quickInput(q), rules, zones, AS_OF), ALL_RULES, ALL_PLACES, AS_OF).places.filter((p) => p.status !== "INELIGIBLE");
-      const ranked = m.options ? inEmirate : everywhere;
-      expect(m.best?.zone ?? null, JSON.stringify(q)).toBe(ranked[0]?.zone ?? null);
-      expect(m.alternatives.map((p) => p.zone), JSON.stringify(q)).toEqual(ranked.slice(1, 3).map((p) => p.zone));
-      if (q.emirate && m.best) expect(m.best.emirate === q.emirate, JSON.stringify(q)).toBe(!m.bestElsewhere);
-    }
+  it("the quick match agrees with the full assessment over every place: its structure, its conclusion and which place leads", () => {
+    const withAjman = [...zones, z("Ajman DED", "Ajman", "mainland", 2, 15_000, 30_000, ["trading"])];
+    for (const zs of [zones, withAjman])
+      for (const approvals of [[NONE, NONE], [ALL_RULES, new Set(zs.map((x) => x.name))], [ALL_RULES, NONE]] as const)
+        for (const q of [...cases, { activity: "tech" as const, emirate: "Ajman", visas: 1 }, { activity: "tech" as const, emirate: "Ajman", visas: 1, budget: "up_to_15k" as const }]) {
+          const label = JSON.stringify({ q, places: zs.length, rules: approvals[0].size, approved: approvals[1].size });
+          const m = quickMatch(q, rules, zs, approvals[0], approvals[1], AS_OF);
+          const full = publicView(advise(quickInput(q), rules, zs, AS_OF), approvals[0], approvals[1], AS_OF);
+          expect(m.structure, label).toEqual({ recommendation: full.structure.recommendation, confirmed: full.structure.confirmed });
+          expect(m.noViableOption, label).toBe(full.noViableOption);
+          // The full view lists its first five fits; when one of them is in the chosen emirate, the quick match leads with it.
+          const open = full.places.filter((p) => p.status !== "INELIGIBLE");
+          const firstHere = q.emirate ? open.find((p) => p.emirate === q.emirate) : open[0];
+          if (firstHere && full.places.indexOf(firstHere) < 5) expect(m.best?.zone, label).toBe(firstHere.zone);
+          if (q.emirate && m.best) expect(m.best.emirate === q.emirate, label).toBe(!m.bestElsewhere);
+          if (approvals[1].size === 0) expect([m.best, ...m.alternatives].every((p) => !p || (p.conditions === 0 && !p.figures)), label).toBe(true);
+        }
+  });
+
+  it("an emirate with no place on record says so, rather than that nothing fits", () => {
+    const m = quickMatch({ activity: "tech", emirate: "Fujairah" }, rules, zones, NONE, NONE, AS_OF);
+    expect(m.onRecord).toMatchObject({ Fujairah: 0, Dubai: 2, Sharjah: 1, "Ras Al Khaimah": 2 });
+    expect(m.options).toBe(0);
+    expect(m.bestElsewhere).toBe(true);
   });
 
   it("the counts are not capped at the advice's first five places", () => {

@@ -52,7 +52,7 @@ const QUESTIONS = {
   structure: { title: "Do you already have a structure in mind?", why: "If your answers point elsewhere, the result says so and a person confirms which fits.", type: "choice", options: [["not_sure", "Not yet", "show me what fits"], ["free_zone", "A free zone company"], ["mainland", "A mainland company"], ["offshore", "An offshore company"], ["difc_adgm", "DIFC or ADGM"]] },
   emirate: { title: "Which emirate, and is there a place you have in mind?", why: "The emirate narrows the places; naming one puts it at the top of the comparison.", type: "emirate" },
 };
-const EMIRATES = ["Dubai", "Abu Dhabi", "Sharjah", "Ajman", "Ras Al Khaimah", "Umm Al Quwain", "Fujairah", "No preference"];
+const EMIRATES = ["Dubai", "Abu Dhabi", "Sharjah", "Ajman", "Ras Al Khaimah", "Umm Al Quwain", "Fujairah"];
 // The order follows what matters first for the industry chosen: premises for manufacturing, owners for a holding
 // company, the customers and owners for regulated activity. The engine reads the same answers whatever the order.
 const DEFAULT_ORDER = ["activity", "customers", "visas", "premises", "budgetAed", "owners", "foreignTaxResident", "turnover", "structure", "startWithin", "emirate"];
@@ -382,11 +382,11 @@ $("next").addEventListener("click", async () => {
 });
 $("to-landing").addEventListener("click", () => { savedCode = null; show("landing"); window.scrollTo(0, 0); $("start").focus(); });
 
-// Start again, from the result or the quick match: every answer, the saved code and the review form are cleared.
+// Start again from the full result: every answer, the quick match, the saved code and the review form are cleared.
 function restartAll() {
   for (const k of Object.keys(answers)) delete answers[k];
   answers.emirate = "Dubai"; i = 0; savedCode = null; lastResult = null;
-  Object.assign(quick, { step: 1, activity: null, emirate: undefined, visas: null, budget: null, data: null });
+  Object.assign(quick, { step: 1, activity: null, emirate: undefined, visas: null, budget: null, data: null, failed: false });
   $("review").reset(); $("review").querySelector("button[type=submit]").disabled = false; $("rmsg").hidden = true;
   show("landing"); window.scrollTo(0, 0); $("quick-start").focus();
 }
@@ -451,16 +451,20 @@ const QSTATUS = { ELIGIBLE_VERIFIED: ["ok", "fits your answers"], ELIGIBLE_CONDI
 const qbadge = (s) => `<span class="badge ${QSTATUS[s]?.[0] ?? ""}">${esc(QSTATUS[s]?.[1] ?? words(s))}</span>`;
 
 // The quick answers: emirate undefined is unanswered, null is "anywhere".
-const quick = { step: 1, activity: null, emirate: undefined, visas: null, budget: null, data: null };
+const quick = { step: 1, activity: null, emirate: undefined, visas: null, budget: null, data: null, failed: false };
 let quickSeq = 0;
 const answeredCount = () => [quick.activity, quick.emirate !== undefined, quick.visas != null, quick.budget].filter(Boolean).length;
 const activityLabel = (id) => QUESTIONS.activity.options.find((o) => o[0] === id)?.[1] ?? words(id);
-const quickBody = () => ({ ...(quick.activity ? { activity: quick.activity } : {}), ...(quick.emirate !== undefined ? { emirate: quick.emirate } : {}), ...(quick.visas != null ? { visas: quick.visas } : {}), ...(quick.budget ? { budget: quick.budget } : {}) });
+const quickBody = () => ({ ...(quick.activity ? { activity: quick.activity } : {}), ...(quick.emirate !== undefined ? { emirate: quick.emirate } : {}), ...(quick.visas != null ? { visas: quick.visas } : quick.step === 3 ? { visas: 1 } : {}), ...(quick.budget ? { budget: quick.budget } : {}) });
 
-// The quick answers as the full questionnaire and the review request read them.
+// The quick answers as the full questionnaire and the review request read them. Once the match is shown, the request
+// is about the place shown first: its emirate (also when the founder said "anywhere" or skipped the question) and the
+// place itself, as the place they have in mind. No emirate is ever invented: pricing and allocation read it.
 function syncAnswers() {
   if (quick.activity) answers.activity = quick.activity;
-  if (quick.emirate !== undefined) answers.emirate = quick.emirate ?? "No preference";
+  if (quick.emirate) answers.emirate = quick.emirate;
+  const best = quick.step === 5 ? quick.data?.best : null;
+  if (best) { answers.emirate = best.emirate; answers.freeZone = best.zone; }
   if (quick.visas != null) answers.visas = quick.visas;
   const band = BANDS.find((b) => b[0] === quick.budget);
   if (band) { if (band[2] != null) answers.budgetAed = band[2]; else delete answers.budgetAed; }
@@ -474,10 +478,22 @@ async function refreshQuick() {
     if (seq !== quickSeq) return; // a later answer already asked again
     if (!res.ok) throw new Error(data.message || "Something went wrong");
     quick.data = data;
+    quick.failed = false;
+    syncAnswers();
     $("quick-msg").hidden = true;
-    renderQuick({ keepFocus: true });
-  } catch (e) { if (seq === quickSeq) { $("quick-msg").hidden = false; $("quick-msg").textContent = `${e.message}. Check your connection; your answers are still here.`; } }
+  } catch (e) {
+    if (seq !== quickSeq) return;
+    // A match for earlier answers is never shown under new ones.
+    quick.data = null;
+    quick.failed = true;
+    $("quick-msg").hidden = false;
+    $("quick-msg").textContent = `${String(e.message).replace(/\.$/, "")}. Check your connection and try again; your answers are still here.`;
+  }
+  // The founder may have moved on to the full questions or the result: only the quick match is redrawn.
+  if (!$("quick").hidden) renderQuick({ keepFocus: true });
 }
+let visaTimer = null;
+const refreshSoon = () => { clearTimeout(visaTimer); visaTimer = setTimeout(refreshQuick, 250); };
 
 function quickPanel() {
   const d = quick.data;
@@ -495,8 +511,8 @@ function quickPanel() {
     ["Visas", quick.visas == null ? null : String(quick.visas), 3],
     ["Budget", BANDS.find((b) => b[0] === quick.budget)?.[1] ?? null, 4],
   ];
-  $("quick-answers").innerHTML = rows.map(([label, value, step]) => `<button type="button" data-go="${step}"><span><small>${esc(label)}</small><b${value ? " data-no-i18n" : ""}>${esc(value ?? "Not answered")}</b></span><span class="act">${value ? "Change" : "Answer"}</span></button>`).join("");
-  for (const b of $("quick-answers").querySelectorAll("button")) b.addEventListener("click", () => { quick.step = Number(b.dataset.go); renderQuick(); });
+  $("quick-answers").innerHTML = rows.map(([label, value, step]) => `<button type="button" data-go="${step}"><span><small>${esc(label)}</small><b>${esc(value ?? "Not answered")}</b></span><span class="act">${value ? "Change" : "Answer"}</span></button>`).join("");
+  for (const b of $("quick-answers").querySelectorAll("button")) b.addEventListener("click", () => goQuick(Number(b.dataset.go)));
 }
 
 function quickStepHtml() {
@@ -508,15 +524,16 @@ function quickStepHtml() {
   }
   if (quick.step === 2) {
     const n = (e) => (d ? d.byEmirate[e] ?? 0 : null);
+    const none = (e) => d && !d.onRecord?.[e];
     const any = d ? d.everywhere : null;
     return head(2, "Where would you like to be based?", "Tap an emirate. The number is how many places there still fit your answers.") +
       `<div class="uaemap" role="group" aria-labelledby="quick-title"><span class="sea" style="grid-column:1 / 4;grid-row:1 / 3">Arabian Gulf</span><span class="sea" style="grid-column:5 / 6;grid-row:5 / 6;text-align:center">Gulf of Oman</span>
-        ${MAP.map(([e, ar, , col, row]) => `<button type="button" class="em${n(e) === 0 ? " none" : ""}" data-em="${esc(e)}" aria-pressed="${quick.emirate === e}" aria-label="${esc(e)}${n(e) == null ? "" : `, ${n(e)} place(s)`}" style="grid-column:${col};grid-row:${row}"><span class="top-row">${flagOf(e)}<span class="n">${n(e) ?? "·"}</span></span><span><b>${esc(e)}</b><br><span class="ar" lang="ar" data-no-i18n>${ar}</span></span></button>`).join("")}</div>
-      <p class="small muted" style="margin:6px 0 10px">Schematic map, not to scale.</p>
-      <button type="button" class="anyplace" data-em="" aria-pressed="${quick.emirate === null}"><span><b>No preference: show me the best value anywhere</b><br><small class="muted">All seven emirates compared.</small></span><span class="badge general">${any ?? "·"} places</span></button>`;
+        ${MAP.map(([e, ar, , col, row]) => `<button type="button" class="em${n(e) === 0 ? " none" : ""}" data-em="${esc(e)}" aria-pressed="${quick.emirate === e}" aria-label="${esc(e)}${n(e) == null ? "" : none(e) ? ", no places on record yet" : `, ${esc(n(e))} place(s)`}" style="grid-column:${col};grid-row:${row}"><span class="top-row">${flagOf(e)}<span class="n">${none(e) ? "–" : esc(n(e) ?? "·")}</span></span><span><b>${esc(e)}</b><br><span class="ar" lang="ar" data-no-i18n>${ar}</span></span></button>`).join("")}</div>
+      <p class="small muted" style="margin:6px 0 10px">Schematic map, not to scale. A dash: we hold no places on record there yet.</p>
+      <button type="button" class="anyplace" data-em="" aria-pressed="${quick.emirate === null}"><span><b>No preference: show me the best value anywhere</b><br><small class="muted">All seven emirates compared.</small></span><span class="badge general">${esc(any ?? "·")} places</span></button>`;
   }
   if (quick.step === 3) {
-    const v = quick.visas ?? 1;
+    const v = quick.visas ?? 1; // shown as the starting point; recorded when the founder changes it or moves on
     const people = Array.from({ length: Math.min(v, 8) }, () => '<svg width="26" height="32" viewBox="0 0 30 36" aria-hidden="true"><circle cx="15" cy="9" r="7" fill="currentColor"/><path d="M2 36c0-9 6-14 13-14s13 5 13 14z" fill="currentColor"/></svg>').join("") + (v > 8 ? `<b style="align-self:center">+${v - 8}</b>` : "");
     return head(3, "How many residence visas do you need?", "Count yourself and anyone who will live and work in the UAE in the first year. Zero is fine.") +
       `<div class="stepper"><button type="button" id="visa-dec" aria-label="One visa fewer">−</button><label class="sr-only" for="quick-visas">Residence visas</label><input id="quick-visas" type="number" inputmode="numeric" min="0" max="50" value="${v}" /><button type="button" id="visa-inc" aria-label="One visa more">+</button></div>
@@ -524,17 +541,17 @@ function quickStepHtml() {
   }
   if (quick.step === 4) {
     return head(4, "What would you like to spend on set-up?", "Licence, registration and your first visas. You see the exact price from MKW Advisors before you pay anything.") +
-      `<div class="bands" role="group" aria-labelledby="quick-title">${BANDS.map(([id, label]) => { const c = d?.byBudget.find((b) => b.id === id)?.options; return `<button type="button" class="tile" data-band="${id}" aria-pressed="${quick.budget === id}"><b>${esc(label)}</b><span class="fit${c === 0 ? " zero" : ""}">${c == null ? "" : c === 0 ? "No place fits yet" : `${c} place(s) fit`}</span></button>`; }).join("")}</div>`;
+      `<div class="bands" role="group" aria-labelledby="quick-title">${BANDS.map(([id, label]) => { const c = d?.byBudget.find((b) => b.id === id)?.options; const empty = d && quick.emirate && !d.onRecord?.[quick.emirate]; return `<button type="button" class="tile" data-band="${id}" aria-pressed="${quick.budget === id}"><b>${esc(label)}</b><span class="fit${c === 0 ? " zero" : ""}">${c == null ? "" : empty ? "No places on record in this emirate yet" : c === 0 ? "No place fits yet" : `${esc(c)} place(s) fit`}</span></button>`; }).join("")}</div>`;
   }
   return quickResultHtml();
 }
 
 function quickResultHtml() {
   const d = quick.data;
-  if (!d) return `<p class="small muted">Finding your match…</p>`;
+  if (!d) return `<div class="qhead"><p class="eyebrow">Your match</p><h2 id="quick-title" tabindex="-1">${quick.failed ? "Your match could not be loaded" : "Finding your match…"}</h2>${quick.failed ? `<button type="button" class="btn" id="quick-retry">Try again</button>` : ""}</div>`;
   const where = quick.emirate ?? "the UAE";
   const legend = `<div class="notice small" role="note"><b>Preliminary, general information, not advice.</b> <span data-no-i18n>${esc(d.disclaimer)}</span>${d.asOf ? ` Rules and place data as of ${esc(d.asOf)}.` : ""}</div>
-    <p class="small muted">${d.approved.places} of ${d.approved.ofPlaces} places that fit have figures checked by a named person; the rest show "to be verified".</p>`;
+    <p class="small muted">${esc(d.approved.places)} of ${esc(d.approved.ofPlaces)} places that fit have figures checked by a named person; the rest show "to be verified".</p>`;
   if (!d.best) {
     return `<div class="qhead"><p class="eyebrow">Your match</p><h2 id="quick-title" tabindex="-1">No place on record fits these four answers yet</h2><p class="small muted">An adviser can usually find a way: a different package, budget or emirate. Ask, free of charge.</p></div>
       <div class="row"><a class="btn gold" href="#review">Ask an adviser</a><button type="button" class="sm" data-go="4">Change my budget</button></div>${legend}`;
@@ -546,13 +563,13 @@ function quickResultHtml() {
   const facts = fig ? [`${fig.visaQuota} visa(s) in the standard package`, `About ${fig.timelineDays} working days`, fig.renewalMinFils ? `Renews at about ${aed(fig.renewalMinFils)} a year` : null, b.authority ? `Licensed by ${b.authority}` : null].filter(Boolean) : [];
   const alt = (p) => `<div class="card"><span><span class="row" style="gap:8px">${flagOf(p.emirate)}<b data-no-i18n>${esc(p.zone)}</b></span><small class="muted" data-no-i18n>${esc(p.emirate)} · ${esc(TYPE[p.type] ?? words(p.type))}</small></span><span class="small">${p.figures ? `from ${esc(aed(p.figures.costMinFils))}` : '<span class="verify">to be verified</span>'}</span></div>`;
   return `<div class="qhead"><p class="eyebrow">Your match</p><h2 id="quick-title" tabindex="-1">The place to look at first in <span data-no-i18n>${esc(quick.emirate && !d.bestElsewhere ? where : b.emirate)}</span></h2>
-      ${d.bestElsewhere ? `<p class="notice small">Nothing in <span data-no-i18n>${esc(quick.emirate)}</span> fits these answers yet; this is the closest place elsewhere.</p>` : ""}</div>
+      ${d.bestElsewhere ? `<p class="notice small">${d.onRecord?.[quick.emirate] ? `No place in ${esc(quick.emirate)} fits these answers yet; this is the closest place elsewhere.` : `We hold no places on record in ${esc(quick.emirate)} yet; this is the closest place elsewhere.`}</p>` : ""}</div>
     <div class="card best">
       <div class="row" style="gap:8px">${flagOf(b.emirate)}<span class="badge general">${esc(TYPE[b.type] ?? words(b.type))}</span>${qbadge(b.status)}${d.structure.confirmed ? `<span class="badge ok">structure: ${esc(STRUCTURE[d.structure.recommendation] ?? words(d.structure.recommendation))}</span>` : ""}</div>
       <h3 data-no-i18n>${esc(b.zone)}</h3>
       ${price}
-      ${facts.length ? `<ul class="facts">${facts.map((f) => `<li data-no-i18n>${esc(f)}</li>`).join("")}</ul>` : ""}
-      ${b.conditions || b.toConfirm ? `<p class="small muted">${[b.conditions ? `${b.conditions} condition(s)` : "", b.toConfirm ? `${b.toConfirm} point(s) a person confirms` : ""].filter(Boolean).join(", ")} before anything is priced.</p>` : ""}
+      ${facts.length ? `<ul class="facts">${facts.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>` : ""}
+      ${b.conditions || b.toConfirm ? `<p class="small muted">${esc([b.conditions ? `${b.conditions} condition(s)` : "", b.toConfirm ? `${b.toConfirm} point(s) a person confirms` : ""].filter(Boolean).join(", "))} before anything is priced.</p>` : ""}
       <div class="cta noprint"><a class="btn gold" href="#review" id="quick-price">Get my exact price</a><button type="button" class="btn" id="quick-full">See the full comparison</button></div>
       <p class="small muted" style="margin:0">No payment now. A person at MKW Advisors checks your case and sends one fixed price, usually within one working day.${b.sourceUrl ? ` <a href="${esc(b.sourceUrl)}" target="_blank" rel="noopener noreferrer">Official source</a>` : ""}</p>
     </div>
@@ -590,16 +607,17 @@ function bindQuick() {
   for (const b of step.querySelectorAll("[data-go]")) b.addEventListener("click", () => goQuick(Number(b.dataset.go)));
   const input = $("quick-visas");
   if (input) {
-    const setV = (v) => { quick.visas = Math.max(0, Math.min(50, Number.isFinite(v) ? v : 0)); syncAnswers(); refreshQuick(); };
-    if (quick.visas == null) { quick.visas = 1; syncAnswers(); }
-    $("visa-dec").addEventListener("click", () => { setV((quick.visas ?? 1) - 1); renderQuick(); $("visa-dec").focus(); });
-    $("visa-inc").addEventListener("click", () => { setV((quick.visas ?? 1) + 1); renderQuick(); $("visa-inc").focus(); });
-    input.addEventListener("change", () => { setV(Math.round(Number(input.value))); renderQuick(); $("quick-visas").focus(); });
+    const setV = (v) => { quick.visas = Math.max(0, Math.min(50, Number.isFinite(v) ? v : 0)); syncAnswers(); refreshSoon(); };
+    $("visa-dec").addEventListener("click", () => { setV((quick.visas ?? 1) - 1); renderQuick({ keepFocus: true }); });
+    $("visa-inc").addEventListener("click", () => { setV((quick.visas ?? 1) + 1); renderQuick({ keepFocus: true }); });
+    // A typed number is taken when the field is left; focus stays wherever the founder moved it.
+    input.addEventListener("change", () => { setV(Math.round(Number(input.value))); renderQuick({ keepFocus: true }); });
     input.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); setV(Math.round(Number(input.value))); goQuick(4); } });
   }
   $("quick-price")?.addEventListener("click", (ev) => { ev.preventDefault(); $("review").scrollIntoView({ block: "start" }); $("company").focus(); });
   step.querySelector('a[href="#review"]:not(#quick-price)')?.addEventListener("click", (ev) => { ev.preventDefault(); $("review").scrollIntoView({ block: "start" }); $("company").focus(); });
   $("quick-full")?.addEventListener("click", toFullQuestions);
+  $("quick-retry")?.addEventListener("click", () => { quick.failed = false; renderQuick(); $("quick-title")?.focus(); refreshQuick(); });
 }
 
 function goQuick(step) {

@@ -7,8 +7,8 @@
  *
  * Pure. The caller loads the rules and places and decides what is approved.
  */
-import { advise, type Activity, type AdviceInput, type ScopingRule, type Zone } from "./advice.ts";
-import { assess, type EligibilityStatus } from "./eligibility.ts";
+import { advise, asCandidate, type Activity, type AdviceInput, type ScopingRule, type Zone } from "./advice.ts";
+import { assess, type EligibilityStatus, type Structure } from "./eligibility.ts";
 import { publicStatus, publicView, PUBLIC_DISCLAIMER, type PublicPlace } from "./public.ts";
 
 export const QUICK_EMIRATES = ["Abu Dhabi", "Dubai", "Sharjah", "Ajman", "Umm Al Quwain", "Ras Al Khaimah", "Fujairah"] as const;
@@ -54,6 +54,8 @@ export interface QuickMatch {
   everywhere: number;
   /** Places still open per emirate, for the other answers. */
   byEmirate: Record<string, number>;
+  /** Places MKW holds on record per emirate, whatever the answers: a zero means "none on record", never "none fits". */
+  onRecord: Record<string, number>;
   /** Places still open per budget band, for the other answers (in the chosen emirate when one is chosen). */
   byBudget: Array<{ id: QuickBudget; maxAed: number | null; options: number }>;
   /** The place to look at first, the engine's top-ranked open place; null when none is open. */
@@ -94,33 +96,43 @@ const quickPlace = (p: PublicPlace): QuickPlace => ({
 });
 
 export function quickMatch(q: QuickAnswers, rules: ScopingRule[], zones: Zone[], approvedRules: ReadonlySet<string>, approvedPlaces: ReadonlySet<string>, asOf?: string): QuickMatch {
+  const isOpen = (p: { zone: string; status: EligibilityStatus; findings: Parameters<typeof publicStatus>[1] }) => publicStatus(p.status, p.findings, approvedPlaces.has(p.zone), approvedRules) !== "INELIGIBLE";
   // The counts: every place on record, open unless the public may see why it is excluded (the advice lists only its
   // first five fits, so the counts come from the eligibility check itself, which gives each place the same status).
   const openPlaces = (budget: QuickBudget | undefined) => {
     const r = assess(quickInput(q, budget), rules, zones, null);
-    return [...r.viable, ...r.excluded].filter((p) => publicStatus(p.status, p.findings, approvedPlaces.has(p.zone), approvedRules) !== "INELIGIBLE");
+    return [...r.viable, ...r.excluded].filter(isOpen);
   };
   const here = <T extends { emirate: string }>(places: T[]) => (q.emirate ? places.filter((p) => p.emirate === q.emirate) : places);
   const open = openPlaces(q.budget);
   const byEmirate = Object.fromEntries(QUICK_EMIRATES.map((e) => [e, open.filter((p) => p.emirate === e).length]));
+  const onRecord = Object.fromEntries(QUICK_EMIRATES.map((e) => [e, zones.filter((z) => z.emirate === e).length]));
   const byBudget = QUICK_BUDGETS.map((b) => ({ id: b.id, maxAed: b.maxAed, options: b.id === (q.budget ?? "open") ? here(open).length : here(openPlaces(b.id)).length }));
-  // The ranking: the engine's own order, among the chosen emirate's places when it has an open one, else among all.
-  const view = (zs: Zone[]) => publicView(advise(quickInput(q), rules, zs, asOf), approvedRules, approvedPlaces, asOf);
-  const local = q.emirate && here(open).length ? view(zones.filter((z) => z.emirate === q.emirate)) : null;
-  const shown = local ?? view(zones);
-  const ranked = shown.places.filter((p) => p.status !== "INELIGIBLE");
+  // The full assessment on these answers, over every place: its structure, its "no option fits" and its ranking are
+  // the quick match's, so "see the full comparison" never opens on a different conclusion.
+  const full = advise(quickInput(q), rules, zones, asOf);
+  const fullView = publicView(full, approvedRules, approvedPlaces, asOf);
+  // The ranking: the full assessment's order (its recommended structure first), every place, not only its first five;
+  // then the places it excluded for reasons the public may not see, as the public view lists them. Within the chosen
+  // emirate when it has an open place there, else across the UAE.
+  const order = assess(quickInput(q), rules, zones, (full.structure.recommendation as Structure | null) ?? null);
+  const ranking = [...order.viable, ...order.excluded.filter(isOpen)];
+  const local = here(ranking);
+  const pick = (local.length ? local : ranking).slice(0, 3);
+  const ranked = publicView({ ...full, places: pick.map(asCandidate), excluded: [] }, approvedRules, approvedPlaces, asOf).places;
   return {
     disclaimer: PUBLIC_DISCLAIMER,
     ...(asOf ? { asOf } : {}),
     options: here(open).length,
     everywhere: open.length,
     byEmirate,
+    onRecord,
     byBudget,
     best: ranked[0] ? quickPlace(ranked[0]) : null,
-    bestElsewhere: !!q.emirate && !local && ranked.length > 0,
+    bestElsewhere: !!q.emirate && !local.length && ranked.length > 0,
     alternatives: ranked.slice(1, 3).map(quickPlace),
-    structure: { recommendation: shown.structure.recommendation, confirmed: shown.structure.confirmed },
-    noViableOption: shown.noViableOption,
+    structure: { recommendation: fullView.structure.recommendation, confirmed: fullView.structure.confirmed },
+    noViableOption: fullView.noViableOption,
     approved: { places: here(open).filter((p) => approvedPlaces.has(p.zone)).length, ofPlaces: here(open).length },
   };
 }

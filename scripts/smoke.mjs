@@ -696,7 +696,8 @@ const pp = await pub.newPage();
     await axeCheck(sel, "quick match result (E8)");
     await sel.locator("#quick-full").click();
     await sel.waitForSelector("#questions:not([hidden]) .choice");
-    check("the full comparison opens at the first question the quick match did not ask, answers kept (E8):", /Question 2 of 11/.test(await sel.locator("#progress").innerText()) && /Where are your customers/.test(await sel.locator("#qtitle").innerText()));
+    await sel.waitForTimeout(600); // a count still on its way must not redraw the quick match over the questions
+    check("the full comparison opens at the first question the quick match did not ask, answers kept, with no review form under it (E8):", /Question 2 of 11/.test(await sel.locator("#progress").innerText()) && /Where are your customers/.test(await sel.locator("#qtitle").innerText()) && (await sel.locator("#review").isHidden()) && (await sel.locator("#quick").isHidden()));
     // Phone width: the map becomes a two-column list and nothing scrolls sideways.
     const qp = await (await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 })).newPage();
     qp.on("pageerror", (e) => errors.push(`quick match phone: ${e.message}`));

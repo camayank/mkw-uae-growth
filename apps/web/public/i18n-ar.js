@@ -158,6 +158,14 @@ export const AR = {
   "Loading…": "جارٍ التحميل…",
   "Skip to content": "انتقل إلى المحتوى",
   // E8 quick match (draft until the Arabic reviewer signs it off)
+  "Finding your match…": "نبحث عن الأنسب لك…",
+  "Your match could not be loaded": "تعذّر تحميل الأنسب لك",
+  "Try again": "حاول مرة أخرى",
+  "No payment now. A person at MKW Advisors checks your case and sends one fixed price, usually within one working day.": "لا دفع الآن. يراجع شخص في MKW Advisors حالتك ويرسل سعراً ثابتاً واحداً، عادةً خلال يوم عمل واحد.",
+  "From": "من",
+  "No places on record in this emirate yet": "لا توجد جهات مسجلة في هذه الإمارة بعد",
+  "Schematic map, not to scale. A dash: we hold no places on record there yet.": "خريطة توضيحية، ليست بمقياس رسم. الشرطة تعني أنه لا توجد لدينا جهات مسجلة هناك بعد.",
+  "Check your connection and try again; your answers are still here.": "تحقق من اتصالك وحاول مرة أخرى؛ إجاباتك محفوظة.",
   "Find my set-up in four questions": "اعثر على التأسيس المناسب في أربعة أسئلة",
   "Find the Right UAE Entity: all eleven questions": "الكيان الإماراتي المناسب: جميع الأسئلة الأحد عشر",
   "Four quick questions: what you do, where, how many visas and your budget. See the place to look at first and how many places still fit, with every figure labelled checked by a named person or to be verified. No sign-up. Then ask a person at MKW Advisors for your exact price.": "أربعة أسئلة سريعة: ما نشاطك، وأين، وكم تأشيرة تحتاج، وما ميزانيتك. اعرف الجهة التي تبدأ بها وعدد الجهات التي لا تزال مناسبة، مع تصنيف كل رقم: تحقق منه شخص مسمّى، أو قيد التحقق. دون تسجيل. ثم اطلب من شخص في MKW Advisors سعرك الدقيق.",
@@ -719,6 +727,19 @@ export const AR = {
 
 /** Patterns for strings composed at render time. Each maps a regex over the English text to Arabic. */
 export const AR_PATTERNS = [
+  // E8 quick match sentences with numbers; draft
+  [/^Up to AED ([\d,]+)$/, (m) => `حتى ${m[1]} درهم`],
+  [/^(\d+) place\(s\) fit$/, (m) => `${m[1]} جهة مناسبة`],
+  [/^(\d+) places$/, (m) => `${m[1]} جهة`],
+  [/^(\d+) of (\d+) places that fit have figures checked by a named person; the rest show "to be verified"\.$/, (m) => `${m[1]} من ${m[2]} من الجهات المناسبة تحقق شخص مسمّى من أرقامها؛ والباقي يظهر "قيد التحقق".`],
+  [/^to (AED [\d,.]+) to set up \(estimate\)$/, (m) => `إلى ${m[1]} للتأسيس (تقديري)`],
+  [/^from (AED [\d,.]+)$/, (m) => `من ${m[1]}`],
+  [/^The place to look at first in$/, () => "الجهة التي تبدأ بها في"],
+  [/^No place in (.+) fits these answers yet; this is the closest place elsewhere\.$/, (m) => `لا توجد جهة في ${m[1]} تناسب هذه الإجابات بعد؛ هذه أقرب جهة في مكان آخر.`],
+  [/^We hold no places on record in (.+) yet; this is the closest place elsewhere\.$/, (m) => `لا توجد لدينا جهات مسجلة في ${m[1]} بعد؛ هذه أقرب جهة في مكان آخر.`],
+  [/^Licensed by (.+)$/, (m) => `الترخيص من ${m[1]}`],
+  [/^Renews at about (AED [\d,.]+) a year$/, (m) => `يُجدَّد بنحو ${m[1]} سنوياً`],
+  [/^structure: (.+)$/, (m) => `الهيكل: ${m[1]}`],
   // E7A selector sentences with numbers; draft
   [/^(\d+) to go$/, (m) => `بقي ${m[1]}`],
   [/^(AED [\d,.]+) to (AED [\d,.]+)$/, (m) => `${m[1]} إلى ${m[2]}`],

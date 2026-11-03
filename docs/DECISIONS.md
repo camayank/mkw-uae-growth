@@ -963,8 +963,16 @@ canvas of 3 Nov 2026 and its review round.)
   function (`publicStatus` in `packages/core/src/public.ts`) used by both. In the pilot, with few approvals, the
   counts move little; that is the honest reading of D80, not a defect.
 - The counts come from the eligibility check over every place on record, not from the advice (which keeps its
-  first five fits); the place shown first is the advice's own ranking within the chosen emirate, so the quick match
-  and the full assessment never disagree about which place leads.
+  first five fits). The structure, "no option fits" and the ranking come from the full assessment on the same
+  answers over every place (its recommended structure first), filtered to the chosen emirate only afterwards, so
+  "see the full comparison" never opens on a different structure or conclusion. (An earlier draft ran the engine on
+  one emirate's places, which could switch the structure; the independent review caught it and a test now compares
+  against the full assessment.)
+- An emirate where MKW holds no place on record shows a dash and says so ("we hold no places on record there yet"),
+  never "nothing fits": that would be a conclusion no approved rule supports.
+- The review request is about the place shown first: its emirate and the place itself go into the request as the
+  emirate and "the place you have in mind". The page never sends an emirate the founder did not choose or see;
+  "anywhere" is not an emirate (pricing and allocation read the request's emirate).
 - No match percentage: the engine gives statuses, so the page shows the status ("fits your answers", "fits, with
   conditions", "to be verified by a person"). The canvas's percentage ring was a design figure.
 - Budget bands are AED 15,000, 25,000 and 50,000 and "more, or not sure yet" (`QUICK_BUDGETS`): defaults for the

@@ -229,7 +229,7 @@ function preferredStructure(a: AdviceInput, rules: ScopingRule[]): { structure: 
 /** Fallback order when the preferred structure is excluded. */
 const FALLBACK: Structure[] = ["free_zone", "mainland", "difc_adgm", "offshore"];
 
-const asCandidate = (p: PlaceAssessment): Candidate => ({
+export const asCandidate = (p: PlaceAssessment): Candidate => ({
   zone: p.zone,
   emirate: p.emirate,
   type: p.type,

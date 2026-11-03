@@ -40,6 +40,9 @@ describe("the quick match (E8)", () => {
     expect(m.byBudget.every((b: any) => b.options === m.options)).toBe(true);
     expect(Object.keys(m.byEmirate)).toEqual(["Abu Dhabi", "Dubai", "Sharjah", "Ajman", "Umm Al Quwain", "Ras Al Khaimah", "Fujairah"]);
     expect(m.approved.places).toBe(0);
+    expect(Object.keys(m.onRecord)).toEqual(Object.keys(m.byEmirate));
+    expect([m.best, ...m.alternatives].every((p: any) => p.conditions === 0)).toBe(true); // no unapproved condition is counted
+    expect(m.noViableOption).toBe(false);
     expect(JSON.stringify(m)).not.toMatch(/AED|costM|visaQuota|timelineDays|ruleKey|outcome|authority|sourceUrl/);
     for (const s of walk(m)) expect(s, s).not.toMatch(/margin|partner_?(unit|cost|org|id)|payout|rate_?card|professional_?fils|commission|digest|lastFactId/i);
     // Anywhere: every place on record is still open, and nothing was written by any of it.

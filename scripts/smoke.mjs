@@ -224,7 +224,8 @@ for (const p of partnerPages) {
   if (worked || !(await p.locator('form[data-form="evidence"]').count())) continue;
   // U1: the partner's next step is pinned at the top with its evidence form; the steps list below carries no second form.
   const first = p.locator('form[data-form="evidence"]').first();
-  check("the partner's next step is pinned with its evidence upload (U1):", (await p.locator(".nextaction h2").count()) === 1 && (await p.locator(".nextaction form[data-form=\"evidence\"]").count()) === 1 && (await p.locator('form[data-form="evidence"]').count()) === 1);
+  // The pinned card holds the open step's form; later steps keep theirs folded in the list, so the page has one visible form.
+  check("the partner's next step is pinned with its evidence upload (U1):", (await p.locator(".nextaction h2").count()) === 1 && (await p.locator('.nextaction form[data-form="evidence"]').count()) === 1 && (await p.locator('form[data-form="evidence"]:visible').count()) === 1);
   const types = await first.locator('select[name="type"] option').evaluateAll((os) => os.map((o) => o.value).filter((v) => v !== "other"));
   for (const t of types) {
     await p.locator('form[data-form="evidence"]').first().locator('select[name="type"]').selectOption(t);

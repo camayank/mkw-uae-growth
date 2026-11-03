@@ -144,7 +144,7 @@ outcomes:
   # reviewed pull request each, in order.
   - id: E7A
     title: Public product UX (homepage, questionnaire, comparison, approved guidance)
-    status: released
+    status: verified-pending-merge
     contract: outcomes/E7A-public-product-ux.md
     depends_on: [E6]
     needs_from_owner: [approval of the guidance notes for public display]

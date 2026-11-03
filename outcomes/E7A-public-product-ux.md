@@ -1,6 +1,6 @@
 # E7A Public product UX: homepage, questionnaire and comparison
 
-Status: in-progress (branch `outcome/E7A-public-product-ux`; released by the owner on 3 Nov 2026 with the E7
+Status: verified-pending-merge (branch `outcome/E7A-public-product-ux`; released by the owner on 3 Nov 2026 with the E7
 contract "Commercial launch readiness and product excellence": "begin implementing E7A, together with any
 independent, essential work needed to make the selector genuinely useful")
 
@@ -105,6 +105,17 @@ and ask for a review. Nothing unapproved is stated (D80); nothing that is not kn
 
 - Revert the pull request. Migration 019 only widens a check constraint.
 
+## Evidence
+
+| Claim | Evidence |
+| --- | --- |
+| Tests | `pnpm typecheck` clean; `pnpm test`: 108 core + 334 API (1 PostgreSQL-only test skipped on PGlite) = 442 (E6 and U1: 105 + 333). New: `packages/core/test/guidance.test.ts` (figure-free wording, deterministic selection, source and facilities gated on approval); `apps/api/test/public-selector.test.ts` (a guide is founder-only, audited as entity `guide`, versioned by its wording, public only while approved, chosen by the answers; an approved place carries its source; the assessment still writes nothing and carries no money field); the OpenAPI contract regenerated for kind `guide` |
+| Smoke | `docs/evidence/E7A/smoke-log.txt`: 234 checks OK on a fresh demo (U1: 221), 13 marked E7A: the homepage states the product, the call to action, seven industries, what it does not do and the route to the workspace; an industry entry starts at question two with premises first for manufacturing and the progress bar at ten percent; going back shows the chosen activity; the result opens with the profile, the legend and the side-by-side table with no figure before approval; no guidance before approval and the next action named; the table shows the approved place's figures, the three-year cell's honest wording and the official source; the Scoping page counts the approved note; changing the answers keeps them; the approved note reaches the public labelled general information with no figure; the homepage at 390 px has no overflow; the homepage in Arabic; axe on the homepage at both widths |
+| Accessibility | `axe.json`: 43 screens at 1280 and 390 px, 0 violations (U1: 41) |
+| Screens | `95-public-home.png` and `94-mobile-public-home.png` (the homepage), `83-public-selector-unapproved.png` (profile, legend, pathways, places, comparison with nothing approved), `84-public-selector-approved.png` (figures, source, a guidance note), `85-mobile-public-selector.png` (the result at 390 px), `38-scoping-rules.png` (the guidance table with approve and withdraw) |
+| Audit chain | `pnpm verify:audit` on the smoke demo: intact, 109 events |
+| Records | D85; KNOWN-GAPS 88–91; `docs/DESIGN.md` rows marked E7A; `docs/ENTITY-PROGRAMME.md` section 6 |
+
 ## Independent review
 
 A separate reviewer read the whole diff before the pull request, with a throwaway Playwright probe against a scratch
@@ -123,4 +134,12 @@ confirmed migration 019 on Postgres and PGlite. Applied before the pull request:
 - **Noted, not changed.** After a review is sent, changing an answer keeps the review form sent (no second lead
   from the same result); the comparison can hold two places by default when the named place is also in the top
   three; the matrix row in `docs/ENTITY-PROGRAMME.md` is corrected.
+
+## Could not verify
+
+- **Whether the guidance notes are right for every founder**: they are general and figure-free by construction and
+  were read by the reviewer, but the owner approves each one; the pilot starts with none approved (gap 88).
+- **How real founders read the homepage and the comparison**: tested by rule and by the browser suite, not by people.
+- **The comparison with five approved places**: the demo approves one; the table's shape with five columns was
+  checked by the reviewer's probe at 390 px (no page overflow, the box scrolls), not by the smoke test.
 

@@ -40,21 +40,31 @@ export async function issueLoginCode(db: Database, email: string): Promise<{ cod
   return { code, known, limited };
 }
 
+/** One answer for every failed sign-in, so the response never tells whether an email has an account (E17). */
+const CODE_REFUSED = "That code is not right or has expired. Check the email, or ask for a new code.";
+
+/**
+ * Check a sign-in code (E17). The code's row is locked while it is checked, so guesses sent at the same moment are
+ * taken one at a time; a wrong guess is counted and committed before the refusal is returned (an error thrown inside
+ * the transaction used to roll the count back, so the limit never held); after MAX_ATTEMPTS wrong guesses the code is
+ * spent. Every failure gets the same answer.
+ */
 export async function verifyLoginCode(db: Database, email: string, code: string): Promise<{ token: string; user: SessionUser }> {
   const normalised = email.trim().toLowerCase();
-  return asPlatform(db, null, async (tx) => {
+  const result = await asPlatform(db, null, async (tx): Promise<{ token: string; user: SessionUser } | null> => {
     const r = await tx.query<{ id: string; code_hash: string; attempts: number }>(
       `select id, code_hash, attempts from login_codes
-       where email = $1 and used_at is null and expires_at > now() order by expires_at desc limit 1`,
+       where email = $1 and used_at is null and expires_at > now() order by expires_at desc limit 1 for update`,
       [normalised],
     );
     const row = r.rows[0];
-    if (!row || row.attempts >= MAX_ATTEMPTS) throw unauthorised("That code has expired. Ask for a new one.");
+    if (!row || row.attempts >= MAX_ATTEMPTS) return null;
     const expected = Buffer.from(row.code_hash, "hex");
     const actual = Buffer.from(sha256(`${normalised}:${code.trim()}`), "hex");
     if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
+      // Returned, not thrown: the count is committed with the transaction.
       await tx.query("update login_codes set attempts = attempts + 1 where id = $1", [row.id]);
-      throw unauthorised("That code is not right. Check the email and try again.");
+      return null;
     }
     await tx.query("update login_codes set used_at = now() where id = $1", [row.id]);
     const token = randomBytes(32).toString("base64url");
@@ -65,6 +75,8 @@ export async function verifyLoginCode(db: Database, email: string, code: string)
     );
     return { token, user };
   });
+  if (!result) throw unauthorised(CODE_REFUSED);
+  return result;
 }
 
 /** Create a session directly. Used by the seed script and tests; never exposed over HTTP. */

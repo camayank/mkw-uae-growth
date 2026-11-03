@@ -530,6 +530,10 @@ export const QUALIFIED = `(l.high_intent or l.status in ('consultation', 'conver
  * (visitors) and the platform's (leads to revenue); completion and abandonment; won and lost; revenue by segment;
  * turnaround; the leads that need a person; realised revenue against the pipeline.
  */
+/** One lead per request carries its commercial outcomes: the first (by creation) that reached it, so a request two
+ *  leads point at (the handoff attaches every lead of a saved result) counts its offers, engagement and revenue once. */
+const ATTRIBUTED = "att as (select distinct on (request_id) id from leads where request_id is not null and status <> 'anonymised' order by request_id, created_at, id)";
+
 export async function funnelReport(tx: Queryable, actor: SessionUser) {
   requirePipeline(actor);
   const bySource = await tx.query<Record<string, unknown>>(
@@ -542,6 +546,7 @@ export async function funnelReport(tx: Queryable, actor: SessionUser) {
          sum(case when viewed then 1 else 0 end)::int as viewed, sum(case when compared then 1 else 0 end)::int as compared, sum(case when printed then 1 else 0 end)::int as printed, sum(case when saved then 1 else 0 end)::int as saved
        from vis group by source, campaign),
      lv as (select l.id, v.source as vsource, v.campaign as vcampaign from leads l join vis v on v.visitor = l.source->>'visitor'),
+     ${ATTRIBUTED},
      ld as (
        -- A lead whose browser session was measured counts under that session's label, so the two halves meet; a
        -- lead with no measured session (another page, a held enquiry) counts under its own recorded source.
@@ -549,14 +554,15 @@ export async function funnelReport(tx: Queryable, actor: SessionUser) {
          count(*)::int as leads,
          sum(case when l.consultation is not null then 1 else 0 end)::int as consultations,
          sum(case when ${QUALIFIED} then 1 else 0 end)::int as qualified,
-         sum(case when exists (select 1 from offers f where f.request_id = l.request_id and f.published_at is not null) then 1 else 0 end)::int as proposals,
-         sum(case when exists (select 1 from offers f where f.request_id = l.request_id and f.status = 'accepted') then 1 else 0 end)::int as accepted,
-         sum(case when exists (select 1 from engagements e where e.request_id = l.request_id) then 1 else 0 end)::int as engagements,
-         coalesce(sum((select sum(f.client_total_fils) from offers f where f.request_id = l.request_id and f.status = 'accepted')), 0)::bigint as revenue_fils,
-         coalesce(sum((select sum(p.amount_fils) from payments p join engagements e on e.id = p.engagement_id where e.request_id = l.request_id and p.status = 'paid')), 0)::bigint as realised_fils,
+         -- Commercial outcomes count once per request, on the lead attributed to it (att), however many leads point at it.
+         sum(case when att.id is not null and exists (select 1 from offers f where f.request_id = l.request_id and f.published_at is not null) then 1 else 0 end)::int as proposals,
+         sum(case when att.id is not null and exists (select 1 from offers f where f.request_id = l.request_id and f.status = 'accepted') then 1 else 0 end)::int as accepted,
+         sum(case when att.id is not null and exists (select 1 from engagements e where e.request_id = l.request_id) then 1 else 0 end)::int as engagements,
+         coalesce(sum(case when att.id is not null then (select sum(f.client_total_fils) from offers f where f.request_id = l.request_id and f.status = 'accepted') end), 0)::bigint as revenue_fils,
+         coalesce(sum(case when att.id is not null then (select sum(p.amount_fils) from payments p join engagements e on e.id = p.engagement_id where e.request_id = l.request_id and p.status = 'paid') end), 0)::bigint as realised_fils,
          -- One proposal per request: the client accepts one tier, so the pipeline counts the highest published tier once.
-         coalesce(sum((select max(f.client_total_fils) from offers f where f.request_id = l.request_id and f.status = 'published')), 0)::bigint as pipeline_fils
-       from leads l left join lv on lv.id = l.id where l.status <> 'anonymised' group by 1, 2)
+         coalesce(sum(case when att.id is not null then (select max(f.client_total_fils) from offers f where f.request_id = l.request_id and f.status = 'published') end), 0)::bigint as pipeline_fils
+       from leads l left join lv on lv.id = l.id left join att on att.id = l.id where l.status <> 'anonymised' group by 1, 2)
      select coalesce(v.source, ld.source) as source, coalesce(v.campaign, ld.campaign) as campaign,
        coalesce(v.visitors, 0) as visitors, coalesce(v.started, 0) as started, coalesce(v.completed, 0) as completed, coalesce(v.viewed, 0) as viewed, coalesce(v.compared, 0) as compared, coalesce(v.printed, 0) as printed, coalesce(v.saved, 0) as saved,
        coalesce(ld.leads, 0) as leads, coalesce(ld.consultations, 0) as consultations, coalesce(ld.qualified, 0) as qualified, coalesce(ld.proposals, 0) as proposals, coalesce(ld.accepted, 0) as accepted, coalesce(ld.engagements, 0) as engagements,
@@ -574,16 +580,18 @@ export async function funnelReport(tx: Queryable, actor: SessionUser) {
   );
   const lost = await tx.query<{ reason: string; n: number }>("select coalesce(closed_reason, '(no reason recorded)') as reason, count(*)::int as n from leads where status = 'closed' group by 1 order by n desc limit 10");
   const bySegment = await tx.query<Record<string, unknown>>(
-    `select l.segment, count(*)::int as leads, sum(case when ${QUALIFIED} then 1 else 0 end)::int as qualified,
-       coalesce(sum((select sum(f.client_total_fils) from offers f where f.request_id = l.request_id and f.status = 'accepted')), 0)::bigint as revenue_fils
-     from leads l where l.status <> 'anonymised' group by l.segment order by revenue_fils desc, leads desc`,
+    `with ${ATTRIBUTED}
+     select l.segment, count(*)::int as leads, sum(case when ${QUALIFIED} then 1 else 0 end)::int as qualified,
+       coalesce(sum(case when att.id is not null then (select sum(f.client_total_fils) from offers f where f.request_id = l.request_id and f.status = 'accepted') end), 0)::bigint as revenue_fils
+     from leads l left join att on att.id = l.id where l.status <> 'anonymised' group by l.segment order by revenue_fils desc, leads desc`,
   );
   const turnaround = (
     await tx.query<Record<string, unknown>>(
-      `select avg(extract(epoch from (l.first_contact_at - l.created_at)) / 86400) as to_contact_days, count(l.first_contact_at)::int as contacted,
-         avg((select extract(epoch from (min(f.published_at) - l.created_at)) / 86400 from offers f where f.request_id = l.request_id and f.published_at is not null)) as to_proposal_days,
-         sum(case when exists (select 1 from offers f where f.request_id = l.request_id and f.published_at is not null) then 1 else 0 end)::int as proposed
-       from leads l where l.status <> 'anonymised'`,
+      `with ${ATTRIBUTED}
+       select avg(extract(epoch from (l.first_contact_at - l.created_at)) / 86400) as to_contact_days, count(l.first_contact_at)::int as contacted,
+         avg(case when att.id is not null then (select extract(epoch from (min(f.published_at) - l.created_at)) / 86400 from offers f where f.request_id = l.request_id and f.published_at is not null) end) as to_proposal_days,
+         sum(case when att.id is not null and exists (select 1 from offers f where f.request_id = l.request_id and f.published_at is not null) then 1 else 0 end)::int as proposed
+       from leads l left join att on att.id = l.id where l.status <> 'anonymised'`,
     )
   ).rows[0]!;
   const attention = await tx.query<Record<string, unknown>>(
@@ -591,6 +599,9 @@ export async function funnelReport(tx: Queryable, actor: SessionUser) {
        exists (select 1 from lead_notes n where n.lead_id = l.id and n.kind = 'followup' and n.done_at is null and n.due_at <= app_now()) as followup_due
      from leads l left join users u on u.id = l.owner_user_id
      where l.status not in ('converted', 'closed', 'anonymised') and l.high_intent
+       -- A lead whose client accepted or is on an engagement needs nobody (the next-action rule says the same).
+       and not exists (select 1 from offers f where f.request_id = l.request_id and f.status = 'accepted')
+       and not exists (select 1 from engagements e where e.request_id = l.request_id)
        and (l.owner_user_id is null or (l.status in ('new', 'routed') and l.updated_at < app_now() - interval '2 days')
             or exists (select 1 from lead_notes n where n.lead_id = l.id and n.kind = 'followup' and n.done_at is null and n.due_at <= app_now()))
      order by l.intent desc, l.created_at limit 50`,

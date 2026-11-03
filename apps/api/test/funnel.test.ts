@@ -169,5 +169,16 @@ describe("funnel measurement, qualification and the conversion dashboard (E7C)",
     expect(r3.status).toBe(200);
     f = (await env.call("ops", "GET", "/api/ops/pipeline/funnel")).body;
     expect(f.attention.find((a: any) => a.company === "Hot Lead Co")).toMatchObject({ why: "unassigned", status: "new" });
+    // The accepted lead has no owner either, but its client is on the engagement: nobody needs to act on it.
+    expect(f.attention.find((a: any) => a.company === "Funnel Ventures")).toBeUndefined();
+    // A second lead pointing at the same request (the handoff attaches every lead of a saved result) does not count
+    // the proposal, the acceptance, the engagement or the revenue again: the first lead carries them.
+    await asPlatform(env.db, null, (tx) => tx.query("update leads set request_id = $1 where company = 'Hot Lead Co'", [l.requestId]));
+    f = (await env.call("ops", "GET", "/api/ops/pipeline/funnel")).body;
+    expect(f.bySource.find((r: any) => r.source === "google" && r.campaign === "nov-launch")).toMatchObject({ proposals: 1, accepted: 1, engagements: 1, revenueFils: gg.revenueFils });
+    expect(f.bySource.find((r: any) => r.source === "direct")).toMatchObject({ proposals: 0, accepted: 0, engagements: 0, revenueFils: 0 });
+    expect(f.totals).toMatchObject({ proposals: 1, accepted: 1, engagements: 1, revenueFils: gg.revenueFils });
+    expect(f.turnaround.proposed).toBe(1);
+    expect(f.bySegment.reduce((t: number, s: any) => t + s.revenueFils, 0)).toBe(gg.revenueFils);
   });
 });

@@ -168,7 +168,8 @@ outcomes:
     needs_from_owner: [report wording, adviser review status]
   - id: E7E
     title: Commercial pilot readiness (staging checklist, security regression, go/no-go)
-    status: planned
+    status: in-progress
+    contract: outcomes/E7E-pilot-readiness.md
     depends_on: [E7A, E7B, E7C, E7D]
     needs_from_owner: [cloud account, domain, email, payments sandbox, legal and security sign-off]
 

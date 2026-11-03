@@ -285,11 +285,22 @@ in a browser; everything listed here is not.
     "contacted" is not measured.
 100. **The measurement notice wording is a default** for the owner and a lawyer to settle, like the consent texts.
 
+## E7E: commercial pilot readiness
+
+104. **The pilot journeys run on the in-memory adapters and the seeded, unverified catalogue**, never on staging: a
+     real mailbox, bank, storage region and verified figures are the owner's inputs (gap 80, `docs/evidence/E7E/
+     STAGING-CHECKLIST.md` section 2). The go/no-go record says so on every platform row.
+105. **The human rows of the go/no-go record are blank**: lawyer, tax adviser, outside security reviewer, fee and
+     rule verifiers, public-display approvals, three signed partner firms, five consenting clients. A blank row is a
+     no-go for that row.
+106. **The journeys' names A to F are the build's reading of the contract** (six people, six paths); the owner
+     confirms or renames them (D89).
+
 ## O7: launch-gate preparation
 
 43. ~~zod 3 has a memory-exhaustion advisory.~~ Closed by S1: zod 4.6.7 (D71); the body caps stay as defence in depth.
-44. **Development tools carry advisories** (vitest, vite, tinypool, esbuild through tsx, playwright). None ships in
-    the image or listens anywhere reachable; upgrade them with the next tooling change.
+44. ~~Development tools carry advisories (vitest, vite, tinypool, esbuild through tsx, playwright).~~ Closed by E7E
+    (D89): all upgraded to patched, pinned versions; `pnpm audit` clean for everything.
 45. **Uploads are not scanned.** Files are checked by extension and size, stored privately and only ever downloaded
     as attachments, but nothing inspects their content. Add a malware scan (for example the storage provider's) before
     clients upload at scale.

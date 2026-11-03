@@ -827,3 +827,31 @@ canvas of 3 Nov 2026 and its review round.)
 - The ten acceptance criteria of the E7 contract are tracked in `outcomes/E7A-public-product-ux.md` (Phase 0 table);
   funnel events, reports and dashboards are E7C and E7D, not hidden in this outcome.
 
+**D86. The catalogue is counted once, the evidence says where it came from, and the backlog is the importer's own file.** (E7B, migration 020.)
+
+- Each place is one of six kinds (free zone operating location, sub-zone or specialised district, offshore registry,
+  mainland authority, regulated financial centre, non-free-zone industrial development) and in one of three states
+  (active, inactive, historical). A sub-zone is a place under its parent authority, recorded as a fact, never a second
+  authority; a historical place is kept for the record and counted nowhere. `active` remains the engine's switch and
+  follows the status, in the classification service and in the verify-zone path.
+- A fact can carry the date the figure takes effect, the exact reference in the source, and whether the source is
+  the authority itself or an intermediary. An intermediary's figure is labelled and can be at most a rule of thumb:
+  the database refuses a verified fact from an intermediary, and so does the service. The importer and the console
+  carry the three fields; the history shows them.
+- The verifier's new fields (exact licence activities with their codes, the authority's own charges, conditions and
+  exceptions, additional charges and exclusions) are recorded and shown; the engine does not read them. The
+  activity check still confirms the activity group only, at the evidence's confidence, and the exact activity is
+  confirmed at scoping: matching a founder's words to an authority's codes is a person's judgement until the
+  authorities' lists are on record in a machine-readable form.
+- The coverage matrix (`packages/core/src/coverage.ts`) is pure: counts by emirate and kind, verification per field,
+  expiring evidence, public-display approvals outstanding, and one task per place and field still to obtain, with
+  the reason (missing, unverified, stale, due, intermediary). The backlog downloads in the importer's column layout
+  with the Value left blank, so what the verifier sends back is what the importer reads, and importing the backlog
+  untouched writes nothing.
+- The first commercial wave is a priority flag on fifteen places by name, chosen to cover the seven service lines the
+  contract names. The seed applies it once (a marker in settings), so a priority the founder clears stays cleared
+  across restarts. Two places (KEZAD, JAFZA) are added by name only and stay inactive until their figures are
+  recorded. The flag orders the verifier's work; it verifies nothing and changes no figure or recommendation.
+- No official page was read in this outcome (the container has no internet access): the data pipeline is ready and
+  the backlog names what to obtain; filling it is the named verifier's work, through the importer.
+

@@ -245,6 +245,23 @@ in a browser; everything listed here is not.
 91. **No funnel events are recorded on the public page** (visitor, assessment started, result viewed, compared,
     saved): E7C, with the consent wording the owner settles.
 
+## E7B: jurisdiction data operations
+
+92. **The catalogue holds no verified data yet, and the first wave is a backlog.** Every one of the fifteen first-wave
+    places has twelve evidence tasks open; two (KEZAD, JAFZA) are placeholders by name. The Coverage page and the
+    backlog CSV say exactly what to obtain; the named verifier fills it in through the importer. Nothing was looked
+    up here: the container has no internet access, and nothing is invented.
+93. **Exact licence activities are recorded, not matched.** `activity_codes` are shown for the verifier and on the
+    place; the engine confirms the activity group only (D86). Matching a founder's description to an authority's
+    code list, and several activities per assessment, need the lists in machine-readable form (gap 75).
+94. **Sub-zones are counted under their parent by kind only.** The parent relationship is an authority fact; the
+    coverage matrix does not yet draw the tree (authority, operating location, sub-zone) as a hierarchy. JAFZA's
+    free zone authority and its offshore registry are two authorities until the verifier records the parent fact.
+    Facts recorded before E7B carry `source_kind = official` by the migration's default; the verifier restates the
+    source kind when re-verifying them (and the legacy verify-zone endpoint assumes official unless told otherwise).
+95. **Legal forms within one jurisdiction never decide eligibility.** They are on record for the verifier; a test
+    keeps the engine from guessing with them.
+
 ## O7: launch-gate preparation
 
 43. ~~zod 3 has a memory-exhaustion advisory.~~ Closed by S1: zod 4.6.7 (D71); the body caps stay as defence in depth.

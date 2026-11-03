@@ -4,7 +4,7 @@ import { PLATFORM_ROLES, requireRole } from "../lib/auth.ts";
 import { asPlatform } from "../lib/context.ts";
 import { approveAdvice, recomputeAdvice, requestScoping, scopingOverview, search, verifyRule, verifyZone } from "../services/scoping.ts";
 import { listDrafts, reviewDraft } from "../services/drafts.ts";
-import { catalogueOverview, factHistory, recordFact } from "../services/catalogue.ts";
+import { backlogCsv, catalogueOverview, coverageReport, factHistory, recordFact, setPlaceStatus } from "../services/catalogue.ts";
 import { approveForDisplay, displayOverview, publicAssess, revokeDisplay } from "../services/public.ts";
 import { IntakeSchema } from "../services/requests.ts";
 import { markPaymentPaid } from "../services/engagements.ts";
@@ -38,6 +38,7 @@ export function registerScopingRoutes(ctx: RouteContext) {
       confidence: z.enum(["verified", "rule_of_thumb", "UNCERTAIN"]),
       verifiedBy: z.string().max(120).optional(),
       sourceUrl: z.string().max(500).optional(),
+      sourceKind: z.enum(["official", "intermediary"]).optional(),
       costMinAed: z.number().min(0).optional(),
       costMaxAed: z.number().min(0).optional(),
       visaQuota: z.number().int().min(0).max(100).optional(), // the same cap as a visa_quota fact
@@ -77,11 +78,42 @@ export function registerScopingRoutes(ctx: RouteContext) {
     verifiedBy: z.string().max(120).optional(),
     nextVerification: IsoDate.optional(),
     note: z.string().max(500).optional(),
+    // E7B
+    effectiveDate: IsoDate.optional(),
+    reference: z.string().max(300).optional(),
+    sourceKind: z.enum(["official", "intermediary"]).optional(),
   });
   app.post("/api/admin/jurisdictions/facts", { config: { body: CatalogueFactBody } }, async (req) => {
     const user = requireRole(req, "founder");
     const body = CatalogueFactBody.parse(req.body);
     return asPlatform(db, user, (tx) => recordFact(tx, user, body));
+  });
+
+  // E7B: coverage matrix, evidence backlog and place classification -------------------------------------
+  const outstanding = async (tx: Parameters<typeof displayOverview>[0]) => {
+    const o = await displayOverview(tx);
+    const items: Array<{ kind: "rule" | "place" | "guide"; subject: string; state: "not approved" | "lapsed" }> = [];
+    for (const r of o.rules) if (r.display.lapsed) items.push({ kind: "rule", subject: r.key, state: "lapsed" }); else if (!r.display.approved && r.confidence !== "UNCERTAIN" && !r.stale) items.push({ kind: "rule", subject: r.key, state: "not approved" });
+    for (const p of o.places) if (p.display.lapsed) items.push({ kind: "place", subject: p.name, state: "lapsed" }); else if (!p.display.approved && p.confidence !== "UNCERTAIN" && !p.stale) items.push({ kind: "place", subject: p.name, state: "not approved" });
+    for (const g of o.guides) if (g.display.lapsed) items.push({ kind: "guide", subject: g.id, state: "lapsed" }); else if (!g.display.approved) items.push({ kind: "guide", subject: g.id, state: "not approved" });
+    return items;
+  };
+  app.get("/api/admin/coverage", async (req) => {
+    const user = requireRole(req, ...PLATFORM_ROLES);
+    return asPlatform(db, user, async (tx) => coverageReport(tx, await outstanding(tx)));
+  });
+  app.get("/api/admin/coverage/backlog.csv", async (req, reply) => {
+    const user = requireRole(req, ...PLATFORM_ROLES);
+    const report = await asPlatform(db, user, async (tx) => coverageReport(tx, []));
+    reply.header("content-type", "text/csv; charset=utf-8");
+    reply.header("content-disposition", `attachment; filename="evidence-backlog-${report.asOf}.csv"`);
+    return backlogCsv(report.tasks);
+  });
+  const PlaceStatusBody = z.object({ placeKind: z.enum(["free_zone", "sub_zone", "offshore_registry", "mainland", "financial_centre", "industrial_development"]).optional(), status: z.enum(["active", "inactive", "historical"]).optional(), priority: z.number().int().min(1).max(9).nullable().optional() });
+  app.post<{ Params: { name: string } }>("/api/admin/jurisdictions/places/:name/status", { config: { body: PlaceStatusBody } }, async (req) => {
+    const user = requireRole(req, "founder");
+    const body = PlaceStatusBody.parse(req.body);
+    return asPlatform(db, user, (tx) => setPlaceStatus(tx, user, req.params.name, body));
   });
 
   // Public display and the public selector (E3, D80) ----------------------------------------------------

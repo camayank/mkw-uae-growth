@@ -33,6 +33,10 @@ export async function importCatalogueFacts(tx: Queryable, grid: string[][], sour
     verifiedBy: t.col("Verified by"),
     next: t.col("Next verification"),
     note: t.col("Note"),
+    // E7B
+    effective: t.col("Effective date"),
+    reference: t.col("Reference"),
+    sourceKind: t.col("Source kind"),
   };
   const cell = (cells: string[], i: number) => (i >= 0 ? String(cells[i] ?? "").trim() : "");
   const fieldKey = (kind: SubjectKind, raw: string): string | null => {
@@ -104,9 +108,21 @@ export async function importCatalogueFacts(tx: Queryable, grid: string[][], sour
       continue;
     }
     const sourceUrl = cell(cells, C.source);
+    const sourceKindRaw = cell(cells, C.sourceKind).toLowerCase() || "official";
+    if (sourceKindRaw !== "official" && sourceKindRaw !== "intermediary") {
+      row.reason = `source kind "${sourceKindRaw}" is neither official nor intermediary`;
+      continue;
+    }
+    const effectiveRaw = cell(cells, C.effective);
+    const effectiveDate = effectiveRaw ? excelDate(effectiveRaw) : null;
+    if (effectiveRaw && !effectiveDate) {
+      row.reason = `effective date "${effectiveRaw}" is not a date`;
+      continue;
+    }
+    const reference = cell(cells, C.reference);
     const latest = (
       await tx.query<{ value: unknown; source_url: string; evidence_date: string; confidence: string; verified_by: string | null; next_verification: string | null }>(
-        `select value, source_url, evidence_date::text as evidence_date, confidence, verified_by, next_verification::text as next_verification
+        `select value, source_url, evidence_date::text as evidence_date, confidence, verified_by, next_verification::text as next_verification, effective_date::text as effective_date, reference, source_kind
          from catalogue_facts where subject_kind = $1 and subject = $2 and field = $3 order by id desc limit 1`,
         [kind, subject, field],
       )
@@ -118,13 +134,16 @@ export async function importCatalogueFacts(tx: Queryable, grid: string[][], sour
       latest.evidence_date === evidenceDate &&
       latest.confidence === confidence &&
       (latest.verified_by ?? null) === verifiedBy &&
-      (!next || latest.next_verification === next)
+      (!next || latest.next_verification === next) &&
+      ((latest as any).effective_date ?? null) === effectiveDate &&
+      ((latest as any).reference ?? "") === reference &&
+      ((latest as any).source_kind ?? "official") === sourceKindRaw
     ) {
       row.action = "unchanged";
       continue;
     }
     try {
-      await appendFact(tx, actor, { subjectKind: kind, subject, field, value: parsed.value, sourceUrl, evidenceDate, confidence, verifiedBy, nextVerification: next, note: cell(cells, C.note) });
+      await appendFact(tx, actor, { subjectKind: kind, subject, field, value: parsed.value, sourceUrl, evidenceDate, confidence, verifiedBy, nextVerification: next, note: cell(cells, C.note), effectiveDate, reference, sourceKind: sourceKindRaw });
     } catch (e) {
       row.reason = (e as Error).message;
       continue;

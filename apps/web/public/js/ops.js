@@ -451,7 +451,7 @@ export async function renderFactHistory(kind, subject, target) {
     ? table(
         ["Field", "Value", "Evidence", "Confidence", "Recorded", ""],
         rows.map((f) => `<tr><td class="small">${esc(f.label)}</td><td class="small" data-no-i18n>${esc(value(f.value))}</td>
-          <td class="small">${date(f.evidenceDate)}${f.sourceUrl ? ` · <a href="${esc(f.sourceUrl)}" target="_blank" rel="noopener noreferrer">source</a>` : ""}${f.verifiedBy ? `<br>${esc(f.verifiedBy)}` : ""}${f.nextVerification ? `<br><span class="muted">check by ${date(f.nextVerification)}</span>` : ""}</td>
+          <td class="small">${date(f.evidenceDate)}${f.sourceUrl ? ` · <a href="${esc(f.sourceUrl)}" target="_blank" rel="noopener noreferrer">source</a>` : ""}${f.sourceKind === "intermediary" ? ` ${badge("warn", "intermediary")}` : ""}${f.reference ? `<br><span class="muted" data-no-i18n>${esc(f.reference)}</span>` : ""}${f.effectiveDate ? `<br><span class="muted">effective ${date(f.effectiveDate)}</span>` : ""}${f.verifiedBy ? `<br>${esc(f.verifiedBy)}` : ""}${f.nextVerification ? `<br><span class="muted">check by ${date(f.nextVerification)}</span>` : ""}</td>
           <td>${confBadge(f.effective.confidence)}${f.effective.stale ? ` ${badge("UNCERTAIN", "stale")}` : ""}</td><td class="small">${dateTime(f.recordedAt)}${f.recordedBy ? `<br>${esc(f.recordedBy)}` : ""}</td><td>${f.current ? badge("ok", "current") : badge("pending", "superseded")}</td></tr>`),
       )
     : `<p class="small muted">No evidence recorded yet: the figures are the starting estimates, UNCERTAIN.</p>`;
@@ -491,6 +491,9 @@ export async function renderScoping() {
         <div class="field"><label for="fact-conf">Confidence</label><select id="fact-conf" name="confidence">${["UNCERTAIN", "rule_of_thumb", "verified"].map((v) => `<option value="${v}">${CONF_LABEL[v]}</option>`).join("")}</select></div>
         <div class="field"><label for="fact-by">Verified by (name, qualification)</label><input id="fact-by" name="verifiedBy" /></div>
         <div class="field"><label for="fact-next">Check again by (optional)</label><input id="fact-next" name="nextVerification" type="date" /></div>
+        <div class="field"><label for="fact-effective">Effective from (optional)</label><input id="fact-effective" name="effectiveDate" type="date" /></div>
+        <div class="field"><label for="fact-ref">Exact reference in the source (optional)</label><input id="fact-ref" name="reference" maxlength="300" placeholder="page, section, document number" /></div>
+        <div class="field"><label for="fact-kind">Source is</label><select id="fact-kind" name="sourceKind"><option value="official">the authority or regulator itself</option><option value="intermediary">an intermediary (at most a rule of thumb)</option></select></div>
       </div>
       <div class="row"><label class="small" for="fact-note">Note (optional)</label><input id="fact-note" name="note" style="max-width:360px" /><button class="primary" type="submit">Record</button></div></form>`
     : "";

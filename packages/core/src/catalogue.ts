@@ -16,7 +16,7 @@ export const DEFAULT_REVERIFY_DAYS = 180;
 /** The longest any fact may go before it must be checked again: two years. */
 export const MAX_REVERIFY_DAYS = 730;
 
-export const PLACE_FIELDS = ["cost", "renewal_cost", "visa_quota", "visa_max", "timeline_days", "facilities", "activities_listed", "legal_forms", "coordinates"] as const;
+export const PLACE_FIELDS = ["cost", "renewal_cost", "visa_quota", "visa_max", "timeline_days", "facilities", "activities_listed", "activity_codes", "legal_forms", "government_charges", "conditions", "exclusions", "coordinates"] as const;
 export const AUTHORITY_FIELDS = ["parent", "registrar", "website"] as const;
 export type PlaceField = (typeof PLACE_FIELDS)[number];
 export type AuthorityField = (typeof AUTHORITY_FIELDS)[number];
@@ -36,12 +36,35 @@ export const FIELD_LABEL: Record<string, string> = {
   activities_listed: "Activity groups on the authority's list",
   legal_forms: "Legal forms",
   coordinates: "Coordinates (latitude, longitude)",
+  activity_codes: "Exact licence activities (code and name)",
+  government_charges: "Government charges (AED)",
+  conditions: "Conditions and exceptions",
+  exclusions: "Additional charges and exclusions",
   parent: "Parent authority",
   registrar: "Registrar",
   website: "Official website",
 };
 
 export const FACILITIES = ["office", "warehouse", "industrial", "retail", "clinic"] as const;
+
+/** E7B: what a place is, so an inventory counts each thing once. A sub-zone sits under its parent authority. */
+export const PLACE_KINDS = ["free_zone", "sub_zone", "offshore_registry", "mainland", "financial_centre", "industrial_development"] as const;
+export type PlaceKind = (typeof PLACE_KINDS)[number];
+export const PLACE_KIND_LABEL: Record<PlaceKind, string> = {
+  free_zone: "Free zone operating location",
+  sub_zone: "Sub-zone or specialised district",
+  offshore_registry: "Offshore registry",
+  mainland: "Mainland authority",
+  financial_centre: "Regulated financial centre",
+  industrial_development: "Non-free-zone industrial development",
+};
+export const PLACE_STATUSES = ["active", "inactive", "historical"] as const;
+export type PlaceStatus = (typeof PLACE_STATUSES)[number];
+export const AUTHORITY_KINDS = ["free_zone_authority", "mainland_department", "offshore_registry", "financial_centre", "regulator", "industrial_development"] as const;
+export type AuthorityKind = (typeof AUTHORITY_KINDS)[number];
+/** Where a fact's source comes from: the authority or regulator itself, or an intermediary (an agent, a news page). */
+export const SOURCE_KINDS = ["official", "intermediary"] as const;
+export type SourceKind = (typeof SOURCE_KINDS)[number];
 export const ACTIVITIES: Activity[] = ["trading", "consulting", "ecommerce", "tech", "holding", "finance", "virtual_assets", "health", "education", "food", "construction", "manufacturing", "other"];
 
 const CONFIDENCE_ORDER: Confidence[] = ["UNCERTAIN", "rule_of_thumb", "verified"];
@@ -80,6 +103,10 @@ export interface FieldEvidence {
   verifiedBy: string | null;
   sourceUrl: string;
   factId: number | null;
+  /** E7B: where the source comes from, when the figure takes effect, and the exact reference in the source. */
+  sourceKind?: SourceKind;
+  effectiveDate?: string | null;
+  reference?: string;
 }
 
 type Parsed = { ok: true; value: unknown } | { ok: false; error: string };
@@ -148,6 +175,25 @@ export function parseFactValue(kind: SubjectKind, field: string, text: string): 
         const v = list(s);
         if (!v.length || v.some((x) => x.length > 80)) return bad("give one or more legal forms, each under 80 characters");
         return ok([...new Set(v)]);
+      }
+      case "activity_codes": {
+        // "6201 · Software development; 6202 · IT consultancy": a code and a name each, as the authority lists them.
+        const v = list(s);
+        if (!v.length || v.some((x) => x.length > 160)) return bad("give one or more activities as the authority lists them (code and name), each under 160 characters");
+        return ok([...new Set(v)]);
+      }
+      case "conditions":
+      case "exclusions": {
+        const v = list(s);
+        if (!v.length || v.some((x) => x.length > 240)) return bad("give one or more items, each under 240 characters");
+        return ok([...new Set(v)]);
+      }
+      case "government_charges": {
+        const m = s.match(/^(.+?)\s*(?:-|–|to)\s*(.+)$/i);
+        const [lo, hi] = m ? [aedToFils(m[1]!), aedToFils(m[2]!)] : [aedToFils(s), aedToFils(s)];
+        if (lo === null || hi === null) return bad(`"${s}" is not an AED amount or range`);
+        if (lo > hi) return bad("the lower amount is above the upper one");
+        return ok({ minFils: lo, maxFils: hi });
       }
       case "coordinates": {
         const m = s.match(/^(-?\d{1,2}(?:\.\d+)?)\s*[,;\s]\s*(-?\d{1,3}(?:\.\d+)?)$/);

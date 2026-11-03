@@ -47,6 +47,7 @@ new, add a token or a pattern here first.
 | Pinned next step | `section.nextaction` reused for the partner: the open step's evidence form inside it, `ul.todo` for what waits on others | Partner engagement (U1) |
 | Tab bar | At 640 px and below, for `body[data-audience="client"|"partner"]`, `nav#nav` becomes a fixed bottom bar; each link carries an inline icon (`ICON` in `js/shell.js`) shown only there | Client and partner phones (U1); MKW staff keep the grouped menu |
 | Progress | `.progress[role=progressbar] > span` | Engagement cards |
+| Coverage matrix | `.kpis`, a table of emirates by place kind, evidence per field, expiring evidence, approvals outstanding, the backlog by place with one `.badge` per field (title = what to obtain) and a `form[data-form="place-status"]` per place for the founder | Console Coverage (E7B) |
 | Public homepage | `section.landing`: `.hero` (eyebrow, h1, lead, `.actions` with the primary call to action), `.industries > button.industry[data-activity]`, `.steps`, `.honest` | `selector.html` (E7A) |
 | Question step | `progress.bar` + `.progress` text, `h2#qtitle`, `.choices > button.choice[aria-pressed]`, `p.why` ("Why we ask") | Selector (E7A) |
 | Result as a decision | `dl.profile` with `a[data-edit]`, `p.legend`, `.pathways > .pathway(.rec)`, `.places > .place(.cmp-on)` with `input.cmp`, `#compare table` (row headers, up to five columns), `.guides > .guide` with `.badge.general`, `.card.next-action` | Selector (E7A) |

@@ -781,7 +781,8 @@ export const AR = {
 
 /** Patterns for strings composed at render time. Each maps a regex over the English text to Arabic. */
 export const AR_PATTERNS = [
-  [/^Preliminary estimate, as of (\S+)\.$/, (m) => `تقدير أولي، حتى ${m[1]}.`],
+  // The card renders the estimate's label as one text node: both sentences together, with or without the date.
+  [/^Preliminary estimate(?:, as of (\S+))?\. Not advice\.$/, (m) => `تقدير أولي${m[1] ? `، حتى ${m[1]}` : ""}. ليست مشورة.`],
   [/^(.+), (\d+) place\(s\) on record$/, (m) => `${m[1]}، ${m[2]} جهة مسجلة`],
   [/^(.+), no places on record yet$/, (m) => `${m[1]}، لا توجد جهات مسجلة بعد`],
   [/^(\d+) places? on record$/, (m) => `${m[1]} جهة مسجلة`],

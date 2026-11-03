@@ -1036,3 +1036,11 @@ canvas of 3 Nov 2026 and its review round.)
   review returns priced offers by tier.
 - Tapping an emirate on the homepage map starts the quick match with that emirate as the answer to question 2.
 
+**D94. The emirates map is geography: on the Arabic page it keeps west on the left.** (E12, 3 Nov 2026.)
+
+- A right-to-left page flips a CSS grid, which put Abu Dhabi on the right and Ras Al Khaimah on the left. The map's
+  grid is laid out left to right on every page; the labels inside each emirate still read right to left in Arabic.
+- On the Arabic page the small Arabic name under each emirate is hidden, because the emirate's own name is already
+  translated there and would show twice.
+- On a phone the map is a two-column list rather than a map, so there it follows the page's direction.
+

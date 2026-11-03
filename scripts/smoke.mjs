@@ -1400,6 +1400,12 @@ await eventually("public intake in Arabic:", async () => /شركتك في الإ
 // E3: the selector's questions and controls are translated too, question by question.
 await pp.goto(BASE + "/selector.html?lang=ar"); await pp.waitForSelector('html[dir="rtl"]');
 check("the homepage in Arabic (E7A):", /اعثر على الكيان الإماراتي المناسب/.test(await pp.locator("main").innerText()));
+await eventually("the homepage map in Arabic keeps west on the left and shows each emirate's name once (E12):", async () => (await pp.locator("#home-map .em").count()) === 7 && (await pp.evaluate(() => {
+  const x = (e) => document.querySelector(`#home-map [data-home-em="${e}"]`).getBoundingClientRect().left;
+  const shown = [...document.querySelectorAll("#home-map .em .ar")].filter((e) => getComputedStyle(e).display !== "none").length;
+  return x("Abu Dhabi") < x("Dubai") && x("Dubai") < x("Ras Al Khaimah") && shown === 0 && getComputedStyle(document.querySelector("#home-map .em")).direction === "rtl";
+})));
+await pp.screenshot({ path: `${OUT}/114-public-home-ar.png`, fullPage: false }); log.push("114-public-home-ar");
 await pp.locator("#start").click();
 await pp.waitForSelector("#questions .choice");
 check("the public selector in Arabic, first question:", /ما النشاط الرئيسي للشركة/.test(await pp.locator("main").innerText()) && /التالي/.test(await pp.locator("#next").innerText()));

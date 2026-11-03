@@ -1,6 +1,6 @@
 # E11 Homepage look: the public homepage in the canvas look
 
-Status: verified-pending-merge (branch `outcome/E11-homepage-look`, on `main` at d253cb5 with E10 merged; released by
+Status: merged (camayank/mkw-uae-growth#32, 3 Nov 2026; previously verified-pending-merge, branch `outcome/E11-homepage-look`, on `main` at d253cb5 with E10 merged; released by
 the owner on 3 Nov 2026: "restyle the homepage like the canvas too")
 
 ## Business result

@@ -348,6 +348,7 @@ function renderPartnerEngagement(e, parts) {
   const next = ms.find((m) => m.id === parts.nextOpenId);
   const waiting = ms.filter((m) => ["evidence_submitted", "qa_passed"].includes(m.status));
   const docsOpen = (e.documentRequests ?? []).filter((r) => ["requested", "rejected"].includes(r.status)).length;
+  const toReceive = (e.documentRequests ?? []).filter((r) => r.status === "uploaded").length;
   const nextCard = next
     ? `<section class="nextaction" aria-labelledby="next-h"><p class="eyebrow"><span>Your next step</span> · <span>due ${date(next.dueDate)}</span>${next.isKey ? ` · <span>key step</span>` : ""}</p>
         <h2 id="next-h">${esc(next.name)}</h2>
@@ -357,7 +358,7 @@ function renderPartnerEngagement(e, parts) {
         ${parts.docsFor(next.id).length ? `<p class="small muted">Client documents for this step: ${parts.docsFor(next.id).filter((r) => r.status === "received").length}/${parts.docsFor(next.id).length} received</p>` : ""}
         ${parts.evidenceFor(next.id).length ? `<p class="small">Uploaded: ${parts.evidenceFor(next.id).map((x) => `<a href="/api/evidence/${x.id}/file" target="_blank" rel="noopener">${esc(x.fileName)}</a>`).join(" · ")}</p>` : ""}
         ${parts.milestoneActions(next)}
-        ${waiting.length || docsOpen ? `<ul class="todo">${waiting.map((m) => `<li>${badge("info", m.status === "qa_passed" ? "with the client" : "with MKW")}<span>${esc(m.name)}: ${esc(MILESTONE_LABEL[m.status].toLowerCase())}</span></li>`).join("")}${docsOpen ? `<li>${badge("pending", "waiting")}<span>${docsOpen} client document${docsOpen > 1 ? "s" : ""} outstanding; the delay is attributed to the client</span></li>` : ""}</ul>` : ""}
+        ${waiting.length || docsOpen || toReceive ? `<ul class="todo">${toReceive ? `<li>${badge("warn", "yours")}<span>${toReceive} client document${toReceive > 1 ? "s" : ""} uploaded: <a href="#docs" data-act="jump" data-target="docs">confirm you received ${toReceive > 1 ? "them" : "it"}</a></span></li>` : ""}${waiting.map((m) => `<li>${badge("info", m.status === "qa_passed" ? "with the client" : "with MKW")}<span>${esc(m.name)}: ${m.status === "qa_passed" ? "checked, waiting for the client's approval" : "evidence with MKW Advisors for checking"}</span></li>`).join("")}${docsOpen ? `<li>${badge("pending", "waiting")}<span>${docsOpen} client document${docsOpen > 1 ? "s" : ""} outstanding; the delay is attributed to the client</span></li>` : ""}</ul>` : ""}
       </section>`
     : `<section class="nextaction calm" aria-labelledby="next-h"><p class="eyebrow">Your next step</p><h2 id="next-h">Nothing needed from you right now</h2><p>${waiting.length ? `${waiting.length} step${waiting.length > 1 ? "s are" : " is"} with MKW Advisors or the client; the next one opens when it is approved.` : e.engagement.status === "completed" ? "Every step is approved; the engagement is complete." : "Steps appear when the deposit is paid and the work is allocated."}</p></section>`;
   const stepsList = ms.length
@@ -388,7 +389,7 @@ function renderPartnerEngagement(e, parts) {
     </div>
     <div class="stack">
       ${panel("All steps", stepsList, { state: `${parts.done} of ${ms.length} approved${next ? " · 1 yours now" : ""}`, open: true })}
-      ${parts.docsCard() ? panel(`Documents from the client ${docsOpen ? badge("pending", `${docsOpen} outstanding`) : badge("ok", "complete")}`, stripCard(parts.docsCard()).replace(/^[^]*?<\/h2>/, ""), { open: false }) : ""}
+      ${parts.docsCard() ? panel(`Documents from the client ${toReceive ? badge("warn", `${toReceive} to confirm`) : docsOpen ? badge("pending", `${docsOpen} outstanding`) : badge("ok", "complete")}`, stripCard(parts.docsCard()).replace(/^[^]*?<\/h2>/, ""), { id: "docs", open: toReceive > 0 }) : ""}
       ${panel("Scope and your fees", `${stripCard(parts.linesCard())}<p class="small muted">Your own rate card as accepted. Government fees are reimbursed at cost against the receipt. The client's price is set by MKW Advisors and is not shown here.</p>`, { state: e.lines.some((l) => l.partnerUnitCost != null) ? `${aed(fees)} + government fees at cost` : "" })}
       ${parts.moneyCard()}
       ${parts.creditsCard()}

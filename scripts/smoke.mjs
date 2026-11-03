@@ -172,6 +172,8 @@ check("client terms show the draft note until the lawyer's review is recorded:",
   check("the proposal states the working-day estimate, the deposit now and the balance later:", /About \d+ working days/.test(proposal) && /On acceptance/.test(proposal) && /When every step is approved/.test(proposal));
   check("the proposal says the rules where the client acts:", /valid until/.test(proposal) && /approved automatically/.test(proposal) && /We do not file returns or notifications/.test(proposal));
   check("the proposal shows no partner cost or margin:", !/partner cost|margin|payout/i.test(proposal));
+  // U1: one offer shown as selected, the others as a switch; the priority tier reads "Faster".
+  if ((await client.locator(".tiers .tier").count()) > 1) check("the offer shows one selected tier and the others as a switch (U1):", (await client.locator(".tiers .tier.best").count()) === 1 && /Switch to/.test(proposal) && !/priority/i.test(await client.locator(".tiers").innerText()));
   await shot(client, "72-client-proposal");
 }
 await client.locator('button[data-act="accept-offer"]').click();
@@ -203,7 +205,10 @@ for (const email of ["admin@setup-partner.test", "admin@corporate-services.test"
   const p = await session(email);
   await p.waitForTimeout(500);
   const n = await p.locator('button[data-act="alloc"][data-decision="accept"]').count();
-  if (n && !log.some((l) => l.startsWith("shot-partner"))) { await shot(p, "10-partner-offered-work"); log.push("shot-partner"); }
+  if (n && !log.some((l) => l.startsWith("shot-partner"))) {
+    check("the partner's offer row carries a reply countdown and no client price (U1):", /min left|reply time passed/.test(await p.locator("main").innerText()) && !/client price|margin/i.test(await p.locator("main").innerText()));
+    await shot(p, "10-partner-offered-work"); log.push("shot-partner");
+  }
   for (let i = 0; i < n; i++) {
     await p.locator('button[data-act="alloc"][data-decision="accept"]').first().click();
     await p.waitForTimeout(700);
@@ -261,6 +266,8 @@ log.push("approve: " + (await toastText(client)));
 const pageText = await client.locator("main").innerText();
 check("client page hides the partner's phone and email:", !pageText.includes("123 4567") && !pageText.includes("ali@example.com"));
 check("client page shows no partner cost or margin:", !/partner cost|margin/i.test(pageText));
+// U1: the next action and messages come first; documents, steps and payments are folding panels with their state in the heading.
+check("the client engagement opens on the next action and folds the rest into panels (U1):", (await client.locator("main .nextaction").count()) === 1 && (await client.locator("main details.panel").count()) >= 3 && /Steps/.test(await client.locator("main details.panel[open] > summary").allInnerTexts().then((t) => t.join(" "))) && (await client.evaluate(() => { const a = document.querySelector("main .nextaction"); const t = document.querySelector("main ol.timeline"); return !!a && !!t && !!(a.compareDocumentPosition(t) & Node.DOCUMENT_POSITION_FOLLOWING); })));
 await shot(client, "13-client-engagement-approved");
 
 // Notifications (O2): the client's bell holds the offer and deposit notices; a partner's never says Tasees
@@ -317,6 +324,19 @@ for (const [route, name, label, ready] of [
   await mp.screenshot({ path: `${OUT}/${name}.png`, fullPage: false });
   log.push(name);
   await axeCheck(mp, `${label} at 390 px`);
+}
+// U1: at phone width the client's and the partner's menus are bottom tab bars; MKW staff keep the grouped menu.
+check("the client menu is a bottom tab bar at 390 px (U1):", await mp.evaluate(() => getComputedStyle(document.getElementById("nav")).position === "fixed" && document.querySelectorAll("#nav > a svg").length >= 4));
+if (partnerPages.length) {
+  const pm = await (await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, storageState: await partnerPages[0].context().storageState() })).newPage();
+  await pm.goto(BASE + "/#/"); await pm.reload();
+  await pm.waitForSelector('main h1:text-is("Work from MKW Advisors")');
+  await pm.waitForTimeout(500);
+  check("the partner menu is a bottom tab bar at 390 px, with no horizontal overflow (U1):", (await pm.evaluate(() => getComputedStyle(document.getElementById("nav")).position === "fixed")) && !(await pm.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
+  await pm.screenshot({ path: `${OUT}/93-mobile-partner-work.png`, fullPage: false });
+  log.push("93-mobile-partner-work");
+  await axeCheck(pm, "partner work at 390 px (U1)");
+  await pm.context().close();
 }
 await mp.goto(BASE + "/#/statement"); await mp.reload();
 await mp.waitForSelector('main h1:text-is("Statement of account")');
@@ -501,6 +521,8 @@ const clientAdvice = await client.locator("main").innerText();
 check("client sees the approved advice with confidence labels and no money internals:", /Free zone/.test(clientAdvice) && /UNCERTAIN/.test(clientAdvice) && !/margin|partner cost/i.test(clientAdvice));
 check("client sees each option's eligibility and why other places do not fit:", /to be verified/.test(clientAdvice) && /Every structure compared/.test(clientAdvice) && /Costs are estimates/.test(clientAdvice));
 check("client sees the date the advice's rules and data stand at (E2):", /Rules and place data as of \d/.test(clientAdvice) && /licensed by /.test(clientAdvice));
+// U1: two sentences before the reasoning, built from the engine's own labelled text; the full advice folds below, open.
+check("the advice opens with a plain summary and the points to confirm before the reasoning (U1):", /fits what you told us|No option fits/.test(await client.locator("main .summary h2").innerText()) && (await client.locator("main .confirm > div").count()) <= 2 && (await client.locator("main details.reasoning[open]").count()) === 1);
 await shot(client, "36-client-advice");
 await axeCheck(client, "client advice with eligibility (E1)");
 {

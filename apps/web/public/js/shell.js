@@ -38,6 +38,24 @@ const ICON = {
   firm: '<path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/>',
   rates: '<path d="M4 4h16v16H4z"/><path d="M8 9h8"/><path d="M8 13h8"/><path d="M8 17h5"/>',
   payouts: '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/>',
+  // E9: the staff console's entries and its two menus.
+  work: '<path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/>',
+  setup: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3 15H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 3.1V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1A1.7 1.7 0 0 0 21 10h.1a2 2 0 1 1 0 4H21a1.7 1.7 0 0 0-1.6 1z"/>',
+  partners: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><circle cx="17.5" cy="9" r="2.5"/><path d="M16 14.2c3 .2 5.5 2.3 5.5 5.8"/>',
+  dashboard: '<path d="M4 19V10"/><path d="M10 19V5"/><path d="M16 19v-7"/><path d="M22 19H2"/>',
+  leads: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/>',
+  funnel: '<path d="M3 4h18l-7 8v7l-4 2v-9z"/>',
+  pipeline: '<path d="M4 6h6v12H4z"/><path d="M14 6h6v7h-6z"/>',
+  delays: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2"/><path d="M9 2h6"/>',
+  agent: '<rect x="4" y="7" width="16" height="12" rx="3"/><path d="M12 3v4"/><circle cx="9" cy="13" r="1"/><circle cx="15" cy="13" r="1"/>',
+  people: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/>',
+  catalogue: '<path d="M4 4h7v16H4z"/><path d="M13 4h7v16h-7z"/>',
+  rules: '<path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/>',
+  scoping: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+  coverage: '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>',
+  settings: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/>',
+  system: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8"/><path d="M12 16v4"/>',
+  audit: '<path d="M6 3h9l5 5v13H6z"/><path d="m9 14 2 2 4-4"/>',
 };
 const icon = (p) => (ICON[p] ? `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[p]}</svg>` : "");
 
@@ -48,7 +66,7 @@ export const navLink = (p, label, page) => `<a href="#/${p}" class="${page === p
 export function navGroup(g, page) {
   const id = `nav-${g.group.toLowerCase()}`;
   const current = g.items.find(([p]) => p === page);
-  return `<div class="navgroup"><button type="button" class="navbtn ${current ? "on" : ""}" aria-expanded="false" aria-controls="${id}" data-act="nav-group">${esc(g.group)}${current ? `<span class="navcur">: ${esc(current[1])}</span>` : ""}<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+  return `<div class="navgroup"><button type="button" class="navbtn ${current ? "on" : ""}" aria-expanded="false" aria-controls="${id}" data-act="nav-group">${icon(g.group.toLowerCase())}${esc(g.group)}${current ? `<span class="navcur">: ${esc(current[1])}</span>` : ""}<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
     <div class="navmenu" id="${id}" hidden>${g.items.map(([p, label]) => navLink(p, label, page)).join("")}</div></div>`;
 }
 
@@ -88,6 +106,10 @@ export function chrome() {
   applyLang();
   // Who is looking decides the menu's shape on a phone (U1): clients and partners get a tab bar, staff the grouped menu.
   document.body.dataset.audience = !state.me ? "" : isClient() ? "client" : isPartner() ? "partner" : "platform";
+  // The mark carries the brand's initial: T for Tasees (signed out and clients), M for MKW Advisors (partners and
+  // staff, rule 10: nothing addressed to a partner carries Tasees).
+  const mark = document.querySelector(".brand .mark");
+  if (mark) mark.textContent = !state.me || isClient() ? "T" : "M";
   if (!state.me) {
     $nav.innerHTML = "";
     $who.innerHTML = langSwitch();

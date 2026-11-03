@@ -1,6 +1,6 @@
 // Tasees workspace: client module (split from app.js in O12; plain ES modules, no build step).
 import { STRUCTURE_LABEL } from "./ops.js";
-import { $app, aed, api, badge, date, deliverables, dropzone, esc, isPlatform, legalBlock, nameOf, obligationLabel, obligationTone, panel, role, table, translatePage, words } from "./core.js";
+import { $app, aed, api, badge, date, deliverables, dropzone, esc, flag, isPlatform, journey, legalBlock, nameOf, obligationLabel, obligationTone, panel, role, table, translatePage, words } from "./core.js";
 
 /** How an offer's tier reads to the client (U1). The priority tier is priced on the quickest partner quote, but the proposal's
  * estimate and the delivery plan come from the scope templates, so the screen makes no pace promise (gap 85). */
@@ -18,11 +18,11 @@ export function nextActionCard(actions, whatsNext, opts = {}) {
     return `<section class="nextaction calm" aria-labelledby="next-h"><p class="eyebrow">Your next action</p><h2 id="next-h">Nothing needed from you right now</h2><p>${esc(whatsNext ?? "")}</p></section>`;
   const [a, ...more] = actions;
   const evidence = opts.inline && a.kind === "approve" ? (opts.evidenceFor?.(a.ref) ?? []) : [];
-  const button = a.kind === "payment" && /^https?:/.test(a.link) ? `<a class="btn primary" href="${esc(a.link)}">Pay by card</a>` : opts.inline && a.kind === "approve" ? "" : `<a class="btn primary" href="${esc(opts.inline && JUMP[a.kind] ? `#${JUMP[a.kind]}` : a.link)}"${opts.inline && JUMP[a.kind] ? ` data-act="jump" data-target="${JUMP[a.kind]}"` : ""}>${esc(ACTION_BUTTON[a.kind])}</a>`;
+  const button = a.kind === "payment" && /^https?:/.test(a.link) ? `<a class="btn primary gold" href="${esc(a.link)}">Pay by card</a>` : opts.inline && a.kind === "approve" ? "" : `<a class="btn primary gold" href="${esc(opts.inline && JUMP[a.kind] ? `#${JUMP[a.kind]}` : a.link)}"${opts.inline && JUMP[a.kind] ? ` data-act="jump" data-target="${JUMP[a.kind]}"` : ""}>${esc(ACTION_BUTTON[a.kind])}</a>`;
   const approve =
     opts.inline && a.kind === "approve"
       ? `${evidence.length ? `<p class="small">Evidence checked by MKW Advisors: ${evidence.map((x) => `<a href="/api/evidence/${x.id}/file" target="_blank" rel="noopener">${esc(x.fileName)}</a>`).join(" · ")}</p>` : ""}
-         <div class="row"><button class="primary" data-act="ms-review" data-id="${esc(a.ref)}" data-approve="1" aria-describedby="next-h">Approve this step</button><button data-act="ms-review" data-id="${esc(a.ref)}" data-approve="0" aria-describedby="next-h">Raise an issue</button></div>`
+         <div class="row"><button class="primary gold" data-act="ms-review" data-id="${esc(a.ref)}" data-approve="1" aria-describedby="next-h">Approve this step</button><button data-act="ms-review" data-id="${esc(a.ref)}" data-approve="0" aria-describedby="next-h">Raise an issue</button></div>`
       : "";
   const dueLabel = a.kind === "approve" ? `approved automatically on ${date(a.due)}` : a.kind === "offer" ? `valid until ${date(a.due)}` : `due ${date(a.due)}`;
   return `<section class="nextaction" aria-labelledby="next-h"><p class="eyebrow"><span>Your next action</span>${a.due ? ` · <span>${esc(dueLabel)}</span>` : ""}</p>
@@ -32,6 +32,54 @@ export function nextActionCard(actions, whatsNext, opts = {}) {
 
 const progress = (done, total) =>
   `<div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${done}" aria-label="${done} of ${total} steps approved"><span style="width:${total ? Math.round((done / total) * 100) : 0}%"></span></div>`;
+
+/**
+ * E9: where the client's most advanced piece of work stands, from what the platform holds (no estimate, no invented
+ * step): a live engagement first, else the newest open request. Advice is a step only when advice exists.
+ */
+export function clientJourney(h) {
+  const live = h.engagements.filter((e) => !["completed", "cancelled"].includes(e.status));
+  const e = live[0];
+  if (e) {
+    const paid = e.status !== "awaiting_payment";
+    const working = ["in_delivery", "disputed"].includes(e.status);
+    return [
+      ["Request", "done"],
+      ["Offer accepted", "done"],
+      ["Deposit", paid ? "done" : "now", paid ? "" : "due now"],
+      ["Partner assigned", working ? "done" : paid ? "now" : "todo", paid && !working ? "MKW Advisors is assigning" : ""],
+      ["Delivery", working ? "now" : "todo", e.status === "disputed" ? "an issue is open" : working ? `${e.approved} of ${e.milestones} steps approved` : ""],
+      ["Complete", "todo"],
+    ];
+  }
+  const open = h.requests.filter((r) => r.status !== "closed");
+  const r = open[0]; // the newest (the list comes newest first)
+  if (!r) return h.engagements.some((x) => x.status === "completed") ? [["Request", "done"], ["Offer accepted", "done"], ["Deposit", "done"], ["Partner assigned", "done"], ["Delivery", "done"], ["Complete", "done"]] : null;
+  const offers = h.offers.filter((o) => o.requestId === r.id && o.status !== "withdrawn");
+  const published = offers.some((o) => o.status === "published");
+  const accepted = offers.some((o) => o.status === "accepted");
+  // "Being priced" only while MKW is pricing; an offer that lapsed is said as such (accepting it is refused).
+  const pricing = !published && !accepted && (["draft", "scoped", "quoting"].includes(r.status) || offers.some((o) => ["draft", "ops_review"].includes(o.status)));
+  const expired = !published && !accepted && !pricing && offers.some((o) => o.status === "expired");
+  // Advice is a step only when there is advice to review ("none" is stored for a services request: no advice at all).
+  const advice = r.adviceStatus === "pending_review" || r.adviceStatus === "approved";
+  const adviceDone = r.adviceStatus === "approved";
+  const steps = [
+    ["Request", "done"],
+    ...(advice ? [["Advice", adviceDone ? "done" : "now", adviceDone ? "" : "being checked by a person"]] : []),
+    ["Offer", accepted ? "done" : advice && !adviceDone ? "todo" : "now", published ? "ready to review" : expired ? "expired: ask for a fresh offer" : pricing ? "being priced" : ""],
+    ["Deposit", accepted ? "now" : "todo"],
+    ["Delivery", "todo"],
+    ["Complete", "todo"],
+  ];
+  return oneNow(steps);
+}
+
+/** One step is current: an offer can be published while advice is still being checked, so later "now"s wait. */
+const oneNow = (steps) => {
+  let seen = false;
+  return steps.map(([n, st, what]) => (st === "now" ? (seen ? [n, "todo", what] : ((seen = true), [n, st, what])) : [n, st, what]));
+};
 
 export async function renderClientHome() {
   // The statement and the calendar are the client's own too; a failure in either leaves the overview standing.
@@ -44,7 +92,7 @@ export async function renderClientHome() {
   const live = h.engagements.filter((e) => e.status !== "completed");
   const done = h.engagements.filter((e) => e.status === "completed");
   const engagementCard = (e) => `<a class="card link-card" href="#/engagement/${e.id}">
-      <div class="row between"><b>${esc(e.emirate)} engagement</b>${badge(e.status)}</div>
+      <div class="row between"><b>${flag(e.emirate)}${esc(e.emirate)} engagement</b>${badge(e.status)}</div>
       ${progress(e.approved, e.milestones)}
       <div class="small muted">${e.approved} of ${e.milestones} steps approved · started ${date(e.createdAt)}${e.toReview ? ` · <b>${e.toReview} to approve</b>` : ""}</div></a>`;
   const requestCard = (r) => {
@@ -57,7 +105,7 @@ export async function renderClientHome() {
   };
   // Money, from the statement the client already reads; the next dates, from the compliance calendar.
   const moneyCard = st
-    ? `<section class="card money" aria-labelledby="money-h"><h2 id="money-h">Money</h2>
+    ? `<section class="card money panel-dark" aria-labelledby="money-h"><h2 id="money-h">Money</h2>
       <dl><dt>Paid to date</dt><dd class="num">${aed(st.totals.paid)}</dd><dt>Invoiced, net of credit notes</dt><dd class="num">${aed(st.totals.invoiced)}</dd><dt class="total">Due now</dt><dd class="num total">${aed(st.totals.due)}</dd></dl>
       <p class="small muted">Government fees are passed on at cost; a tax invoice is issued for every payment.</p><p class="small"><a href="#/statement">Statement and invoices</a></p></section>`
     : "";
@@ -70,6 +118,7 @@ export async function renderClientHome() {
     : "";
   $app.innerHTML = `
   <div class="row between"><h1>Your company with Tasees</h1><a class="btn" href="#/new">Start a new request</a></div>
+  ${(() => { const j = clientJourney(h); return j ? journey(j, "Where your work stands") : ""; })()}
   ${nextActionCard(h.nextActions, h.whatsNext)}
   <div class="grid cols-2">
     ${live.length ? live.map(engagementCard).join("") : `<section class="card" aria-labelledby="eng-h"><h2 id="eng-h">Engagements</h2><p class="muted">No engagement in progress. Accept an offer to start one.</p></section>`}
@@ -150,7 +199,7 @@ export async function renderClientOffer(id) {
                   ? `${legalBlock(terms, "Tasees client terms")}
                      <label class="small accept-terms"><input type="checkbox" data-terms-version="${esc(terms.version)}" /> I have read and accept the Tasees client terms, version ${esc(terms.version)}${terms.draft ? " (draft, pending legal review)" : ""}</label>`
                   : ""
-              }<button class="primary big" data-act="accept-offer" data-id="${o.id}">Accept this offer · ${aed(o.clientTotal)}</button>`
+              }<button class="primary gold big" data-act="accept-offer" data-id="${o.id}">Accept this offer · ${aed(o.clientTotal)}</button>`
             : `<p class="notice small">Only the account owner can accept an offer.</p>`
           : `<p class="small muted">This offer is ${esc(words(o.status))}.</p>`
       }</section>

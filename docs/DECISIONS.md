@@ -982,3 +982,25 @@ canvas of 3 Nov 2026 and its review round.)
   step stage with `quick_` keys.
 - The emirate flags are simplified inline drawings for recognition (no image files, no library), and the map is a
   labelled schematic, "not to scale"; the flags are to be checked against official artwork before launch (gap 107).
+
+**D91. The workspace takes the canvas's look without changing what any screen says or how staff find a page.** (E9, 3 Nov 2026.)
+
+- Built from the design canvas "Tasees App Redesign" on the existing screens, data and markup: the UAE colours above
+  the bar, one gold button for the strongest action, a dark summary panel with gold figures, icons in the menus and
+  on the staff figures, emirate flags beside a place, and the client's journey tracker. The canvas's invented
+  figures (an on-time streak, "cleared today", a readiness ring, a match percentage) are not built: every number on
+  a screen still comes from the platform.
+- The journey is derived from states the platform already holds (a live engagement's status and approved steps, else
+  the newest open request with its advice and offers); a step the platform cannot see is never marked done. Advice
+  is a step only when the request has advice to review (pending or approved), never for a services request.
+- The staff console keeps the grouped one-row menu decided in O10 (four entries, menus by keyboard), now on a dark
+  bar with icons and a gold marker. The owner chose this over the canvas's sidebar on 3 Nov 2026 ("keep the grouped
+  staff menu").
+  At 1024 px and wider the menu never wraps; the name, search and buttons take a second line first if the bar
+  is short of room, so a wider font (as on the CI runner) cannot break the one-row rule.
+- The brand mark is T for Tasees only for clients and signed-out visitors; partners and staff see M for MKW Advisors
+  (rule 10: nothing addressed to a partner carries Tasees). The browser tab's title follows the same rule, "· MKW
+  Advisors" for partners and staff (gap 86 closed). Before the first render after a reload the static page still
+  shows the T for an instant, until the session is read.
+- System fonts stay (no web font: no new dependency, nothing loaded from a third party on a client's screen).
+

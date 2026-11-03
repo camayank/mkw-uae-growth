@@ -186,6 +186,30 @@ await client.waitForURL(/engagement/);
 const engagementUrl = client.url();
 await client.waitForTimeout(600);
 await shot(client, "08-client-engagement-awaiting-payment");
+// E9: the client's home shows where the work stands, from the platform's own states: the deposit is the step now.
+await client.goto(BASE + "/#/"); await client.reload();
+await client.waitForSelector("ol.journey");
+check("the client's journey marks the request and the offer done and the deposit as the step now (E9):", await client.evaluate(() => { const li = [...document.querySelectorAll("ol.journey li")]; const st = (n) => li.find((x) => x.textContent.includes(n))?.className; return st("Request") === "done" && st("Offer accepted") === "done" && st("Deposit") === "now" && st("Complete") === "upcoming" && document.querySelector('ol.journey li[aria-current="step"]')?.textContent.includes("Deposit"); }));
+{
+  // E9 (Codex review): a services request stores advice "none" and has no Advice step; a new company's does.
+  const steps = await client.evaluate(async () => {
+    const { clientJourney } = await import("/js/client.js");
+    const names = (h) => clientJourney(h).map(([n, st]) => `${n}:${st}`).join(",");
+    const req = (adviceStatus) => ({ engagements: [], offers: [], requests: [{ id: "r1", status: "quoting", adviceStatus, mode: adviceStatus === "none" ? "services" : "new_company" }] });
+    const withOffer = (adviceStatus, status) => ({ ...req(adviceStatus), requests: [{ id: "r1", status: "offered", adviceStatus, mode: "new_company" }], offers: [{ requestId: "r1", status }] });
+    const what = (h) => clientJourney(h).find(([n]) => n === "Offer")[2];
+    return {
+      services: names(req("none")), pending: names(req("pending_review")), approved: names(req("approved")),
+      pendingPublished: names(withOffer("pending_review", "published")),
+      expired: what(withOffer("approved", "expired")), published: what(withOffer("approved", "published")), pricing: what(req("approved")),
+    };
+  });
+  check("a services request shows no Advice step and is being priced; advice shows only when there is some to review (E9):", steps.services === "Request:done,Offer:now,Deposit:todo,Delivery:todo,Complete:todo" && steps.pending.startsWith("Request:done,Advice:now,Offer:todo") && steps.approved.startsWith("Request:done,Advice:done,Offer:now"));
+  check("one step at most is current, and an expired offer is never said to be being priced (E9 review):", (steps.pendingPublished.match(/:now/g) ?? []).length === 1 && steps.pendingPublished.startsWith("Request:done,Advice:now") && steps.expired === "expired: ask for a fresh offer" && steps.published === "ready to review" && steps.pricing === "being priced");
+}
+check("the workspace carries the UAE colours above the bar and the client's mark is T (E9):", (await client.locator(".flagbar span").count()) === 4 && (await client.locator(".brand .mark").innerText()) === "T" && (await client.locator(".nextaction .btn.gold").count()) === 1);
+await client.goto(engagementUrl); await client.reload();
+await client.waitForSelector(".nextaction");
 check("client sees a card payment link for the deposit:", (await client.locator('a:text-is("Pay by card")').count()) >= 1);
 // O12: the next action is pinned above the timeline: the deposit, with why it matters.
 check("the deposit is the pinned next action:", /Pay the deposit: AED/.test(await client.locator(".nextaction").innerText()) && /Work starts when the deposit arrives/.test(await client.locator(".nextaction").innerText()));
@@ -270,6 +294,13 @@ check("client page shows no partner cost or margin:", !/partner cost|margin/i.te
 // U1: the next action and messages come first; documents, steps and payments are folding panels with their state in the heading.
 check("the client engagement opens on the next action and folds the rest into panels (U1):", (await client.locator("main .nextaction").count()) === 1 && (await client.locator("main details.panel").count()) >= 3 && /Steps/.test(await client.locator("main details.panel[open] > summary").allInnerTexts().then((t) => t.join(" "))) && (await client.evaluate(() => { const a = document.querySelector("main .nextaction"); const t = document.querySelector("main ol.timeline"); return !!a && !!t && !!(a.compareDocumentPosition(t) & Node.DOCUMENT_POSITION_FOLLOWING); })));
 await shot(client, "13-client-engagement-approved");
+// E9: in delivery, the journey moves on, and the money sits on the dark panel; the engagement carries its flag.
+check("the engagement page shows the emirate's flag and the steps approved as a progress bar (E9):", (await client.locator("main h1 .flag svg").count()) === 1 && (await client.locator('main > .progress[role="progressbar"]').count()) === 1);
+await client.goto(BASE + "/#/"); await client.reload();
+await client.waitForSelector("ol.journey");
+check("in delivery, the journey marks the deposit and the partner done and delivery as the step now, with the steps approved (E9):", await client.evaluate(() => { const li = [...document.querySelectorAll("ol.journey li")]; const st = (n) => li.find((x) => x.textContent.includes(n))?.className; return st("Deposit") === "done" && st("Partner assigned") === "done" && st("Delivery") === "now" && /\d+ of \d+ steps approved/.test(li.find((x) => x.textContent.includes("Delivery")).textContent); }) && (await client.locator("section.money.panel-dark").count()) === 1);
+await shot(client, "106-client-home-journey");
+await axeCheck(client, "client home with the journey and the money panel (E9)");
 
 // Notifications (O2): the client's bell holds the offer and deposit notices; a partner's never says Tasees
 await client.goto(BASE + "/#/home"); await client.reload();
@@ -333,6 +364,7 @@ if (partnerPages.length) {
   await pm.goto(BASE + "/#/"); await pm.reload();
   await pm.waitForSelector('main h1:text-is("Work from MKW Advisors")');
   await pm.waitForTimeout(500);
+  check("a partner sees the MKW Advisors mark and tab title, never Tasees (E9, rule 10, gap 86):", (await pm.locator(".brand .mark").innerText()) === "M" && !/Tasees/.test(await pm.locator(".top").innerText()) && /MKW Advisors/.test(await pm.title()) && !/Tasees/.test(await pm.title()));
   check("the partner menu is a bottom tab bar at 390 px, with no horizontal overflow (U1):", (await pm.evaluate(() => getComputedStyle(document.getElementById("nav")).position === "fixed")) && !(await pm.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
   await pm.screenshot({ path: `${OUT}/93-mobile-partner-work.png`, fullPage: false });
   log.push("93-mobile-partner-work");
@@ -1337,7 +1369,7 @@ check("people's own words are left untranslated:", msgs.length >= 1 && msgs.ever
 {
   await ap3.waitForTimeout(800);
   const gaps = await founder.evaluate(async () => (await (await fetch("/api/admin/arabic")).json()).gaps ?? []);
-  const u1 = ["Money", "Invoiced, net of credit notes", "Statement and invoices", "Compliance calendar", "Full calendar", "One offer, with another option", "One offer, with other options", "Choose an option", "Priority", "Standard", "Essential", "selected", "In short", "nothing due", "All steps"];
+  const u1 = ["Where your work stands", "Deposit", "Delivery", "Complete", "Partner assigned", "due now", "Request", "Offer accepted", "Advice", "Offer", "being priced", "ready to review", "being checked by a person", "MKW Advisors is assigning", ": done", ": now", "Money", "Invoiced, net of credit notes", "Statement and invoices", "Compliance calendar", "Full calendar", "One offer, with another option", "One offer, with other options", "Choose an option", "Priority", "Standard", "Essential", "selected", "In short", "nothing due", "All steps"];
   const u1Shapes = [/^(Priority|Standard|Essential) · AED/, /^Switch to /, /fits what you told us/, /needs? confirming before we quote/, /^Accept this offer/, / due now$/, /^about \d+ working days$/, /^No option fits/, /^The reasoning:/, /^The setup estimate for/, /^\d+ of \d+ approved$/];
   const leaked = gaps.filter((g) => u1.includes(g) || u1Shapes.some((re) => re.test(g)));
   log.push(`arabic gaps reported by the client screens (${gaps.length}): ${gaps.join(" | ")}`);
@@ -1365,6 +1397,13 @@ await axeCheck(ap3, "public intake (ar)");
   });
   check("staff menu fits on one row at 1280 px:", oneRow);
   check("staff menu has four entries (Work, Partners, Dashboard, Setup):", (await fp.locator("#nav > a, #nav > .navgroup").count()) === 4);
+  check("the staff console has the dark bar, an icon on each entry and the MKW Advisors mark (E9):", (await fp.evaluate(() => getComputedStyle(document.querySelector(".top")).backgroundColor)) === "rgb(22, 32, 28)" && (await fp.locator("#nav > a svg").count()) === 2 && (await fp.locator("#nav .navbtn svg").count()) === 4 /* each menu: its icon and its chevron */ && (await fp.locator(".brand .mark").innerText()) === "M" && !/Tasees/.test(await fp.locator(".brand").innerText()));
+  await fp.goto(BASE + "/#/dashboard"); await fp.waitForSelector('main h1:text-is("Dashboard")'); await fp.waitForSelector(".kpis.lead-kpis .kpi .ico");
+  check("the dashboard's figures sit on tiles with icons, the first on the dark panel (E9):", (await fp.locator(".kpis .kpi .ico").count()) >= 12 && (await fp.evaluate(() => getComputedStyle(document.querySelector(".kpis.lead-kpis .kpi")).backgroundColor)) === "rgb(22, 32, 28)");
+  await fp.screenshot({ path: `${OUT}/107-staff-dashboard.png`, fullPage: false });
+  log.push("107-staff-dashboard");
+  await axeCheck(fp, "staff dashboard with icon tiles (E9)");
+  await fp.goto(BASE + "/#/home"); await fp.waitForSelector("#queue-list");
   await fp.locator('#nav button[aria-controls="nav-work"]').focus();
   await fp.keyboard.press("Enter");
   const openWork = await fp.evaluate(() => !document.getElementById("nav-work").hidden && document.activeElement?.getAttribute("href") === "#/home");

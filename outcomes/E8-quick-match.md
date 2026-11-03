@@ -1,6 +1,6 @@
 # E8 Quick match: four questions to the place to look at first
 
-Status: verified-pending-merge (branch `outcome/E8-quick-match`, built on `main` at 30f3d95 with E7E merged;
+Status: merged (camayank/mkw-uae-growth#29, 3 Nov 2026; previously verified-pending-merge, branch `outcome/E8-quick-match`, built on `main` at 30f3d95 with E7E merged;
 released by the owner on 3 Nov 2026: "then build the new selector into the app", after reviewing the interactive
 selector on the design canvas "Tasees App Redesign", board "Selector, interactive")
 

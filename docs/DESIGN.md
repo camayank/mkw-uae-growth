@@ -21,10 +21,11 @@ new, add a token or a pattern here first.
 | Group | Tokens | Notes |
 | --- | --- | --- |
 | Colour | `--bg`, `--surface`, `--surface-2`, `--text`, `--muted`, `--line`, `--brand`, `--brand-ink`, `--accent`, `--ok`, `--warn`, `--bad`, `--info` | Light and dark sets; text tokens keep 4.5:1 on `--bg` and `--surface` |
+| Gold and dark panel (E9) | `--gold`, `--gold-ink`, `--gold-text`, `--ink-panel`, `--ink-panel-2`, `--ink-panel-text`, `--ink-panel-muted` | Gold is the one strongest action per screen and figures on a dark panel; the dark panel is the staff bar and the summary that matters most |
 | Tints | `--brand-soft`, `--ok-soft`, `--warn-soft`, `--bad-soft`, `--info-soft` | Mixed from the state colours for backgrounds |
 | Space | `--space-1` 4 px … `--space-7` 48 px | 4 px scale |
 | Type | `--font-sans`, `--font-arabic`, `--text-xs` … `--text-2xl`, `--leading`, `--leading-tight` | 15 px body; sizes in rem |
-| Shape | `--radius` (10 px), `--radius-sm`, `--radius-md`, `--radius-lg`, `--radius-pill` | |
+| Shape | `--radius` (12 px), `--radius-sm`, `--radius-md` (10 px), `--radius-lg` (16 px), `--radius-pill` | Rounder from E9 |
 | Depth | `--shadow`, `--shadow-lg` | None in dark mode |
 | Motion | `--motion-fast`, `--motion`, `--ease` | Switched off by `prefers-reduced-motion` |
 | Focus | `--focus-ring` | One visible ring everywhere (`:focus-visible`) |
@@ -45,8 +46,15 @@ new, add a token or a pattern here first.
 | Folding panel | `details.panel > summary > h2 + .state` then `.panel-body`, via `panel(title, body, {state, open, id})` in `js/core.js`; the heading carries the state so a closed panel still says what is in it; a jump opens it first | Client and partner engagement pages; open only while something needs the reader (U1) |
 | Offer switch | `section.card` with `nav.tiers`: the shown tier as `div.tier.best` marked selected, the others as `a.tier` with `.switch`; tier names from `TIER_LABEL` in `js/client.js`; no tier claims a pace (gap 85) | Client offer (U1) |
 | Pinned next step | `section.nextaction` reused for the partner: the open step's evidence form inside it, `ul.todo` for what waits on others | Partner engagement (U1) |
-| Tab bar | At 640 px and below, for `body[data-audience="client"|"partner"]`, `nav#nav` becomes a fixed bottom bar; each link carries an inline icon (`ICON` in `js/shell.js`) shown only there | Client and partner phones (U1); MKW staff keep the grouped menu |
+| Tab bar | At 640 px and below, for `body[data-audience="client"|"partner"]`, `nav#nav` becomes a fixed bottom bar; each link carries an inline icon (`ICON` in `js/shell.js`), shown beside the label at every width from E9 | Client and partner phones (U1); MKW staff keep the grouped menu |
 | Progress | `.progress[role=progressbar] > span` | Engagement cards |
+| UAE colours (E9) | `div.flagbar` of four spans above `header.top` (red, green, white, black), decorative (`aria-hidden`) | The workspace and the selector (not the stand-alone intake page) |
+| Strongest action (E9) | `.btn.gold` / `button.gold` added to the primary button: one per screen (the next action, accepting an offer); the timeline's own Approve stays plain so the pinned one is the only gold | Client home, offer, engagement |
+| Journey (E9) | `journey(steps, label)` in `js/core.js`: `ol.journey > li.{done,now,upcoming}` with `.step`, the name and an optional `.what` (kept for screen readers on a phone); one step at most carries `aria-current="step"`; built from the platform's own states (`clientJourney` in `js/client.js`): advice only when there is some, "being priced" only while MKW prices, an expired offer said as such, a dispute named | Client home |
+| Dark panel (E9) | `.panel-dark` on a card: white text, gold figures (`dd`, `.num`), gold links | Client money, the first KPI tile on staff screens (`.kpis.lead-kpis`) |
+| KPI tile (E9) | `kpiTile(label, value, sub, icon)` in `js/core.js`: `.kpi` with `.ico`, the figure, the label | Staff dashboard and queue |
+| Emirate flag (E9) | `flag(emirate)` in `js/core.js`: an inline simplified flag, nothing for an unknown name | Client engagements, staff request and lead pages, advice places |
+| Staff bar (E9) | `body[data-audience="platform"] .top` dark, entries with icons, the open entry underlined in gold; the M mark (MKW Advisors) for staff and partners, T for clients | Console |
 | Report download | `a.btn[download]` to `/report.pdf` on the client advice page; `#report` button on the selector (saves first, then downloads) | Selector, client advice (E7D) |
 | Funnel | `.kpis` from visitors to revenue, a stage table with the share of visitors, the by-source table, segment and lost-reason tables, and the attention list linking to each lead | Console Funnel (E7C) |
 | Next best action | `form.next-action[data-form="lead-next-action"]` with the rule's action, its reason, the override and its reason; `nextActionCell` in the leads list ("today" badge when urgent) | Leads (E7C) |

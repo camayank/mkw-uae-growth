@@ -1,5 +1,5 @@
 // Tasees workspace: engagement module (split from app.js in O12; plain ES modules, no build step).
-import { $app, MILESTONE_LABEL, aed, api, badge, byStage, date, dateTime, dropzone, esc, isClient, isPartner, isPlatform, nameOf, panel, role, seesMargin, table, uploadRules, words } from "./core.js";
+import { $app, MILESTONE_LABEL, aed, api, badge, byStage, date, dateTime, dropzone, esc, flag, isClient, isPartner, isPlatform, nameOf, panel, role, seesMargin, table, uploadRules, words } from "./core.js";
 import { nextActionCard } from "./client.js";
 
 export async function renderEngagement(id) {
@@ -315,8 +315,9 @@ function renderClientEngagement(e, parts) {
   const creditsPanel = parts.creditsCard() ? panel("Service guarantee", stripCard(parts.creditsCard()), { state: `${(e.credits ?? []).length} credit${(e.credits ?? []).length === 1 ? "" : "s"}` }) : "";
   $app.innerHTML = `
   <p><a href="#/">← Overview</a></p>
-  <div class="row between"><h1>Your engagement · ${esc(e.engagement.emirate)}${e.engagement.freeZone ? ` · ${esc(e.engagement.freeZone)}` : ""}</h1>${badge(e.engagement.status)}</div>
+  <div class="row between"><h1>Your engagement · ${flag(e.engagement.emirate)}${esc(e.engagement.emirate)}${e.engagement.freeZone ? ` · ${esc(e.engagement.freeZone)}` : ""}</h1>${badge(e.engagement.status)}</div>
   <p class="muted">${parts.done} of ${e.milestones.length} steps approved${parts.partnerNames.length ? ` · Delivered by ${esc(parts.partnerNames.join(", "))}, managed by MKW Advisors` : ""}</p>
+  <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="${e.milestones.length}" aria-valuenow="${parts.done}" aria-label="${parts.done} of ${e.milestones.length} steps approved"><span style="width:${e.milestones.length ? Math.round((parts.done / e.milestones.length) * 100) : 0}%"></span></div>
   <div class="grid cols-2 eng">
     <div class="stack">
       ${nextActionCard(j.actions, j.whatsNext, { inline: true, evidenceFor: parts.evidenceFor })}

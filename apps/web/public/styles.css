@@ -325,7 +325,6 @@ details.panel:focus-visible { outline: var(--focus-ring); }
 .scorebars .row { gap: var(--space-2); font-size: var(--text-md); }
 .scorebars .progress { margin: var(--space-1) 0 0; }
 .nextaction .eyebrow { display: flex; gap: var(--space-2); flex-wrap: wrap; }
-nav#nav a svg { display: none; }
 @media (max-width: 640px) {
   body[data-audience="client"] nav#nav, body[data-audience="partner"] nav#nav {
     position: fixed; inset-inline: 0; bottom: 0; z-index: 20; order: 0; flex-basis: auto; margin: 0;
@@ -343,4 +342,83 @@ nav#nav a svg { display: none; }
   body[data-audience="client"] main, body[data-audience="partner"] main { padding-bottom: 96px; }
   .summary { padding: var(--space-4); }
   .summary h2 { font-size: 1.15rem; }
+}
+
+/* Workspace look (E9, from the design canvas of 3 Nov 2026): the UAE flag colours above the bar, one gold button for
+   the strongest action on a screen, dark summary panels with gold figures, the client's journey tracker, emirate
+   flags beside a place, icons in the menus, and the staff console's dark bar. Tokens in tokens.css. */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.flagbar { display: flex; height: 5px; }
+.flagbar span:nth-child(1) { flex: 1; background: #ce1126; } .flagbar span:nth-child(2) { flex: 3; background: #00732f; }
+.flagbar span:nth-child(3) { flex: 3; background: #ffffff; } .flagbar span:nth-child(4) { flex: 3; background: #16201c; }
+h1 { font-size: 1.65rem; font-weight: 750; letter-spacing: -0.01em; }
+h2 { font-weight: 700; }
+button, .btn { border-radius: var(--radius-md); min-height: 40px; }
+button.sm, .btn.sm { min-height: 34px; }
+button.primary, .btn.primary { font-weight: 650; }
+button.gold, .btn.gold { background: var(--gold); color: var(--gold-ink); border-color: var(--gold); font-weight: 700; }
+button.gold:hover, .btn.gold:hover { filter: brightness(0.95); border-color: var(--gold); }
+.card, details.panel, .summary, .kpi { border-radius: var(--radius-lg); }
+/* A darker gold for fills on the light track (3:1 for graphics, WCAG 1.4.11); the dark theme's gold is light enough. */
+.progress > span { background: var(--gold-fill); }
+button.link { min-height: 0; }
+.flag { display: inline-flex; vertical-align: -3px; border-radius: 3px; overflow: hidden; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15); margin-inline-end: 6px; flex: none; }
+.flag svg { display: block; }
+/* Menus: icons beside every entry for clients and partners at every width; the staff bar is dark. */
+nav#nav a svg { display: inline-block; width: 16px; height: 16px; flex: none; margin-inline-end: 5px; }
+nav#nav > a, .navbtn { display: inline-flex; align-items: center; font-weight: 550; padding: 6px 8px; white-space: nowrap; }
+.navmenu a { display: flex; align-items: center; }
+.navbtn > svg:first-child { width: 16px; height: 16px; margin-inline-end: 5px; }
+.search input { width: 180px; }
+body[data-audience="platform"] .top { background: var(--ink-panel); border-bottom-color: var(--ink-panel); color: var(--ink-panel-text); }
+body[data-audience="platform"] .brand, body[data-audience="platform"] .brand small, body[data-audience="platform"] .who { color: var(--ink-panel-muted); }
+body[data-audience="platform"] .brand { color: var(--ink-panel-text); }
+body[data-audience="platform"] .mark { background: var(--ink-panel-text); color: var(--ink-panel); }
+body[data-audience="platform"] nav a, body[data-audience="platform"] .navbtn { color: var(--ink-panel-muted); }
+body[data-audience="platform"] nav > a.on, body[data-audience="platform"] nav > a:hover, body[data-audience="platform"] .navbtn.on, body[data-audience="platform"] .navbtn:hover, body[data-audience="platform"] .navbtn[aria-expanded="true"] { background: var(--ink-panel-2); color: var(--ink-panel-text); box-shadow: inset 0 -3px 0 var(--gold); }
+/* The staff menu stays on one row (O10) whatever the font: at desktop width it never wraps; the name, search and
+   buttons move to their own line first when the bar is short of room. */
+@media (min-width: 1024px) {
+  body[data-audience="platform"] nav#nav { flex: 0 0 auto; flex-wrap: nowrap; }
+  body[data-audience="platform"] .who { margin-inline-start: auto; }
+}
+body[data-audience="platform"] .navmenu a { color: var(--text); }
+body[data-audience="platform"] .navmenu a.on { background: var(--surface-2); box-shadow: inset 3px 0 0 var(--gold); }
+body[data-audience="platform"] .bell, body[data-audience="platform"] .who button, body[data-audience="platform"] .search input { color: var(--ink-panel-text); background: var(--ink-panel-2); border-color: #3a4842; }
+body[data-audience="platform"] .bell.on, body[data-audience="platform"] .bell:hover { background: #3a4842; color: var(--ink-panel-text); }
+body[data-audience="platform"] .search input::placeholder { color: var(--ink-panel-muted); }
+/* The dark summary panel: what matters most on a screen, with its figures in gold. */
+.panel-dark { background: var(--ink-panel); color: var(--ink-panel-text); border-color: var(--ink-panel); }
+.panel-dark h2, .panel-dark b { color: var(--ink-panel-text); }
+.panel-dark .muted, .panel-dark dt, .panel-dark .small { color: var(--ink-panel-muted); }
+.panel-dark .num, .panel-dark dd { color: var(--gold-text); font-variant-numeric: tabular-nums; }
+.panel-dark a { color: var(--gold-text); }
+.panel-dark dt.total, .panel-dark dd.total { border-top-color: #3a4842; }
+.panel-dark dd.total { font-size: 1.35rem; }
+/* The client's journey: where a request or engagement stands, from the request to completion. */
+ol.journey { list-style: none; margin: 0 0 var(--space-5); padding: var(--space-4); display: flex; gap: var(--space-2); background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow); }
+ol.journey li { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; font-size: var(--text-sm); color: var(--muted); position: relative; }
+ol.journey li::before { content: ""; position: absolute; top: 14px; inset-inline-start: calc(-50% + 18px); inset-inline-end: calc(50% + 18px); height: 3px; border-radius: 3px; background: var(--line); }
+ol.journey li:first-child::before { display: none; }
+ol.journey li.done::before, ol.journey li.now::before { background: var(--brand); }
+ol.journey .step { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; background: var(--surface-2); color: var(--muted); position: relative; z-index: 1; }
+ol.journey li.done .step { background: var(--brand); color: var(--brand-ink); }
+ol.journey li.now .step { background: var(--gold); color: var(--gold-ink); box-shadow: 0 0 0 4px color-mix(in srgb, var(--gold) 30%, transparent); }
+ol.journey li.done, ol.journey li.now { color: var(--text); font-weight: 600; }
+ol.journey .what { font-size: var(--text-xs); font-weight: 400; color: var(--muted); }
+/* KPI tiles with an icon. */
+.kpi { display: flex; flex-direction: column; gap: 2px; position: relative; }
+.kpi .ico { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--brand-soft); color: var(--brand); margin-bottom: 6px; }
+.kpi b { font-size: 1.45rem; font-variant-numeric: tabular-nums; }
+.kpis.lead-kpis .kpi:first-child { background: var(--ink-panel); border-color: var(--ink-panel); }
+.kpis.lead-kpis .kpi:first-child b { color: var(--gold-text); } .kpis.lead-kpis .kpi:first-child span { color: var(--ink-panel-muted); }
+.kpis.lead-kpis .kpi:first-child .ico { background: var(--ink-panel-2); color: var(--gold-text); }
+@media (max-width: 640px) {
+  body[data-audience="client"] nav#nav a svg, body[data-audience="partner"] nav#nav a svg { margin-inline-end: 0; }
+  ol.journey { padding: var(--space-3) var(--space-2); gap: 2px; }
+  ol.journey .what { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  h1 { font-size: 1.3rem; }
+  ol.journey li { font-size: 0.68rem; }
+  ol.journey .step { width: 26px; height: 26px; }
+  ol.journey li::before { top: 12px; }
 }

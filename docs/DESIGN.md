@@ -47,6 +47,7 @@ new, add a token or a pattern here first.
 | Pinned next step | `section.nextaction` reused for the partner: the open step's evidence form inside it, `ul.todo` for what waits on others | Partner engagement (U1) |
 | Tab bar | At 640 px and below, for `body[data-audience="client"|"partner"]`, `nav#nav` becomes a fixed bottom bar; each link carries an inline icon (`ICON` in `js/shell.js`) shown only there | Client and partner phones (U1); MKW staff keep the grouped menu |
 | Progress | `.progress[role=progressbar] > span` | Engagement cards |
+| Report download | `a.btn[download]` to `/report.pdf` on the client advice page; `#report` button on the selector (saves first, then downloads) | Selector, client advice (E7D) |
 | Funnel | `.kpis` from visitors to revenue, a stage table with the share of visitors, the by-source table, segment and lost-reason tables, and the attention list linking to each lead | Console Funnel (E7C) |
 | Next best action | `form.next-action[data-form="lead-next-action"]` with the rule's action, its reason, the override and its reason; `nextActionCell` in the leads list ("today" badge when urgent) | Leads (E7C) |
 | Coverage matrix | `.kpis`, a table of emirates by place kind, evidence per field, expiring evidence, approvals outstanding, the backlog by place with one `.badge` per field (title = what to obtain) and a `form[data-form="place-status"]` per place for the founder | Console Coverage (E7B) |

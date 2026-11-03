@@ -1,6 +1,6 @@
 import { createHash, randomInt } from "node:crypto";
 import { cleanAttribution, nextBestAction, scoreLead, type AdviceInput, type Attribution, type LeadSignals, type Segment } from "@tasees/core";
-import { audit, type SessionUser } from "../lib/context.ts";
+import { audit, lockAuditChain, type SessionUser } from "../lib/context.ts";
 import { num, type Queryable } from "../lib/db.ts";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.ts";
 import { getRetention } from "./admin.ts";
@@ -62,6 +62,12 @@ export async function recoverAssessment(tx: Queryable, code: string): Promise<{ 
   if (!r || r.status === "anonymised") return null;
   await tx.query("update assessments set recovered = recovered + 1, last_seen_at = app_now() where id = $1", [r.id]);
   return { id: r.id, answers: r.answers, savedAt: r.created_at, recovered: num(r.recovered) + 1 };
+}
+
+/** E7D: read a saved result without counting a return visit (the report download is not "coming back"). */
+export async function readAssessment(tx: Queryable, code: string): Promise<{ id: string; answers: AdviceInput } | null> {
+  const r = (await tx.query<{ id: string; answers: AdviceInput; status: string }>("select id, answers, status from assessments where code_hash = $1", [hash(code)])).rows[0];
+  return !r || r.status === "anonymised" ? null : { id: r.id, answers: r.answers };
 }
 
 async function assessmentByCode(tx: Queryable, code: string | undefined): Promise<{ id: string; recovered: number; source: Attribution } | null> {
@@ -200,7 +206,7 @@ const requirePipeline = (actor: SessionUser) => {
 
 const LEAD_COLUMNS = `l.id, l.email, l.name, l.company, l.phone_given, l.assessment_id, l.answers, l.source, l.segment, l.complexity, l.intent, l.high_intent, l.consultation, l.status,
   l.owner_user_id, u.name as owner_name, l.client_org_id, l.request_id, l.intake_lead_id, l.created_at, l.updated_at,
-  l.score_evidence, l.next_action_override, l.next_action_reason, l.next_action_at, l.first_contact_at, l.closed_reason,
+  l.score_evidence, l.next_action_override, l.next_action_reason, l.next_action_at, l.first_contact_at, l.closed_reason, l.consultation_booked_for, l.consultation_booked_at,
   exists (select 1 from offers f where f.request_id = l.request_id and f.status in ('published', 'accepted')) as offer_published,
   exists (select 1 from offers f where f.request_id = l.request_id and f.status = 'accepted') as offer_accepted,
   exists (select 1 from engagements e where e.request_id = l.request_id) as engagement_exists,
@@ -250,6 +256,7 @@ const leadRow = (x: Record<string, unknown>) => ({
   updatedAt: x.updated_at,
   // E7C: the evidence behind the scores, the computed next best action and the adviser's override.
   scoreEvidence: x.score_evidence ?? null,
+  consultationBookedFor: x.consultation_booked_for ?? null,
   firstContactAt: x.first_contact_at ?? null,
   closedReason: x.closed_reason ?? null,
   nextAction: nextBestAction({
@@ -292,6 +299,9 @@ export async function leadDetail(tx: Queryable, actor: SessionUser, id: string) 
 }
 
 async function loadLead(tx: Queryable, id: string) {
+  // Lock order (O13): the row lock below is followed by an audit, so the audit-chain lock comes first; the handoff
+  // (convertHeldLead) takes it first too, so a booking and a conversion of the same lead queue instead of deadlocking.
+  await lockAuditChain(tx);
   const l = (await tx.query<{ id: string; status: string; owner_user_id: string | null }>("select id, status, owner_user_id from leads where id = $1 for update", [id])).rows[0];
   if (!l) throw notFound("Lead not found");
   if (l.status === "anonymised") throw conflict("This lead was anonymised under the retention rule");
@@ -353,6 +363,7 @@ export async function setFollowup(tx: Queryable, actor: SessionUser, id: string,
 
 export async function completeFollowup(tx: Queryable, actor: SessionUser, followupId: number, note = "") {
   requirePipeline(actor);
+  await lockAuditChain(tx); // lock order (O13): the note row lock below is followed by an audit; a rebooking holds the chain lock and then touches this row
   const f = (await tx.query<{ id: number; lead_id: string; done_at: string | null }>("select id, lead_id, done_at from lead_notes where id = $1 and kind = 'followup' for update", [followupId])).rows[0];
   if (!f) throw notFound("Follow-up not found");
   if (f.done_at) throw conflict("This follow-up is already done");
@@ -635,5 +646,30 @@ export async function funnelReport(tx: Queryable, actor: SessionUser) {
     turnaround: { toFirstContactDays: turnaround.to_contact_days == null ? null : Math.round(Number(turnaround.to_contact_days) * 10) / 10, contacted: num(turnaround.contacted), toProposalDays: turnaround.to_proposal_days == null ? null : Math.round(Number(turnaround.to_proposal_days) * 10) / 10, proposed: num(turnaround.proposed) },
     attention: attention.rows.map((x) => ({ id: x.id, company: x.company, status: x.status, intent: num(x.intent), owner: x.owner ?? null, days: Math.round(Number(x.days) * 10) / 10, why: !x.owner_user_id ? "unassigned" : x.followup_due ? "follow-up overdue" : "no contact for two days" })),
   };
+}
+
+// E7D: booking the call a lead asked for ---------------------------------------------------------------
+
+export async function bookConsultation(tx: Queryable, actor: SessionUser, id: string, at: string, note = "") {
+  requirePipeline(actor);
+  const l = await loadLead(tx, id);
+  if (["converted", "closed"].includes(l.status)) throw conflict("This lead is closed or converted; nothing to book");
+  const when = new Date(at);
+  if (Number.isNaN(when.getTime())) throw badRequest("The call needs a date and time");
+  if (when.getTime() < Date.now() - 366 * 86_400_000 || when.getTime() > Date.now() + 2 * 366 * 86_400_000) throw badRequest("The call must be within a year of today");
+  await tx.query(
+    `update leads set consultation_booked_at = app_now(), consultation_booked_for = $2, consultation_booked_by = $3, consultation = coalesce(consultation, '{}'::jsonb),
+       status = case when status in ('new', 'routed', 'contacted') then 'consultation' else status end, first_contact_at = coalesce(first_contact_at, app_now()),
+       owner_user_id = coalesce(owner_user_id, $3), updated_at = app_now() where id = $1`,
+    [id, when.toISOString(), actor.id],
+  );
+  // A rebooking closes the earlier call's follow-up so the queue shows one call, not two.
+  await tx.query("update lead_notes set done_at = app_now() where lead_id = $1 and kind = 'followup' and done_at is null and body like 'Call booked for %'", [id]);
+  const gulf = when.toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Dubai" });
+  const f = (await tx.query<{ id: number }>("insert into lead_notes (lead_id, author_user_id, kind, body, due_at) values ($1, $2, 'followup', $3, $4) returning id", [id, actor.id, `Call booked for ${gulf} GST${note ? `: ${note.trim().slice(0, 400)}` : ""}`, when.toISOString()])).rows[0]!;
+  if (l.status !== "consultation") await tx.query("insert into lead_notes (lead_id, author_user_id, kind, body) values ($1, $2, 'status', $3)", [id, actor.id, `${l.status} → consultation: call booked`]);
+  else await tx.query("insert into lead_notes (lead_id, author_user_id, kind, body) values ($1, $2, 'status', 'call rebooked')", [id, actor.id]);
+  await audit(tx, actor, "lead.consultation_booked", "lead", id, { at: when.toISOString(), followupId: num(f.id) });
+  return { ok: true, followupId: num(f.id) };
 }
 

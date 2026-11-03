@@ -59,7 +59,7 @@ Status per contract capability:
 | Corporate tax and VAT considerations | Built (E1) | Ordinary regime, QFZP conditions, small business relief window, VAT on taxable supplies, designated zones |
 | Cross-border flags | Built (E1) | Founder residence, permanent establishment, corporate shareholder: always a specialist's review |
 | Explanation of rejected or uncertain alternatives | Built (E1) | Excluded places and structures with the failing rule |
-| Downloadable report; consultation | Partial (E3) | The result page prints; the review request creates the lead and request. Consultation booking is E4 |
+| Downloadable report; consultation | Built (E7D) | The UAE Entity Assessment Report as a PDF: preliminary from a saved public result, reviewed from the approved advice for the client, each section labelled by its evidence; the adviser books the call from the lead page and it reaches the queue when due |
 
 ### B. Entity intelligence engine
 
@@ -183,4 +183,9 @@ lists. No data was verified in this outcome: the pipeline is ready for the named
 to the platform's own records; a double submission is one lead; the two scores show their evidence and gain a start
 date, a clear activity, investment size, revenue and payroll; a next best action with its reason, overridable with a
 reason; the Funnel page from visitors to realised revenue; a regression suite for the lead-to-Tasees path.
+
+**E7D** (`outcomes/E7D-reports.md`, D88): the assessment report in two kinds (preliminary from the public view,
+reviewed from the approved advice), downloadable from the public page and the client's advice page, built from the
+same data the screens read, with the in-house PDF writer; consultation booking on the lead page with a queued
+follow-up.
 

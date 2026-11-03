@@ -274,7 +274,7 @@ let compared = [];
 function showResult(p, recovered = null) {
   lastResult = p;
   const rec = p.structure.recommendation;
-  const head = rec && p.structure.confirmed ? `Structure: ${STRUCTURE[rec] ?? words(rec)}` : p.noViableOption ? "No structure fits every answer yet" : "The structure is to be confirmed by a person";
+  const head = p.noViableOption ? "No structure fits every answer yet" : rec && p.structure.confirmed ? `Structure: ${STRUCTURE[rec] ?? words(rec)}` : "The structure is to be confirmed by a person";
   // Compared by default: the place the founder named, then the best-ranked places that fit, three in all.
   const fitting = p.places.filter((x) => x.status !== "INELIGIBLE");
   const named = answers.freeZone ? fitting.filter((x) => x.zone.toLowerCase() === answers.freeZone.toLowerCase() || (x.authority ?? "").toLowerCase() === answers.freeZone.toLowerCase()) : [];
@@ -298,12 +298,34 @@ function showResult(p, recovered = null) {
       ${p.crossBorder.length ? `<h3>For a cross-border specialist</h3>${specialist(p.crossBorder)}` : ""}
       ${p.missingFacts.length ? `<h3>What would sharpen this</h3><ul class="plain small">${p.missingFacts.map((m) => `<li><span class="badge warn">data missing</span> ${esc(m)}</li>`).join("")}</ul>` : ""}</div>
     <div class="card"><h2>General guidance</h2>${(p.guidance ?? []).length ? `<div class="guides">${p.guidance.map((g) => `<div class="guide"><h3><span data-no-i18n>${esc(g.title)}</span> <span class="badge general">general information</span></h3><p data-no-i18n>${esc(g.text)}</p></div>`).join("")}</div>` : `<p class="small muted">General notes on the structures and situations in your result appear here once a named person at MKW Advisors has approved their wording.</p>`}</div>
-    <div class="card next-action"><h2>${esc(actionTitle)}</h2><p>${esc(actionText)}</p><div class="row noprint"><a class="btn primary" href="#review">Ask for a review</a><button type="button" class="sm" id="save">${savedCode ? "Saved: code " + esc(savedCode) : "Save my result"}</button><button type="button" class="sm" id="print">Print or save this page</button><button type="button" class="sm" id="restart">Start again</button></div>
+    <div class="card next-action"><h2>${esc(actionTitle)}</h2><p>${esc(actionText)}</p><div class="row noprint"><a class="btn primary" href="#review">Ask for a review</a><button type="button" class="sm" id="save">${savedCode ? "Saved: code " + esc(savedCode) : "Save my result"}</button><button type="button" class="sm" id="report">Download the report (PDF)</button><button type="button" class="sm" id="print">Print this page</button><button type="button" class="sm" id="restart">Start again</button></div>
     <p class="small muted noprint" id="save-msg" hidden aria-live="polite"></p></div>
     ${recovered ? `<p class="small muted">Saved ${esc(recovered.savedAt.slice(0, 10))}, opened ${recovered.recovered} time(s); shown again on today's rules.</p>` : ""}`;
   show("result");
   track("result_viewed");
   $("print").addEventListener("click", () => { track("report_printed"); window.print(); });
+  // The report is built from the saved result, so an unsaved result is saved first (the code is shown as usual).
+  const save = async () => {
+    const res = await fetch("/api/public/assessments", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ answers: body(), attribution }) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || "Could not save");
+    savedCode = data.code;
+    track("result_saved");
+    $("save").textContent = `Saved: code ${savedCode}`;
+    $("save-msg").hidden = false;
+    $("save-msg").textContent = `Keep this code to come back to your result: ${savedCode}. It holds your answers only, no contact details, and is kept for a limited time.`;
+  };
+  $("report").addEventListener("click", async () => {
+    $("report").disabled = true;
+    try {
+      if (!savedCode) await save();
+      track("report_printed");
+      const a = document.createElement("a");
+      a.href = `/api/public/assessments/${encodeURIComponent(savedCode)}/report.pdf`;
+      a.download = "";
+      document.body.appendChild(a); a.click(); a.remove();
+    } catch (e) { $("save-msg").hidden = false; $("save-msg").textContent = e.message; } finally { $("report").disabled = false; }
+  });
   $("edit").addEventListener("click", () => edit(0));
   for (const a of $("result").querySelectorAll("a[data-edit]")) a.addEventListener("click", (ev) => { ev.preventDefault(); edit(Number(a.dataset.edit)); });
   for (const c of $("result").querySelectorAll("input.cmp")) c.addEventListener("change", () => {
@@ -318,16 +340,7 @@ function showResult(p, recovered = null) {
   $("save").addEventListener("click", async () => {
     if (savedCode) return;
     $("save").disabled = true;
-    try {
-      const res = await fetch("/api/public/assessments", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ answers: body(), attribution }) });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Could not save");
-      savedCode = data.code;
-      track("result_saved");
-      $("save").textContent = `Saved: code ${savedCode}`;
-      $("save-msg").hidden = false;
-      $("save-msg").textContent = `Keep this code to come back to your result: ${savedCode}. It holds your answers only, no contact details, and is kept for a limited time.`;
-    } catch (e) { $("save-msg").hidden = false; $("save-msg").textContent = e.message; $("save").disabled = false; }
+    try { await save(); } catch (e) { $("save-msg").hidden = false; $("save-msg").textContent = e.message; $("save").disabled = false; }
   });
   $("restart").addEventListener("click", () => { for (const k of Object.keys(answers)) delete answers[k]; answers.emirate = "Dubai"; i = 0; savedCode = null; lastResult = null; $("review").reset(); $("review").querySelector("button[type=submit]").disabled = false; $("rmsg").hidden = true; show("landing"); window.scrollTo(0, 0); $("start").focus(); });
   if (isAr()) translateTree($("result"));

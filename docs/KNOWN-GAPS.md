@@ -262,6 +262,14 @@ in a browser; everything listed here is not.
 95. **Legal forms within one jurisdiction never decide eligibility.** They are on record for the verifier; a test
     keeps the engine from guessing with them.
 
+## E7D: reporting and advisory experiences
+
+101. **The report is plain text in a PDF**: the in-house writer draws monospaced Latin text only, so no logo, no
+     table rules and no Arabic (O15). The content is complete; the design is an owner choice (D88).
+102. **The reviewer's name appears only on the client's report**, never on the public one, which names no person.
+103. **A booked call is a record and a queued follow-up**, not a calendar invitation; the adviser sends the invitation
+     outside the platform and writes the time here.
+
 ## E7C: lead conversion intelligence
 
 96. **Funnel figures start at zero on the pilot's first day** and only count what the public page sends; a visitor

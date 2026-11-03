@@ -901,3 +901,33 @@ canvas of 3 Nov 2026 and its review round.)
   and realised revenue (payments received) against the pipeline (proposals published and not yet decided). Client
   totals only; finance, clients and partners cannot read it. The demo seeds no funnel rows.
 
+**D88. The assessment report is the page as a document, in two kinds, from the repository's own PDF writer.** (E7D.)
+
+- A report is built in core (`packages/core/src/report.ts`) from the same data the screen reads: the preliminary
+  kind from the public view (D80, so only approved statements and figures appear and the rest reads "to be
+  verified"), the reviewed kind from the advice a named person approved for the client. Each section the contract
+  asks for is there (profile, structures, jurisdictions with evidence labels, rejected alternatives, licences and
+  obligations, cross-border risks for a specialist, unresolved questions, the recommendation and its limits, the
+  official sources, approved guidance on the preliminary kind, next steps), and the status line on top says which
+  kind it is: "PRELIMINARY, not reviewed by a person, not advice" or "REVIEWED by <name> on <date>".
+- The PDF is the in-house text writer (D26): monospaced, Latin only, no dependency. A designed document is a later
+  choice; the content would not change. The reference on the document is a prefix of the row id, never the
+  recovery code, which stays the capability it is.
+- The public report is served for a saved result by its code (rate-limited, writing nothing: a download is not a
+  return visit, so the recovery count the lead score reads is untouched); the client's
+  report is read as the client (row-level security and the column grants decide what they see) with the reviewer's
+  name looked up by the platform for that one request. Nothing is emailed; the person downloads it.
+- Booking a call is a record on the lead (when, for when, by whom), a status move to consultation, and a follow-up
+  due at that time that reaches the queue; no calendar provider (rules 7 and 11, an owner decision). The booker
+  owns the lead when nobody did. Times are Gulf Standard Time: the lead page sends the entered time as +04:00 and
+  the follow-up note says "GST". A rebooking closes the earlier call's follow-up so the queue shows one call.
+  Every lead write that locks the row and then audits takes the audit-chain lock first (the O13 lock order), in
+  `loadLead`, so a booking and the handoff's conversion of the same lead queue rather than deadlock; completing a
+  follow-up takes it before its note row lock for the same reason (a rebooking closes that row under the chain lock).
+- The reviewed report's closing sentence ("every point rests on a verified rule or figure" or "some points are
+  unverified") is decided by the labels the report actually prints, not by the advice's flags alone: a renewal
+  figure can be unverified while every rule and setup figure is verified.
+- The client's report exists for a new-company request only: a services request for an existing company has no
+  assessment behind it, so the route answers 404 and the page offers no link (the engine would otherwise have
+  compared structures for a company that already exists).
+

@@ -405,11 +405,12 @@ export async function renderRequest(id) {
     const h = await api("GET", "/api/client/home");
     const r = h.requests.find((x) => x.id === id);
     if (!r || !r.advice) {
-      $app.innerHTML = `<p><a href="#/">← Overview</a></p><h1>Our advice</h1><p class="muted">${r?.adviceStatus === "pending_review" ? "A person at MKW Advisors is checking the advice for your case; it appears here once approved." : r?.obligationId ? "This is your renewal request: partner firms price it and your offers appear on the overview; nothing is filed until you accept one." : "No advice for this request."}</p>${r?.assessmentId ? `<p class="small muted">It started from your saved result on our public page.</p>` : ""}`;
+      $app.innerHTML = `<p><a href="#/">← Overview</a></p><h1>Our advice</h1><p class="muted">${r?.adviceStatus === "pending_review" ? "A person at MKW Advisors is checking the advice for your case; it appears here once approved." : r?.obligationId ? "This is your renewal request: partner firms price it and your offers appear on the overview; nothing is filed until you accept one." : "No advice for this request."}</p>${r?.assessmentId ? `<p class="small muted">It started from your saved result on our public page.</p>` : ""}${r && r.mode === "new_company" ? `<p><a class="btn sm" href="/api/client/requests/${r.id}/report.pdf" download>Download the preliminary report (PDF)</a></p>` : ""}`;
       return;
     }
     $app.innerHTML = `<p><a href="#/">← Overview</a></p><h1>Our advice for your request</h1><p class="muted">Reviewed by MKW Advisors on ${date(r.adviceReviewedAt)}. Confidence is shown for each statement.</p>${r.assessmentId ? `<p class="small muted">This request started from your saved result on our public page; the advice here was built afresh on the rules and data of the day, and a person reviewed it.</p>` : ""}
     ${inShort(r.advice)}
+    <p class="noprint"><a class="btn sm" href="/api/client/requests/${r.id}/report.pdf" download>Download the reviewed report (PDF)</a> <span class="small muted">The same advice as a document, with the reviewer and date on it.</span></p>
     <details class="reasoning" open><summary>The reasoning: every structure, place and obligation, with its confidence</summary>${adviceHtml(r.advice)}</details>`;
     return;
   }
@@ -644,6 +645,7 @@ export async function renderLead(id) {
   </div>
   <div class="grid cols-2" style="margin-top:16px">
     <form class="card" data-form="lead-note" data-id="${l.id}"><h2>Note</h2><div class="row"><input name="body" required placeholder="What was said or decided" style="flex:1" /><button class="sm" type="submit">Add</button></div></form>
+    <form class="card" data-form="lead-consultation" data-id="${l.id}"><h2>Book the call</h2><p class="small muted">${l.consultation ? `They asked for a call${l.consultation.times ? ` (preferred: <span data-no-i18n>${esc(l.consultation.times)}</span>)` : ""}. ` : ""}${l.consultationBookedFor ? `Booked for ${dateTime(l.consultationBookedFor)}. ` : ""}Write the time agreed with them; it becomes a follow-up in the queue. Nothing is sent.</p><div class="row"><input name="at" type="datetime-local" required aria-label="Call date and time" /><input name="note" placeholder="Note (optional)" style="max-width:220px" /><button class="sm" type="submit">Book</button></div></form>
     <form class="card" data-form="lead-followup" data-id="${l.id}"><h2>Follow-up</h2><p class="small muted">A task for a person; it appears in the queue when due. Nothing is sent.</p><div class="row"><input name="dueAt" type="date" required /><input name="body" placeholder="What to do" style="max-width:260px" /><button class="sm" type="submit">Set</button></div></form>
   </div>
   <form class="card" data-form="lead-withdraw" data-id="${l.id}" style="margin-top:16px"><h2>Record a consent withdrawal</h2><p class="small muted">When the person tells MKW they withdraw a consent (by email, phone or in writing), record it here; the history keeps every decision.</p>

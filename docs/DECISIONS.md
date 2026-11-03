@@ -924,6 +924,9 @@ canvas of 3 Nov 2026 and its review round.)
   Every lead write that locks the row and then audits takes the audit-chain lock first (the O13 lock order), in
   `loadLead`, so a booking and the handoff's conversion of the same lead queue rather than deadlock; completing a
   follow-up takes it before its note row lock for the same reason (a rebooking closes that row under the chain lock).
+- The reviewed report's closing sentence ("every point rests on a verified rule or figure" or "some points are
+  unverified") is decided by the labels the report actually prints, not by the advice's flags alone: a renewal
+  figure can be unverified while every rule and setup figure is verified.
 - The client's report exists for a new-company request only: a services request for an existing company has no
   assessment behind it, so the route answers 404 and the page offers no link (the engine would otherwise have
   compared structures for a company that already exists).

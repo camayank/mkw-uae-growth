@@ -996,6 +996,8 @@ canvas of 3 Nov 2026 and its review round.)
 - The staff console keeps the grouped one-row menu decided in O10 (four entries, menus by keyboard), now on a dark
   bar with icons and a gold marker. The owner chose this over the canvas's sidebar on 3 Nov 2026 ("keep the grouped
   staff menu").
+  At 1024 px and wider the menu never wraps; the name, search and buttons take a second line first if the bar
+  is short of room, so a wider font (as on the CI runner) cannot break the one-row rule.
 - The brand mark is T for Tasees only for clients and signed-out visitors; partners and staff see M for MKW Advisors
   (rule 10: nothing addressed to a partner carries Tasees). The browser tab's title follows the same rule, "· MKW
   Advisors" for partners and staff (gap 86 closed). Before the first render after a reload the static page still

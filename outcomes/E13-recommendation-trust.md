@@ -25,7 +25,8 @@ out", which is what they measure, instead of how many "fit".
      fits", "no place fits") is public only when every place is approved.
    - `publicAssessment(input, …)`: the engine over every place on record (not only the advice's first five), filtered
      and ordered for the public. While any place is unapproved, the structure is the one the rules reach on the
-     answers alone (`structureOnRules`, extracted from `advise` with `requestedDiffers`; the engine is unchanged).
+     answers alone (`structureOnRules`, extracted from `advise` with `requestedDiffers`), and the licences, obligations
+     and cross-border points are stated for it (`statementsFor`, also extracted; the engine is unchanged).
 2. **Quick match** (`packages/core/src/quick.ts`): it takes its first three places from the public assessment (in the
    chosen emirate when it has an open place there). It returns `lead`: true only when the first place is approved
    for public display.
@@ -58,7 +59,9 @@ out", which is what they measure, instead of how many "fit".
   - Changing an unapproved place's estimates, activities, facilities or visa limits never moves the order, a status,
     the confirmed structure or "no option fits": with and without approved places, budgets included, two or more
     places of each kind.
-  - An unapproved estimate cannot switch the confirmed structure; with every place approved the engine's move shows.
+  - An unapproved estimate cannot switch the confirmed structure or drop its obligations; with every place approved
+    the engine's move shows.
+  - The perturbation test also compares every public statement (reasons, licences, obligations, cross-border).
 - Core (`public.test.ts`): "no option fits" is public only when its rules and every place are approved.
   - An approved place with a checked estimate comes ahead, and approving it moves nothing else.
   - The quick match has no lead with nothing approved, and has one when the first place is approved.
@@ -100,6 +103,12 @@ Recorded rather than changed:
 - The named place is still matched by authority and alias, since that is the founder's own answer (D95).
 - The engine still runs about six times per answer (gap 121).
 - The review request's emirate for "anywhere" (gap 120).
+
+## Codex review
+
+One finding, fixed with a test: when unapproved figures moved the engine to another structure, the public showed
+the structure the rules reach, but the obligations still came from the engine's move. An approved free zone
+corporate tax point could therefore go missing. The statements are now generated for the structure shown.
 
 ## Dependencies
 

@@ -8,7 +8,7 @@
  *
  * Pure. It never reads the rules or places itself; the caller decides what is approved.
  */
-import { advise, asCandidate, requestedDiffers, structureOnRules, type Advice, type AdviceInput, type Candidate, type Reasoned, type ScopingRule, type Zone } from "./advice.ts";
+import { advise, asCandidate, requestedDiffers, statementsFor, structureOnRules, type Advice, type AdviceInput, type Candidate, type Reasoned, type ScopingRule, type Zone } from "./advice.ts";
 import { assess, ELIGIBILITY_ENGINE_VERSION, statusRank, type EligibilityStatus, type Finding, type Structure } from "./eligibility.ts";
 
 export const PUBLIC_DISCLAIMER =
@@ -157,12 +157,13 @@ export function publicAssessment(input: AdviceInput, rules: ScopingRule[], zones
   const advice = advise(input, rules, zones, asOf);
   // While any place is unapproved, the structure is the one the rules reach on the answers alone: the engine's move to
   // another structure when no place of this one fits rests on the places' own figures (D95).
-  const structure = zones.every((z) => approvedPlaces.has(z.name)) ? advice.structure : (() => {
-    const s = structureOnRules(input, rules);
-    const requested = requestedDiffers(input, rules, s.structures, s.recommendation);
-    return { recommendation: s.recommendation, reasons: requested ? [...s.reasons, requested] : s.reasons };
-  })();
-  return publicView({ ...advice, structure, places: assess(input, rules, zones, null).viable.map(asCandidate) }, approvedRules, approvedPlaces, asOf);
+  // The licences, obligations and cross-border points are then stated for that structure too (Codex review of E13).
+  const every = { ...advice, places: assess(input, rules, zones, null).viable.map(asCandidate) };
+  if (zones.every((z) => approvedPlaces.has(z.name))) return publicView(every, approvedRules, approvedPlaces, asOf);
+  const s = structureOnRules(input, rules);
+  const requested = requestedDiffers(input, rules, s.structures, s.recommendation);
+  const said = statementsFor(input, rules, s.recommendation, asOf);
+  return publicView({ ...every, ...said, structure: { recommendation: s.recommendation, reasons: requested ? [...s.reasons, requested] : s.reasons } }, approvedRules, approvedPlaces, asOf);
 }
 
 export function publicView(a: Advice, approvedRules: ReadonlySet<string>, approvedPlaces: ReadonlySet<string>, asOf?: string): PublicAssessment {

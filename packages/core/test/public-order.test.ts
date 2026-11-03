@@ -13,6 +13,8 @@ const KEYS = [
   "structure.holding_free_zone", "structure.mainland_holding", "structure.mainland_foreign_ownership", "structure.financial_zone_non_financial", "structure.preferred_excluded",
   "structure.no_viable_option", "structure.no_viable_place", "place.visa_capacity", "place.visa_package", "place.cost_estimate", "place.budget", "place.activity_listed",
   "place.industrial_facilities", "place.warehouse_facilities",
+  "obligation.corporate_tax", "obligation.ct_qfzp", "obligation.ct_small_business_relief", "obligation.vat_mandatory", "obligation.vat_voluntary",
+  "obligation.vat_watch", "obligation.vat_basis", "obligation.vat_designated_zone", "obligation.ubo", "obligation.wps", "obligation.payroll_zone",
 ];
 const rules: ScopingRule[] = KEYS.map((key) => ({ key, kind: "structure", statement: key, parameters: {}, sourceUrl: "", confidence: "verified", verifiedBy: "A", verifiedAt: "2026-11-01" }));
 const z = (name: string, emirate: string, type: Zone["type"], visaQuota: number, min: number, activities: string[], extra: Partial<Zone> = {}): Zone => ({
@@ -69,12 +71,13 @@ describe("the public order of places (E13, D95)", () => {
     }
   });
 
-  it("an unapproved place's estimates, activities, facilities or visa limits never move the order, the confirmed structure or a status", () => {
+  it("an unapproved place's estimates, activities, facilities or visa limits never move the order, a status, the confirmed structure or a statement", () => {
     let seed = 7;
     const rnd = () => ((seed = (seed * 48271) % 2147483647) / 2147483647);
     const view = (input: AdviceInput, zs: Zone[], approved: ReadonlySet<string>) => {
       const v = publicAssessment(input, rules, zs, ALL_RULES, approved, AS_OF);
-      return { places: v.places.map((p) => `${p.zone}:${p.status}`), excluded: v.excluded.map((p) => p.zone), structure: v.structure.confirmed ? v.structure.recommendation : null, noViable: v.noViableOption };
+      const statements = [...v.structure.reasons, ...v.licences, ...v.obligations, ...v.crossBorder].map((x) => `${x.ruleKey ?? x.topic}:${x.text ?? ""}`);
+      return { places: v.places.map((p) => `${p.zone}:${p.status}`), excluded: v.excluded.map((p) => p.zone), structure: v.structure.confirmed ? v.structure.recommendation : null, noViable: v.noViableOption, statements };
     };
     for (const approved of [NONE, new Set(["IFZA", "SHAMS"])])
       for (const input of inputs.filter((_, i) => i % 2 === 0)) {
@@ -101,6 +104,10 @@ describe("the public order of places (E13, D95)", () => {
     expect(after.structure).toEqual(before.structure);
     expect(before.structure).toMatchObject({ recommendation: "free_zone", confirmed: true }); // what the structure rules say
     expect(after.places.map((p) => p.zone)).toEqual(before.places.map((p) => p.zone));
+    // The structure's obligations are stated for the structure shown, not the engine's move (Codex review of E13).
+    const said = (v: typeof before) => [...v.licences, ...v.obligations, ...v.crossBorder].map((x) => x.ruleKey ?? x.topic);
+    expect(said(after)).toEqual(said(before));
+    expect(after.obligations.some((x) => x.ruleKey === "obligation.ct_qfzp")).toBe(true);
     // With every place approved the public sees the engine's move, and its reason.
     const approvedAll = publicAssessment(input, rules, dear, ALL_RULES, new Set(dear.map((x) => x.name)), AS_OF);
     expect(approvedAll.structure).toMatchObject({ recommendation: "mainland", confirmed: true });

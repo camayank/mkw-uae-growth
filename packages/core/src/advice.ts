@@ -323,52 +323,14 @@ export function requestedDiffers(a: AdviceInput, rules: ScopingRule[], structure
 }
 
 /**
- * `asOf` is today's date (YYYY-MM-DD) by the application clock. It decides date-bound statements: a company formed
- * after 30 June 2026 has no tax period ending by 31 December 2026 (a first period runs at least six months), so small
- * business relief is not offered to it as a possibility. Without a date the engine does not say it may apply.
+ * The licences, obligations and cross-border points for the answers and a recommended structure (E13: extracted from
+ * `advise` so the public view can state them for the structure it shows, D95). They read the answers, the rules, the
+ * date and the recommendation only, never a place.
  */
-export function advise(a: AdviceInput, rules: ScopingRule[], zones: Zone[], asOf?: string): Advice {
+export function statementsFor(a: AdviceInput, rules: ScopingRule[], recommendation: Structure | null, asOf?: string): { licences: Reasoned[]; obligations: Reasoned[]; crossBorder: Reasoned[] } {
   const licences: Reasoned[] = [];
   const obligations: Reasoned[] = [];
   const crossBorder: Reasoned[] = [];
-  let reasons: Reasoned[] = [];
-  let recommendation: Structure | null = null;
-  let structures: StructureAssessment[] = [];
-  let viable: PlaceAssessment[] = [];
-  let excluded: PlaceAssessment[] = [];
-  let noViableOption = false;
-
-  if (a.mode === "new_company") {
-    const onRules = structureOnRules(a, rules);
-    structures = onRules.structures;
-    reasons = onRules.reasons;
-    recommendation = onRules.recommendation;
-    noViableOption = onRules.noViableOption;
-    let all = assess(a, rules, zones, recommendation);
-    // A structure that fits on paper but has no place we hold data for that fits every answer (budget, visas,
-    // premises) is not a recommendation the founder can act on: move to the closest structure that has one.
-    if (recommendation && zones.length && all.viable.length && !all.viable.some((p) => p.structure === recommendation)) {
-      const from: Structure = recommendation;
-      const to = all.viable[0]!.structure;
-      const why = [...new Set(all.excluded.filter((p) => p.structure === from).flatMap((p) => p.findings.filter((f) => f.outcome === "fail").map((f) => f.ruleKey)))];
-      const reasonText: Record<string, string> = { "place.budget": "the budget", "place.visa_capacity": "the number of visas", "place.industrial_facilities": "industrial facilities", "place.warehouse_facilities": "warehousing" };
-      const named = why.map((k) => reasonText[k] ?? k).join(", ");
-      reasons.push(say(rules, "structure.no_viable_place", `No ${words(from)} place we hold data for fits ${named ? `the answers on ${named}` : "every answer"}. ${words(to)} is the closest structure with a place that does.`, why));
-      recommendation = to;
-      all = assess(a, rules, zones, recommendation);
-    }
-    const requested = requestedDiffers(a, rules, structures, recommendation);
-    if (requested) reasons.push(requested);
-    viable = all.viable;
-    excluded = all.excluded;
-    if (!noViableOption && viable.length === 0) {
-      noViableOption = true;
-      // The conclusion rests on the place rules that excluded every place.
-      const placeRules = [...new Set(excluded.flatMap((p) => p.findings.filter((f) => f.outcome === "fail").map((f) => f.ruleKey)))];
-      reasons.push(say(rules, "structure.no_viable_option", "No place we hold data for fits every answer (visas, budget, premises). A specialist needs to look at this case; we will not guess.", placeRules));
-    }
-  }
-
   // Regulator approvals by activity (statements; the eligibility findings carry the same keys as conditions).
   if (a.activity === "health") licences.push(say(rules, "licence.health", "Health activities need DHA (Dubai), DoH (Abu Dhabi) or MOHAP approval in addition to the trade licence, and licensed premises."));
   if (a.activity === "education") licences.push(say(rules, "licence.education", "Education and training activities need KHDA (Dubai), ADEK (Abu Dhabi) or the relevant ministry's approval."));
@@ -415,6 +377,61 @@ export function advise(a: AdviceInput, rules: ScopingRule[], zones: Zone[], asOf
   if (a.ownerType === "company") {
     crossBorder.push(say(rules, "crossborder.corporate_shareholder", "A corporate owner brings transfer pricing on related-party dealings, the parent country's rules on foreign subsidiaries, and documents to attest for the registry and the bank. Review with the group's advisers."));
   }
+
+  return { licences, obligations, crossBorder };
+}
+
+/**
+ * `asOf` is today's date (YYYY-MM-DD) by the application clock. It decides date-bound statements: a company formed
+ * after 30 June 2026 has no tax period ending by 31 December 2026 (a first period runs at least six months), so small
+ * business relief is not offered to it as a possibility. Without a date the engine does not say it may apply.
+ */
+export function advise(a: AdviceInput, rules: ScopingRule[], zones: Zone[], asOf?: string): Advice {
+  const licences: Reasoned[] = [];
+  const obligations: Reasoned[] = [];
+  const crossBorder: Reasoned[] = [];
+  let reasons: Reasoned[] = [];
+  let recommendation: Structure | null = null;
+  let structures: StructureAssessment[] = [];
+  let viable: PlaceAssessment[] = [];
+  let excluded: PlaceAssessment[] = [];
+  let noViableOption = false;
+
+  if (a.mode === "new_company") {
+    const onRules = structureOnRules(a, rules);
+    structures = onRules.structures;
+    reasons = onRules.reasons;
+    recommendation = onRules.recommendation;
+    noViableOption = onRules.noViableOption;
+    let all = assess(a, rules, zones, recommendation);
+    // A structure that fits on paper but has no place we hold data for that fits every answer (budget, visas,
+    // premises) is not a recommendation the founder can act on: move to the closest structure that has one.
+    if (recommendation && zones.length && all.viable.length && !all.viable.some((p) => p.structure === recommendation)) {
+      const from: Structure = recommendation;
+      const to = all.viable[0]!.structure;
+      const why = [...new Set(all.excluded.filter((p) => p.structure === from).flatMap((p) => p.findings.filter((f) => f.outcome === "fail").map((f) => f.ruleKey)))];
+      const reasonText: Record<string, string> = { "place.budget": "the budget", "place.visa_capacity": "the number of visas", "place.industrial_facilities": "industrial facilities", "place.warehouse_facilities": "warehousing" };
+      const named = why.map((k) => reasonText[k] ?? k).join(", ");
+      reasons.push(say(rules, "structure.no_viable_place", `No ${words(from)} place we hold data for fits ${named ? `the answers on ${named}` : "every answer"}. ${words(to)} is the closest structure with a place that does.`, why));
+      recommendation = to;
+      all = assess(a, rules, zones, recommendation);
+    }
+    const requested = requestedDiffers(a, rules, structures, recommendation);
+    if (requested) reasons.push(requested);
+    viable = all.viable;
+    excluded = all.excluded;
+    if (!noViableOption && viable.length === 0) {
+      noViableOption = true;
+      // The conclusion rests on the place rules that excluded every place.
+      const placeRules = [...new Set(excluded.flatMap((p) => p.findings.filter((f) => f.outcome === "fail").map((f) => f.ruleKey)))];
+      reasons.push(say(rules, "structure.no_viable_option", "No place we hold data for fits every answer (visas, budget, premises). A specialist needs to look at this case; we will not guess.", placeRules));
+    }
+  }
+
+  const said = statementsFor(a, rules, recommendation, asOf);
+  licences.push(...said.licences);
+  obligations.push(...said.obligations);
+  crossBorder.push(...said.crossBorder);
 
   const statements = [...reasons, ...licences, ...obligations, ...crossBorder];
   const places = viable.slice(0, 5).map(asCandidate);

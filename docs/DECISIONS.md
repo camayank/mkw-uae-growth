@@ -1062,7 +1062,9 @@ canvas of 3 Nov 2026 and its review round.)
   alone (`structureOnRules`). The engine's move to another structure when no place of the first one fits
   (`structure.no_viable_place`), and "no place fits every answer", rest on the places' own figures: the public sees them
   only when every place is approved. Found by the independent review of E13: an unapproved estimate could switch the
-  confirmed structure and with it the order.
+  confirmed structure and with it the order. The licences, obligations and cross-border points are then stated for
+  that structure too (`statementsFor`, extracted from `advise`; Codex review of E13), so an approved free zone tax
+  point is not lost because unchecked figures moved the engine to the mainland.
 - An approved place with no estimate on record sorts with the places that have none, not as the cheapest.
 - The place the founder named is recognised by its name, its authority or an alias, as in the engine: it is the
   founder's own answer, and the alias only recognises it.

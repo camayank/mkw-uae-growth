@@ -883,6 +883,10 @@ canvas of 3 Nov 2026 and its review round.)
   reason) along with the rest, since an adviser may type a person's details there. For the same reason the
   audit row of an override records only that it changed (`{ overridden }`), never its wording, which lives in the
   erasable lead fields and notes (as follow-ups already do): the audit chain is never edited (rule 8).
+- Commercial outcomes (proposals, acceptances, engagements, revenue, pipeline) count once per request, on one
+  attributed lead: the one with a measured browser session, then the earliest, then by id, so two leads of one saved
+  result (the handoff attaches every one) never double a figure; lead counts stay per lead. A lead whose client
+  accepted or is on an engagement leaves the attention list, as the next-action rule already says.
 - The next best action is a rule over the lead's state (status, readiness, call request, owner, follow-ups, what the
   request became), returning one action and the reason; it is computed on read, never stored, so it is always
   current. The adviser overrides it with a reason, audited; the override is shown beside the rule's suggestion and

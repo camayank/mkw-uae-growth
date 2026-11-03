@@ -585,9 +585,14 @@ const pp = await pub.newPage();
 {
   const sel = await pub.newPage();
   sel.on("pageerror", (e) => errors.push(`selector page: ${e.message}`));
-  const answer = async (page) => {
-    await page.goto(BASE + "/selector.html");
-    await page.waitForSelector("#questions .choice");
+  // E7A: the homepage first; the call to action opens the questions, ten for a technology business, in order.
+  const answer = async (page, { fromHome = true } = {}) => {
+    if (fromHome) {
+      await page.goto(BASE + "/selector.html");
+      await page.waitForSelector("#landing:not([hidden]) #start");
+      await page.locator("#start").click();
+    }
+    await page.waitForSelector("#questions:not([hidden]) .choice");
     await page.locator('.choice[data-val="tech"]').click(); await page.locator("#next").click();
     await page.locator('.choice[data-val="international"]').click(); await page.locator("#next").click();
     await page.fill("#qnum", "2"); await page.locator("#next").click();
@@ -595,14 +600,37 @@ const pp = await pub.newPage();
     await page.fill("#qnum", "30000"); await page.locator("#next").click();
     await page.locator('.choice[data-val="individuals"]').click(); await page.locator("#next").click();
     await page.locator('.choice[data-val="no"]').click(); await page.locator("#next").click();
+    await page.waitForSelector("#qnum"); await page.locator("#next").click(); // expected revenue: optional, skipped
+    await page.locator('.choice[data-val="not_sure"]').click(); await page.locator("#next").click();
     await page.waitForSelector("#qzone");
     await page.fill("#qzone", "IFZA");
     await page.locator("#next").click();
     await page.waitForSelector("#result:not([hidden]) .card");
     await page.evaluate(() => window.scrollTo(0, 0));
-    return page.locator("#result").innerText();
+    // The result without the founder's own profile (their budget is their figure, not one of ours).
+    return page.evaluate(() => { const r = document.getElementById("result").cloneNode(true); r.querySelector(".profile")?.remove(); document.body.appendChild(r); const t = r.innerText; r.remove(); return t; });
   };
+  await sel.goto(BASE + "/selector.html");
+  await sel.waitForSelector("#landing:not([hidden]) #start");
+  const home = await sel.locator("main").innerText();
+  check("the homepage states the product, the call to action, the industries and what it does not do (E7A):", /Find the right UAE entity for your business/.test(home) && /Find the Right UAE Entity/.test(home) && (await sel.locator(".industry").count()) === 7 && /We do not/.test(home) && /Sign in to the Tasees workspace/.test(home) && (await sel.locator("#questions").isHidden()));
+  await shot(sel, "95-public-home");
+  await axeCheck(sel, "public homepage (E7A)");
+  await sel.locator('.industry[data-activity="manufacturing"]').click();
+  await sel.waitForSelector("#questions:not([hidden]) .choice");
+  check("an industry entry starts at question two with the activity set, premises first for manufacturing (E7A):", /Question 2 of 10/.test(await sel.locator("#progress").innerText()) && /What premises/.test(await sel.locator("#qtitle").innerText()) && /Why we ask/.test(await sel.locator("#step").innerText()) && (await sel.locator("#bar").getAttribute("value")) === "10");
+  await sel.locator("#back").click();
+  check("going back shows the activity chosen on the industry card (E7A):", (await sel.locator('.choice[data-val="manufacturing"]').getAttribute("aria-pressed")) === "true");
+  await sel.locator("#to-landing").click();
+  await sel.waitForSelector("#landing:not([hidden])");
+  await sel.locator('.industry[data-activity="finance"]').click();
+  await sel.waitForSelector("#questions:not([hidden]) .choice");
+  check("the regulated-finance card keeps question one on screen so virtual assets can be chosen instead (E7A):", /Question 1 of/.test(await sel.locator("#progress").innerText()) && (await sel.locator('.choice[data-val="finance"]').getAttribute("aria-pressed")) === "true" && (await sel.locator('.choice[data-val="virtual_assets"]').count()) === 1);
+  await sel.locator("#to-landing").click();
+  await sel.waitForSelector("#landing:not([hidden])");
   const first = await answer(sel);
+  check("the result opens with the profile, the legend and the places side by side (E7A):", /Your business profile/.test(first) && /Software or technology/.test(await sel.locator("#result .profile").innerText()) && /What the labels mean|general information/.test(first) && (await sel.locator("#compare table").count()) === 1 && (await sel.locator("#compare thead th").count()) >= 2 && /to be verified by a person/.test(await sel.locator("#compare").innerText()) && !/AED/.test(await sel.locator("#compare").innerText()));
+  check("with nothing approved the result shows no general guidance and names the next action (E7A):", (await sel.locator(".guide").count()) === 0 && /Ask MKW Advisors to review this result/.test(first));
   check("the selector answers without sign-in and labels the result preliminary (E3):", /Preliminary, general information, not advice/.test(first) && /IFZA/.test(first));
   check("with nothing approved the selector shows no rule text and no figure (E3):", !/AED /.test(first) && /0 of \d+ statements and 0 of \d+ places/.test(first) && /to be verified by a person/.test(first) && !/Register for corporate tax/.test(first));
   await shot(sel, "83-public-selector-unapproved");
@@ -632,6 +660,19 @@ const pp = await pub.newPage();
   const second = await answer(sel);
   check("an approved rule and place reach the public with text and figures (E3):", /Register for corporate tax/.test(second) && /AED 12,000 to AED 20,000 to set up/.test(second) && /figures checked/.test(second));
   check("everything else stays to be verified (E3):", /to be verified by a person/.test(second) && /1 of \d+ statements and 1 of \d+ places/.test(second));
+  // E7A: the comparison table carries the approved place's figures and source, the rest to be verified; the founder
+  // approves one guidance note and the selector shows it, labelled general information; an answer can be changed.
+  const cmp = await sel.locator("#compare").innerText();
+  check("the side-by-side table shows the approved place's figures, three-year estimate and source, and nothing for the rest (E7A):", /AED 12,000 to AED 20,000/.test(cmp) && /Three-year estimate\s+needs the yearly renewal on record/i.test(cmp) && (await sel.locator('#compare a[href^="https://ifza.com"]').count()) === 1 && /to be verified by a person/.test(cmp) && (await sel.locator("#compare thead th").count()) >= 3);
+  await founder.locator('button[data-act="display-approve"][data-kind="guide"][data-subject="reading.labels"]').click();
+  await founder.waitForTimeout(700);
+  log.push("public guide: " + (await toastText(founder)));
+  await eventually("the Scoping page counts the guidance note the public may read (E7A):", async () => /1 \/ \d+\s+guidance notes the public may read/.test(await founder.locator("main").innerText()));
+  await sel.locator("#edit").click();
+  await sel.waitForSelector("#questions:not([hidden]) .choice");
+  check("changing the answers keeps them (E7A):", (await sel.locator('.choice[data-val="tech"]').getAttribute("aria-pressed")) === "true" && /Question 1 of 10/.test(await sel.locator("#progress").innerText()));
+  const third = await answer(sel, { fromHome: false });
+  check("an approved guidance note reaches the public, labelled general information, with no figure in it (E7A):", (await sel.locator(".guide").count()) === 1 && /How to read this result/.test(third) && /general information/.test(await sel.locator(".guide").innerText()) && !/\d/.test(await sel.locator(".guide p").innerText()));
   await shot(sel, "84-public-selector-approved");
   await axeCheck(sel, "public selector result, one rule and one place approved (E3)");
   // E4: the founder saves the result and gets a code; a new page recovers it; the review request carries the
@@ -682,6 +723,12 @@ const pp = await pub.newPage();
   const m3 = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
   const mp = await m3.newPage();
   mp.on("pageerror", (e) => errors.push(`selector mobile: ${e.message}`));
+  await mp.goto(BASE + "/selector.html");
+  await mp.waitForSelector("#landing:not([hidden]) #start");
+  check("the homepage at 390 px has no horizontal overflow (E7A):", !(await mp.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
+  await mp.screenshot({ path: `${OUT}/94-mobile-public-home.png`, fullPage: true });
+  log.push("94-mobile-public-home");
+  await axeCheck(mp, "public homepage at 390 px (E7A)");
   await answer(mp);
   check("the selector result at 390 px has no horizontal overflow (E3):", !(await mp.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
   await mp.screenshot({ path: `${OUT}/85-mobile-public-selector.png`, fullPage: true });
@@ -1091,6 +1138,8 @@ await pp.waitForTimeout(400);
 await eventually("public intake in Arabic:", async () => /شركتك في الإمارات/.test(await pp.locator("main").innerText()));
 // E3: the selector's questions and controls are translated too, question by question.
 await pp.goto(BASE + "/selector.html?lang=ar"); await pp.waitForSelector('html[dir="rtl"]');
+check("the homepage in Arabic (E7A):", /اعثر على الكيان الإماراتي المناسب/.test(await pp.locator("main").innerText()));
+await pp.locator("#start").click();
 await pp.waitForSelector("#questions .choice");
 check("the public selector in Arabic, first question:", /ما النشاط الرئيسي للشركة/.test(await pp.locator("main").innerText()) && /التالي/.test(await pp.locator("#next").innerText()));
 await pp.locator('.choice[data-val="tech"]').click(); await pp.locator("#next").click();

@@ -18,3 +18,4 @@ export * from "./triage.ts";
 export * from "./catalogue.ts";
 export * from "./public.ts";
 export * from "./leads.ts";
+export * from "./guidance.ts";

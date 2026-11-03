@@ -46,7 +46,10 @@ export interface PublicPlace {
   authority?: string | null;
   status: EligibilityStatus;
   /** Figures appear only when the place is approved for public display. */
-  figures?: { visaQuota: number; costMinFils: number; costMaxFils: number; timelineDays: number; renewalMinFils?: number | null; renewalMaxFils?: number | null };
+  figures?: { visaQuota: number; costMinFils: number; costMaxFils: number; timelineDays: number; renewalMinFils?: number | null; renewalMaxFils?: number | null; renewalToBeVerified?: boolean };
+  /** E7A, only for approved places: the official source behind the figures, and the facilities on record (null: not on record). */
+  sourceUrl?: string;
+  facilities?: string[] | null;
   findings: PublicFinding[];
   /** Preferences in the founder's words, only for approved places. */
   why: string[];
@@ -71,6 +74,15 @@ export interface PublicAssessment {
   approved: { statements: number; ofStatements: number; places: number; ofPlaces: number };
   engineVersion?: string;
   asOf?: string;
+  /** E7A: general guidance notes approved for public display, chosen from the answers; filled by the service. */
+  guidance?: PublicGuide[];
+}
+
+export interface PublicGuide {
+  id: string;
+  title: string;
+  text: string;
+  about: string;
 }
 
 /** Contradictions that restate a rule are shown only when that rule is approved; the rest are the founder's own answers. */
@@ -110,7 +122,9 @@ export function publicView(a: Advice, approvedRules: ReadonlySet<string>, approv
       type: p.type,
       ...(ok && p.authority !== undefined ? { authority: p.authority } : {}),
       status: softStatus(p.status ?? "REQUIRES_VERIFICATION", p.findings ?? [], ok),
-      ...(ok ? { figures: { visaQuota: p.visaQuota, costMinFils: p.costMinFils, costMaxFils: p.costMaxFils, timelineDays: p.timelineDays, renewalMinFils: renewal ? p.renewalMinFils! : null, renewalMaxFils: renewal ? (p.renewalMaxFils ?? p.renewalMinFils!) : null } } : {}),
+      ...(ok ? { figures: { visaQuota: p.visaQuota, costMinFils: p.costMinFils, costMaxFils: p.costMaxFils, timelineDays: p.timelineDays, renewalMinFils: renewal ? p.renewalMinFils! : null, renewalMaxFils: renewal ? (p.renewalMaxFils ?? p.renewalMinFils!) : null, ...(p.renewalMinFils != null && !renewal ? { renewalToBeVerified: true } : {}) } } : {}),
+      ...(ok && p.sourceUrl ? { sourceUrl: p.sourceUrl } : {}),
+      ...(ok && p.facilities !== undefined ? { facilities: p.facilities } : {}),
       findings,
       why: ok ? p.why : [],
       toBeVerified: !ok,

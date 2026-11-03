@@ -91,6 +91,9 @@ describe("public display and the public selector", () => {
     let ifza = (await assess()).body.places.find((x: any) => x.zone === "IFZA");
     expect(ifza).toMatchObject({ toBeVerified: false, figures: { costMinFils: 1_290_000, costMaxFils: 1_800_000, visaQuota: 1 } });
     expect((await assess()).body.places.filter((x: any) => x.zone !== "IFZA").every((x: any) => !x.figures)).toBe(true);
+    // E7A: the approved place carries its official source; no other place carries a source or facilities.
+    expect(ifza.sourceUrl).toBe("https://ifza.com/");
+    expect((await assess()).body.places.filter((x: any) => x.zone !== "IFZA").every((x: any) => x.sourceUrl === undefined && x.facilities === undefined)).toBe(true);
     // A recorded fact changes the place's version.
     expect((await env.call("founder", "POST", "/api/admin/jurisdictions/facts", { subjectKind: "place", subject: "IFZA", field: "visa_quota", valueText: "2", sourceUrl: "https://ifza.com/packages", evidenceDate: "2026-10-01", confidence: "rule_of_thumb" })).status).toBe(200);
     ifza = (await assess()).body.places.find((x: any) => x.zone === "IFZA");
@@ -100,6 +103,7 @@ describe("public display and the public selector", () => {
     expect((await assess()).body.places.find((x: any) => x.zone === "IFZA").figures.visaQuota).toBe(2);
     expect((await env.call("founder", "POST", "/api/admin/public-display/revoke", { kind: "place", subject: "IFZA", note: "fees changed" })).status).toBe(200);
     expect((await assess()).body.places.find((x: any) => x.zone === "IFZA").figures).toBeUndefined();
+    expect((await assess()).body.places.find((x: any) => x.zone === "IFZA").sourceUrl).toBeUndefined();
     expect((await env.call("founder", "POST", "/api/admin/public-display/revoke", { kind: "place", subject: "IFZA", note: "" })).status).toBe(409);
   });
 
@@ -130,6 +134,42 @@ describe("public display and the public selector", () => {
     } finally {
       env.clock.now = saved;
     }
+  });
+
+  it("E7A: a guidance note reaches the public only once the founder approves its wording; the approval is audited and lapses with the text", async () => {
+    const before = { audit: await count(env, "audit_events"), outbox: await count(env, "outbox") };
+    // Nothing approved: no guidance, and the overview lists every note as a draft with its wording.
+    expect((await assess()).body.guidance).toEqual([]);
+    const overview = (await env.call("ops", "GET", "/api/admin/public-display")).body;
+    expect(overview.guides.length).toBeGreaterThan(10);
+    expect(overview.guides.every((g: any) => !g.display.approved && g.text.length > 100)).toBe(true);
+    expect(overview.guides.find((g: any) => g.id === "structure.free_zone").display.version).toMatch(/^[0-9a-f]{16}$/);
+    // Only the founder approves; an unknown note is 404; the approval is audited.
+    expect((await approve("guide", "structure.free_zone", "ops")).status).toBe(403);
+    expect((await approve("guide", "no.such.note")).status).toBe(404);
+    expect((await approve("guide", "structure.free_zone")).status).toBe(200);
+    expect((await approve("guide", "reading.labels")).status).toBe(200);
+    expect((await approve("guide", "structure.free_zone")).status).toBe(409);
+    const ev = (await asPlatform(env.db, null, (tx) => tx.query("select entity from audit_events where action = 'public_display.approved' and entity_id = 'structure.free_zone'"))).rows;
+    expect(ev).toEqual([{ entity: "guide" }]);
+    // The public sees the approved notes that apply to the answers (a tech founder with a free zone still open), labelled.
+    const r = await assess();
+    expect(r.body.guidance.map((g: any) => g.id).sort()).toEqual(["reading.labels", "structure.free_zone"]);
+    expect(r.body.guidance[0]).toMatchObject({ title: expect.any(String), text: expect.any(String), about: expect.any(String) });
+    for (const g of r.body.guidance) expect(g.text).not.toMatch(/\d|AED|%/);
+    // A note applies by the answers: the holding note reaches a holding founder, not the tech founder.
+    expect((await approve("guide", "industry.holding")).status).toBe(200);
+    const h = await assess({ ...answers, activity: "holding", visas: 0, premises: undefined });
+    expect(h.body.guidance.map((g: any) => g.id)).toContain("industry.holding");
+    expect((await assess()).body.guidance.map((g: any) => g.id)).not.toContain("industry.holding");
+    // The public assessment still writes nothing and still carries no money field.
+    for (const s of walk(r.body)) expect(s, s).not.toMatch(/margin|partner_?(unit|cost|org|id)|payout|rate_?card|professional_?fils|commission|digest|lastFactId/i);
+    expect(await count(env, "outbox")).toBe(before.outbox);
+    expect(await count(env, "audit_events")).toBe(before.audit + 3);
+    // Withdrawing hides it at once.
+    expect((await env.call("founder", "POST", "/api/admin/public-display/revoke", { kind: "guide", subject: "structure.free_zone", note: "rewording" })).status).toBe(200);
+    expect((await assess()).body.guidance.map((g: any) => g.id)).toEqual(["reading.labels"]);
+    expect((await env.call("founder", "POST", "/api/admin/public-display/revoke", { kind: "guide", subject: "industry.holding", note: "" })).status).toBe(200);
   });
 
   it("the public assessment is rate-limited per IP and refuses bad input", async () => {

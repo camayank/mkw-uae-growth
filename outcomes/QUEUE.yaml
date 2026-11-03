@@ -135,11 +135,39 @@ outcomes:
     needs_from_owner: [staging account]  # for the blocked checks only; released by the owner on 2 Nov 2026 with the programme
   - id: U1
     title: Client and partner workspace redesign (from the design canvas of 3 Nov 2026)
-    status: released
+    status: merged  # camayank/mkw-uae-growth#23, 3 Nov 2026
     contract: outcomes/U1-workspace-redesign.md
     depends_on: [E6]
     needs_from_owner: []
     # Released by the owner on 3 Nov 2026 ("now build these designs into the web app") after the five review fixes on the canvas.
+  # E7 (released by the owner on 3 Nov 2026, "Commercial launch readiness and product excellence"): E7A to E7E, one
+  # reviewed pull request each, in order.
+  - id: E7A
+    title: Public product UX (homepage, questionnaire, comparison, approved guidance)
+    status: verified-pending-merge
+    contract: outcomes/E7A-public-product-ux.md
+    depends_on: [E6]
+    needs_from_owner: [approval of the guidance notes for public display]
+  - id: E7B
+    title: Jurisdiction data operations (coverage matrix, evidence pipeline, verification workflow)
+    status: planned
+    depends_on: [E7A]
+    needs_from_owner: [authoritative sources, named verifier]
+  - id: E7C
+    title: Lead conversion intelligence (funnel, qualification, conversion dashboard, lead-to-Tasees regression)
+    status: planned
+    depends_on: [E7A]
+    needs_from_owner: [consent wording for measurement]
+  - id: E7D
+    title: Reporting and advisory experiences (assessment report, specialist consultation)
+    status: planned
+    depends_on: [E7A, E7B]
+    needs_from_owner: [report wording, adviser review status]
+  - id: E7E
+    title: Commercial pilot readiness (staging checklist, security regression, go/no-go)
+    status: planned
+    depends_on: [E7A, E7B, E7C, E7D]
+    needs_from_owner: [cloud account, domain, email, payments sandbox, legal and security sign-off]
 
 # Roadmap from docs/VISION.md (18 Oct 2026). Order of work: O11, O12, O13 before the pilot; then O7 (launch gate);
 # then O14, O15, O16. Renumbered on 18 Oct 2026 when the owner released O10 as Real data and staging.

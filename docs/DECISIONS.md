@@ -918,7 +918,8 @@ canvas of 3 Nov 2026 and its review round.)
   owns the lead when nobody did. Times are Gulf Standard Time: the lead page sends the entered time as +04:00 and
   the follow-up note says "GST". A rebooking closes the earlier call's follow-up so the queue shows one call.
   Every lead write that locks the row and then audits takes the audit-chain lock first (the O13 lock order), in
-  `loadLead`, so a booking and the handoff's conversion of the same lead queue rather than deadlock.
+  `loadLead`, so a booking and the handoff's conversion of the same lead queue rather than deadlock; completing a
+  follow-up takes it before its note row lock for the same reason (a rebooking closes that row under the chain lock).
 - The client's report exists for a new-company request only: a services request for an existing company has no
   assessment behind it, so the route answers 404 and the page offers no link (the engine would otherwise have
   compared structures for a company that already exists).

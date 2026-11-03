@@ -363,6 +363,7 @@ export async function setFollowup(tx: Queryable, actor: SessionUser, id: string,
 
 export async function completeFollowup(tx: Queryable, actor: SessionUser, followupId: number, note = "") {
   requirePipeline(actor);
+  await lockAuditChain(tx); // lock order (O13): the note row lock below is followed by an audit; a rebooking holds the chain lock and then touches this row
   const f = (await tx.query<{ id: number; lead_id: string; done_at: string | null }>("select id, lead_id, done_at from lead_notes where id = $1 and kind = 'followup' for update", [followupId])).rows[0];
   if (!f) throw notFound("Follow-up not found");
   if (f.done_at) throw conflict("This follow-up is already done");

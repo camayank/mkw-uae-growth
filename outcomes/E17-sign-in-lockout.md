@@ -61,6 +61,12 @@ issue a code that sorted before the one it had just invalidated. The expiry is n
 lock is held. The race needs two connections interleaving inside a transaction, which the test database cannot drive,
 so it is fixed by construction: the timestamp is taken under the lock.
 
+## CI
+
+E16's Arabic-report test (`report.test.ts`, the file's first test) timed out once at vitest's 5-second default on
+the runner. It took 1.5 s locally, but it renders the file's first designed reports with the fonts loaded cold, and the
+runner was busy. It now has the same 60-second limit as the rate-limit test beside it. What it checks is unchanged.
+
 ## Dependencies
 
 None. No new library, no migration.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { arabicReport, type Report } from "@tasees/core";
-import { reportInfo, reportPdf } from "../src/lib/report-pdf.ts";
+import { reportInfo, reportPdf, tableLayout } from "../src/lib/report-pdf.ts";
 
 /** E16: the report renderer's edges (independent review of E16): long items flow over pages, odd input never breaks it. */
 const base = (sections: Report["sections"], extra: Partial<Report> = {}): Report => ({
@@ -42,5 +42,20 @@ describe("the report renderer (E16)", () => {
     const info = reportInfo(arabicReport(base([], { status: "reviewed", statusLine: "REVIEWED by A. Reviewer at MKW Advisors on 2026-11-03." })));
     expect(info.Subject).toBe("تمت المراجعة من A. Reviewer في MKW Advisors بتاريخ 2026-11-03.");
     expect(JSON.stringify(info)).not.toMatch(/[\u2066-\u2069]/);
+  });
+
+  it("the Arabic table runs right to left: its first column at the right, the mirror of the English (Codex review of E16)", () => {
+    const en = tableLayout(6, false);
+    const ar = tableLayout(6, true);
+    expect(en.x[0]).toBeLessThan(en.x[5]!);
+    expect(ar.x[0]).toBeGreaterThan(ar.x[5]!);
+    // Each Arabic column is its English column reflected across the page: same width, mirrored position.
+    for (let i = 0; i < 6; i++) {
+      expect(ar.widths[i]).toBeCloseTo(en.widths[i]!, 6);
+      expect(ar.x[i]! + ar.widths[i]! - 48).toBeCloseTo(595.28 - 48 - en.x[i]!, 6);
+    }
+    // The columns tile the width without overlap, in both directions.
+    const right = (l: typeof en, i: number) => l.x[i]! + l.widths[i]!;
+    for (let i = 0; i < 5; i++) { expect(right(en, i)).toBeCloseTo(en.x[i + 1]!, 6); expect(right(ar, i + 1)).toBeCloseTo(ar.x[i]!, 6); }
   });
 });

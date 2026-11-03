@@ -75,7 +75,7 @@ An Arabic-speaking founder can have it in Arabic, laid out right to left, once A
 
 Evidence recorded on 3 Nov 2026 (`docs/evidence/E16/`):
 
-- `pnpm test` (`tests-pglite.txt`): core 154 passed (18 files); API 369 passed, 1 skipped (37 files), on PGlite.
+- `pnpm test` (`tests-pglite.txt`): core 154 passed (18 files); API 370 passed, 1 skipped (37 files), on PGlite.
 - `pnpm typecheck`: clean (`typecheck.txt`).
 - `pnpm audit --prod`: no known vulnerabilities (`audit.txt`).
 - `scripts/smoke.mjs` against a fresh demo: 326 checks OK, 0 failed (`smoke-log.txt`; 325 after E15).
@@ -109,6 +109,14 @@ New renderer tests (`apps/api/test/report-pdf.test.ts`):
 - the metadata carries no direction mark.
 
 Recorded: the Arabic grammar points for the reviewer (gap 129); characters outside the fonts (gap 133).
+
+## Codex review and CI
+
+- **Codex (fixed with a test).** The Arabic table's columns were placed as in the English one: Place on the left. They
+  now run from the right edge (`tableLayout`), the exact mirror of the English, as `122-report-preliminary-ar-1.png`
+  shows.
+- **CI.** The public report's rate-limit test timed out on the runner: it renders up to 30 designed reports before the
+  limit answers 429. It now has a 60-second timeout. The limit itself is unchanged.
 
 ## Dependencies
 

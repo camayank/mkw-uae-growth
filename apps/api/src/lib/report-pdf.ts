@@ -37,6 +37,19 @@ const TAG_STYLE: Array<[RegExp, string, string]> = [
   [/./, C.gold, C.goldBg],
 ];
 
+/**
+ * The comparison table's columns: the place and the estimate get more room than the counts. Left to right the first
+ * column starts at the left margin; right to left it ends at the right margin and each next column sits to its left
+ * (Codex review of E16: the first version placed Arabic columns as in English).
+ */
+export function tableLayout(n: number, rtl: boolean): { widths: number[]; x: number[] } {
+  const weights = Array.from({ length: n }, (_, i) => (i === 0 ? 1.5 : i === 3 ? 1.6 : i === 5 ? 1.2 : i === 4 ? 0.7 : 1));
+  const sum = weights.reduce((a, b) => a + b, 0);
+  const widths = weights.map((w) => (w / sum) * WIDTH);
+  const before = (i: number) => widths.slice(0, i).reduce((a, b) => a + b, 0);
+  return { widths, x: widths.map((w, i) => (rtl ? PAGE.margin + WIDTH - before(i) - w : PAGE.margin + before(i))) };
+}
+
 /** The PDF's metadata: the title with the reference (never the recovery code) and the status, without direction marks. */
 export const reportInfo = (r: Report) => ({ Title: `${r.title} ${r.reference}`.replace(CONTROLS, ""), Author: "MKW Advisors", Subject: r.statusLine.replace(CONTROLS, ""), Creator: "Tasees platform" });
 
@@ -189,13 +202,8 @@ export function reportPdf(r: Report): Promise<{ pdf: Buffer; text: string[] }> {
   const table = (t: ReportTable) => {
     const n = t.columns.length;
     if (!n) return;
-    // The place and the estimate get more room than the counts.
-    const weights = t.columns.map((_, i) => (i === 0 ? 1.5 : i === 3 ? 1.6 : i === 5 ? 1.2 : i === 4 ? 0.7 : 1));
-    const sum = weights.reduce((a, b) => a + b, 0);
-    const widths = weights.map((w) => (w / sum) * WIDTH);
-    const xs = widths.map((_, i) => PAGE.margin + widths.slice(0, i).reduce((a, b) => a + b, 0));
-    const order = rtl ? [...Array(n).keys()].reverse() : [...Array(n).keys()];
-    const colX = (i: number) => (rtl ? xs[n - 1 - order.indexOf(i)]! : xs[i]!);
+    const { widths, x } = tableLayout(n, rtl);
+    const colX = (i: number) => x[i]!;
     const row = (all: string[], header: boolean): void => {
       // A cell is a name, a status or an amount; a longer one is cut so a row always fits on a page.
       const cells = all.map((c) => (c.length > 160 ? `${c.slice(0, 157)}…` : c));

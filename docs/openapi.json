@@ -2086,6 +2086,13 @@
                     "type": "string",
                     "maxLength": 500
                   },
+                  "sourceKind": {
+                    "type": "string",
+                    "enum": [
+                      "official",
+                      "intermediary"
+                    ]
+                  },
                   "costMinAed": {
                     "type": "number",
                     "minimum": 0

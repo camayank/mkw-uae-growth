@@ -255,7 +255,10 @@ in a browser; everything listed here is not.
     place; the engine confirms the activity group only (D86). Matching a founder's description to an authority's
     code list, and several activities per assessment, need the lists in machine-readable form (gap 75).
 94. **Sub-zones are counted under their parent by kind only.** The parent relationship is an authority fact; the
-    coverage matrix does not yet draw the tree (authority, operating location, sub-zone) as a hierarchy.
+    coverage matrix does not yet draw the tree (authority, operating location, sub-zone) as a hierarchy. JAFZA's
+    free zone authority and its offshore registry are two authorities until the verifier records the parent fact.
+    Facts recorded before E7B carry `source_kind = official` by the migration's default; the verifier restates the
+    source kind when re-verifying them (and the legacy verify-zone endpoint assumes official unless told otherwise).
 95. **Legal forms within one jurisdiction never decide eligibility.** They are on record for the verifier; a test
     keeps the engine from guessing with them.
 

@@ -1,6 +1,6 @@
 # E7B Jurisdiction data operations: coverage matrix, evidence pipeline, verification backlog
 
-Status: in-progress (branch `outcome/E7B-jurisdiction-data`, built on E7A; released by the owner on 3 Nov 2026 with the
+Status: verified-pending-merge (branch `outcome/E7B-jurisdiction-data`, built on E7A, merged as camayank/mkw-uae-growth#24; released by the owner on 3 Nov 2026 with the
 E7 contract, phase 2 "Regulatory data and jurisdiction intelligence")
 
 ## Business result
@@ -63,8 +63,7 @@ package or relationship is invented: a place without evidence stays "not on reco
 
 ## Dependencies and risks
 
-- Depends on E2 (merged) and E7A (open as a pull request; this branch is built on it and will be rebased or merged
-  once E7A lands).
+- Depends on E2 and E7A (both merged; main is merged into this branch).
 - Risk: classification of the seeded places is by public knowledge of what each is (a free zone, an offshore
   registry, a financial centre, a mainland department); nothing commercial or statutory rests on it.
 
@@ -83,8 +82,32 @@ package or relationship is invented: a place without evidence stays "not on reco
 | Claim | Evidence |
 | --- | --- |
 | Tests | `pnpm typecheck` clean; `pnpm test`: 125 core + 338 API (1 PostgreSQL-only test skipped on PGlite) = 463 (E7A: 108 + 334). New: `packages/core/test/coverage.test.ts` (counted once, sub-zone under its parent, historical excluded, tasks first wave first, CSV layout), `packages/core/test/engine-cases.test.ts` (one test per 2D case), `apps/api/test/coverage.test.ts` (reference, effective date and source kind on a fact; an intermediary cannot be verified in the service or the database; the matrix over the seed; the backlog CSV imports back and writes nothing; founder-only classification, audited, historical leaves the counts and the engine) |
-| Smoke | `docs/evidence/E7B/smoke-log.txt`: 242 checks OK on a fresh demo (E7A: 234), 8 marked E7B: the fact's reference and effective date in the history; the Coverage page's counts, matrix, backlog and classification forms; approvals outstanding and expiring evidence; the backlog CSV in the importer's layout; a place marked historical leaves the counts; the page at 390 px without overflow; axe at both widths |
+| Smoke | `docs/evidence/E7B/smoke-log.txt`: 243 checks OK on a fresh demo (E7A: 234, plus one E7A check added at its review), 8 marked E7B: the fact's reference and effective date in the history; the Coverage page's counts, matrix, backlog and classification forms; approvals outstanding and expiring evidence; the backlog CSV in the importer's layout; a place marked historical leaves the counts; the page at 390 px without overflow; axe at both widths |
 | Accessibility | `axe.json`: 45 screens at 1280 and 390 px, 0 violations (E7A: 43) |
 | Screens | `96-coverage.png` (1280 px, full page), `97-mobile-coverage.png` (390 px), `82-scoping-catalogue.png` (the record-evidence form with reference, effective date and source kind, and the history) |
+| Audit chain | `pnpm verify:audit` on the smoke demo: intact, 110 events |
 | Records | D86; KNOWN-GAPS 92–95; `docs/DESIGN.md` row; `docs/ENTITY-PROGRAMME.md` (directory row and E7B paragraph); `docs/DEPLOY.md` importer note; `docs/templates/catalogue-facts.csv` |
+
+## Independent review
+
+A separate reviewer read the whole diff before the pull request, with a throwaway probe over the test helpers and no
+repository changes. It confirmed that nothing is invented (the two new authorities assert name, emirate, kind and
+public aliases only; priority, kind and the verifier's fields never reach the engine, the public page or the client's
+advice), that the intermediary rule holds in the service, the database and the importer, that status and `active`
+agree on every write path, and that the backlog round-trips through the importer. Applied before the pull request:
+- **Must-fix.** A placeholder place kept reporting cost, visas and timeline as missing after they were recorded,
+  because the placeholder flag is never cleared (coverage now reads the evidence); "no limit" for the most visas,
+  stored as null, was counted as missing for ever (the evidence decides); a test compared the outbox count to
+  itself (now to a value taken before).
+- **Should-fix.** The legacy verify-zone endpoint wrote facts as official without asking (it takes a source kind
+  now, and the intermediary rule applies there too) and silently ignored "offer" on a historical place (refused
+  now, so the audit never records an intent that was not applied); the backlog pre-filled "official" and put the
+  task text in the Note column, which the importer would have stored as the fact's note (both blank now; the ask
+  is a last column the importer ignores); the task badges had no tone; JAFZA's free zone and its registry are two
+  authorities until the parent fact is recorded, and pre-E7B facts carry the migration's default source kind (both
+  written into gap 94); three engine-case tests could not fail (replaced with assertions on the engine's actual
+  non-claims: one licence point for one activity, one holding vehicle and no word about the group, no legal form
+  in the engine's input or output).
+- **Noted.** A database check tying `status` to `active` would turn the convention into a guarantee; left as a
+  follow-up.
 

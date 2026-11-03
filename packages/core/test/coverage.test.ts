@@ -63,7 +63,8 @@ describe("coverage matrix (E7B)", () => {
     const [header, first] = csv.trim().split("\n");
     expect(header).toBe(BACKLOG_CSV_HEADER.join(","));
     expect(header).toMatch(/^Kind,Place or authority,Field,Value,Source,Evidence date,Confidence/);
-    expect(first).toMatch(/^place,IFZA,renewal_cost,,,,,,,,,official,"missing: Obtain /);
+    expect(first).toMatch(/^place,IFZA,renewal_cost,,,,,,,,,,,"missing: Obtain /);
+    expect(first).not.toMatch(/official/); // nothing is pre-filled, not even the source kind
     expect(csv).toMatch(/wave 1/);
     expect(csv.split("\n").filter(Boolean).length).toBe(m.tasks.length + 1);
   });

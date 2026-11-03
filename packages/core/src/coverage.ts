@@ -161,10 +161,12 @@ export function coverageMatrix(asOf: string, authorities: CoverageAuthority[], p
 }
 
 /** The importer's own column layout, one row per task, for the verifier to fill in and send back. */
-export const BACKLOG_CSV_HEADER = ["Kind", "Place or authority", "Field", "Value", "Source", "Evidence date", "Confidence", "Verified by", "Next verification", "Effective date", "Reference", "Source kind", "Note"];
+export const BACKLOG_CSV_HEADER = ["Kind", "Place or authority", "Field", "Value", "Source", "Evidence date", "Confidence", "Verified by", "Next verification", "Effective date", "Reference", "Source kind", "Note", "To obtain"];
+/** The importer's columns left blank for the verifier (nothing pre-filled, not even the source kind); the ask sits in
+ *  a last column the importer does not read, so it never becomes a fact's note. */
 export function backlogCsv(tasks: EvidenceTask[]): string {
   const cell = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
   const lines = [BACKLOG_CSV_HEADER.join(",")];
-  for (const t of tasks) lines.push(["place", t.place, t.field, "", "", "", "", "", "", "", "", "official", `${t.reason}: ${t.ask}${t.priority ? ` (wave ${t.priority})` : ""}`].map(cell).join(","));
+  for (const t of tasks) lines.push(["place", t.place, t.field, "", "", "", "", "", "", "", "", "", "", `${t.reason}: ${t.ask}${t.priority ? ` (wave ${t.priority})` : ""}`].map(cell).join(","));
   return lines.join("\n") + "\n";
 }

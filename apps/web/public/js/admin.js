@@ -1,5 +1,5 @@
 // Tasees workspace: admin module (split from app.js in O12; plain ES modules, no build step).
-import { $app, act, addDaysIso, aed, api, badge, date, dateTime, deliverables, esc, lang, pct, role, route, seesMargin, state, table, words } from "./core.js";
+import { $app, act, addDaysIso, aed, api, badge, date, dateTime, deliverables, esc, lang, pct, role, route, seesMargin, state, table, tone, words } from "./core.js";
 
 export async function renderArabicSection() {
   const a = await api("GET", "/api/admin/arabic");
@@ -391,7 +391,7 @@ export async function renderCoverage() {
     const tasks = byPlace.get(p.name)?.fields ?? [];
     return `<tr><td><b>${esc(p.name)}</b><br><span class="small muted">${esc(p.emirate)} · ${esc(PLACE_KIND_LABEL[p.placeKind] ?? words(p.placeKind))}${p.authority ? ` · ${esc(p.authority)}` : ""}</span></td>
       <td>${badge(p.status === "active" ? "ok" : p.status === "historical" ? "expired" : "pending", p.status)}${p.priority ? ` ${badge("info", `wave ${p.priority}`)}` : ""}</td>
-      <td class="small">${tasks.length ? `${tasks.length} to obtain: ${tasks.map((t) => `<span class="badge ${REASON_LABEL[t.reason][0]}" title="${esc(t.ask)}">${esc(words(t.field))}</span>`).join(" ")}` : badge("ok", "complete")}</td>
+      <td class="small">${tasks.length ? `${tasks.length} to obtain: ${tasks.map((t) => `<span class="badge ${tone(REASON_LABEL[t.reason][0])}" title="${esc(REASON_LABEL[t.reason][1])}: ${esc(t.ask)}">${esc(words(t.field))}</span>`).join(" ")}` : badge("ok", "complete")}</td>
       ${founder ? `<td><form class="row" data-form="place-status" data-id="${esc(p.name)}" style="flex-wrap:wrap;gap:4px">
         <select name="placeKind" aria-label="Kind">${Object.entries(PLACE_KIND_LABEL).map(([k, l]) => `<option value="${k}" ${p.placeKind === k ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>
         <select name="status" aria-label="Status">${["active", "inactive", "historical"].map((s) => `<option value="${s}" ${p.status === s ? "selected" : ""}>${s}</option>`).join("")}</select>

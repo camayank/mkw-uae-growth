@@ -82,7 +82,7 @@ export async function verifyZone(
   tx: Queryable,
   actor: SessionUser,
   name: string,
-  input: { confidence: "verified" | "rule_of_thumb" | "UNCERTAIN"; verifiedBy?: string; sourceUrl?: string; costMinFils?: number; costMaxFils?: number; visaQuota?: number; timelineDays?: number; active?: boolean; nextVerification?: string },
+  input: { confidence: "verified" | "rule_of_thumb" | "UNCERTAIN"; verifiedBy?: string; sourceUrl?: string; costMinFils?: number; costMaxFils?: number; visaQuota?: number; timelineDays?: number; active?: boolean; nextVerification?: string; sourceKind?: "official" | "intermediary" },
 ) {
   if (actor.role !== "founder") throw forbidden("Only the founder verifies zone data");
   const before = (await tx.query<Record<string, unknown>>("select * from zones where name = $1", [name])).rows[0];
@@ -93,7 +93,9 @@ export async function verifyZone(
   const costMax = input.costMaxFils ?? num(before.cost_max_fils);
   if (costMin > costMax) throw badRequest("Minimum cost is above the maximum");
   const today = await catalogueToday(tx);
-  const common = { subjectKind: "place" as const, subject: name, sourceUrl, evidenceDate: today, confidence: input.confidence, verifiedBy: input.verifiedBy ?? null, nextVerification: input.nextVerification ?? null };
+  if (input.active === true && before.status === "historical") throw badRequest("A historical place is not offered: change its status on the Coverage page first");
+  // E7B: the source kind travels with the facts this writes; appendFact refuses a verified intermediary figure.
+  const common = { subjectKind: "place" as const, subject: name, sourceUrl, evidenceDate: today, confidence: input.confidence, verifiedBy: input.verifiedBy ?? null, nextVerification: input.nextVerification ?? null, sourceKind: input.sourceKind ?? "official" };
   // A place added without figures (Umm Al Quwain, Fujairah) holds placeholders, not data. Each figure counts only
   // once it is given here or recorded as a fact; a placeholder is never verified, and the place is not offered until
   // its cost, visas and timeline are all on record.

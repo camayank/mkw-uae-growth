@@ -501,12 +501,14 @@ export async function coverageReport(tx: Queryable, approvals: CoverageApproval[
     authorityId: p.authorityId,
     authority: p.authority ?? null,
     evidence: p.evidence ?? {},
+    // A placeholder place counts a figure as on record once a fact records it (the placeholder flag is never cleared);
+    // "no limit" for the most visas is a recorded value too, so the evidence decides, not the cached number.
     has: {
-      cost: !p.placeholder && p.costMinFils > 0,
+      cost: !!p.evidence?.cost?.factId || (!p.placeholder && p.costMinFils > 0),
       renewal_cost: p.renewalMinFils != null,
-      visa_quota: !p.placeholder,
-      visa_max: p.visaMax !== undefined && p.visaMax !== null,
-      timeline_days: !p.placeholder,
+      visa_quota: !p.placeholder || !!p.evidence?.visa_quota?.factId,
+      visa_max: !!p.evidence?.visa_max,
+      timeline_days: !p.placeholder || !!p.evidence?.timeline_days?.factId,
       facilities: !!p.facilities,
       activities_listed: !!p.activitiesListed,
       activity_codes: !!p.activityCodes,

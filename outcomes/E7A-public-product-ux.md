@@ -1,6 +1,6 @@
 # E7A Public product UX: homepage, questionnaire and comparison
 
-Status: verified-pending-merge (branch `outcome/E7A-public-product-ux`; released by the owner on 3 Nov 2026 with the E7
+Status: merged (camayank/mkw-uae-growth#24; branch `outcome/E7A-public-product-ux`; released by the owner on 3 Nov 2026 with the E7
 contract "Commercial launch readiness and product excellence": "begin implementing E7A, together with any
 independent, essential work needed to make the selector genuinely useful")
 

@@ -38,6 +38,7 @@ export function registerScopingRoutes(ctx: RouteContext) {
       confidence: z.enum(["verified", "rule_of_thumb", "UNCERTAIN"]),
       verifiedBy: z.string().max(120).optional(),
       sourceUrl: z.string().max(500).optional(),
+      sourceKind: z.enum(["official", "intermediary"]).optional(),
       costMinAed: z.number().min(0).optional(),
       costMaxAed: z.number().min(0).optional(),
       visaQuota: z.number().int().min(0).max(100).optional(), // the same cap as a visa_quota fact

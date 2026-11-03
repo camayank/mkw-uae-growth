@@ -144,13 +144,13 @@ outcomes:
   # reviewed pull request each, in order.
   - id: E7A
     title: Public product UX (homepage, questionnaire, comparison, approved guidance)
-    status: verified-pending-merge
+    status: merged  # camayank/mkw-uae-growth#24, 3 Nov 2026
     contract: outcomes/E7A-public-product-ux.md
     depends_on: [E6]
     needs_from_owner: [approval of the guidance notes for public display]
   - id: E7B
     title: Jurisdiction data operations (coverage matrix, evidence pipeline, verification workflow)
-    status: released
+    status: verified-pending-merge
     contract: outcomes/E7B-jurisdiction-data.md
     depends_on: [E7A]
     needs_from_owner: [authoritative sources, named verifier]

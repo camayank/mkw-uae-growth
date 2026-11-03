@@ -90,7 +90,9 @@ export const AUTHORITIES: Array<[string, string, "free_zone_authority" | "mainla
   ["shams", "Sharjah Media City", "free_zone_authority", "Sharjah", ["SHAMS", "Sharjah Media City Free Zone"]],
   ["rakez", "Ras Al Khaimah Economic Zone", "free_zone_authority", "Ras Al Khaimah", ["RAKEZ"]],
   ["ajman_fz", "Ajman Free Zone", "free_zone_authority", "Ajman", ["AFZ", "Ajman Free Zone Authority"]],
-  // The offshore registry only: "JAFZA" alone means the free zone, whose own licence is not a place here yet.
+  // The offshore registry; the free zone itself is the "jafza" authority above (E7B). The registry sits under the
+  // free zone authority in fact, and the verifier records that parent as a fact with its source; until then the two
+  // count as two authorities (KNOWN-GAPS 94).
   ["jafza_offshore", "JAFZA Offshore Companies Registry", "offshore_registry", "Dubai", ["JAFZA Offshore"]],
   ["uaq_ftz", "Umm Al Quwain Free Trade Zone", "free_zone_authority", "Umm Al Quwain", ["UAQ FTZ", "UAQ Free Trade Zone"]],
   ["fujairah_fz", "Fujairah Free Zone", "free_zone_authority", "Fujairah", ["FFZ", "Fujairah Free Zone Authority"]],

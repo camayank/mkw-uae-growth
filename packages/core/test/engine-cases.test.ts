@@ -45,10 +45,10 @@ describe("engine cases the contract lists (E7B, 2D)", () => {
 
   it("multiple activities needing separate approvals: one activity is assessed, the rest is a person's call", () => {
     const a = run({ activity: "finance", customers: "both", visas: 2, description: "Payments platform that also trades goods and runs a clinic" });
-    expect(a.structure.recommendation === null || ["difc_adgm", "mainland", "free_zone"].includes(a.structure.recommendation!)).toBe(true);
-    expect(a.licences.some((l) => l.ruleKey === "licence.financial")).toBe(true);
-    // Nothing in the advice claims the second and third activities are covered.
-    expect(texts(a)).not.toMatch(/clinic|goods/i);
+    // Only the named activity's licence point is raised: the engine never reads the description to add a second
+    // activity's approvals (health, food) on its own; those reach a person through the AI draft queue.
+    expect(a.licences.map((l) => l.ruleKey)).toEqual(["licence.financial"]);
+    expect(a.structure.recommendation).toBe("difc_adgm");
   });
 
   it("mainland access from a free zone is a condition, never a promise; selling onshore points to the mainland", () => {
@@ -93,9 +93,11 @@ describe("engine cases the contract lists (E7B, 2D)", () => {
 
   it("holding plus operating structures are not modelled: one entity is assessed and the combination is for a person", () => {
     const a = run({ activity: "holding", customers: "international", visas: 2, description: "Holding company above an operating trading company" });
-    expect((a.missingFacts ?? []).length + a.structure.reasons.length).toBeGreaterThan(0);
-    expect(texts(a)).not.toMatch(/two (companies|entities)|group structure is (fine|approved)/i);
-    expect(a.structure.recommendation).not.toBe("offshore"); // visas rule out offshore for the holding vehicle
+    // One holding vehicle is assessed (visas rule out offshore); nothing is said about the operating company or the
+    // group, which the engine does not model and a person settles.
+    expect(a.structure.recommendation).toBe("free_zone");
+    expect(texts(a)).toMatch(/holding vehicle/i);
+    expect(texts(a)).not.toMatch(/operating company|subsidiary|group structure|second (company|entity)/i);
   });
 
   it("tax residency concerns are flagged, never decided", () => {
@@ -115,9 +117,12 @@ describe("engine cases the contract lists (E7B, 2D)", () => {
   });
 
   it("legal forms within one jurisdiction are on record for the verifier but never decide eligibility", () => {
+    // The engine's input (Zone) carries no legal forms, so nothing in the advice can rest on them; this guards the
+    // boundary: a legal form reaching the candidates would be a change to make on purpose, with a rule behind it.
     const a = run({ activity: "tech", customers: "international", visas: 1 });
-    expect(JSON.stringify(a)).not.toMatch(/FZCO|FZE|LLC\b/);
-    expect(place(a, "IFZA").status).not.toBe("INELIGIBLE");
+    expect("legalForms" in zones[0]!).toBe(false);
+    expect(JSON.stringify(a)).not.toMatch(/legalForms|FZCO|FZE|LLC\b/);
+    expect(place(a, "IFZA").status).toBe("ELIGIBLE_VERIFIED");
   });
 
   it("a renewal is the services mode, not a fresh entity: no structure is recommended and the obligations are listed", () => {

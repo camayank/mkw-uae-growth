@@ -74,9 +74,18 @@ describe("jurisdiction coverage and the evidence pipeline (E7B)", () => {
     expect(ifza.map((t: any) => t.field)).not.toContain("government_charges");
     expect(ifza.find((t: any) => t.field === "renewal_cost")).toMatchObject({ reason: "intermediary" });
     expect(ifza.find((t: any) => t.field === "cost")).toMatchObject({ reason: "unverified" });
-    // A placeholder place asks for everything.
+    // A placeholder place asks for everything until its figures are recorded; then those tasks drop off.
     expect(c.tasks.filter((t: any) => t.place === "KEZAD")).toHaveLength(12);
     expect(c.tasks.every((t: any) => /^Obtain /.test(t.ask))).toBe(true);
+    for (const [field, valueText] of [["cost", "18,000 - 40,000"], ["visa_quota", "3"], ["timeline_days", "12"]]) expect((await fact({ subject: "KEZAD", field, valueText, confidence: "rule_of_thumb", sourceUrl: "https://kezad.example/" })).status).toBe(200);
+    expect((await fact({ subject: "IFZA", field: "visa_max", valueText: "no limit", confidence: "rule_of_thumb" })).status).toBe(200);
+    const c2 = (await env.call("ops", "GET", "/api/admin/coverage")).body;
+    // Recorded as rules of thumb: on record now, still asked for as unverified (not missing) until the authority's page is cited.
+    expect(c2.tasks.find((t: any) => t.place === "KEZAD" && t.field === "cost")).toMatchObject({ reason: "unverified" });
+    expect(c2.tasks.filter((t: any) => t.place === "KEZAD" && t.reason === "missing")).toHaveLength(9);
+    expect(c2.fields.cost.onRecord).toBe(15);
+    expect(c2.tasks.find((t: any) => t.place === "IFZA" && t.field === "visa_max")).toMatchObject({ reason: "unverified" });
+    expect(c2.fields.visa_max.onRecord).toBe(1);
   });
 
   it("the backlog CSV is in the importer's layout and imports back as a dry run that writes nothing", async () => {
@@ -85,20 +94,21 @@ describe("jurisdiction coverage and the evidence pipeline (E7B)", () => {
     expect(String(r.headers["content-type"])).toMatch(/text\/csv/);
     const text = String(r.body);
     const lines = text.trim().split("\n");
-    expect(lines[0]).toBe("Kind,Place or authority,Field,Value,Source,Evidence date,Confidence,Verified by,Next verification,Effective date,Reference,Source kind,Note");
+    expect(lines[0]).toBe("Kind,Place or authority,Field,Value,Source,Evidence date,Confidence,Verified by,Next verification,Effective date,Reference,Source kind,Note,To obtain");
     expect(lines.length).toBeGreaterThan(50);
     const before = await count(env, "catalogue_facts");
+    const outboxBefore = await count(env, "outbox");
     const grid = lines.map((l) => l.replace(/"[^"]*"/g, (m) => m.replace(/,/g, ";")).replace(/"/g, "").split(","));
     const report = await asPlatform(env.db, null, (tx) => importCatalogueFacts(tx, grid, "backlog.csv"));
     expect(report.rows.length).toBe(lines.length - 1);
     expect(report.rows.every((x) => x.action === "skipped")).toBe(true);
     expect(await count(env, "catalogue_facts")).toBe(before);
-    expect(await count(env, "outbox")).toBe(await count(env, "outbox"));
+    expect(await count(env, "outbox")).toBe(outboxBefore);
   });
 
   it("only the founder classifies a place; a placeholder cannot be offered without figures; historical places leave the counts; audited", async () => {
     expect((await env.call("ops", "POST", "/api/admin/jurisdictions/places/SHAMS/status", { status: "historical" })).status).toBe(403);
-    expect((await env.call("founder", "POST", "/api/admin/jurisdictions/places/KEZAD/status", { status: "active" })).body.message).toMatch(/no cost, visa quota, timeline days on record/);
+    expect((await env.call("founder", "POST", "/api/admin/jurisdictions/places/JAFZA/status", { status: "active" })).body.message).toMatch(/no cost, visa quota, timeline days on record/);
     expect((await env.call("founder", "POST", "/api/admin/jurisdictions/places/No Such/status", { status: "inactive" })).status).toBe(404);
     expect((await env.call("founder", "POST", "/api/admin/jurisdictions/places/SHAMS/status", { placeKind: "sub_zone", status: "historical", priority: null })).status).toBe(200);
     const c = (await env.call("ops", "GET", "/api/admin/coverage")).body;
@@ -110,6 +120,11 @@ describe("jurisdiction coverage and the evidence pipeline (E7B)", () => {
     const ev = (await asPlatform(env.db, null, (tx) => tx.query("select data from audit_events where action = 'catalogue.place_classified' and entity_id = 'SHAMS'"))).rows as any[];
     expect(ev).toHaveLength(1);
     expect(ev[0].data.after).toMatchObject({ status: "historical", placeKind: "sub_zone" });
+    // The legacy verify-zone path cannot offer a historical place, and cannot mark an intermediary's figure verified.
+    const vz = await env.call("founder", "PUT", "/api/admin/scoping/zones/SHAMS", { confidence: "UNCERTAIN", active: true });
+    expect([vz.status, JSON.stringify(vz.body)]).toEqual([400, expect.any(String)]);
+    expect(vz.body.message).toMatch(/historical place is not offered/);
+    expect((await env.call("founder", "PUT", "/api/admin/scoping/zones/IFZA", { confidence: "verified", verifiedBy: "A. Q", sourceUrl: "https://agent.example/ifza", sourceKind: "intermediary" })).body.message).toMatch(/intermediary cannot be verified/);
     expect((await env.call("founder", "POST", "/api/admin/jurisdictions/places/SHAMS/status", { placeKind: "free_zone", status: "active", priority: 1 })).status).toBe(200);
     expect((await env.call("ops", "GET", "/api/admin/coverage")).body.places.active).toBe(14);
   });

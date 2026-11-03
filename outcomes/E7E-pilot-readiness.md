@@ -1,6 +1,6 @@
 # E7E Commercial pilot readiness: staging checklist, security regression, pilot journeys, go/no-go
 
-Status: verified-pending-merge (branch `outcome/E7E-pilot-readiness`, built on E7D; released by the owner on 3 Nov 2026 with the E7
+Status: merged (camayank/mkw-uae-growth#28, 3 Nov 2026; previously verified-pending-merge, branch `outcome/E7E-pilot-readiness`, built on E7D; released by the owner on 3 Nov 2026 with the E7
 contract, phases 5 "Staging and pilot journeys" and 6 "Quality and security runs")
 
 The contract's own wording for phases 5 and 6 is held in the owner's prompt; this file works from the released

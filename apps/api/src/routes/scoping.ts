@@ -1,11 +1,11 @@
 import { z } from "zod";
-import { aed, type AdviceInput } from "@tasees/core";
+import { ACTIVITIES, aed, QUICK_BUDGETS, QUICK_EMIRATES, type Activity, type AdviceInput, type QuickBudget } from "@tasees/core";
 import { PLATFORM_ROLES, requireRole } from "../lib/auth.ts";
 import { asPlatform } from "../lib/context.ts";
 import { approveAdvice, recomputeAdvice, requestScoping, scopingOverview, search, verifyRule, verifyZone } from "../services/scoping.ts";
 import { listDrafts, reviewDraft } from "../services/drafts.ts";
 import { backlogCsv, catalogueOverview, coverageReport, factHistory, recordFact, setPlaceStatus } from "../services/catalogue.ts";
-import { approveForDisplay, displayOverview, publicAssess, revokeDisplay } from "../services/public.ts";
+import { approveForDisplay, displayOverview, publicAssess, publicQuick, revokeDisplay } from "../services/public.ts";
 import { IntakeSchema } from "../services/requests.ts";
 import { markPaymentPaid } from "../services/engagements.ts";
 import type { RouteContext } from "./context.ts";
@@ -138,6 +138,20 @@ export function registerScopingRoutes(ctx: RouteContext) {
     throttle(req, "public-assess", 60);
     const answers = PublicAssessBody.parse(req.body);
     return asPlatform(db, null, (tx) => publicAssess(tx, { ...answers, mode: "new_company" } as AdviceInput));
+  });
+
+  // E8: the quick match, four answers to the place to look at first; the same limits as the assessment, and a
+  // higher allowance because the page asks again after each answer to keep its counts live.
+  const PublicQuickBody = z.object({
+    activity: z.enum(ACTIVITIES as [Activity, ...Activity[]]).optional(),
+    emirate: z.enum(QUICK_EMIRATES).nullish(),
+    visas: z.number().int().min(0).max(50).optional(),
+    budget: z.enum(QUICK_BUDGETS.map((b) => b.id) as [QuickBudget, ...QuickBudget[]]).optional(),
+  });
+  app.post("/api/public/quick", { config: { body: PublicQuickBody } }, async (req) => {
+    throttle(req, "public-quick", 240);
+    const answers = PublicQuickBody.parse(req.body);
+    return asPlatform(db, null, (tx) => publicQuick(tx, answers));
   });
 
   app.get<{ Params: { id: string } }>("/api/ops/requests/:id/scoping", async (req) => {

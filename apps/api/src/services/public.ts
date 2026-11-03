@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { advise, ENGINE_FIELDS, ENGINE_TEXTS_VERSION, engineTextsByRule, GUIDES, publicView, selectGuides, type AdviceInput, type Guide, type PublicAssessment, type ScopingRule } from "@tasees/core";
+import { advise, ENGINE_FIELDS, ENGINE_TEXTS_VERSION, engineTextsByRule, GUIDES, publicView, quickMatch, selectGuides, type AdviceInput, type Guide, type PublicAssessment, type QuickAnswers, type QuickMatch, type ScopingRule } from "@tasees/core";
 import { audit, type SessionUser } from "../lib/context.ts";
 import { num, type Queryable } from "../lib/db.ts";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.ts";
@@ -148,17 +148,32 @@ export async function revokeDisplay(tx: Queryable, actor: SessionUser, kind: Dis
   return { ok: true };
 }
 
+/** What every public answer is computed from: today's Gulf date, the rules and places as of it, and what is approved. */
+async function publicInputs(tx: Queryable) {
+  const asOf = (await tx.query<{ d: string }>("select gulf(app_now())::text as d")).rows[0]!.d.slice(0, 10);
+  const rules = await loadRules(tx, asOf);
+  const places = await loadPlaces(tx, asOf);
+  const ok = await approvedNow(tx, { rules, places });
+  return { asOf, rules, places, ok };
+}
+
+/**
+ * The quick match (E8): four answers to the place to look at first, with the counts of places still open. The same
+ * engine and the same public filter as the full assessment; nothing is written and the answers are not kept.
+ */
+export async function publicQuick(tx: Queryable, answers: QuickAnswers): Promise<QuickMatch> {
+  const { asOf, rules, places, ok } = await publicInputs(tx);
+  return quickMatch(answers, rules, places.map(engineZone), ok.rules, ok.places, asOf);
+}
+
 /**
  * A public assessment: the engine on the founder's answers, filtered to what is approved. Nothing is written: no
  * request, no lead, no audit row. The answers are not kept.
  */
 export async function publicAssess(tx: Queryable, answers: AdviceInput): Promise<PublicAssessment> {
-  const asOf = (await tx.query<{ d: string }>("select gulf(app_now())::text as d")).rows[0]!.d.slice(0, 10);
-  const rules = await loadRules(tx, asOf);
-  const places = await loadPlaces(tx, asOf);
+  const { asOf, rules, places, ok } = await publicInputs(tx);
   const { dataVersion } = await engineInputs(tx);
   const advice = { ...advise({ ...answers, mode: "new_company" }, rules, places.map(engineZone), asOf), dataVersion };
-  const ok = await approvedNow(tx, { rules, places });
   const view = publicView(advice, ok.rules, ok.places, asOf);
   // E7A: general guidance chosen from the answers and what the public may see of the engine's conclusions; only
   // notes the founder approved are included, and they carry no figure (a core test enforces the wording).

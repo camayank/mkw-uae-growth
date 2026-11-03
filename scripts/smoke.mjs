@@ -654,17 +654,86 @@ const pp = await pub.newPage();
   check("the homepage states the product, the call to action, the industries and what it does not do (E7A):", /Find the right UAE entity for your business/.test(home) && /Find the Right UAE Entity/.test(home) && (await sel.locator(".industry").count()) === 7 && /We do not/.test(home) && /Sign in to the Tasees workspace/.test(home) && (await sel.locator("#questions").isHidden()));
   await shot(sel, "95-public-home");
   await axeCheck(sel, "public homepage (E7A)");
+  // E8: an industry card opens the quick match at question two (where), with the activity set.
   await sel.locator('.industry[data-activity="manufacturing"]').click();
-  await sel.waitForSelector("#questions:not([hidden]) .choice");
-  check("an industry entry starts at question two with the activity set, premises first for manufacturing (E7A):", /Question 2 of 11/.test(await sel.locator("#progress").innerText()) && /What premises/.test(await sel.locator("#qtitle").innerText()) && /Why we ask/.test(await sel.locator("#step").innerText()) && (await sel.locator("#bar").getAttribute("value")) === "9");
-  await sel.locator("#back").click();
-  check("going back shows the activity chosen on the industry card (E7A):", (await sel.locator('.choice[data-val="manufacturing"]').getAttribute("aria-pressed")) === "true");
-  await sel.locator("#to-landing").click();
+  await sel.waitForSelector("#quick:not([hidden]) .uaemap .em");
+  check("an industry entry opens the quick match at question two with the activity set (E7A, E8):", /Question 2 of 4/i.test(await sel.locator("#quick-step").innerText()) && /Manufacturing/.test(await sel.locator("#quick-answers").innerText()) && (await sel.locator("#quick-track li.done").count()) === 1);
+  await sel.locator("#quick-back").click();
+  check("going back shows the activity chosen on the industry card (E7A, E8):", (await sel.locator('#quick-step .tile[data-act="manufacturing"]').getAttribute("aria-pressed")) === "true");
+  await sel.goto(BASE + "/selector.html");
   await sel.waitForSelector("#landing:not([hidden])");
   await sel.locator('.industry[data-activity="finance"]').click();
-  await sel.waitForSelector("#questions:not([hidden]) .choice");
-  check("the regulated-finance card keeps question one on screen so virtual assets can be chosen instead (E7A):", /Question 1 of/.test(await sel.locator("#progress").innerText()) && (await sel.locator('.choice[data-val="finance"]').getAttribute("aria-pressed")) === "true" && (await sel.locator('.choice[data-val="virtual_assets"]').count()) === 1);
-  await sel.locator("#to-landing").click();
+  await sel.waitForSelector("#quick:not([hidden]) .tile");
+  check("the regulated-finance card keeps question one on screen so virtual assets can be chosen instead (E7A, E8):", /Question 1 of 4/i.test(await sel.locator("#quick-step").innerText()) && (await sel.locator('.tile[data-act="finance"]').getAttribute("aria-pressed")) === "true" && (await sel.locator('.tile[data-act="virtual_assets"]').count()) === 1);
+  // E8: the quick match from the homepage, four answers, live counts, and one place to look at first.
+  const quickMatch = async (page) => {
+    await page.goto(BASE + "/selector.html");
+    await page.waitForSelector("#landing:not([hidden]) #quick-start");
+    await page.locator("#quick-start").click();
+    await page.waitForSelector("#quick:not([hidden]) .tile[data-act]");
+    await eventually("the quick match shows the places on record before any answer (E8):", async () => /^\d+$/.test(await page.locator("#quick-count").innerText()));
+    await page.locator('.tile[data-act="tech"]').click();
+    await page.waitForSelector(".uaemap .em");
+    await eventually("each emirate on the map carries its count of places that still fit (E8):", async () => /^\d+$/.test(await page.locator('.em[data-em="Dubai"] .n').innerText()) && (await page.locator(".uaemap .em").count()) === 7 && (await page.locator(".uaemap .em .flag svg").count()) === 7);
+    await page.locator('.em[data-em="Dubai"]').click();
+    await page.locator("#quick-next").click();
+    await page.waitForSelector("#quick-visas");
+    await page.locator("#visa-inc").click();
+    await page.locator("#quick-next").click();
+    await page.waitForSelector("#quick-step [data-band]");
+    await eventually("each budget band says how many places fit (E8):", async () => /place\(s\) fit|No place fits yet/.test(await page.locator('[data-band="up_to_25k"]').innerText()));
+    await page.locator('[data-band="up_to_25k"]').click();
+    await page.locator("#quick-next").click();
+    await page.waitForSelector("#quick-step .best");
+    await eventually("the quick match names the place to look at first (E8):", async () => (await page.locator("#quick-step .best h3").count()) === 1);
+    return page.locator("#quick-step").innerText();
+  };
+  {
+    const q = await quickMatch(sel);
+    check("with nothing approved the quick match states no figure, labels the place to be verified and offers the exact price (E8):", /The place to look at first in Dubai/.test(q) && /Price to be verified by a person/.test(q) && !/AED \d/.test(q) && /to be verified by a person/.test(q) && /Preliminary, general information, not advice/.test(q) && /0 of \d+ places that fit have figures checked/.test(q) && (await sel.locator("#quick-price").count()) === 1 && (await sel.locator("#review").isVisible()));
+    check("the answers read back with a change link each, and the profile is complete (E8):", /Software or technology/.test(await sel.locator("#quick-answers").innerText()) && /Up to AED 25,000/.test(await sel.locator("#quick-answers").innerText()) && (await sel.locator("#quick-pct").innerText()) === "100%");
+    await shot(sel, "103-quick-match-desktop");
+    await axeCheck(sel, "quick match result (E8)");
+    // Slow answers from the platform (Codex review of E8): a match on its way for new answers never shows the earlier
+    // place, and a count still on its way when the founder leaves for the full questions never touches their answers.
+    await sel.route("**/api/public/quick", async (r) => { await new Promise((ok) => setTimeout(ok, 1500)); await r.continue(); });
+    await sel.locator('#quick-answers button[data-go="4"]').click();
+    await sel.locator('[data-band="up_to_50k"]').click();
+    await sel.locator("#quick-next").click();
+    check("while the match for new answers is on its way, no earlier place, exact-price action or review form is shown (E8):", /Finding your match/.test(await sel.locator("#quick-step").innerText()) && (await sel.locator("#quick-price").count()) === 0 && (await sel.locator("#review").isHidden()));
+    await sel.waitForSelector("#quick-step .best h3");
+    await sel.locator('#quick-answers button[data-go="4"]').click();
+    await sel.locator("#quick-next").click(); // the same answers: the match shows at once and a fresh count is on its way
+    await sel.waitForSelector("#quick-full");
+    await sel.locator("#quick-full").click();
+    await sel.waitForSelector("#questions:not([hidden]) .choice");
+    await sel.locator("#back").click();
+    await sel.locator('.choice[data-val="trading"]').click();
+    await sel.waitForTimeout(2200);
+    await sel.locator("#next").click();
+    await sel.locator("#back").click();
+    check("a count that arrives after the founder left for the full questions does not overwrite their answers (E8):", (await sel.locator('.choice[data-val="trading"]').getAttribute("aria-pressed")) === "true" && (await sel.locator("#quick").isHidden()));
+    await sel.unroute("**/api/public/quick");
+    await sel.locator("#next").click();
+    await sel.waitForSelector("#questions:not([hidden]) .choice");
+    await sel.waitForTimeout(600); // a count still on its way must not redraw the quick match over the questions
+    check("the full comparison opens at the first question the quick match did not ask, answers kept, with no review form under it (E8):", /Question 2 of 11/.test(await sel.locator("#progress").innerText()) && /Where are your customers/.test(await sel.locator("#qtitle").innerText()) && (await sel.locator("#review").isHidden()) && (await sel.locator("#quick").isHidden()));
+    // Phone width: the map becomes a two-column list and nothing scrolls sideways.
+    const qp = await (await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 })).newPage();
+    qp.on("pageerror", (e) => errors.push(`quick match phone: ${e.message}`));
+    await qp.goto(BASE + "/selector.html");
+    await qp.locator("#quick-start").click();
+    await qp.locator('.tile[data-act="tech"]').click();
+    await qp.waitForSelector(".uaemap .em");
+    check("the quick match map at 390 px has no horizontal overflow (E8):", !(await qp.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
+    await shot(qp, "104-quick-match-map-phone");
+    await axeCheck(qp, "quick match map at 390 px (E8)");
+    await quickMatch(qp);
+    check("the quick match result at 390 px has no horizontal overflow (E8):", !(await qp.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
+    await shot(qp, "105-quick-match-phone");
+    await qp.context().close();
+  }
+  await sel.goto(BASE + "/selector.html");
   await sel.waitForSelector("#landing:not([hidden])");
   const first = await answer(sel);
   check("the result opens with the profile, the legend and the places side by side (E7A):", /Your business profile/.test(first) && /Software or technology/.test(await sel.locator("#result .profile").innerText()) && /What the labels mean|general information/.test(first) && (await sel.locator("#compare table").count()) === 1 && (await sel.locator("#compare thead th").count()) >= 2 && /to be verified by a person/.test(await sel.locator("#compare").innerText()) && !/AED/.test(await sel.locator("#compare").innerText()));
@@ -695,6 +764,11 @@ const pp = await pub.newPage();
   await founder.waitForTimeout(700);
   log.push("public place: " + (await toastText(founder)));
   await eventually("the Scoping page counts what the public may see (E3):", async () => /1 \/ \d+\s+rules the public selector may show/.test(await founder.locator("main").innerText()));
+  {
+    // E8: the approved place's figures reach the quick match too, labelled checked; the others stay to be verified.
+    const q = await quickMatch(sel);
+    check("an approved place's figures reach the quick match, labelled checked (E8):", /AED 12,000/.test(q + (await sel.locator("#quick-top").innerText())) && /figures checked|from AED 12,000/.test(q + (await sel.locator("#quick-top").innerText())) && /1 of \d+ places that fit have figures checked/.test(q));
+  }
   const second = await answer(sel);
   check("an approved rule and place reach the public with text and figures (E3):", /Register for corporate tax/.test(second) && /AED 12,000 to AED 20,000 to set up/.test(second) && /figures checked/.test(second));
   check("everything else stays to be verified (E3):", /to be verified by a person/.test(second) && /1 of \d+ statements and 1 of \d+ places/.test(second));

@@ -23,7 +23,7 @@ alter table leads add column first_contact_at timestamptz;
 alter table leads add column closed_reason text;
 alter table leads add column score_evidence jsonb;
 
-grant select, insert, delete on funnel_events to app_platform;
+grant select, insert, delete, update (id, at) on funnel_events to app_platform; -- update: a step reached again moves to the end of the sequence (E7C)
 grant usage, select on sequence funnel_events_id_seq to app_platform;
 alter table funnel_events enable row level security;
 create policy funnel_events_platform on funnel_events for all to app_platform using (true) with check (true);

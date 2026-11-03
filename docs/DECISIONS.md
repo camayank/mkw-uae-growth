@@ -887,6 +887,10 @@ canvas of 3 Nov 2026 and its review round.)
   attributed lead: the one with a measured browser session, then the earliest, then by id, so two leads of one saved
   result (the handoff attaches every one) never double a figure; lead counts stay per lead. A lead whose client
   accepted or is on an engagement leaves the attention list, as the next-action rule already says.
+- A visitor's source and campaign are one pair from their first event (first touch wins, as E4 decided for leads),
+  never a source from one link and a campaign from another opened later in the same session. A step the visitor
+  comes back to is sent again by the page and moves to the end of the sequence on the server (one row per step, a
+  fresh id and time, not counted again), so the abandonment breakdown names the question they really stopped at.
 - The next best action is a rule over the lead's state (status, readiness, call request, owner, follow-ups, what the
   request became), returning one action and the reason; it is computed on read, never stored, so it is always
   current. The adviser overrides it with a reason, audited; the override is shown beside the rule's suggestion and

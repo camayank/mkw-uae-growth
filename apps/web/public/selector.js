@@ -89,10 +89,12 @@ attribution.visitor = visitor;
 let pending = [];
 let flushTimer = null;
 const sent = new Set();
+let lastStep = "";
 function track(stage, key = "") {
-  const id = `${stage}:${key}`;
-  if (sent.has(id)) return;
-  sent.add(id);
+  // Each stage is sent once; a step is sent again when the visitor comes back to it, so the platform knows the last
+  // step they really reached (the server keeps one row per step and refreshes its time).
+  if (stage === "step_reached") { if (lastStep === key) return; lastStep = key; }
+  else { const id = `${stage}:${key}`; if (sent.has(id)) return; sent.add(id); }
   pending.push({ stage, ...(key ? { key } : {}) });
   clearTimeout(flushTimer);
   flushTimer = setTimeout(flush, 800);

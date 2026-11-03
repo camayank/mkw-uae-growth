@@ -51,7 +51,7 @@ Status per contract capability:
 | Mainland / free zone / offshore comparison | Built (E1) | Every structure assessed with a status and its reasons |
 | DIFC and ADGM pathways | Partial | Assessed as one structure; separate regimes (DFSA, FSRA) only in findings |
 | All seven emirates | Partial (E2) | Authorities in all seven. Umm Al Quwain and Fujairah places exist but stay inactive until their figures are recorded |
-| Verified jurisdiction directory, map | Partial (E2) | 22 authorities with aliases. Places carry append-only evidence that goes stale; coordinates only with a source. Verification needs owner data; the map is E3 |
+| Verified jurisdiction directory, map | Partial (E2, E7B) | 24 authorities with aliases, 19 places classified by kind and status, counted once each on the Coverage page; evidence carries reference, effective date and source kind; the backlog names every figure still to obtain, first wave first. Verification needs the owner's verifier; the map is still an owner decision |
 | Activity eligibility checks | Partial (E2) | Never assumed from a sector tag. An activity list on record confirms the activity group at its evidence's confidence. Exact activities need each authority's list |
 | Licensing and regulator requirements | Partial (E1) | Health, education, food, finance, virtual assets, industrial: as conditions with rule keys |
 | Setup and renewal cost estimates | Partial (E2) | Setup and renewal ranges as facts with sources; all unverified until the owner's data |
@@ -172,4 +172,10 @@ ordered by industry with a reason each; the result reads as a decision with a si
 guidance notes are approved for public display like rules (kind `guide`); an approved place shows its official source
 and facilities. In the gap matrix above, "Public, no-registration assessment" gains the homepage, the comparison and
 the guidance; "Downloadable report; consultation" stays partial (the report is E7D).
+
+**E7B** (`outcomes/E7B-jurisdiction-data.md`, D86): every place classified by kind and status and counted once; evidence
+with its reference, effective date and source kind, and an intermediary's figure never verified; the Coverage page
+with the matrix by emirate and kind, verification per field, expiring evidence, approvals outstanding and the
+evidence backlog in the importer's layout; fifteen first-wave places flagged; one test per engine case the contract
+lists. No data was verified in this outcome: the pipeline is ready for the named verifier.
 

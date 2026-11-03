@@ -157,7 +157,9 @@ Before rolling back to a release without the outbox, deliver or cancel what is p
    holidays, company details, owner decisions and the two legal texts. Every importer is a dry run until `--apply`.
    Jurisdiction evidence (E2) goes in separately once the verifier supplies it:
    `import catalogue catalogue-facts.csv --as connect@mkwadvisors.com`. This takes a CSV or the workbook's
-   "Catalogue facts" tab. Verified rows need `--as`.
+   "Catalogue facts" tab. Verified rows need `--as`. The file to fill in is the evidence backlog the Coverage page
+   downloads (E7B): one row per place and field still to obtain, with Effective date, Reference and Source kind
+   columns; a row from an intermediary is at most a rule of thumb.
 4. Email: create the SES identity for mkwadvisors.com in me-central-1, publish the SPF, DKIM and DMARC records it
    gives you, move the account out of the SES sandbox, verify both sender addresses, then set `EMAIL=ses`. Until
    then every message is still recorded in the delivery log (Settings page) and each person's bell.

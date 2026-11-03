@@ -161,6 +161,45 @@ export const TONE = {
   bad: ["disputed", "qa_rejected", "expired", "withdrawn", "cancelled", "rejected", "withheld", "paused", "deactivated", "erased"],
 };
 export const tone = (s) => Object.keys(TONE).find((k) => TONE[k].includes(s)) ?? "";
+// E9: simplified emirate flags, drawn for recognition beside a place (gap 107: checked against official artwork before
+// launch). Unknown names (a free zone written in, an empty value) get no flag rather than a wrong one.
+const FLAGS = {
+  auh: '<rect width="30" height="20" fill="#CE1126"/><rect width="11" height="8" fill="#fff"/>',
+  band: '<rect width="30" height="20" fill="#CE1126"/><rect width="7" height="20" fill="#fff"/>',
+  border: '<rect width="30" height="20" fill="#fff"/><rect x="2.5" y="2.5" width="25" height="15" fill="#CE1126"/>',
+  uaq: '<rect width="30" height="20" fill="#CE1126"/><rect width="7" height="20" fill="#fff"/><circle cx="17" cy="10" r="4.2" fill="#fff"/><circle cx="18.6" cy="10" r="3.5" fill="#CE1126"/><circle cx="22.6" cy="10" r="1.3" fill="#fff"/>',
+  uae: '<rect width="30" height="20" fill="#fff"/><rect x="8" width="22" height="6.67" fill="#00732F"/><rect x="8" y="13.33" width="22" height="6.67" fill="#16201C"/><rect width="8" height="20" fill="#CE1126"/>',
+};
+const FLAG_OF = { "abu dhabi": "auh", dubai: "band", sharjah: "border", ajman: "band", "umm al quwain": "uaq", "ras al khaimah": "border", fujairah: "uae" };
+export const flag = (emirate) => {
+  const f = FLAG_OF[String(emirate ?? "").trim().toLowerCase()];
+  return f ? `<span class="flag"><svg width="24" height="16" viewBox="0 0 30 20" aria-hidden="true">${FLAGS[f]}</svg></span>` : "";
+};
+
+// E9: icons for the figures on staff screens (KPI tiles), drawn in the same line style as the menus.
+const KPI_ICON = {
+  money: '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/>',
+  cash: '<path d="M12 3v18"/><path d="M17 7H9.5a2.5 2.5 0 0 0 0 5h5a2.5 2.5 0 0 1 0 5H7"/>',
+  tax: '<path d="M6 3h9l5 5v13H6z"/><path d="M9 13h6"/><path d="M9 17h6"/>',
+  out: '<path d="M7 17 17 7"/><path d="M8 7h9v9"/>',
+  back: '<path d="M17 7 7 17"/><path d="M16 17H7V8"/>',
+  shield: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>',
+  margin: '<path d="M4 19 10 13l4 4 6-8"/><path d="M14 9h6v6"/>',
+  list: '<path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/>',
+  check: '<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  alert: '<path d="M12 3 2 20h20z"/><path d="M12 10v4"/><path d="M12 17h.01"/>',
+  flag: '<path d="M5 21V4"/><path d="M5 4h12l-2 4 2 4H5"/>',
+};
+/** A KPI tile: the figure, its label, an optional line under it and an icon. */
+export const kpiTile = (label, value, sub = "", ico = "") =>
+  `<div class="kpi">${KPI_ICON[ico] ? `<span class="ico" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${KPI_ICON[ico]}</svg></span>` : ""}<b>${value}</b><span>${label}</span>${sub ? `<br>${sub}` : ""}</div>`;
+
+/** E9: a step tracker. Each step is [label, "done" | "now" | "todo", optional detail]; the current one is announced. A
+ *  step still to come is classed "upcoming" (the class "todo" belongs to the U1 to-do list). */
+export const journey = (steps, label = "Where this stands") =>
+  `<ol class="journey" aria-label="${esc(label)}">${steps.map(([name, st, what], i) => `<li class="${st === "todo" ? "upcoming" : st}"${st === "now" ? ' aria-current="step"' : ""}><span class="step" aria-hidden="true">${st === "done" ? "✓" : i + 1}</span><span>${esc(name)}<span class="sr-only">${st === "done" ? ": done" : st === "now" ? ": now" : ""}</span></span>${what ? `<span class="what">${esc(what)}</span>` : ""}</li>`).join("")}</ol>`;
+
 export const badge = (s, label) => `<span class="badge ${tone(s)}">${esc(label ?? words(s))}</span>`;
 
 export const MILESTONE_LABEL = {

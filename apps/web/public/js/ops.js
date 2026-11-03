@@ -1,5 +1,5 @@
 // Tasees workspace: ops module (split from app.js in O12; plain ES modules, no build step).
-import { $app, MILESTONE_LABEL, OBLIGATION_KINDS, act, aed, api, badge, date, dateTime, download, esc, isClient, nameOf, obligationLabel, obligationTone, pct, render, role, seesMargin, state, table, words } from "./core.js";
+import { $app, MILESTONE_LABEL, OBLIGATION_KINDS, act, aed, api, badge, date, dateTime, download, esc, flag, isClient, nameOf, obligationLabel, obligationTone, pct, render, role, seesMargin, state, table, kpiTile, words } from "./core.js";
 
 export async function renderDelays() {
   const q = await api("GET", "/api/ops/delays");
@@ -64,29 +64,29 @@ export async function renderDashboard(periodArg) {
     const diff = a - b;
     return `<span class="small ${diff >= 0 ? "muted" : "muted"}">${diff >= 0 ? "▲" : "▼"} ${money ? aed(Math.abs(diff)) : Math.abs(diff)} vs ${esc(p.period.label)}</span>`;
   };
-  const kpi = (label, value, sub = "") => `<div class="kpi"><b>${value}</b><span>${label}</span>${sub ? `<br>${sub}` : ""}</div>`;
+  const kpi = (label, value, sub = "", ico = "") => kpiTile(label, value, sub, ico);
   const y = Number(period.slice(0, 4));
   const options = [];
   for (let m = 12; m >= 1; m--) options.push(`${y}-${String(m).padStart(2, "0")}`);
   const choices = [String(y), `${y}-Q1`, `${y}-Q2`, `${y}-Q3`, `${y}-Q4`, ...options];
   $app.innerHTML = `<div class="row between"><h1>Dashboard</h1><form class="row" data-form="period"><select name="period" style="width:auto">${choices.map((x) => `<option ${x === period ? "selected" : ""}>${x}</option>`).join("")}</select><button class="sm" type="submit">Show</button></form></div>
   <p class="muted">Figures come from the same invoice, payment and payout rows the accounting export uses. ${d.seesMargin ? "" : "Margin is shown to finance and the founder."}</p>
-  <div class="kpis">
-    ${kpi("Revenue (net of VAT, issued invoices)", aed(c.revenueNetFils), delta(c.revenueNetFils, p.revenueNetFils))}
-    ${kpi("VAT on fees", aed(c.vatFils), delta(c.vatFils, p.vatFils))}
-    ${kpi("Cash collected", aed(c.cashCollectedFils), delta(c.cashCollectedFils, p.cashCollectedFils))}
-    ${kpi("Refunded", aed(c.refundedFils))}
-    ${d.seesMargin ? kpi("Margin on accepted offers", `${aed(c.marginFils)} <span class="small muted">${pct(c.marginBp)}</span>`, delta(c.marginFils, p.marginFils)) : ""}
-    ${kpi("Payouts paid to partners", aed(c.payoutsPaidFils), delta(c.payoutsPaidFils, p.payoutsPaidFils))}
-    ${kpi("Payouts due now", aed(c.payoutsDueFils))}
-    ${kpi("Guarantee credits", aed(c.guaranteeCreditsFils))}
+  <div class="kpis lead-kpis">
+    ${kpi("Revenue (net of VAT, issued invoices)", aed(c.revenueNetFils), delta(c.revenueNetFils, p.revenueNetFils), "money")}
+    ${kpi("VAT on fees", aed(c.vatFils), delta(c.vatFils, p.vatFils), "tax")}
+    ${kpi("Cash collected", aed(c.cashCollectedFils), delta(c.cashCollectedFils, p.cashCollectedFils), "cash")}
+    ${kpi("Refunded", aed(c.refundedFils), "", "back")}
+    ${d.seesMargin ? kpi("Margin on accepted offers", `${aed(c.marginFils)} <span class="small muted">${pct(c.marginBp)}</span>`, delta(c.marginFils, p.marginFils), "margin") : ""}
+    ${kpi("Payouts paid to partners", aed(c.payoutsPaidFils), delta(c.payoutsPaidFils, p.payoutsPaidFils), "out")}
+    ${kpi("Payouts due now", aed(c.payoutsDueFils), "", "clock")}
+    ${kpi("Guarantee credits", aed(c.guaranteeCreditsFils), "", "shield")}
   </div>
   <div class="kpis">
-    ${kpi("Requests", c.requests, delta(c.requests, p.requests, false))}
-    ${kpi("Offers accepted", c.offersAccepted, delta(c.offersAccepted, p.offersAccepted, false))}
-    ${kpi("Request → acceptance", `${(c.requestToAcceptance * 100).toFixed(0)}%`)}
-    ${kpi("Engagements completed", c.engagementsCompleted)}
-    ${kpi("Steps on time", `${(c.onTimeRate * 100).toFixed(0)}%`, `<span class="small muted">${c.milestonesOnTime} of ${c.milestonesDone}</span>`)}
+    ${kpi("Requests", c.requests, delta(c.requests, p.requests, false), "list")}
+    ${kpi("Offers accepted", c.offersAccepted, delta(c.offersAccepted, p.offersAccepted, false), "check")}
+    ${kpi("Request → acceptance", `${(c.requestToAcceptance * 100).toFixed(0)}%`, "", "flag")}
+    ${kpi("Engagements completed", c.engagementsCompleted, "", "check")}
+    ${kpi("Steps on time", `${(c.onTimeRate * 100).toFixed(0)}%`, `<span class="small muted">${c.milestonesOnTime} of ${c.milestonesDone}</span><div class="progress" aria-hidden="true"><span style="width:${Math.round(c.onTimeRate * 100)}%"></span></div>`, "clock")}
   </div>
   <div class="grid cols-2">
     <div class="card flush"><h2>Partner share by category (accepted work, ${esc(c.period.label)})</h2>${table(
@@ -173,7 +173,7 @@ export async function renderQueue() {
   $app.innerHTML = `
   <h1>What needs a person today</h1>
   <p class="muted">Everything else runs on its own: pricing from rate cards, allocation, reminders, auto-approval after 5 working days. The list is ordered by risk and target time; the order never decides anything.</p>
-  <div class="kpis"><div class="kpi"><b>${queueItems.length}</b><span>Waiting</span></div><div class="kpi"><b>${overdue}</b><span>Past their target</span></div><div class="kpi"><b>${soon}</b><span>Due within 2 working hours</span></div></div>
+  <div class="kpis lead-kpis">${kpiTile("Waiting", queueItems.length, "", "list")}${kpiTile("Past their target", overdue, "", "alert")}${kpiTile("Due within 2 working hours", soon, "", "clock")}</div>
   <div id="queue-filters"></div>
   <ol id="queue-list" class="qlist" aria-label="Queue, highest risk first"></ol>
   <div class="row" style="margin-top:12px"><button class="sm" data-act="run-jobs">Run timers now</button><span class="small muted">Checks partner reply deadlines, client auto-approvals and offer expiry. Runs every 15 minutes on its own.</span></div>`;
@@ -386,7 +386,7 @@ export function adviceHtml(a, opts = {}) {
       }
     </div>
     <div class="card"><h2>Where to register</h2>
-      ${a.places.length ? `<ul class="plain">${a.places.map((p) => `<li>${opts.editable ? `<label><input type="checkbox" name="keepPlace" value="${esc(p.zone)}" checked /> ` : ""}<b>${esc(p.zone)}</b> (${esc(p.emirate)}) ${statusBadge(p.status)} · ${cost(p)}${p.renewalMinFils ? ` · renews at ${aed(p.renewalMinFils)} to ${aed(p.renewalMaxFils)} a year (estimate) ${confBadge(p.renewalConfidence ?? "UNCERTAIN")}` : ""} · ${p.visaQuota} visa(s) in the standard package · about ${p.timelineDays} working days ${confBadge(p.confidence)}${p.stale ? ` ${badge("UNCERTAIN", "being re-checked")}` : ""}<br><span class="small muted">${esc([p.authority ? `licensed by ${p.authority}` : "", ...p.why].filter(Boolean).join("; "))}</span>${opts.editable ? "</label>" : ""}${placeFindings(p)}</li>`).join("")}</ul>` : `<p class="muted">No place fits every answer yet.</p>`}
+      ${a.places.length ? `<ul class="plain">${a.places.map((p) => `<li>${opts.editable ? `<label><input type="checkbox" name="keepPlace" value="${esc(p.zone)}" checked /> ` : ""}${flag(p.emirate)}<b>${esc(p.zone)}</b> (${esc(p.emirate)}) ${statusBadge(p.status)} · ${cost(p)}${p.renewalMinFils ? ` · renews at ${aed(p.renewalMinFils)} to ${aed(p.renewalMaxFils)} a year (estimate) ${confBadge(p.renewalConfidence ?? "UNCERTAIN")}` : ""} · ${p.visaQuota} visa(s) in the standard package · about ${p.timelineDays} working days ${confBadge(p.confidence)}${p.stale ? ` ${badge("UNCERTAIN", "being re-checked")}` : ""}<br><span class="small muted">${esc([p.authority ? `licensed by ${p.authority}` : "", ...p.why].filter(Boolean).join("; "))}</span>${opts.editable ? "</label>" : ""}${placeFindings(p)}</li>`).join("")}</ul>` : `<p class="muted">No place fits every answer yet.</p>`}
       ${
         a.excluded?.length
           ? `<details><summary class="small">${a.excluded.length} other place(s) do not fit, and why</summary><ul class="plain small">${a.excluded.map((p) => `<li><b>${esc(p.zone)}</b>: ${firstFinding(p.findings, ["fail"])}</li>`).join("")}</ul></details>`
@@ -421,7 +421,7 @@ export async function renderRequest(id) {
   <div class="row between"><h1>Scoping · ${esc(r.client)}</h1>${badge(r.advice_status === "approved" ? "ok" : r.advice_status === "pending_review" ? "UNCERTAIN" : "pending", words(r.advice_status))}</div>
   <div class="grid cols-2">
     <div class="card"><h2>What the founder told us</h2>
-      <table><tr><td>Starting point</td><td>${esc(words(a.mode))}</td></tr><tr><td>Emirate / zone</td><td>${esc(a.emirate)}${a.freeZone ? ` · ${esc(a.freeZone)}` : ""}</td></tr>
+      <table><tr><td>Starting point</td><td>${esc(words(a.mode))}</td></tr><tr><td>Emirate / zone</td><td>${flag(a.emirate)}${esc(a.emirate)}${a.freeZone ? ` · ${esc(a.freeZone)}` : ""}</td></tr>
       <tr><td>Asked for</td><td>${esc(words(a.jurisdiction ?? "–"))}</td></tr><tr><td>Activity</td><td>${esc(a.activity ?? "–")}</td></tr><tr><td>Customers</td><td>${esc(words(a.customers ?? "–"))}</td></tr>
       <tr><td>Office needed</td><td>${a.officeNeeded == null ? "–" : a.officeNeeded ? "yes" : "no"}</td></tr><tr><td>Visas</td><td>${a.visas ?? 0}</td></tr>
       <tr><td>Budget</td><td>${a.budgetAed ? aed(a.budgetAed * 100) : "–"}</td></tr><tr><td>Expected sales</td><td>${a.expectedTurnoverAed ? aed(a.expectedTurnoverAed * 100) : "–"}</td></tr></table>
@@ -561,7 +561,7 @@ export async function renderAgentQueue() {
   ${canAct ? `<h2 style="margin-top:24px">Held leads</h2>
   <p class="muted small">Public-page submissions for an email that already has an account. Nothing was attached to that account; a person decides whether to call, merge or discard.</p>
   <div class="card flush">${table(["Received", "Email", "Company", "Name", "Answers", ""], leads.map((l) => `<tr><td class="small">${dateTime(l.createdAt ?? l.created_at)}</td><td class="mono small">${esc(l.email)}</td><td>${esc(l.company)}</td><td>${esc(l.name)}${l.phone_given ? ' <span class="small muted">(phone given)</span>' : ""}</td>
-    <td class="small">${esc(words(l.answers?.jurisdiction ?? ""))} · ${esc(l.answers?.emirate ?? "")} · ${l.answers?.visas ?? 0} visa(s)${l.answers?.description ? `<br><span class="muted">${esc(l.answers.description.slice(0, 160))}</span>` : ""}</td>
+    <td class="small">${esc(words(l.answers?.jurisdiction ?? ""))} · ${flag(l.answers?.emirate)}${esc(l.answers?.emirate ?? "")} · ${l.answers?.visas ?? 0} visa(s)${l.answers?.description ? `<br><span class="muted">${esc(l.answers.description.slice(0, 160))}</span>` : ""}</td>
     <td><form data-form="lead" data-id="${l.id}" class="row"><input name="note" placeholder="What was done" style="max-width:180px" /><button class="sm" type="submit">Handled</button><button class="sm primary" type="button" data-act="lead-convert" data-id="${l.id}">Make it a request for this client</button></form></td></tr>`), "No held leads.")}</div>` : ""}`;
 }
 
@@ -571,7 +571,7 @@ export async function renderSearch(q) {
   $app.innerHTML = `<h1>Search: ${esc(q)}</h1><div class="grid cols-2">
     ${list("Clients", r.clients, (c) => `<tr><td>${esc(c.name)}</td><td class="mono small">${esc(c.id.slice(0, 8))}</td><td><a href="#/pipeline">pipeline</a></td></tr>`)}
     ${list("Partners", r.partners, (p) => `<tr><td>${esc(p.name)}</td><td>${badge(p.status ?? "prospect")}</td><td><a href="#/partners">partners</a></td></tr>`)}
-    ${list("Engagements", r.engagements, (e) => `<tr><td>${esc(e.client)} · ${esc(e.emirate)}</td><td>${badge(e.status)}</td><td><a href="#/engagement/${e.id}">open</a></td></tr>`)}
+    ${list("Engagements", r.engagements, (e) => `<tr><td>${esc(e.client)} · ${flag(e.emirate)}${esc(e.emirate)}</td><td>${badge(e.status)}</td><td><a href="#/engagement/${e.id}">open</a></td></tr>`)}
     ${list("Offers", r.offers, (o) => `<tr><td>${esc(o.client)} · ${esc(o.tier)}</td><td>${badge(o.status)}</td><td><a href="#/offer/${o.id}">open</a></td></tr>`)}
   </div>`;
 }

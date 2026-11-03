@@ -315,6 +315,17 @@ in a browser; everything listed here is not.
      facts would change the full assessment too; it is an owner decision.
 111. **The new Arabic strings are drafts** until the Arabic reviewer signs them off, like the rest of the dictionary.
 
+## E9: workspace look
+
+113. **The staff console's sidebar from the canvas is not built**: staff keep the grouped one-row menu (O10) on a
+     dark bar. Moving to a sidebar is an owner decision (D91).
+114. **The partner screens get the shared look only** (the bar, the flag colours, gold progress, the M mark); the
+     canvas's partner scorecard and evidence-progress panels are not built, and neither are the canvas's invented
+     figures on any screen (D91).
+115. **The journey tracker reads one piece of work**: the first live engagement, else the newest open request. A
+     client with several at once sees the others in their cards below it, not in the tracker.
+116. **The new Arabic labels for the journey are drafts** until the Arabic reviewer signs them off (with gap 111).
+
 ## O7: launch-gate preparation
 
 43. ~~zod 3 has a memory-exhaustion advisory.~~ Closed by S1: zod 4.6.7 (D71); the body caps stay as defence in depth.

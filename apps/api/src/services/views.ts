@@ -1,5 +1,5 @@
 import { clientNextActions, clientTimeline, clientWhatsNext } from "./journey.ts";
-import { loadDeliverables, loadFeeDisclosures } from "./repo.ts";
+import { FEE_STALE_DAYS, loadDeliverables, loadFeeDisclosures } from "./repo.ts";
 import { CLIENT_REVIEW_DAYS } from "./engagements.ts";
 import { opsQueue } from "./queue.ts";
 import { documentPlan, milestonesFor, paymentPlan, serialize, UAE_CALENDAR, type DocumentStatus, type Role, type WorkCalendar } from "@tasees/core";
@@ -321,7 +321,16 @@ export function opsOffer(db: Database, user: SessionUser, offerId: string) {
     const shaped = { ...camel(o), lines: lines.rows.map((l) => ({ ...camel(l), partnerId: l.partner_org_id })) };
     const out = serialize("offer", user.role, shaped, { lines: "offerLine" });
     (out.lines as Array<Record<string, unknown>>).forEach((l, i) => (l.partnerName = lines.rows[i]?.partner_name));
-    // E18: the government fee's evidence at quotation, for MKW staff, beside the disclosure the client reads.
+    // E18 (Codex review): the count the Publish button reads includes a verified fee that has gone past 90 days since
+    // pricing, by the same test publication applies, so the screen asks for the acknowledgement publication needs.
+    const due = (
+      await tx.query<{ n: number }>(
+        `select count(*)::int as n from offer_lines where offer_id = $1 and (status <> 'ok' or gov_fee_review = 'required'
+           or (gov_fee_basis = 'verified' and gov_fee_verified_at < app_now()::date - ${FEE_STALE_DAYS}))`,
+        [offerId],
+      )
+    ).rows[0]!.n;
+    out.linesNeedingReview = Math.max(num(out.linesNeedingReview), num(due));
     const disclosed = new Map((await loadFeeDisclosures(tx, offerId)).map((d) => [d.code, d]));
     (out.lines as Array<Record<string, unknown>>).forEach((l, i) => {
       const r = lines.rows[i]!;

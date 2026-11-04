@@ -142,6 +142,13 @@ Recorded, not changed:
 - the free-zone and emirate-wide question is an owner decision (gap 140);
 - the verifier's name is kept on the frozen line (gap 141).
 
+## Codex review
+
+- **A verified fee that went past 90 days between pricing and publication made Publish refuse forever on the screen.**
+  The stored "lines needing a decision" count stayed at 0, so the button sent no acknowledgement and every click got
+  409. Fixed with a test: MKW's offer view counts such lines by the same test publication applies, so the screen
+  offers "Publish anyway" and the acknowledgement goes through.
+
 ## Dependencies
 
 E17 (merged). Builds on D22b, D23 and D60 (superseded for the fee notes).

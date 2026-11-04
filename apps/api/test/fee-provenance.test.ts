@@ -419,6 +419,8 @@ describe("government fee provenance: the independent review's findings (E18)", (
     const start = env.clock.now;
     env.clock.now = new Date(start.getTime() + 10 * 86_400_000);
     try {
+      // The ops screen's count asks for the acknowledgement too, so "Publish anyway" is offered (Codex review).
+      expect((await env.call("ops", "GET", `/api/ops/offers/${offerId}`)).body.linesNeedingReview).toBe(1);
       const refused = await publish(offerId);
       expect(refused.status).toBe(409);
       expect(JSON.stringify(refused.body)).toMatch(/verified over 90 days before publication/);

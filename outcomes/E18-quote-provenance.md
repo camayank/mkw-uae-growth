@@ -78,7 +78,7 @@ timeline, included and assumptions paragraphs), and its dates printed without th
 | `pnpm test` (PGlite) | core 159 passed (19 files); API 396 passed, 1 skipped (39 files) | `tests-pglite.txt` |
 | API suite on PostgreSQL 16 | 397 passed (39 files), including the PostgreSQL-only test; the new file and the concurrency tests listed verbose (32) | `tests-postgres16.txt` |
 | `pnpm build` | exit 0 | `build.txt` |
-| Browser smoke on a fresh demo | see below | `smoke-log.txt` |
+| Browser smoke on a fresh demo | 330 checks, 0 failed (4 new for E18), axe on the new phone screen | `smoke-log.txt` |
 | Screens | the client proposal (desktop `72`, phone `78`), the ops offer with the fee column (desktop `05`, phone `79`), finance's view (`06`) | `screens/` |
 | Synthetic sample offers | VERIFIED with PARTNER-STATED; UNCERTAIN with STALE (PDF and first page) | `sample-offer-*.pdf`, `*-1.png` |
 

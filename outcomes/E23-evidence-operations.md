@@ -58,8 +58,8 @@ orders it.)
 - **`before-fix.txt`.** A probe on `main` at 7f97829: an UNCERTAIN intermediary figure with older evidence replaced
   the verified official figure in the engine and the cache; nothing said so; nothing reached the queue. The new suite
   cannot load on `main`.
-- **`tests-pglite.txt`.** Core 159 passed (19 files). API 447 passed, 7 skipped (46 files).
-- **`tests-postgres16.txt`.** API 454 passed (46 files), on PostgreSQL 16.15.
+- **`tests-pglite.txt`.** Core 159 passed (19 files). API 448 passed, 7 skipped (46 files).
+- **`tests-postgres16.txt`.** API 455 passed (46 files), on PostgreSQL 16.15.
 - **`typecheck.txt`.** Clean.
 - **`smoke-log.txt`.** 337 checks and 60 axe scans passed on a fresh demo.
 - **`screens/e23-history-conflict-*.png`, `e23-queue-conflict-*.png`, `e23-history-decided-desktop.png` and
@@ -69,12 +69,13 @@ orders it.)
   is empty. At 1280 and 390 px, each axe-clean with no horizontal overflow and no page errors.
 
 The new and changed tests:
-- `evidence-ops.test.ts` (12): the classification's cases and the version diff (core); a weaker contradicting figure
+- `evidence-ops.test.ts` (13): the classification's cases and the version diff (core); a weaker contradicting figure
   recorded as a conflict that changes nothing, flagged on the queue with the decision as its action, shown in the
   history and the comparison; the founder's decision, once, audited, `keep` and `accept`; a change that supersedes and
   closes an open conflict; the importer's dry run and apply; a stale engine fact as a queue item that a new fact
   clears; a weaker agreeing source refused; ops without the founder's buttons; a re-import that decides nothing; the
-  founder's own verification as a decided change; an accept refused once the field moved on;
+  founder's own verification as a decided change; an accept refused once the field moved on; an accepted parent
+  checked for a loop again;
 - `migrations.test.ts` (1): migration 030 over a database that already holds facts;
 - `public-selector.test.ts`: its "new fact lapses the approval" fixture is now a superseding fact (a correction from the
   same source, today); a weaker figure is a conflict and lapses nothing, by design.
@@ -104,6 +105,11 @@ An independent reviewer read the change against the code and probed it on PGlite
   change); ops saw the founder's buttons; accepting a conflict the field had moved past said nothing (now refused);
   the review table had no row-level security; the backfill labelled repeats as changes.
 - **Housekeeping:** a probe file of the reviewer's had been swept into a commit; removed.
+
+**Codex, on the pull request,** found two more, both fixed with tests: the founder's decision read the current fact
+without the subject lock `appendFact` takes, so a decision and a recording could interleave and leave the cached
+figure behind its evidence (the decision now takes the same lock first); and an accepted `parent` fact applied the
+stored parent without repeating the loop check, although the hierarchy may have moved since (it is checked again).
 
 The reviewer verified as correct: every reader agrees on "current"; a conflict leaves the cache alone; `keep` and
 `accept` behave and are audited and append-only; the queue ids, timestamps and the jobs runner; the authorisation of

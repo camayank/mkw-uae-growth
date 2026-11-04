@@ -202,6 +202,22 @@ describe("conflicts, versions and stale facts (E23)", () => {
     expect((await env.call("founder", "POST", `/api/admin/jurisdictions/facts/${open[0].subjectId}/review`, { decision: "keep", note: "superseded by the founder's own figure" })).status).toBe(200);
   });
 
+  it("an accepted parent is checked for a loop again: the hierarchy may have moved since the conflict was recorded (Codex review)", async () => {
+    const ids = ((await env.call("ops", "GET", "/api/admin/jurisdictions")).body.authorities as any[]).filter((x) => !x.parentId).map((x) => x.id).slice(0, 3);
+    expect(ids).toHaveLength(3);
+    const [a, b, c] = ids as [string, string, string];
+    const parent = (subject: string, valueText: string, confidence: string) => fact({ subjectKind: "authority", subject, field: "parent", valueText, confidence, sourceUrl: SRC });
+    expect((await parent(a, c, "rule_of_thumb")).body.change.kind).toBe("first");
+    const pending = await parent(a, b, "UNCERTAIN"); // weaker: a conflict, a still points at c
+    expect(pending.body.change.kind).toBe("conflict");
+    expect((await parent(b, a, "rule_of_thumb")).status).toBe(200); // valid today: no loop while a points at c
+    const refused = await env.call("founder", "POST", `/api/admin/jurisdictions/facts/${pending.body.id}/review`, { decision: "accept", note: "the agent's chart says b" });
+    expect(refused.status).toBe(400);
+    expect(refused.body.message).toMatch(/loop/);
+    expect((await env.call("ops", "GET", "/api/admin/jurisdictions")).body.authorities.find((x: any) => x.id === a).parentId).toBe(c);
+    expect((await env.call("founder", "POST", `/api/admin/jurisdictions/facts/${pending.body.id}/review`, { decision: "keep", note: "it would make a loop now" })).status).toBe(200);
+  });
+
   it("a current engine fact past its re-verification date is a queue item for the place, and a new fact clears it", async () => {
     expect((await fact({ valueText: "9900-14000", confidence: "verified", verifiedBy: "B. Checker", nextVerification: day(env.clock.now, 120) })).body.change.kind).toBe("change");
     expect(await queue("evidence_stale")).toEqual([]);

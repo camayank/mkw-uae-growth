@@ -306,18 +306,7 @@ export async function appendFact(tx: Queryable, actor: SessionUser | null, input
   } else if (kind === "authority") {
     if (!(AUTHORITY_FIELDS as readonly string[]).includes(field)) throw badRequest(`Unknown authority field ${field}`);
     if (!(await tx.query("select 1 from authorities where id = $1 for update", [subject])).rows.length) throw notFound(`No authority ${subject}`);
-    if (field === "parent") {
-      const parent = String(input.value);
-      if (parent === subject) throw badRequest("An authority cannot be its own parent");
-      if (!(await tx.query("select 1 from authorities where id = $1", [parent])).rows.length) throw badRequest(`No authority ${parent}`);
-      // No cycles: walk up from the proposed parent.
-      const chain = await tx.query<{ id: string }>(
-        `with recursive up(id, parent_id) as (select id, parent_id from authorities where id = $1
-           union all select a.id, a.parent_id from authorities a join up on a.id = up.parent_id) select id from up`,
-        [parent],
-      );
-      if (chain.rows.some((r) => r.id === subject)) throw badRequest("That parent would make a loop");
-    }
+    if (field === "parent") await assertParentAllowed(tx, subject, String(input.value));
   } else if (kind === "rule") {
     if (field !== "rule") throw badRequest("Rule facts record a rule version");
     if (!(await tx.query("select 1 from scoping_rules where key = $1 for update", [subject])).rows.length) throw notFound(`No rule ${subject}`);
@@ -352,6 +341,18 @@ export async function appendFact(tx: Queryable, actor: SessionUser | null, input
     ...(effectiveDate ? { effectiveDate } : {}),
   });
   return { id: num(r.id), change: { kind: change.kind, reason: change.reason, supersedes: current?.id ?? null } };
+}
+
+/** An authority's proposed parent exists, is not itself, and makes no loop (walking up from the proposed parent). */
+async function assertParentAllowed(tx: Queryable, subject: string, parent: string): Promise<void> {
+  if (parent === subject) throw badRequest("An authority cannot be its own parent");
+  if (!(await tx.query("select 1 from authorities where id = $1", [parent])).rows.length) throw badRequest(`No authority ${parent}`);
+  const chain = await tx.query<{ id: string }>(
+    `with recursive up(id, parent_id) as (select id, parent_id from authorities where id = $1
+       union all select a.id, a.parent_id from authorities a join up on a.id = up.parent_id) select id from up`,
+    [parent],
+  );
+  if (chain.rows.some((r) => r.id === subject)) throw badRequest("That parent would make a loop");
 }
 
 /** The current fact for one field (E23's rule), or null. */
@@ -416,12 +417,18 @@ export async function reviewFactConflict(tx: Queryable, actor: SessionUser, fact
   if (!f) throw notFound("No such fact");
   if (f.change_kind !== "conflict") throw conflict("This fact is not a conflict: nothing to decide");
   if ((await tx.query("select 1 from catalogue_fact_reviews where fact_id = $1", [factId])).rows.length) throw conflict("This conflict has already been decided");
-  const before = await currentFact(tx, f.subject_kind as SubjectKind, f.subject, f.field);
+  // The same subject lock appendFact takes (Codex review): a decision and a recording never interleave, so what is
+  // current and what the cache holds are read and written under one lock.
+  const kind = f.subject_kind as SubjectKind;
+  await tx.query(kind === "place" ? "select 1 from zones where name = $1 for update" : kind === "authority" ? "select 1 from authorities where id = $1 for update" : "select 1 from scoping_rules where key = $1 for update", [f.subject]);
+  const before = await currentFact(tx, kind, f.subject, f.field);
   if (decision === "accept" && before && num(before.id) > num(f.id)) throw conflict("The field has been recorded again since this figure: it cannot become current. Keep it, or record a new fact.");
   await tx.query("insert into catalogue_fact_reviews (fact_id, decision, note, reviewed_by) values ($1, $2, $3, $4)", [factId, decision, note.trim(), actor.id]);
   if (decision === "accept") {
-    const now = await currentFact(tx, f.subject_kind as SubjectKind, f.subject, f.field);
-    if (now) await refreshCache(tx, f.subject_kind as SubjectKind, f.subject, f.field, now.value);
+    // The hierarchy may have moved since the fact was recorded (Codex review): an accepted parent is checked again.
+    if (kind === "authority" && f.field === "parent") await assertParentAllowed(tx, f.subject, String(f.value));
+    const now = await currentFact(tx, kind, f.subject, f.field);
+    if (now) await refreshCache(tx, kind, f.subject, f.field, now.value);
   }
   await audit(tx, actor, "catalogue.conflict_reviewed", f.subject_kind === "place" ? "zone" : f.subject_kind === "authority" ? "authority" : "scoping_rule", f.subject, {
     factId: num(f.id),

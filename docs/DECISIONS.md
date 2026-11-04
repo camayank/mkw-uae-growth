@@ -1209,3 +1209,17 @@ after the owner's transformation mandate named the defect: "Investigate the repo
   - the failures read the same.
 
   They pass on PGlite and on PostgreSQL 16, and fail on the old code.
+
+**D100. The transformation is tracked in `docs/transformation`, continues the E-series, and hardens security before
+the agent.** (E18, 4 Nov 2026, the transformation mandate's Phase 0.)
+- **Baseline.** `docs/transformation/BASELINE-AUDIT.md` reads the code as it stands on `main` at d8104fb, with a
+  file and line for every claim, and records what was searched for and not found (an LLM call, a malware scanner, a
+  payment gateway).
+- **Tracking.** `ROADMAP.md`, `IMPLEMENTATION-STATUS.md`, `DECISION-LOG.md` (T-records for how the transformation runs;
+  product decisions stay here as D-records), `RISK-REGISTER.md` and `RELEASE-GATES.md`. Status words are the mandate's
+  seven with stated evidence; no completion percentage, because no agreed method exists (T2).
+- **Numbering.** The mandate's P0-01 to P1-06 become E19 to E27 in `outcomes/QUEUE.yaml` (T1), so there is one queue.
+- **Order.** Role isolation and the audit guard (E19) and upload quarantine (E20) come before the AI provider and the
+  agent (E22 to E24): an agent acting for users must inherit limits already proven (T3). Owner decisions T4 to T7
+  (platform database roles, AI provider, live scanner, O16) are open and named in the decision log.
+

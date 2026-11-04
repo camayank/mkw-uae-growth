@@ -238,12 +238,20 @@ outcomes:
     # Released by the owner on 3 Nov 2026 ("start E16"), with "Approve pdfkit" and "Assessment report only".
   - id: E17
     title: Sign-in lockout (a wrong code is counted and committed; simultaneous guesses cannot pass five; one answer)
-    status: verified-pending-merge
+    status: merged  # camayank/mkw-uae-growth#38, 4 Nov 2026
     contract: outcomes/E17-sign-in-lockout.md
     depends_on: []
     needs_from_owner: []
     # Released by the owner on 3 Nov 2026: the transformation mandate's Phase 1.1, "Begin with the OTP security
     # defect and write a failing reproduction test".
+  - id: E18
+    title: Baseline audit and transformation tracking documents (docs/transformation)
+    status: verified-pending-merge
+    contract: outcomes/E18-baseline-audit.md
+    depends_on: [E17]
+    needs_from_owner: []
+    # The transformation mandate's Phase 0 deliverable, "First deliver: docs/transformation/BASELINE-AUDIT.md", and
+    # its reporting documents. Documents only. E19 onwards are proposed in docs/transformation/ROADMAP.md.
 
 # Roadmap from docs/VISION.md (18 Oct 2026). Order of work: O11, O12, O13 before the pilot; then O7 (launch gate);
 # then O14, O15, O16. Renumbered on 18 Oct 2026 when the owner released O10 as Real data and staging.
@@ -251,6 +259,71 @@ outcomes:
 # The rest are `planned`: the owner releases one at a time ("Release O11 ..."), and its contract
 # file is written from the vision's scope at that point, before any code.
 roadmap:
+  # The transformation mandate (3 Nov 2026), reconciled in docs/transformation/ROADMAP.md (T1): E19 follows E18 under
+  # the mandate's instruction to continue with the next priority outcome; the owner can reorder or stop at any merge.
+  - id: E19
+    title: Role isolation and audit guard
+    status: planned
+    business_result: Every role's limits proven by a test, within a party as well as across; the audit trail cannot be edited by the application.
+    scope: [tests for every path in BASELINE-AUDIT.md 4.2, append-only trigger on audit_events, chain head recorded nightly, decision T4]
+    depends_on: [E18]
+    needs_from_owner: [decision T4 (platform database roles)]
+  - id: E20
+    title: Upload quarantine
+    status: planned
+    business_result: A file is checked for what it really is and held until scanned; a failed or missing scan never counts as clean.
+    scope: [magic-byte checks per extension, quarantine state on file-bearing tables, scanner adapter with a memory double, downloads refused until clean]
+    depends_on: [E18]
+    needs_from_owner: [decision T6 (live scanner and its cost)]
+  - id: E21
+    title: Evidence operations
+    status: planned
+    business_result: Conflicting or changed facts are flagged to the verifier; stale facts reach the ops queue.
+    scope: [conflict detection, version comparison, stale-fact queue items]
+    depends_on: [E18]
+    needs_from_owner: [a named verifier for real data (gap 92)]
+  - id: E22
+    title: AI provider adapter
+    status: planned
+    business_result: A real model behind a budget, a timeout and schema checks, with the deterministic model kept as fallback.
+    scope: [live adapter behind configuration, monthly cap, timeouts, structured output validated by zod, capability status on screen]
+    depends_on: [E18]
+    needs_from_owner: [decision T5 (provider, API key, monthly cap, personal data)]
+  - id: E23
+    title: Agent tools and planning
+    status: planned
+    business_result: The agent reads a founder's goal, asks only what is missing and builds a plan from the existing engines.
+    scope: [typed tool registry over existing services, agent identity no wider than the requesting user, launch plan]
+    depends_on: [E19, E22]
+    needs_from_owner: []
+  - id: E24
+    title: Agent execution and approval
+    status: planned
+    business_result: Agent runs persist, resume, stay within budget and stop at every consequential action for a person.
+    scope: [run store, resume, idempotency, budgets, approval records, progress on screen]
+    depends_on: [E23]
+    needs_from_owner: []
+  - id: E25
+    title: Document intelligence
+    status: planned
+    business_result: Authorised uploads are read for type, fields and expiry, as a reviewer's checklist.
+    scope: [content extraction after a clean scan, reviewer checklist, never auto-approving identity]
+    depends_on: [E20, E22]
+    needs_from_owner: []
+  - id: E26
+    title: Client journey (document reuse, priority speed)
+    status: planned
+    business_result: Documents reused with consent; the priority tier's speed carried into the offer and the plan.
+    scope: [document reuse across steps with consent (gaps 34, 125), quoted working days in offer lines and milestone dates (gap 85)]
+    depends_on: [E18]
+    needs_from_owner: []
+  - id: E27
+    title: Agent evaluation and demonstration
+    status: planned
+    business_result: Thirty or more measured scenarios and a demonstration on synthetic data.
+    scope: [evaluation suite with measured results, demo mode, docs/competition]
+    depends_on: [E24]
+    needs_from_owner: []
   - id: O14
     title: Real payments and WhatsApp
     status: planned
@@ -273,3 +346,5 @@ roadmap:
             learning-loop metrics (edit and acceptance rate per agent)]
     depends_on: [O11, O13, O7]
     needs_from_owner: [AI API key and monthly spend cap]
+    # E22 to E24 build the provider, tool registry, run store and approvals these agents need; proposal T7 in
+    # docs/transformation/DECISION-LOG.md: O16 keeps the specific agents and depends on E24.

@@ -148,6 +148,8 @@ They match the **Deliverable Codes**, **Rate Cards** and **Offer Builder** tabs 
 - [`docs/RESTORE-DRILL.md`](docs/RESTORE-DRILL.md): how backups are proven restorable, and the drill log
 - [`docs/DECISIONS.md`](docs/DECISIONS.md): why it is built this way, and the decisions still open for the owner
 - [`docs/KNOWN-GAPS.md`](docs/KNOWN-GAPS.md): what is not built yet, in priority order
+- [`docs/transformation/`](docs/transformation/BASELINE-AUDIT.md): the transformation mandate's baseline audit, roadmap,
+  implementation status, decision log, risk register and release gates (E18)
 
 Statutory and fee data in the catalogue are working estimates, not verified rules. They must be checked by a
 qualified person before the platform quotes real clients; where the system is unsure it must say so.

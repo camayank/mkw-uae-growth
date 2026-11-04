@@ -358,6 +358,26 @@ in a browser; everything listed here is not.
      takes longer for a known email, which sends one, than for an unknown one; checking a code differs by far less.
      Sending the email from the outbox rather than in the request would close most of it.
 
+## E18: baseline audit (docs/transformation/BASELINE-AUDIT.md)
+
+135. **The audit trail is guarded by detection, not prevention.** The application's platform database role can update
+     and delete `audit_events` (grant all, a "for all" policy, no trigger), unlike `catalogue_facts` and `consents`. The
+     nightly check finds an edited row, but deleting the newest rows leaves a shorter chain it cannot tell apart from
+     the real one. E19: an append-only trigger and the chain head recorded each night (risk R1).
+136. **Within a party, the database does not separate roles.** Ops, finance and the founder share `app_platform`;
+     partner admin and staff share `app_partner`. Margin is hidden from ops and payouts from staff at the routes and in
+     the visibility map, two layers rather than three. Open decision T4.
+137. **Some download and role paths have no test**: the evidence file route, invoice and offer PDFs and the statement
+     as another client, client members and partner staff on money screens, ops at the database, and some CSV exports
+     by refused roles (the audit's section 4.2). E19.
+138. **Request, payout and change-order statuses have no transition table.** They are set by direct SQL in the
+     services; only milestones, offers and engagements go through `transition()`. Before the agent gets write tools.
+139. **The service catalogue (`deliverables`) is readable in full by clients and partners**, including its market
+     mid-price, and has no row-level security. A reference figure, not partner cost or margin; recorded so it stays a
+     choice.
+140. **No live AI model.** `modelFromEnv()` always returns the deterministic model; nothing calls an LLM. Open decision
+     T5 (provider, key, monthly cap, personal data); E22.
+
 ## E16: report design
 
 129. **The Arabic report's wording is a draft** until the Arabic reviewer signs it off (with gaps 111, 116, 119, 128).

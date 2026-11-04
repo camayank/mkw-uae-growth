@@ -84,7 +84,7 @@ compromised process could `RESET ROLE`, read anything, disable a trigger or edit
 | `pnpm test` (PGlite) | core 159 passed (19 files); API 404 passed, 6 skipped (the PostgreSQL-only tests; 41 files) | `tests-pglite.txt` |
 | API suite on PostgreSQL 16 | 410 passed (41 files); verbose list of the E19, tamper and concurrency tests (56) | `tests-postgres16.txt` |
 | Staging stack | `synth:check` passes. The template shows: the app container waits for the `migrate` container; only `migrate` holds the master secret; only the execution role can read it; the jobs use the runtime login | `synth.txt` |
-| Browser smoke on a fresh demo | see `smoke-log.txt`; partner staff signed in for the first time: no Payouts menu, no AED on work, performance and rates, phone width with axe | `smoke-log.txt`, `screens/` |
+| Browser smoke on a fresh demo | 337 checks, 0 failed (7 new for E19); partner staff signed in for the first time: no Payouts menu, no AED on work, performance and rates, phone width with axe | `smoke-log.txt`, `screens/` |
 
 The tests that prove each claim, on PostgreSQL 16 (`runtime-login.test.ts`, `role-isolation.test.ts`):
 - **A whole engagement as a fresh runtime login:** request, offer, acceptance, payment, allocation, every step

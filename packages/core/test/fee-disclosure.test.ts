@@ -33,6 +33,9 @@ describe("government fee disclosure (E18)", () => {
 
   it("a line without a government fee has nothing to disclose", () => {
     expect(feeDisclosure("X", 0, { basis: "partner_stated" })).toBeNull();
+    // An unverified or stale "no fee" is still a statement about the authority, so it is disclosed (E18 review).
+    expect(feeDisclosure("X", 0, { basis: "uncertain" })).toMatchObject({ label: "UNCERTAIN", confirmed: false });
+    expect(feeDisclosure("X", 0, { basis: "stale", verifiedAt: "2026-06-01" })).toMatchObject({ label: "STALE" });
     expect(feeDisclosures([{ code: "A", govUnitFee: 0, basis: "verified" }, { code: "B", govUnitFee: 5, basis: "uncertain" }]).map((d) => d.code)).toEqual(["B"]);
   });
 });

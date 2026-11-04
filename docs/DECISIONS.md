@@ -1241,4 +1241,20 @@ after the owner's transformation mandate named the defect: "Investigate the repo
   publishes with no acknowledgement (the existing rule, D23). Requiring the same acknowledgement as an UNCERTAIN fee
   would make every unverified figure a person's decision before it reaches a client, at the cost of one more tick per
   such offer while the fee table is empty. `feeNeedsReview` is the one place to change it (gap 135).
-
+- **Found by the independent review of E18, and fixed with tests:**
+  - an UNCERTAIN or stale fee of zero escaped the acknowledgement and the disclosure ("no fee" from an unverified
+    record is a statement like any other): the review now follows the basis whatever the amount, and such a line is
+    disclosed;
+  - an ops price set at the moment of publication could land on the published offer (the status was read without a
+    lock): setting a price now takes the audit lock and locks the offer row first, as publication does;
+  - ops could read margin in the audit trail (`offer.built` and `offer.line_overridden` record it): the trail is shown
+    to ops without margin figures; the stored events and their hashes are unchanged (rule 1);
+  - a fee verified when the offer was built but more than 90 days old at publication now needs the same
+    acknowledgement, recorded in the `offer.published` event; the client reads its verification date;
+  - a figure from the catalogue itself with no fee record is labelled UNCERTAIN, not partner-stated;
+  - the guard also freezes the line's offer, code and quantity, refuses acknowledgement fields without the review they
+    acknowledge, and refuses deleting an offer line;
+  - MKW's offer review shows the evidence dates as the database's text, so a server east of UTC does not show the day
+    before.
+- **Recorded, not changed:** a free-zone request priced on an emirate-wide verified record reads VERIFIED (the lookup
+  policy of D23; gap 140), and the verifier's name is kept on the frozen line (gap 141).

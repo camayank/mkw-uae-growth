@@ -369,6 +369,13 @@ in a browser; everything listed here is not.
 138. **The Arabic for the fee labels and sentences is a draft** for the Arabic reviewer (with gaps 111, 116, 119, 128).
 139. **The snapshot keeps the source link, not a copy of the authority's page.** If the authority changes or removes
      the page, the link no longer shows what was checked; an archived copy at verification would close it.
+140. **An emirate-wide verified fee is VERIFIED on a free-zone request.** Pricing uses the free zone's own row when
+     there is one, else the emirate's (D23), and the label follows the row. Whether an emirate-wide figure is good
+     enough to call a free-zone fee checked is the owner's decision; the alternative is UNCERTAIN unless the row is the
+     free zone's own. Found by the independent review of E18.
+141. **The verifier's name is kept on each priced offer line**, which can never change, so erasing that person cannot
+     remove it there. The name is already in the fee table and the audit trail; the retention basis (the record of
+     a quotation) is for the lawyer to confirm with the PDPL notice. Snapshotting a staff id instead would close it.
 
 ## E16: report design
 

@@ -370,7 +370,7 @@ export async function offerDocument(tx: Queryable, actor: SessionUser, offerId: 
     const price = num(l.qty) * num(l.client_unit_fils);
     out.push(col(`${String(l.name)} (${String(l.code)})`, `${String(l.qty).padStart(3)}   ${money(price)}`));
     const fee = disclosed.get(String(l.code));
-    if (num(l.gov_unit_fils) > 0) {
+    if (num(l.gov_unit_fils) > 0 || fee) {
       out.push(col(`   Government fees at cost, no mark-up (${fee?.label ?? "LEGACY"})`, money(num(l.qty) * num(l.gov_unit_fils))));
       if (fee) out.push(...wrap(fee.text, 73).map((t) => `     ${t}`));
     }

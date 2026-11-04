@@ -75,8 +75,8 @@ timeline, included and assumptions paragraphs), and its dates printed without th
 | --- | --- | --- |
 | The four reproductions on the old code | 4 failed | `before-fix.txt` |
 | `pnpm typecheck` | clean | `tests-pglite.txt` |
-| `pnpm test` (PGlite) | core 159 passed (19 files); API 390 passed, 1 skipped (39 files) | `tests-pglite.txt` |
-| API suite on PostgreSQL 16 | 391 passed (39 files), including the PostgreSQL-only test; the new file and the concurrency tests listed verbose | `tests-postgres16.txt` |
+| `pnpm test` (PGlite) | core 159 passed (19 files); API 396 passed, 1 skipped (39 files) | `tests-pglite.txt` |
+| API suite on PostgreSQL 16 | 397 passed (39 files), including the PostgreSQL-only test; the new file and the concurrency tests listed verbose (32) | `tests-postgres16.txt` |
 | `pnpm build` | exit 0 | `build.txt` |
 | Browser smoke on a fresh demo | see below | `smoke-log.txt` |
 | Screens | the client proposal (desktop `72`, phone `78`), the ops offer with the fee column (desktop `05`, phone `79`), finance's view (`06`) | `screens/` |
@@ -119,6 +119,29 @@ Scenarios 5 and 8 share one test.
 - **Web:** every value is escaped. The source link is shown only for `http(s)` addresses, with
   `rel="noopener noreferrer"`.
 
+## Independent review
+
+An independent reviewer read the diff and probed it on PGlite and PostgreSQL 16. Found and fixed, each with a test in
+the third `describe` of `fee-provenance.test.ts`:
+
+- **(Blocking) An unverified fee of zero escaped the acknowledgement and the disclosure.** The review now follows the
+  basis whatever the amount; such a line is disclosed as UNCERTAIN or STALE, on the screen and in the PDF.
+- **A price set at the moment of publication could land on the published offer.** This predates E18 and is in the
+  code it touches. Setting a price now takes the audit lock and locks the offer row first, as publication does.
+- **Ops could read margin in the audit trail** (rule 1). This predates E18; the `offer.built` event E18 rewrote
+  carries it. The trail is now shown to ops without margin figures; the stored events and hashes are unchanged.
+- **A fee verified at pricing but over 90 days old at publication** now needs an acknowledgement, recorded in the
+  audit event.
+- **A catalogue figure with no fee record** is UNCERTAIN, not PARTNER-STATED.
+- **The guard** also freezes the line's offer, code and quantity, refuses stray acknowledgement fields, and refuses
+  deleting a line.
+- **The evidence dates on MKW's review** are the database's text, so they are right east of UTC.
+- The "lines needing a decision" count after a price change is now asserted (the "Publish anyway" button).
+
+Recorded, not changed:
+- the free-zone and emirate-wide question is an owner decision (gap 140);
+- the verifier's name is kept on the frozen line (gap 141).
+
 ## Dependencies
 
 E17 (merged). Builds on D22b, D23 and D60 (superseded for the fee notes).
@@ -135,6 +158,7 @@ E17 (merged). Builds on D22b, D23 and D60 (superseded for the fee notes).
 - **Open:** whether a partner-stated fee should need an acknowledgement before publication (D100 recommends it;
   `feeNeedsReview` is the one place to change; gap 135).
 - **Open:** the Arabic wording (gap 138).
+- **Open:** whether an emirate-wide verified fee may read VERIFIED on a free-zone request (gap 140).
 - **For the lawyer:** the PDF's assumption sentence on government fees changed. It now says only a VERIFIED fee was
   checked, where it used to say fees were "as published on the offer date".
 

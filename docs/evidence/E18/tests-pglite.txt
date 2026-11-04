@@ -1,9 +1,9 @@
 pnpm typecheck: clean (2026-11-04)
 
-pnpm test (PGlite), c695e53 plus working tree:
+pnpm test (PGlite), after the independent review's fixes:
 packages/core test:  Test Files  19 passed (19)
 packages/core test:       Tests  159 passed (159)
-packages/core test:    Duration  3.17s (transform 998ms, setup 0ms, import 1.81s, tests 5.63s, environment 1ms)
+packages/core test:    Duration  3.20s (transform 1.08s, setup 0ms, import 1.85s, tests 5.67s, environment 1ms)
 apps/api test:  Test Files  39 passed (39)
-apps/api test:       Tests  390 passed | 1 skipped (391)
-apps/api test:    Duration  68.14s (transform 3.12s, setup 0ms, import 17.88s, tests 180.81s, environment 3ms)
+apps/api test:       Tests  396 passed | 1 skipped (397)
+apps/api test:    Duration  67.22s (transform 2.98s, setup 0ms, import 17.15s, tests 177.24s, environment 3ms)

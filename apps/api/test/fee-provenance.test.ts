@@ -320,3 +320,117 @@ describe("government fee provenance: twelve scenarios end to end (E18)", () => {
     await retireAll();
   });
 });
+
+describe("government fee provenance: the independent review's findings (E18)", () => {
+  let env: TestEnv;
+  beforeAll(async () => {
+    env = await makeEnv();
+  });
+  afterAll(() => env.db.close());
+
+  const sql = <T = any>(q: string, p: unknown[] = []) => asPlatform(env.db, null, async (tx) => (await tx.query<T & Record<string, unknown>>(q, p)).rows);
+  const build = async () => {
+    const req = await env.call("client", "POST", "/api/requests", { answers: ANSWERS });
+    return (await env.call("ops", "POST", `/api/ops/requests/${req.body.id}/build-offers`, { tiers: ["standard"] })).body.offerIds[0] as string;
+  };
+  const addFee = async (feeAed: number) => (await env.call("ops", "POST", "/api/admin/fees", { code: CODE, emirate: "Dubai", feeAed, sourceUrl: "https://example.gov.ae/fees" })).body.id as string;
+  const retireAll = async () => {
+    for (const f of (await env.call("ops", "GET", "/api/admin/fees")).body.fees.filter((x: any) => x.code === CODE && !x.retiredAt)) {
+      await env.call("ops", "POST", `/api/admin/fees/${f.id}/retire`, { reason: "test reset" });
+    }
+  };
+  const publish = (offerId: string, acknowledgeReview = false) => env.call("ops", "POST", `/api/ops/offers/${offerId}/publish`, acknowledgeReview ? { acknowledgeReview } : undefined);
+  const line = async (offerId: string) => (await sql("select * from offer_lines where offer_id = $1 and code = $2", [offerId, CODE]))[0]!;
+  const today = () => env.clock.now.toISOString().slice(0, 10);
+
+  it("an unverified fee of zero still needs a decision, keeps it through a price change, and is disclosed as an estimate", async () => {
+    await retireAll();
+    await addFee(0);
+    const offerId = await build();
+    expect(await line(offerId)).toMatchObject({ gov_fee_basis: "uncertain", gov_fee_review: "required" });
+    expect((await env.call("ops", "POST", `/api/ops/offers/${offerId}/lines/${CODE}/price`, { clientUnitAed: 6_000 })).status).toBe(200);
+    expect((await env.call("ops", "GET", `/api/ops/offers/${offerId}`)).body.linesNeedingReview).toBeGreaterThan(0); // the "Publish anyway" button
+    expect((await publish(offerId)).status).toBe(409);
+    expect((await publish(offerId, true)).status).toBe(200);
+    const d = (await env.call("client", "GET", `/api/client/offers/${offerId}`)).body.proposal.feeDisclosures.find((x: any) => x.code === CODE);
+    expect(d).toMatchObject({ label: "UNCERTAIN", confirmed: false });
+    const pdf = (await env.app.inject({ method: "GET", url: `/api/client/offers/${offerId}/pdf`, headers: { authorization: `Bearer ${env.tokens.client}` } })).body.replace(/\\([()\\])/g, "$1");
+    expect(pdf).toContain("(UNCERTAIN)");
+    await retireAll();
+  });
+
+  it("a catalogue figure with no fee record is MKW's own unverified figure, not the partner's", async () => {
+    await retireAll();
+    await sql("update deliverables set gov_fee_fils = 400000 where code = $1", [CODE]);
+    try {
+      const offerId = await build();
+      expect(await line(offerId)).toMatchObject({ gov_fee_basis: "uncertain", gov_fee_review: "required" });
+      expect(Number((await line(offerId)).gov_unit_fils)).toBe(400_000);
+    } finally {
+      await sql("update deliverables set gov_fee_fils = null where code = $1", [CODE]);
+    }
+  });
+
+  it("a price set at the moment of publication never lands on the published offer", async () => {
+    await retireAll();
+    const offerId = await build();
+    const [setPrice, published] = await Promise.all([
+      env.call("ops", "POST", `/api/ops/offers/${offerId}/lines/${CODE}/price`, { clientUnitAed: 12_340 }),
+      publish(offerId, true),
+    ]);
+    expect(published.status).toBe(200);
+    const events = await sql<{ id: number; action: string }>("select id, action from audit_events where entity_id = $1 and action in ('offer.published', 'offer.line_overridden') order by id", [offerId]);
+    const at = (a: string) => events.find((e) => e.action === a)?.id;
+    if (setPrice.status === 200) expect(Number(at("offer.line_overridden"))).toBeLessThan(Number(at("offer.published")));
+    else expect(setPrice.status).toBe(409);
+  });
+
+  it("ops read the audit trail without any margin figure; finance and the founder see it", async () => {
+    const offerId = await build();
+    expect((await sql("select data from audit_events where action = 'offer.built' and entity_id = $1", [offerId]))[0]!.data.margin).toEqual(expect.any(Number));
+    const ops = await env.call("ops", "GET", "/api/ops/audit");
+    expect(ops.status).toBe(200);
+    expect(JSON.stringify(ops.body)).not.toMatch(/margin/i);
+    expect(JSON.stringify((await env.call("finance", "GET", "/api/ops/audit")).body)).toMatch(/"margin"/);
+  });
+
+  it("the guard refuses moving evidence to another line, undoing a review, stray acknowledgements and deleting a line", async () => {
+    await retireAll();
+    await addFee(9_000);
+    const offerId = await build();
+    const l = await line(offerId);
+    const ops = (await env.call("ops", "GET", "/api/me")).body;
+    await expect(sql("update offer_lines set gov_fee_review = 'none' where id = $1", [l.id])).rejects.toThrow(/review moves only from required to acknowledged/);
+    await expect(sql("update offer_lines set code = 'VISA-RES' where id = $1", [l.id])).rejects.toThrow(/not changed after pricing/);
+    await expect(sql("update offer_lines set qty = qty + 1 where id = $1", [l.id])).rejects.toThrow(/not changed after pricing/);
+    const other = (await sql("select id from offer_lines where offer_id = $1 and gov_fee_review = 'none' limit 1", [offerId]))[0]!;
+    await expect(sql("update offer_lines set gov_fee_ack_by = $2, gov_fee_ack_at = now() where id = $1", [other.id, ops.id])).rejects.toThrow(/recorded only with the review/);
+    await expect(sql("delete from offer_lines where id = $1", [l.id])).rejects.toThrow(/kept with the evidence/);
+    await retireAll();
+  });
+
+  it("a fee verified when the offer was built but past 90 days at publication needs an acknowledgement", async () => {
+    await retireAll();
+    const feeId = await addFee(8_500);
+    expect((await env.call("founder", "POST", `/api/admin/fees/${feeId}/verify`, { verifiedBy: "A. Verifier" })).status).toBe(200);
+    await sql("update government_fees set verified_at = ($1::date - 85) where id = $2", [today(), feeId]);
+    const offerId = await build();
+    expect(await line(offerId)).toMatchObject({ gov_fee_basis: "verified", gov_fee_review: "none" });
+    const start = env.clock.now;
+    env.clock.now = new Date(start.getTime() + 10 * 86_400_000);
+    try {
+      const refused = await publish(offerId);
+      expect(refused.status).toBe(409);
+      expect(JSON.stringify(refused.body)).toMatch(/verified over 90 days before publication/);
+      expect((await publish(offerId, true)).status).toBe(200);
+      const ev = (await sql("select data from audit_events where action = 'offer.published' and entity_id = $1", [offerId]))[0]!;
+      expect(ev.data.acknowledgedLines).toEqual([expect.objectContaining({ code: CODE, reason: expect.stringMatching(/verified over 90 days before publication/) })]);
+      // The client still reads the date it was verified, so the age is visible to them.
+      const d = (await env.call("client", "GET", `/api/client/offers/${offerId}`)).body.proposal.feeDisclosures.find((x: any) => x.code === CODE);
+      expect(d.text).toMatch(/verified on \d{4}-\d{2}-\d{2}/);
+    } finally {
+      env.clock.now = start;
+      await retireAll();
+    }
+  });
+});

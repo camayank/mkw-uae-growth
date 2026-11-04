@@ -19,7 +19,7 @@ import { assertQuotable } from "./structure.ts";
 import { num, type Queryable } from "../lib/db.ts";
 import { assertRenewalCurrent } from "./compliance.ts";
 import { badRequest, conflict, notFound } from "../lib/errors.ts";
-import { addDays, dbToday, loadDeliverables, loadFeeDisclosures, loadGovernmentFees, loadPartners, loadRateCards, loadRfqQuotes, loadRules, loadSettings, type FeeLookup } from "./repo.ts";
+import { addDays, dbToday, FEE_STALE_DAYS, loadDeliverables, loadFeeDisclosures, loadGovernmentFees, loadPartners, loadRateCards, loadRfqQuotes, loadRules, loadSettings, type FeeLookup } from "./repo.ts";
 
 export const OFFER_VALID_DAYS = 14;
 
@@ -83,7 +83,7 @@ export async function buildOffers(
   const offerIds: string[] = [];
   const seen = new Set<string>();
   for (const tier of tiers) {
-    const picked: Array<{ line: PricedLine; partnerId: string; fallbackId: string | null; sourceId: string; fee: FeeLookup | undefined }> = [];
+    const picked: Array<{ line: PricedLine; partnerId: string; fallbackId: string | null; sourceId: string; fee: FeeLookup | undefined; basis: FeeBasis }> = [];
     for (const sl of lines) {
       const d = deliverables.get(sl.code);
       if (!d) throw badRequest(`Unknown deliverable ${sl.code}`);
@@ -98,7 +98,10 @@ export async function buildOffers(
         priceLine({ deliverable: d, qty: sl.qty, partnerUnitCost: sel.chosen.partnerUnitCost, govUnitFee: sel.chosen.govFeeUsed, rule }, settings),
         fees.get(sl.code),
       );
-      picked.push({ line, partnerId: sel.chosen.partnerId, fallbackId: sel.fallback?.partnerId ?? null, sourceId: sel.chosen.quoteId, fee: fees.get(sl.code) });
+      // E18 (review): with no MKW record, a figure from the catalogue itself (`deliverables.gov_fee_fils`, unused today)
+      // is MKW's own unverified figure, not the partner's.
+      const basis: FeeBasis = fees.has(sl.code) ? feeBasis(fees.get(sl.code)) : d.govFeeTable != null ? "uncertain" : "partner_stated";
+      picked.push({ line, partnerId: sel.chosen.partnerId, fallbackId: sel.fallback?.partnerId ?? null, sourceId: sel.chosen.quoteId, fee: fees.get(sl.code), basis });
     }
     // Skip a tier that comes out identical to one already built (common with few partners).
     const signature = picked.map((p) => `${p.line.code}:${p.sourceId}`).join("|");
@@ -137,7 +140,7 @@ export async function buildOffers(
     for (const p of picked) {
       const l = p.line;
       // E18: the government fee's evidence as it stands now, written once with the line (migration 023 freezes it).
-      const basis: FeeBasis = feeBasis(p.fee);
+      const basis = p.basis;
       await tx.query(
         `insert into offer_lines (offer_id, code, qty, model, partner_org_id, fallback_partner_org_id, cost_source_id,
            partner_unit_fils, gov_unit_fils, client_unit_fils, mkw_fee_unit_fils, margin_unit_fils, cap_unit_fils, status, reason,
@@ -168,7 +171,8 @@ export async function buildOffers(
           p.fee?.verifiedBy ?? null,
           p.fee?.verifiedAt ?? null,
           asOf,
-          l.govUnitFee > 0 && feeNeedsReview(basis) ? "required" : "none",
+          // A fee that needs a decision needs it whatever its amount: an unverified "no fee" is not a fact either.
+          feeNeedsReview(basis) ? "required" : "none",
         ],
       );
     }
@@ -178,7 +182,7 @@ export async function buildOffers(
       status,
       margin: totals.margin,
       requestId,
-      governmentFees: picked.map((p) => ({ code: p.line.code, unitFils: p.line.govUnitFee, basis: feeBasis(p.fee), feeId: p.fee?.id ?? null })),
+      governmentFees: picked.map((p) => ({ code: p.line.code, unitFils: p.line.govUnitFee, basis: p.basis, feeId: p.fee?.id ?? null })),
     });
   }
   await tx.query("update requests set status = 'offered' where id = $1", [requestId]);
@@ -224,14 +228,23 @@ export async function publishOffer(tx: Queryable, actor: SessionUser, offerId: s
   // E18: a line whose government fee needs a decision stays flagged even after ops set its price (which marks the
   // line 'ok' and rewrites its reason): the fee review is its own column.
   const flagged = (
-    await tx.query<{ code: string; reason: string | null; gov_unit_fils: number; client_unit_fils: number; gov_fee_basis: FeeBasis | null; gov_fee_review: string | null }>(
-      `select code, reason, gov_unit_fils, client_unit_fils, gov_fee_basis, gov_fee_review from offer_lines
-       where offer_id = $1 and (status <> 'ok' or gov_fee_review = 'required') order by code`,
+    await tx.query<{ code: string; reason: string | null; gov_unit_fils: number; client_unit_fils: number; gov_fee_basis: FeeBasis | null; gov_fee_review: string | null; stale_now: boolean }>(
+      `select code, reason, gov_unit_fils, client_unit_fils, gov_fee_basis, gov_fee_review,
+         (gov_fee_basis = 'verified' and gov_fee_verified_at < app_now()::date - ${FEE_STALE_DAYS}) as stale_now
+       from offer_lines
+       where offer_id = $1 and (status <> 'ok' or gov_fee_review = 'required'
+         or (gov_fee_basis = 'verified' and gov_fee_verified_at < app_now()::date - ${FEE_STALE_DAYS})) order by code`,
       [offerId],
     )
   ).rows;
+  // E18 (review): a fee verified when the offer was built may have gone past 90 days by the time it is published; the
+  // client still reads its verification date, and the person publishing acknowledges it (in the audit event).
   const why = (l: (typeof flagged)[number]) =>
-    l.gov_fee_review === "required" && !/government fee/i.test(l.reason ?? "") ? [l.reason, `government fee ${l.gov_fee_basis} at quotation`].filter(Boolean).join("; ") : (l.reason ?? "review");
+    l.stale_now
+      ? [l.reason, `government fee verified over ${FEE_STALE_DAYS} days before publication`].filter(Boolean).join("; ")
+      : l.gov_fee_review === "required" && !/government fee/i.test(l.reason ?? "")
+        ? [l.reason, `government fee ${l.gov_fee_basis} at quotation`].filter(Boolean).join("; ")
+        : (l.reason ?? "review");
   if (flagged.length && !acknowledgeReview) {
     throw conflict(`${flagged.length} line(s) need a decision before this offer can go to the client: ${flagged.map((l) => `${l.code} (${why(l)})`).join("; ")}`);
   }
@@ -261,7 +274,10 @@ export async function overrideLinePrice(
   code: string,
   clientUnitFils: number,
 ): Promise<void> {
-  const o = (await tx.query<{ status: string }>("select status from offers where id = $1", [offerId])).rows[0];
+  // E18 (review): the same lock order as publication, and the offer row locked before its status is checked, so a
+  // price set at the moment of publication waits and is then refused rather than landing on a published offer.
+  await lockAuditChain(tx);
+  const o = (await tx.query<{ status: string }>("select status from offers where id = $1 for update", [offerId])).rows[0];
   if (!o) throw notFound("Offer not found");
   if (!["draft", "ops_review"].includes(o.status)) throw conflict("Only unpublished offers can be changed");
   const line = (

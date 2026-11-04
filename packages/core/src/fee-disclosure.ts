@@ -73,9 +73,12 @@ export function feeLabel(basis: FeeBasis | null): FeeLabel {
 
 const AT_COST = "You pay the authority's actual fee, at cost.";
 
-/** The disclosure for one line, or null when the line carries no government fee. */
+/**
+ * The disclosure for one line, or null when the line carries no government fee. A zero fee from an unverified or stale
+ * record is still disclosed (E18 review): "no government fee" is a statement about the authority like any other.
+ */
 export function feeDisclosure(code: string, govUnitFee: number, evidence: FeeEvidence): FeeDisclosure | null {
-  if (!(govUnitFee > 0)) return null;
+  if (!(govUnitFee > 0) && evidence.basis !== "uncertain" && evidence.basis !== "stale") return null;
   const label = feeLabel(evidence.basis);
   const on = evidence.verifiedAt ? ` on ${evidence.verifiedAt}` : "";
   const text = {

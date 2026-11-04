@@ -260,6 +260,9 @@ export function partnerHome(db: Database, user: SessionUser) {
 // Platform --------------------------------------------------------------------------
 
 const seesMargin = (role: Role) => role === "finance" || role === "founder";
+/** A copy of audit data with every margin figure removed, at any depth (E18 review). */
+const withoutMargin = (v: unknown): unknown =>
+  Array.isArray(v) ? v.map(withoutMargin) : v && typeof v === "object" ? Object.fromEntries(Object.entries(v as Record<string, unknown>).filter(([k]) => !/margin/i.test(k)).map(([k, x]) => [k, withoutMargin(x)])) : v;
 
 export function opsOverview(db: Database, user: SessionUser) {
   return asPlatform(db, user, async (tx) => {
@@ -311,8 +314,8 @@ export function opsOffer(db: Database, user: SessionUser, offerId: string) {
     const o = (await tx.query("select * from offers where id = $1", [offerId])).rows[0];
     if (!o) throw notFound("Offer not found");
     const lines = await tx.query(
-      `select l.*, d.name, p.name as partner_name from offer_lines l join deliverables d on d.code = l.code
-       left join orgs p on p.id = l.partner_org_id where l.offer_id = $1 order by l.code`,
+      `select l.*, l.gov_fee_verified_at::text as gov_fee_verified_on, l.gov_fee_quoted_on::text as gov_fee_quoted_day, d.name, p.name as partner_name
+       from offer_lines l join deliverables d on d.code = l.code left join orgs p on p.id = l.partner_org_id where l.offer_id = $1 order by l.code`,
       [offerId],
     );
     const shaped = { ...camel(o), lines: lines.rows.map((l) => ({ ...camel(l), partnerId: l.partner_org_id })) };
@@ -330,8 +333,9 @@ export function opsOffer(db: Database, user: SessionUser, offerId: string) {
         freeZone: r.gov_fee_free_zone ?? null,
         sourceUrl: r.gov_fee_source_url ?? null,
         verifiedBy: r.gov_fee_verified_by ?? null,
-        verifiedAt: r.gov_fee_verified_at ? String(r.gov_fee_verified_at instanceof Date ? r.gov_fee_verified_at.toISOString() : r.gov_fee_verified_at).slice(0, 10) : null,
-        quotedOn: r.gov_fee_quoted_on ? String(r.gov_fee_quoted_on instanceof Date ? r.gov_fee_quoted_on.toISOString() : r.gov_fee_quoted_on).slice(0, 10) : null,
+        // Dates as the database's own text, so a server east of UTC does not show the day before (E18 review).
+        verifiedAt: (r.gov_fee_verified_on as string | null) ?? null,
+        quotedOn: (r.gov_fee_quoted_day as string | null) ?? null,
         review: r.gov_fee_review ?? null,
         acknowledgedAt: r.gov_fee_ack_at ? new Date(r.gov_fee_ack_at as string).toISOString() : null,
       };
@@ -397,7 +401,9 @@ export async function exceptionQueue(tx: Queryable) {
 export function auditTrail(db: Database, user: SessionUser, limit = 200) {
   return asPlatform(db, user, async (tx) => {
     const r = await tx.query("select id, at, actor_user_id, action, entity, entity_id, data, prev_hash, hash from audit_events order by id desc limit $1", [limit]);
-    return r.rows.map(camel);
+    // Rule 1 (E18 review): offer events record the margin for finance and the founder; ops read the trail without it.
+    // The stored event and its hash are unchanged; only what ops are shown is filtered.
+    return r.rows.map((row) => camel(seesMargin(user.role) ? row : { ...row, data: withoutMargin(row.data) }));
   });
 }
 

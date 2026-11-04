@@ -1317,3 +1317,34 @@ after the owner's transformation mandate named the defect: "Investigate the repo
   - **The owner's truncate** is refused by the trigger.
 - **Recorded:** the runtime login can change its own password or settings, as any PostgreSQL login can (gap 144).
 
+**D102. The transformation is tracked in `docs/transformation`; the audit reads the code, not the documents.** (E20,
+4 Nov 2026, released by the owner: "start E20". The mandate's Phase 0 deliverable.)
+- **Baseline.** `docs/transformation/BASELINE-AUDIT.md` reads `main` at a42c487, citing a file and line for every
+  claim, and names the searches behind its main "not found" claims (an LLM call, a malware scanner, a payment gateway,
+  a calendar, WhatsApp).
+- **How it was made.** It was first drafted on d8104fb. Its independent review found one cross-party defect, one
+  within-party defect and two unsafe or untested areas, which the owner had fixed first as E19. This version reads the code after E18 and E19, and
+  applies the review's corrections:
+  - status words only from the scale;
+  - counts that add up (174 + 3 routes, 60 axe scans);
+  - the download routes listed one by one;
+  - the dependency audit re-run;
+  - D22a's caveat on ops (they see both prices, never the margin figure or rules).
+- **A false line in the gaps.** It found one in the existing gaps: gap 7 said a Claude adapter was written against the
+  AI interface; none exists. The gap is corrected.
+- **Tracking.** `ROADMAP.md`, `IMPLEMENTATION-STATUS.md`, `DECISION-LOG.md` (T-records for how the transformation runs;
+  product decisions stay here), `RISK-REGISTER.md` and `RELEASE-GATES.md`. Status words are the mandate's seven, each
+  with stated evidence. No completion percentage is given, because no agreed method exists (T2).
+- **Numbering and order.**
+  - The mandate's items become E21 to E29, one queue (T1).
+  - Remaining isolation and state rules (E21) and upload quarantine (E22) come before the AI provider and the agent
+    (E24 to E26), so agent tools inherit proven limits and change no unchecked state (T3).
+  - The open owner decisions are T4 to T8.
+- **New gaps.** 145 (download routes without a refusal test), 146 (states without a transition table), 147 (the
+  catalogue's market mid-price readable), 148 (the platform role can insert audit events directly).
+- **Found by the second independent review, of this version.** The platform role can still insert audit events
+  directly; E19 revoked only update, delete and truncate. This is recorded as risk S6 and R20 and gap 148, and is
+  E21's first item.
+  Also corrected: the direct status writes (ten, cited exactly); the smoke evidence's commit; status words; the
+  roadmap diagram; the named searches; the doc-only gate.
+

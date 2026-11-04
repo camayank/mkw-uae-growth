@@ -90,9 +90,9 @@ apps/api          Fastify 5 + zod + Postgres (pg in production, PGlite in dev an
   src/lib/templates.ts   the eleven message templates, branded by audience
   src/services/rules.ts  margin rule versions with effective dates, pricing settings, government fee table
   src/services/invoices.ts  tax invoices, credit notes, statements; src/lib/pdf.ts writes the PDFs
-  src/services/payouts.ts   partner invoices, payout runs, bank bulk-transfer file; src/lib/payments.ts the card provider adapter
+  src/services/payouts.ts   partner invoices, payout runs, bank bulk-transfer file; src/lib/payments.ts the card provider interface (a test double only; no gateway yet)
   src/services/scoping.ts   scoping rules and zones with sign-off, advice review and approval, search
-  src/services/drafts.ts    the AI review queue; src/lib/ai.ts the model adapter with its in-memory double
+  src/services/drafts.ts    the AI review queue; src/lib/ai.ts the model interface with its in-memory double (no live provider yet)
   src/services/intake.ts    public intake with PDPL consent (apps/web/public/intake.html posts here)
   src/services/partners.ts  onboarding pipeline and documents, licence watch, scorecards, partner staff (O6)
   src/services/delivery.ts  client document requests, delay watch and guarantee, ratings, manual allocation, offer PDF (O6)
@@ -148,6 +148,8 @@ They match the **Deliverable Codes**, **Rate Cards** and **Offer Builder** tabs 
 - [`docs/RESTORE-DRILL.md`](docs/RESTORE-DRILL.md): how backups are proven restorable, and the drill log
 - [`docs/DECISIONS.md`](docs/DECISIONS.md): why it is built this way, and the decisions still open for the owner
 - [`docs/KNOWN-GAPS.md`](docs/KNOWN-GAPS.md): what is not built yet, in priority order
+- [`docs/transformation/`](docs/transformation/BASELINE-AUDIT.md): the transformation mandate's baseline audit, roadmap,
+  implementation status, decision log, risk register and release gates (E20)
 
 Statutory and fee data in the catalogue are working estimates, not verified rules. They must be checked by a
 qualified person before the platform quotes real clients; where the system is unsure it must say so.

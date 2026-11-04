@@ -1,0 +1,7 @@
+pnpm test (PGlite) on main at a42c487, 2026-11-04
+packages/core test:  Test Files  19 passed (19)
+packages/core test:       Tests  159 passed (159)
+packages/core test:    Duration  3.52s (transform 981ms, setup 0ms, import 1.77s, tests 6.22s, environment 1ms)
+apps/api test:  Test Files  41 passed (41)
+apps/api test:       Tests  404 passed | 7 skipped (411)
+apps/api test:    Duration  73.48s (transform 3.10s, setup 0ms, import 18.29s, tests 195.67s, environment 3ms)

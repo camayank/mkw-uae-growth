@@ -391,6 +391,32 @@ in a browser; everything listed here is not.
      password locks the app out until the next app task's migration step resets it from the secret; a setting it gives
      itself (a default role, for instance) is cleared at the same moment. Found by the independent review of E19.
 
+## E20: baseline audit (docs/transformation/BASELINE-AUDIT.md)
+
+145. **Six download routes have no test that another party is refused** (the audit's section 4.2):
+     - the evidence file: no test downloads it at all;
+     - the invoice PDF and the offer PDF: not tried as another client;
+     - the coverage backlog CSV: no refused role tried;
+     - the payout bank file: not tried as a client or a partner;
+     - the accounting export: not tried as a partner.
+
+     Row-level security or the route's own check guards each; E21 adds the tests.
+146. **Request, payout and change-order statuses have no transition table.** They are set by direct SQL in the
+     services; only milestones, offers and engagements go through `transition()`. Requests and change orders have no
+     check constraint either. E21, before the agent gets write tools.
+147. **The service catalogue (`deliverables`) is readable in full by clients and partners**, including its market
+     mid-price, and has no row-level security. A reference figure, not partner cost or margin; recorded so it stays a
+     choice.
+148. **The platform role can insert audit events directly**, bypassing `audit_append`. Migration 025 revoked update,
+     delete and truncate on `audit_events` but not insert, and its comment saying events are written only through
+     `audit_append` is wrong.
+     - A forged, well-formed event would verify, because the hash has no secret.
+     - A malformed one breaks the chain for good.
+     - `audit_checks` is writable by the same role.
+
+     Found by the second independent review of the baseline audit (E20). E21 revokes insert, makes `audit_checks`
+     append-only, and tests both.
+
 ## E16: report design
 
 129. **The Arabic report's wording is a draft** until the Arabic reviewer signs it off (with gaps 111, 116, 119, 128).
@@ -433,8 +459,8 @@ in a browser; everything listed here is not.
 7. **Scoping rules and zone data are working estimates.** The advice engine, rule confidence, zone table,
    ops approval, AI draft queue and public intake exist (O5). Every rule and zone starts UNCERTAIN and the
    advice says so to the client until the founder records a named person's verification with a source. The
-   AI model is the deterministic in-memory double until an API key and spend cap exist; the Claude adapter is
-   written against the same interface. The pack's lead page (`03-lead-page`) should post to
+   AI model is the deterministic in-memory double until an API key and spend cap exist. No provider adapter is
+   written yet (corrected by E20: this line used to say one was); E24 builds it against the same interface. The pack's lead page (`03-lead-page`) should post to
    `/api/public/intake` as `intake.html` does; WhatsApp capture waits for the Business number.
 8. **E-signature.** The Partner Network Agreement is accepted online per version (O10) and uploaded signed and
    verified by MKW (O6); e-signature waits for the provider.

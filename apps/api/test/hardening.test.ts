@@ -225,10 +225,14 @@ describe("job runs, alerts and the nightly audit check", () => {
   });
 
   it("raises a critical alert when the nightly check finds a changed audit row", async () => {
-    // Inside one transaction that is rolled back, so the shared database stays intact.
+    // Inside one transaction that is rolled back, so the shared database stays intact. Only the database owner can do
+    // this since E19 (the audit trail is append-only for every application role), so the test acts as the owner.
     await asPlatform(withClock(env.db, () => env.clock.now), null, async (tx) => {
       await tx.query("delete from audit_checks");
+      await tx.query("reset role"); // the test's connection is the owner's
+      await tx.query("alter table audit_events disable trigger audit_events_no_change");
       await tx.query("update audit_events set data = data || '{\"tampered\": true}'::jsonb where id = (select min(id) + 1 from audit_events)");
+      await tx.query("set local role app_platform");
       expect(await nightlyAuditCheck(tx)).toBeGreaterThan(0);
       expect(await sweepAlerts(tx, { notify: env.notify, alertEmail: ALERTS, since: started })).toMatchObject({ opened: 1 });
       const [a] = (await tx.query<any>("select kind, severity, summary from alerts where closed_at is null")).rows;

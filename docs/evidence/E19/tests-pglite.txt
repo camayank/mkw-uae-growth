@@ -1,0 +1,9 @@
+pnpm typecheck: clean (2026-11-04)
+
+pnpm test (PGlite):
+packages/core test:  Test Files  19 passed (19)
+packages/core test:       Tests  159 passed (159)
+packages/core test:    Duration  3.08s (transform 1.01s, setup 0ms, import 1.84s, tests 5.45s, environment 1ms)
+apps/api test:  Test Files  41 passed (41)
+apps/api test:       Tests  402 passed | 5 skipped (407)
+apps/api test:    Duration  72.10s (transform 3.06s, setup 0ms, import 18.31s, tests 191.82s, environment 3ms)

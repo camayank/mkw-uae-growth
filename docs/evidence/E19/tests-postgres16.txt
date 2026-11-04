@@ -1,0 +1,60 @@
+apps/api vitest on PostgreSQL 16 (TEST_DATABASE_URL set), 2026-11-04
+ Test Files  41 passed (41)
+      Tests  407 passed (407)
+   Duration  52.71s (transform 2.85s, setup 0ms, import 15.69s, tests 136.25s, environment 3ms)
+
+Verbose rerun on PostgreSQL 16: the new files, the tamper tests and the concurrency tests:
+ ✓ test/hardening.test.ts > configuration at boot > accepts a sound production set and the development defaults 2ms
+ ✓ test/hardening.test.ts > configuration at boot > refuses each misconfiguration, naming the variable and never its value 1ms
+ ✓ test/hardening.test.ts > configuration at boot > takes the proxy's addresses, not a hop count 1ms
+ ✓ test/hardening.test.ts > configuration at boot > allows outside production what production refuses 0ms
+ ✓ test/hardening.test.ts > error text > drops the values a database or provider error quotes 6ms
+ ✓ test/concurrency.test.ts > at the same moment > two acceptances of one offer make one engagement 79ms
+ ✓ test/pdpl.test.ts > PDPL export and erasure > exports one person's data and nothing about anyone else 13ms
+ ✓ test/pdpl.test.ts > PDPL export and erasure > never puts another party's figures into an export, even through audit payloads 54ms
+ ✓ test/pdpl.test.ts > PDPL export and erasure > verifies the chain whatever time zone or date style the session uses 9ms
+ ✓ test/pdpl.test.ts > PDPL export and erasure > limits who may export 27ms
+ ✓ test/pdpl.test.ts > PDPL export and erasure > erases a person with tombstones and keeps payments, payouts and the audit chain 94ms
+ ✓ test/concurrency.test.ts > at the same moment > two tiers of one request accepted at once: one engagement, the other refused, no deadlock 506ms
+ ✓ test/pdpl.test.ts > PDPL export and erasure > refuses to erase the founder's own account 14ms
+ ✓ test/pdpl.test.ts > PDPL export and erasure > detects a tampered audit row 4ms
+ ✓ test/pdpl.test.ts > PDPL export and erasure > hides data requests and retention settings from clients and partners at the database 11ms
+ ✓ test/hardening.test.ts > structured logs and request ids > keeps a well-formed request id from the load balancer and makes one otherwise 1ms
+ ✓ test/hardening.test.ts > structured logs and request ids > returns the request id and logs who made the request, by id only 25ms
+ ✓ test/hardening.test.ts > structured logs and request ids > caps bodies at 1 MB, except where a route carries a file 33ms
+ ✓ test/hardening.test.ts > structured logs and request ids > answers a server error with its request id, and logs the error under it 12ms
+ ✓ test/concurrency.test.ts > at the same moment > the deposit recorded twice at once is paid once: one invoice, one allocation run 36ms
+ ✓ test/concurrency.test.ts > at the same moment > two answers to one allocation accept it once and create its steps once 53ms
+ ✓ test/concurrency.test.ts > at the same moment > two QA decisions on one step: one passes, the other is refused 70ms
+ ✓ test/concurrency.test.ts > at the same moment > two releases of one payout release it once 36ms
+ ✓ test/concurrency.test.ts > at the same moment > two payout runs at once: one run, every payout in it once 44ms
+ ✓ test/concurrency.test.ts > at the same moment > two deposits paid at once never give a partner more work than its capacity 158ms
+ ✓ test/concurrency.test.ts > at the same moment > two allocation runs on one engagement offer each line once 108ms
+ ✓ test/hardening.test.ts > job runs, alerts and the nightly audit check > records each run with its steps and checks the audit chain once a day 131ms
+ ✓ test/hardening.test.ts > job runs, alerts and the nightly audit check > runs one at a time and closes a run that died 61ms
+ ✓ test/hardening.test.ts > job runs, alerts and the nightly audit check > alerts when the jobs stop, reminds every four hours, and says when it clears 140ms
+ ✓ test/concurrency.test.ts > at the same moment > a deposit on one engagement and a reallocation on another, at once, never deadlock 827ms
+ ✓ test/hardening.test.ts > job runs, alerts and the nightly audit check > alerts on a failed step without repeating its personal data 111ms
+ ✓ test/hardening.test.ts > job runs, alerts and the nightly audit check > alerts when messages are stuck in the outbox 57ms
+ ✓ test/hardening.test.ts > job runs, alerts and the nightly audit check > raises a critical alert when the nightly check finds a changed audit row 4ms
+ ✓ test/hardening.test.ts > job runs, alerts and the nightly audit check > shows the System page to MKW staff only 11ms
+ ✓ test/pdpl.test.ts > retention settings > start UNCERTAIN and only the founder confirms them, with an audited before and after 20ms
+ ✓ test/concurrency.test.ts > at the same moment > the same idempotency key twice at once creates one request 18ms
+ ✓ test/hardening.test.ts > idempotency keys > runs a change once and gives a repeat the first answer 25ms
+ ✓ test/hardening.test.ts > idempotency keys > refuses the same key on a different request, and a repeat while the first runs 18ms
+ ✓ test/hardening.test.ts > idempotency keys > keeps keys per person, ignores them without a signed-in person, and refuses malformed ones 13ms
+ ✓ test/hardening.test.ts > idempotency keys > records refusals too, and releases the key when the server failed 18ms
+ ✓ test/hardening.test.ts > idempotency keys > never stores a person's export, and erasure removes answers that quote the person 29ms
+ ✓ test/role-isolation.test.ts > role isolation (E19) > one partner firm never reads the cost another firm put on its change order, at the database or over the API 47ms
+ ✓ test/role-isolation.test.ts > role isolation (E19) > partner staff are sent no money figure: work, dashboard, engagement and rate card 25ms
+ ✓ test/role-isolation.test.ts > role isolation (E19) > a client member reads the offer and the engagement with the owner's figures and never a partner's cost or margin 16ms
+ ✓ test/role-isolation.test.ts > role isolation (E19) > signing out ends that session only; a session past its expiry is refused 20ms
+ ✓ test/hardening.test.ts > idempotency keys > forgets keys after a day and when the person is erased 45ms
+ ✓ test/runtime-login.test.ts > the audit trail is append-only (E19) > no application role can change, remove or truncate an audit event 30ms
+ ✓ test/runtime-login.test.ts > the audit trail is append-only (E19) > on PostgreSQL, the owner of the tables is refused as the application's login in production, and may migrate elsewhere 19ms
+ ✓ test/runtime-login.test.ts > the audit trail is append-only (E19) > a SCRAM verifier is computed as libpq does (RFC 7677 test vector shape) and never contains the password 2ms
+ ✓ test/hardening.test.ts > a lost database connection (PostgreSQL only) > is logged and replaced, and the process keeps serving 1585ms
+ ✓ test/runtime-login.test.ts > the application as a runtime login that owns nothing (PostgreSQL, E19) > is not the owner and starts in production on a current schema 3ms
+ ✓ test/runtime-login.test.ts > the application as a runtime login that owns nothing (PostgreSQL, E19) > runs a whole engagement: request, offer, acceptance, payment, allocation, every step delivered and approved, jobs and the nightly audit check 411ms
+ ✓ test/runtime-login.test.ts > the application as a runtime login that owns nothing (PostgreSQL, E19) > cannot leave the per-request role, read without one, change the audit trail or switch off a guard 4ms
+      Tests  53 passed (53)

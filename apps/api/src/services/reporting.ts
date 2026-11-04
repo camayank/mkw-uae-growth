@@ -161,7 +161,8 @@ export async function partnerDashboard(tx: Queryable, actor: SessionUser) {
   return {
     jobs,
     milestones: { done: num(onTime.done), onTime: num(onTime.on_time), onTimeRate: rate(num(onTime.on_time), num(onTime.done)), open: num(onTime.open), late: num(onTime.late) },
-    payouts: payouts.map((p) => ({ status: p.status, total: num(p.total), n: num(p.n) })),
+    // E19: partner staff see no money figure.
+    payouts: actor.role === "partner_staff" ? [] : payouts.map((p) => ({ status: p.status, total: num(p.total), n: num(p.n) })),
     scorecards: scorecards.map((s) => ({ computedAt: s.computed_at, score: s.score, provisional: s.provisional, inputs: s.inputs })),
     rating: { average: ratings.avg === null ? null : Math.round(Number(ratings.avg) * 100) / 100, count: num(ratings.n) },
   };

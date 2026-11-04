@@ -160,7 +160,13 @@ export function partyEngagement(db: Database, user: SessionUser, engagementId: s
       user.orgType === "client"
         ? "id, description, client_fils, status, created_at, decided_at"
         : "id, description, partner_fils, status, created_at, decided_at";
-    const changes = await tx.query(`select ${changeCols} from change_orders where engagement_id = $1 order by created_at`, [engagementId]);
+    // E19: a partner firm reads only its own change orders (also the database's rule, migration 024).
+    const changes =
+      user.orgType === "partner"
+        ? await tx.query(`select ${changeCols} from change_orders where engagement_id = $1 and raised_by_org = $2 order by created_at`, [engagementId, user.orgId])
+        : await tx.query(`select ${changeCols} from change_orders where engagement_id = $1 order by created_at`, [engagementId]);
+    // Partner staff see no money figure (PRODUCT_SPEC, roles; the visibility map gives them "public" only).
+    const staff = user.role === "partner_staff";
     const money =
       user.orgType === "client"
         ? await tx.query("select id, kind, amount_fils, status, paid_at, pay_url, refunded_at from payments where engagement_id = $1 order by created_at, case kind when 'deposit' then 0 when 'balance' then 1 else 2 end", [engagementId])
@@ -199,8 +205,12 @@ export function partyEngagement(db: Database, user: SessionUser, engagementId: s
       evidence: evidence.rows.map(camel),
       messages: messages.rows.map(camel),
       parties: parties.rows.map(camel),
-      changeOrders: changes.rows.map(camel),
-      [user.orgType === "client" ? "payments" : "payouts"]: money.rows.map(camel),
+      changeOrders: changes.rows.map((c) => {
+        const row = camel(c) as Record<string, unknown>;
+        if (staff) delete row.partner;
+        return row;
+      }),
+      [user.orgType === "client" ? "payments" : "payouts"]: staff ? [] : money.rows.map(camel),
       ...(user.orgType === "client" ? { invoices } : {}),
       // O12: the client's timeline with the next action pinned above it.
       ...(user.orgType === "client"
@@ -241,16 +251,26 @@ export function partnerHome(db: Database, user: SessionUser) {
     );
     const deliverables = await tx.query("select code, name, category, model, billing from deliverables order by category, code");
     const firm = (await tx.query<{ profile: Record<string, unknown> }>("select app_partner_profile() as profile")).rows[0]?.profile ?? {};
+    // E19: partner staff see the work, never a money figure: no payouts, no payout lines, no rate-card amounts.
+    const staff = user.role === "partner_staff";
     return {
       firm,
       allocations: allocations.rows.map((r) => {
         const row = camel(r) as Record<string, unknown>;
         const lines = (row.payoutLines as Array<{ qty: number; unitFils: number }>) ?? [];
+        if (staff) {
+          delete row.payoutLines;
+          return row;
+        }
         return { ...row, payoutTotal: lines.reduce((s, l) => s + l.qty * l.unitFils, 0) };
       }),
       rfqs: rfqs.rows.map(camel),
-      payouts: payouts.rows.map(camel),
-      rateCards: cards.rows.map(camel),
+      payouts: staff ? [] : payouts.rows.map(camel),
+      rateCards: cards.rows.map((c) => {
+        const row = camel(c) as Record<string, unknown>;
+        if (staff) for (const k of ["professional", "govStated", "thirdParty"]) delete row[k];
+        return row;
+      }),
       deliverables: deliverables.rows.map(camel),
       bank,
     };

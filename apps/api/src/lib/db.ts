@@ -1,3 +1,4 @@
+import { createHash, createHmac, pbkdf2Sync, randomBytes } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
@@ -140,6 +141,73 @@ export async function pendingMigrations(db: Database): Promise<string[]> {
   if (!exists.rows[0]?.ok) return files;
   const done = new Set((await db.transaction((tx) => tx.query<{ name: string }>("select name from schema_migrations"))).rows.map((r) => r.name));
   return files.filter((f) => !done.has(f));
+}
+
+/**
+ * Whether this connection's login owns the application's tables (E19). The owner can migrate; it can also disable a
+ * trigger or step out of the per-request role, so it must not be what the application logs in as in production.
+ * PGlite is single-user and always the owner.
+ */
+export async function loginOwnsSchema(db: Database): Promise<boolean> {
+  if (db.kind !== "postgres") return true;
+  const r = await db.transaction((tx) =>
+    tx.query<{ n: number }>("select count(*)::int as n from pg_tables where schemaname = 'public' and tableowner = current_user"),
+  );
+  return num(r.rows[0]?.n) > 0;
+}
+
+/**
+ * Prepare the database at start (E19). The owner (development, tests, the demo) migrates as before. In production the
+ * application logs in as the runtime login, which owns nothing: it never migrates (the migration step does, as the
+ * owner, `scripts/migrate.ts`) and refuses to start on a schema that is behind. Logging in as the owner in production
+ * is refused.
+ */
+export async function prepareDatabase(db: Database, opts: { production: boolean }): Promise<string[]> {
+  if (await loginOwnsSchema(db)) {
+    if (opts.production && db.kind === "postgres") {
+      throw new Error(
+        "The application logs in as the owner of its tables. In production set DATABASE_URL to the runtime login (a member of app_runtime) and run the migration step (scripts/migrate.ts) as the owner (E19).",
+      );
+    }
+    return migrate(db);
+  }
+  const pending = await pendingMigrations(db);
+  if (pending.length) throw new Error(`The database is missing migrations (${pending.join(", ")}). Run the migration step (scripts/migrate.ts) as the owner first (E19).`);
+  return [];
+}
+
+/**
+ * A SCRAM-SHA-256 verifier for a password, in the form Postgres stores (RFC 7677, as libpq's PQencryptPasswordConn).
+ * Sending the verifier rather than the password keeps the password out of any statement the server may log.
+ * Passwords are printable ASCII, so SASLprep leaves them unchanged.
+ */
+export function scramVerifier(password: string, salt: Buffer = randomBytes(16), iterations = 4096): string {
+  if (!/^[\x21-\x7e]+$/.test(password)) throw new Error("The runtime login's password must be printable ASCII with no spaces");
+  const salted = pbkdf2Sync(password, salt, iterations, 32, "sha256");
+  const clientKey = createHmac("sha256", salted).update("Client Key").digest();
+  const storedKey = createHash("sha256").update(clientKey).digest();
+  const serverKey = createHmac("sha256", salted).update("Server Key").digest();
+  return `SCRAM-SHA-256$${iterations}:${salt.toString("base64")}$${storedKey.toString("base64")}:${serverKey.toString("base64")}`;
+}
+
+/**
+ * Create or update the application's runtime login (E19): it may log in, inherits only `app_runtime` (which can switch
+ * to the three application roles and read the migration list) and owns nothing. Run by the migration step as the
+ * owner, with the login's name and password from the secrets store. The password reaches Postgres only as a verifier.
+ */
+export async function ensureRuntimeLogin(db: Database, user: string, password: string): Promise<void> {
+  if (db.kind !== "postgres") throw new Error("A runtime login exists only on PostgreSQL");
+  if (!/^[a-z_][a-z0-9_]{2,62}$/.test(user)) throw new Error("The runtime login's name must be lower-case letters, digits or _ (3 to 63)");
+  if (password.length < 24) throw new Error("The runtime login's password must be at least 24 characters");
+  const ident = pg.escapeIdentifier(user);
+  const verifier = pg.escapeLiteral(scramVerifier(password));
+  await db.transaction(async (tx) => {
+    const exists = (await tx.query("select 1 from pg_roles where rolname = $1", [user])).rows.length > 0;
+    await tx.query(`${exists ? "alter" : "create"} role ${ident} with login inherit nocreatedb nocreaterole nosuperuser password ${verifier}`);
+    await tx.query(`grant app_runtime to ${ident}`);
+    const owns = await tx.query<{ n: number }>("select count(*)::int as n from pg_tables where schemaname = 'public' and tableowner = $1", [user]);
+    if (num(owns.rows[0]?.n) > 0) throw new Error(`${user} owns tables; the runtime login must own nothing`);
+  });
 }
 
 /** Postgres bigint may arrive as a string from some drivers; amounts are always safe integers here. */

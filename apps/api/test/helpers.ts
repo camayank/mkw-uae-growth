@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { createSession } from "../src/lib/auth.ts";
 import { randomBytes } from "node:crypto";
 import pg from "pg";
-import { migrate, openPglite, openPostgres, type Database } from "../src/lib/db.ts";
+import { ensureRuntimeLogin, migrate, openPglite, openPostgres, type Database } from "../src/lib/db.ts";
 import { memoryTransport, recordingNotifier, type Notifier, type OutboundEmail } from "../src/lib/notify.ts";
 import { memoryProvider } from "../src/lib/payments.ts";
 import { memoryModel } from "../src/lib/ai.ts";
@@ -44,7 +44,7 @@ export const EMAILS = {
  * Tests run on PGlite in memory by default. Set TEST_DATABASE_URL to a Postgres server (a role with CREATEDB and
  * CREATEROLE) to run the same suites on real Postgres: each environment gets its own database, dropped on close.
  */
-async function openTestDatabase(): Promise<Database> {
+async function openTestDatabase(): Promise<Database & { url?: string }> {
   const url = process.env.TEST_DATABASE_URL;
   if (!url) return openPglite();
   const admin = new pg.Client({ connectionString: url });
@@ -57,6 +57,7 @@ async function openTestDatabase(): Promise<Database> {
   const db = await openPostgres(dbUrl.toString());
   return {
     ...db,
+    url: dbUrl.toString(),
     async close() {
       await db.close();
       const drop = new pg.Client({ connectionString: url });
@@ -70,10 +71,14 @@ async function openTestDatabase(): Promise<Database> {
 export async function makeEnv(
   start = new Date("2026-10-19T06:00:00Z"),
   extra: Partial<Pick<AppOptions, "trustProxy" | "logger" | "alertEmail" | "startedAt" | "webDir" | "appUrl">> = {},
+  opts: { runtimeLogin?: boolean } = {},
 ): Promise<TestEnv> {
-  const db = await openTestDatabase();
-  await migrate(db);
-  await seedCatalogue(db);
+  const owner = await openTestDatabase();
+  await migrate(owner);
+  await seedCatalogue(owner);
+  // E19: on PostgreSQL, run the application as a runtime login that owns nothing, as staging does: the owner migrates
+  // and seeds the catalogue, then everything else (the demo seed, the app, the tests' sessions) uses the runtime login.
+  const db = opts.runtimeLogin && owner.kind === "postgres" ? await runtimeDatabase(owner) : owner;
   const ids = await seedDemo(db);
   const clock = { now: start };
   const transport = memoryTransport();
@@ -100,4 +105,26 @@ export async function makeEnv(
     return { status, body: b };
   };
   return { app, db, ids, notify, emails: transport.delivered, transport, storage, provider, clock, tokens, call, send };
+}
+
+/** A fresh runtime login on the owner's test database, and a connection as that login (E19). Dropped on close. */
+async function runtimeDatabase(owner: Database & { url?: string }): Promise<Database> {
+  const user = `tasees_rt_${randomBytes(5).toString("hex")}`;
+  const password = randomBytes(24).toString("base64url");
+  await ensureRuntimeLogin(owner, user, password);
+  const url = new URL(owner.url!);
+  url.username = user;
+  url.password = password;
+  const runtime = await openPostgres(url.toString());
+  return {
+    ...runtime,
+    async close() {
+      await runtime.close();
+      await owner.close(); // drops the test database
+      const admin = new pg.Client({ connectionString: process.env.TEST_DATABASE_URL });
+      await admin.connect();
+      await admin.query(`drop role if exists ${user}`);
+      await admin.end();
+    },
+  };
 }

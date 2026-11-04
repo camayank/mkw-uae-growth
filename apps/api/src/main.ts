@@ -1,6 +1,6 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { migrate, openDatabase } from "./lib/db.ts";
+import { openDatabase, prepareDatabase } from "./lib/db.ts";
 import { notifierFromEnv } from "./lib/notify.ts";
 import { providerFromEnv } from "./lib/payments.ts";
 import { modelFromEnv } from "./lib/ai.ts";
@@ -18,7 +18,11 @@ const here = dirname(fileURLToPath(import.meta.url));
 const startedAt = new Date();
 
 const db = await openDatabase();
-const applied = await migrate(db);
+// E19: the owner migrates (development, the demo); in production the runtime login only checks the schema is current.
+const applied = await prepareDatabase(db, { production: process.env.NODE_ENV === "production" }).catch((e: Error) => {
+  console.error(e.message);
+  process.exit(1);
+});
 if (applied.length) console.log(`Applied migrations: ${applied.join(", ")}`);
 await seedCatalogue(db);
 

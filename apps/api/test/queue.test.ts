@@ -42,7 +42,7 @@ describe("ops command centre", () => {
   it("checks every evidence upload as a draft, from metadata only, and shows it beside the step in QA", async () => {
     const [needed] = milestone.evidenceRequired as string[];
     expect((await env.call(who, "POST", `/api/milestones/${milestone.id}/evidence`, { type: needed, fileName: `${needed}-2026-10-19.pdf`, contentBase64: pdf })).status).toBe(200);
-    expect((await env.call(who, "POST", `/api/milestones/${milestone.id}/evidence`, { type: needed, fileName: "passport-scan.txt", contentBase64: pdf })).status).toBe(200);
+    expect((await env.call(who, "POST", `/api/milestones/${milestone.id}/evidence`, { type: needed, fileName: "passport-scan.txt", contentBase64: Buffer.from("Passport details typed by hand\n").toString("base64") })).status).toBe(200);
     for (const type of (milestone.evidenceRequired as string[]).slice(1)) await env.call(who, "POST", `/api/milestones/${milestone.id}/evidence`, { type, fileName: `${type}.pdf`, contentBase64: pdf });
     await env.notify.flush();
     const drafts = await rows(env, "select d.input, d.output, d.status, d.confidence, d.subject_type from ai_drafts d join evidence e on e.id = d.subject_id where d.kind = 'document_check' and e.milestone_id = $1 order by d.created_at", [milestone.id]);

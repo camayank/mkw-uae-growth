@@ -12,6 +12,7 @@ import { opsQueue, syncQueueTimings } from "../services/queue.ts";
 import { purgeIdempotencyKeys } from "../lib/idempotency.ts";
 import { anonymiseOldLeads } from "../services/leads.ts";
 import { cleanErrorText } from "../lib/errors.ts";
+import { scanHeldFiles } from "../lib/uploads.ts";
 import { finishRun, heartbeat, nightlyAuditCheck, startRun, sweepAlerts, type AlertSweep, type StepResult } from "../services/system.ts";
 
 export interface JobsOptions {
@@ -27,7 +28,7 @@ export interface JobsOptions {
  * run and every step is recorded in `job_runs` with its duration and count, for the System page and the alerts.
  */
 export async function runJobs(db: Database, deps: Deps, actor: SessionUser | null = null, opts: JobsOptions = {}) {
-  const result = { allocationTimeouts: 0, autoApprovals: 0, offersExpired: 0, opsDigests: 0, rulesRefreshed: 0, licences: 0, delays: 0, credits: 0, scorecards: 0, obligationReminders: 0, queueItems: 0, idempotencyPurged: 0, leadsAnonymised: 0, auditChecked: 0, alerts: null as AlertSweep | null, outbox: null as DispatchSummary | null, errors: [] as string[], skipped: false, runId: null as number | null };
+  const result = { filesScanned: 0, allocationTimeouts: 0, autoApprovals: 0, offersExpired: 0, opsDigests: 0, rulesRefreshed: 0, licences: 0, delays: 0, credits: 0, scorecards: 0, obligationReminders: 0, queueItems: 0, idempotencyPurged: 0, leadsAnonymised: 0, auditChecked: 0, alerts: null as AlertSweep | null, outbox: null as DispatchSummary | null, errors: [] as string[], skipped: false, runId: null as number | null };
   const startedMs = Date.now();
   const runId = await asPlatform(db, actor, (tx) => startRun(tx));
   if (runId === null) {
@@ -91,6 +92,12 @@ export async function runJobs(db: Database, deps: Deps, actor: SessionUser | nul
       return r.applied ? r.leads : 0;
     }),
   );
+  // E22: scan the uploads that are held (pending, failed under the limit, or served unscanned), when a scanner exists.
+  await step("filesScanned", async () => {
+    if (!deps.storage) return 0;
+    const r = await scanHeldFiles(db, { storage: deps.storage, scanner: deps.scanner ?? null, allowUnscanned: deps.allowUnscanned });
+    return r.clean + r.infected + r.failed;
+  });
   // The whole audit chain, once per Dubai day (O13); a break opens a critical alert below.
   await step("auditChecked", () => asPlatform(db, actor, (tx) => nightlyAuditCheck(tx)));
   // Deliver what the sweeps raised, and anything a stopped process left in the outbox (O11).

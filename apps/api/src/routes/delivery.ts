@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { CLIENT_ROLES, PARTNER_ROLES, PLATFORM_ROLES, requireRole, requireUser } from "../lib/auth.ts";
+import { assertUsable } from "../lib/uploads.ts";
 import { asPlatform, asUser } from "../lib/context.ts";
 import { forbidden, notFound } from "../lib/errors.ts";
 import { supersedeChecks } from "../services/doccheck.ts";
@@ -9,7 +10,7 @@ import type { RouteContext } from "./context.ts";
 
 /** Partner onboarding, documents, staff, client document requests, delays, ratings. */
 export function registerDeliveryRoutes(ctx: RouteContext) {
-  const { app, db, opts, deps, fileBody, putFile } = ctx;
+  const { app, db, opts, deps, fileBody, putFile, uploads } = ctx;
 
   // Partners and delivery (O6) -------------------------------------------------------------------------
 
@@ -41,8 +42,8 @@ export function registerDeliveryRoutes(ctx: RouteContext) {
     const user = requireRole(req, "partner_admin", "ops", "founder");
     const body = PartnersDocumentsBody.parse(req.body);
     if (user.orgType === "partner" && user.orgId !== req.params.id) throw forbidden("Not your firm");
-    const key = await putFile(req.params.id, body.fileName, body.contentBase64); // the firm's own folder
     return asPlatform(db, user, async (tx) => {
+      const key = await putFile(tx, user, req.params.id, body.fileName, body.contentBase64); // the firm's own folder
       const doc = await uploadPartnerDocument(tx, user, req.params.id, { kind: body.kind as (typeof DOCUMENT_KINDS)[number], key, name: body.fileName, reference: body.reference, expiresOn: body.expiresOn });
       await opts.notify.emit("document_check", { subject: "partner_document", id: doc.id });
       return doc;
@@ -52,12 +53,13 @@ export function registerDeliveryRoutes(ctx: RouteContext) {
   app.post<{ Params: { id: string } }>("/api/ops/partner-documents/:id/review", { config: { body: OpsPartnerDocumentsReviewBody } }, async (req) => {
     const user = requireRole(req, "ops", "founder");
     const body = OpsPartnerDocumentsReviewBody.parse(req.body);
-    return asPlatform(db, user, (tx) => reviewDocument(tx, user, req.params.id, body.decision, body.note, opts.notify));
+    return asPlatform(db, user, (tx) => reviewDocument(tx, user, req.params.id, body.decision, body.note, opts.notify, uploads));
   });
   app.get<{ Params: { id: string } }>("/api/partner-documents/:id/file", async (req, reply) => {
     const user = requireRole(req, "partner_admin", ...PLATFORM_ROLES);
     const row = await asPlatform(db, user, async (tx) => (await tx.query<{ partner_org_id: string; file_key: string; file_name: string }>("select partner_org_id, file_key, file_name from partner_documents where id = $1", [req.params.id])).rows[0]);
     if (!row || (user.orgType === "partner" && row.partner_org_id !== user.orgId)) throw notFound("File not found");
+    await asPlatform(db, user, (tx) => assertUsable(tx, uploads, [row.file_key])); // E22: held until scanned clean
     const data = await opts.storage.get(row.file_key);
     reply.header("content-disposition", `attachment; filename="${row.file_name.replace(/"/g, "")}"`);
     return reply.type("application/octet-stream").send(data);
@@ -106,12 +108,12 @@ export function registerDeliveryRoutes(ctx: RouteContext) {
     const body = fileBody.parse(req.body);
     const r = await asUser(db, user, async (tx) => (await tx.query<{ engagement_id: string }>("select engagement_id from document_requests where id = $1", [req.params.id])).rows[0]);
     if (!r) throw notFound("Document request not found");
-    const key = await putFile(r.engagement_id, body.fileName, body.contentBase64);
     return asPlatform(db, user, async (tx) => {
-      const r = await uploadClientDocument(tx, user, req.params.id, { key, name: body.fileName }, deps);
+      const key = await putFile(tx, user, r.engagement_id, body.fileName, body.contentBase64);
+      const uploaded = await uploadClientDocument(tx, user, req.params.id, { key, name: body.fileName }, deps);
       await supersedeChecks(tx, "document_request", req.params.id);
       await opts.notify.emit("document_check", { subject: "document_request", id: req.params.id });
-      return r;
+      return uploaded;
     });
   });
   const DocumentRequestsDecideBody = z.object({ decision: z.enum(["received", "rejected"]), note: z.string().max(300).default("") });
@@ -122,7 +124,12 @@ export function registerDeliveryRoutes(ctx: RouteContext) {
   });
   app.get<{ Params: { id: string } }>("/api/document-requests/:id/file", async (req, reply) => {
     const user = requireUser(req);
-    const f = await asPlatform(db, user, (tx) => documentFileKey(tx, user, req.params.id));
+    // E22: held until scanned clean; a refusal rolls back the "opened" record with it.
+    const f = await asPlatform(db, user, async (tx) => {
+      const file = await documentFileKey(tx, user, req.params.id);
+      await assertUsable(tx, uploads, [file.key]);
+      return file;
+    });
     const data = await opts.storage.get(f.key);
     reply.header("content-disposition", `attachment; filename="${f.name.replace(/"/g, "")}"`);
     return reply.type("application/octet-stream").send(data);

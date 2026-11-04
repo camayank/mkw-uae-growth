@@ -1,4 +1,5 @@
 import { addMonths, nextDue, obligationsFor, reminderDue, type ObligationKind, type Recurrence } from "@tasees/core";
+import { assertUsable } from "../lib/uploads.ts";
 import { audit, lockAuditChain, type SessionUser } from "../lib/context.ts";
 import { num, type Queryable } from "../lib/db.ts";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.ts";
@@ -127,12 +128,13 @@ export async function uploadObligationEvidence(tx: Queryable, actor: SessionUser
 }
 
 /** MKW checks the evidence: met, and the next occurrence is created for a recurring obligation. */
-export async function markObligationMet(tx: Queryable, actor: SessionUser, id: string, note: string) {
+export async function markObligationMet(tx: Queryable, actor: SessionUser, id: string, note: string, uploads: { allowUnscanned?: boolean } = {}) {
   if (!isOps(actor)) throw forbidden("Only ops marks an obligation met");
   await lockAuditChain(tx);
   const o = (await tx.query<Record<string, unknown>>("select *, due_date::text as due_date from obligations where id = $1 for update", [id])).rows[0];
   if (!o) throw notFound("Obligation not found");
   if (o.status !== "evidence_uploaded") throw conflict("An obligation is met only with filing evidence on file");
+  await assertUsable(tx, uploads, [o.evidence_key as string | null], "The filing evidence"); // E22: held until scanned clean
   await tx.query("update obligations set status = 'met', met_by = $2, met_at = app_now(), met_note = $3 where id = $1", [id, actor.id, note.trim() || null]);
   await audit(tx, actor, "obligation.met", "obligation", id, { note, evidence: o.evidence_name });
   return { ok: true, nextId: await rollForward(tx, actor, o) };
@@ -194,7 +196,7 @@ export async function clientCalendar(tx: Queryable) {
   // column grant leaves out MKW's notes, so the query needs no filter of its own.
   return (
     await tx.query(
-      `select o.id, o.engagement_id, o.kind, o.title, o.basis, o.due_date::text as due_date, o.period_label, o.recurrence, o.status, o.confidence, o.confirmed_at, o.evidence_name, o.evidence_uploaded_at, o.met_at, o.created_at,
+      `select o.id, o.engagement_id, o.kind, o.title, o.basis, o.due_date::text as due_date, o.period_label, o.recurrence, o.status, o.confidence, o.confirmed_at, o.evidence_name, o.evidence_uploaded_at, o.met_at, o.created_at, file_scan_status('obligation', o.id) as evidence_scan,
          live.renewal_request_id, live.renewal_request_status, live.renewal_engagement_id, live.renewal_engagement_status
        from obligations o left join lateral (
          select r.id as renewal_request_id, r.status as renewal_request_status, e.id as renewal_engagement_id, e.status as renewal_engagement_status

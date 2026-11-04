@@ -8,6 +8,7 @@ import { audit, type SessionUser } from "../lib/context.ts";
 import type { Queryable } from "../lib/db.ts";
 import type { Notifier } from "../lib/notify.ts";
 import { cleanErrorText, conflict, forbidden, notFound } from "../lib/errors.ts";
+import { MAX_SCAN_ATTEMPTS, uploadsOverview, type UploadDeps } from "../lib/uploads.ts";
 
 /** The jobs run every 15 minutes; three missed runs is late. */
 export const JOBS_LATE_MINUTES = 45;
@@ -17,7 +18,7 @@ export const RUN_LEASE_MINUTES = 30;
 export const OUTBOX_STUCK_MINUTES = 30;
 export const REMIND_HOURS = 4;
 
-export type AlertKind = "jobs_late" | "job_step_failed" | "outbox_stuck" | "audit_chain";
+export type AlertKind = "jobs_late" | "job_step_failed" | "outbox_stuck" | "audit_chain" | "upload_held";
 
 export interface StepResult {
   ms: number;
@@ -154,6 +155,26 @@ export async function currentConditions(tx: Queryable, since: Date | null): Prom
       summary: `${(AUDIT_FINDING[finding] ?? AUDIT_FINDING.changed!)(check)} Do not change anything else; follow the incident steps in docs/DEPLOY.md.`,
     });
   }
+  // E22: an upload refused by the malware scan, or one whose scan keeps failing, waits for a person.
+  const held = (
+    await tx.query<{ infected: number; failed: number }>(
+      `select count(*) filter (where status = 'infected')::int as infected,
+              count(*) filter (where status = 'failed' and attempts >= $1)::int as failed from file_scans`,
+      [MAX_SCAN_ATTEMPTS],
+    )
+  ).rows[0]!;
+  if (Number(held.infected) > 0 || Number(held.failed) > 0) {
+    const parts = [
+      ...(Number(held.infected) > 0 ? [`${Number(held.infected)} uploaded file(s) refused by the malware scan`] : []),
+      ...(Number(held.failed) > 0 ? [`${Number(held.failed)} file(s) whose scan failed ${MAX_SCAN_ATTEMPTS} times`] : []),
+    ];
+    out.push({
+      kind: "upload_held",
+      subject: "",
+      severity: "warning",
+      summary: `${parts.join(" and ")}: held, never served. The System page lists them; ask the sender for a clean copy, or check the scanner.`,
+    });
+  }
   return out;
 }
 
@@ -239,7 +260,7 @@ export async function jobHealth(tx: Queryable, since: Date | null) {
 }
 
 /** The System page: recent runs, the outbox backlog, open and recent alerts, the last audit checks. No personal data. */
-export async function systemOverview(tx: Queryable) {
+export async function systemOverview(tx: Queryable, uploads: UploadDeps) {
   const runs = (await tx.query(
     `select id, status, started_at::text as "startedAt", finished_at::text as "finishedAt", duration_ms as "durationMs", steps, error
        from job_runs order by started_at desc limit 20`,
@@ -257,5 +278,5 @@ export async function systemOverview(tx: Queryable) {
       where c.day > (app_now() at time zone 'Asia/Dubai')::date - 7 or (c.finding is not null and r.day is null)
       order by c.day desc limit 14`,
   )).rows;
-  return { runs, outbox, alerts, auditChecks, thresholds: { jobsLateMinutes: JOBS_LATE_MINUTES, outboxStuckMinutes: OUTBOX_STUCK_MINUTES, remindHours: REMIND_HOURS } };
+  return { runs, outbox, alerts, auditChecks, uploads: await uploadsOverview(tx, uploads), thresholds: { jobsLateMinutes: JOBS_LATE_MINUTES, outboxStuckMinutes: OUTBOX_STUCK_MINUTES, remindHours: REMIND_HOURS } };
 }

@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import type { Scanner } from "./lib/scanner.ts";
+import { storeUpload } from "./lib/uploads.ts";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize, resolve } from "node:path";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
@@ -50,6 +52,10 @@ export interface AppOptions {
   startedAt?: Date;
   /** JSON request logs (O13); tests pass a stream to read the lines. */
   logger?: boolean | { stream: { write(line: string): void } };
+  /** The malware scanner (E22). null: none configured, so uploads are held (T6). */
+  scanner?: Scanner | null;
+  /** The owner's T6 choice: serve unscanned uploads, labelled (UPLOADS_UNSCANNED=allow). */
+  allowUnscanned?: boolean;
 }
 
 export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
@@ -71,7 +77,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     if (carriesFile((r.config as { body?: unknown } | undefined)?.body)) r.bodyLimit ??= FILE_BODY_LIMIT;
   });
   const db = withClock(opts.db, opts.now);
-  const deps: Deps = { notify: opts.notify, now: opts.now, provider: opts.provider, storage: opts.storage };
+  const deps: Deps = { notify: opts.notify, now: opts.now, provider: opts.provider, storage: opts.storage, scanner: opts.scanner ?? null, allowUnscanned: !!opts.allowUnscanned };
   // Agents subscribed to the outbox (O11). The scheduled jobs process registers the same ones.
   registerDocumentChecker(opts.notify, db, opts.model);
 
@@ -139,7 +145,8 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     return reply.status(500).send({ error: "server_error", message: `Something went wrong on our side. Try again in a minute. If it keeps happening, quote reference ${req.id}.`, requestId: req.id });
   });
 
-  // What every route module shares.
+  // What every route module shares. Uploads are held until scanned (E22).
+  const uploads = { storage: opts.storage, scanner: opts.scanner ?? null, allowUnscanned: !!opts.allowUnscanned };
   const ctx: RouteContext = {
     app,
     db,
@@ -147,13 +154,8 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     deps,
     throttle,
     fileBody: z.object({ fileName: z.string().min(1).max(200), contentBase64: z.string().min(1) }),
-    putFile: async (folder, fileName, contentBase64) => {
-      try {
-        return await opts.storage.put(folder, fileName, Buffer.from(contentBase64, "base64"));
-      } catch (e) {
-        throw badRequest((e as Error).message);
-      }
-    },
+    putFile: (tx, actor, folder, fileName, contentBase64) => storeUpload(tx, uploads, actor, folder, fileName, Buffer.from(contentBase64, "base64")),
+    uploads,
     routeDocs,
     arabic: { flag: null },
   };

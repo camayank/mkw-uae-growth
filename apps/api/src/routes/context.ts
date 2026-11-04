@@ -1,6 +1,8 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { z } from "zod";
-import type { Database } from "../lib/db.ts";
+import type { Database, Queryable } from "../lib/db.ts";
+import type { SessionUser } from "../lib/context.ts";
+import type { UploadDeps } from "../lib/uploads.ts";
 import type { RouteDoc } from "../lib/openapi.ts";
 import type { Deps } from "../services/engagements.ts";
 import type { AppOptions } from "../server.ts";
@@ -16,8 +18,13 @@ export interface RouteContext {
   throttle: (req: FastifyRequest, bucket: string, max: number) => void;
   /** A file sent as base64 in a JSON body. */
   fileBody: z.ZodObject<{ fileName: z.ZodString; contentBase64: z.ZodString }>;
-  /** Store a file through the storage adapter; its refusals become a 400 with the adapter's reason. */
-  putFile: (folder: string, fileName: string, contentBase64: string) => Promise<string>;
+  /**
+   * Store an upload in the caller's transaction (E22): its content is checked against its name, it is scanned, and its
+   * scan is recorded. A refusal is a 400 with the reason. Returns the storage key.
+   */
+  putFile: (tx: Queryable, actor: SessionUser, folder: string, fileName: string, contentBase64: string) => Promise<string>;
+  /** What the upload checks and the download guard need: storage, the scanner, and the owner's T6 choice. */
+  uploads: UploadDeps;
   routeDocs: RouteDoc[];
   /** The Arabic sign-off flag as health last read it; reset when the review is recorded. */
   arabic: { flag: { value: boolean; at: number } | null };

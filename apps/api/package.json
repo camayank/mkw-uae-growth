@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "DEV_LOGIN=1 tsx watch src/main.ts",
-    "demo": "DEV_LOGIN=1 PAYMENT_WEBHOOK_SECRET=dev-secret tsx src/main.ts",
+    "dev": "DEV_LOGIN=1 SCANNER=memory tsx watch src/main.ts",
+    "demo": "DEV_LOGIN=1 SCANNER=memory PAYMENT_WEBHOOK_SECRET=dev-secret tsx src/main.ts",
     "seed": "tsx src/scripts/seed.ts",
     "build": "tsc -p tsconfig.build.json",
     "start": "node --conditions=production dist/main.js",

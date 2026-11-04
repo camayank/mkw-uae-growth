@@ -1,5 +1,5 @@
 // Tasees workspace: ops module (split from app.js in O12; plain ES modules, no build step).
-import { $app, MILESTONE_LABEL, OBLIGATION_KINDS, act, aed, api, badge, date, dateTime, download, esc, flag, isClient, nameOf, obligationLabel, obligationTone, pct, pickLang, render, role, seesMargin, state, table, kpiTile, words } from "./core.js";
+import { fileLink, $app, MILESTONE_LABEL, OBLIGATION_KINDS, act, aed, api, badge, date, dateTime, download, esc, flag, isClient, nameOf, obligationLabel, obligationTone, pct, pickLang, render, role, seesMargin, state, table, kpiTile, words } from "./core.js";
 
 export async function renderDelays() {
   const q = await api("GET", "/api/ops/delays");
@@ -47,7 +47,7 @@ export async function renderOpsCompliance(clientId) {
       if (canAct && !["met", "waived"].includes(o.status)) action += `<button class="sm" data-act="obligation-waive" data-id="${o.id}">Does not apply</button>`;
       return `<tr><td><b>${date(o.dueDate)}</b></td><td>${esc(o.client)}</td><td>${esc(o.title)} ${o.confidence !== "confirmed" ? badge("UNCERTAIN") : ""}<br><span class="small muted">${esc(words(o.kind))}${o.recurrence !== "none" ? ` · ${esc(o.recurrence)}` : ""}</span>${o.basis ? `<br><span class="small muted">${esc(o.basis)}</span>` : ""}${o.metNote ? `<br><span class="small">Checked: ${esc(o.metNote)}</span>` : ""}${o.waiveReason ? `<br><span class="small">Waived: ${esc(o.waiveReason)}</span>` : ""}</td>
         <td>${badge(obligationTone(o), obligationLabel(o))}${(o.remindersSent ?? []).length ? `<br><span class="small muted">reminded ${o.remindersSent.map((r) => (r === -1 ? "overdue" : `${r}d`)).join(", ")}</span>` : ""}</td>
-        <td class="small">${o.evidenceName ? `<a href="/api/obligations/${o.id}/file" target="_blank" rel="noopener">${esc(o.evidenceName)}</a><br><span class="muted">${dateTime(o.evidenceUploadedAt)}</span>` : "–"}</td><td>${action}</td></tr>`;
+        <td class="small">${o.evidenceName ? `${fileLink(`/api/obligations/${o.id}/file`, o.evidenceName, o.evidenceScan)}<br><span class="muted">${dateTime(o.evidenceUploadedAt)}</span>` : "–"}</td><td>${action}</td></tr>`;
     }),
     "No obligations yet.",
   )}</div>`;

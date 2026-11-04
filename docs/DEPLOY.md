@@ -24,6 +24,8 @@
 | `S3_SSE` | `AES256` | Server-side encryption asked for on every upload; `aws:kms` with `S3_KMS_KEY_ID` to use a customer key. |
 | `S3_FORCE_PATH_STYLE` | by endpoint | `1` or `0` to override the addressing style. |
 | `UPLOAD_DIR` | `./data/uploads` | Where evidence files are stored with the local disk adapter. |
+| `SCANNER` | unset | The malware scanner every upload goes through (E22). Unset: there is none, and every upload is held until one is configured. `memory` is the test double of development and the demo (it finds only the EICAR test file, so it is not a malware scan) and is refused in production. A live scanner is the owner's decision T6. |
+| `UPLOADS_UNSCANNED` | `hold` | With no scanner, `allow` serves uploads that nobody scanned, labelled "not scanned" on every screen: the owner's T6 alternative for the pilot. `hold` keeps them held. |
 | `EMAIL` | `console` | `ses` sends email through Amazon SES; `console` records and prints each message. Any other value is refused at start. |
 | `SES_REGION`, `SES_ACCESS_KEY_ID`, `SES_SECRET_ACCESS_KEY` | fall back to the `S3_*` values | Credentials of a user allowed only `ses:SendEmail`. `SES_ENDPOINT` overrides the service URL. |
 | `EMAIL_FROM_CLIENT` | `tasees@mkwadvisors.com` | Sender address for messages to clients (shown as "Tasees, by MKW Advisors"). Must be verified in SES. |
@@ -59,6 +61,9 @@ are never printed. Fix the variable named and start again.
     changed and when. Tell the founder. The alert stays open until the founder records what the investigation found
     (Setup → System, "Record the investigation"). That record is kept with the check and never changed. An edited
     event is found again every night until the trail is restored.
+  - *Uploaded files held*: a file was refused by the malware scan, or its scan failed five times. It is never served.
+    Setup → System lists it; ask the sender for a clean copy, or check the scanner. Infected bytes stay in storage,
+    never served, until a person removes them.
 - **For an external monitor.** `GET /api/health/jobs` answers 200, or 503 when the jobs are late, with the last run's
   time (no other data). `GET /api/health` stays the load balancer's liveness check.
 - **The System page** (Setup → System; founder, ops, finance) shows recent runs with each step's count and duration,

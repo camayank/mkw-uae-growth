@@ -67,6 +67,10 @@ export const CONFIG_RULES: Record<string, Rule> = {
   S3_SECRET_ACCESS_KEY: text,
   S3_SESSION_TOKEN: text,
   PAYMENT_WEBHOOK_SECRET: text,
+  // E22: the malware scanner. Only the test double exists until the owner chooses a live scanner (T6); unset, uploads
+  // are held. UPLOADS_UNSCANNED=allow is the owner's T6 alternative: serve unscanned files, labelled.
+  SCANNER: oneOf("memory"),
+  UPLOADS_UNSCANNED: oneOf("hold", "allow"),
 };
 
 export class ConfigError extends Error {
@@ -103,6 +107,7 @@ export function configProblems(env: NodeJS.ProcessEnv): string[] {
     }
     if (env.DEV_LOGIN === "1") problems.push("DEV_LOGIN: must not be 1 in production (sign-in codes would be shown on screen)");
     if (set("APP_URL") && !env.APP_URL!.startsWith("https://")) problems.push("APP_URL: must be https in production");
+    if (env.SCANNER === "memory") problems.push("SCANNER: must not be memory in production (a test double: its clean means nothing); leave it unset until a live scanner is chosen (T6)");
   }
   return problems;
 }

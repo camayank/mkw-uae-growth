@@ -1,0 +1,19 @@
+
+> tasees-platform@0.1.0 test /home/user/mkw-uae-growth
+> pnpm -r test
+
+Scope: 2 of 3 workspace projects
+packages/core test$ vitest run
+packages/core test:  RUN  v4.1.12 /home/user/mkw-uae-growth/packages/core
+packages/core test:  Test Files  19 passed (19)
+packages/core test:       Tests  159 passed (159)
+packages/core test:    Start at  18:43:52
+packages/core test:    Duration  3.03s (transform 897ms, setup 0ms, import 1.65s, tests 5.43s, environment 1ms)
+packages/core test: Done
+apps/api test$ vitest run
+apps/api test:  RUN  v4.1.12 /home/user/mkw-uae-growth/apps/api
+apps/api test:  Test Files  44 passed (44)
+apps/api test:       Tests  431 passed | 7 skipped (438)
+apps/api test:    Start at  18:43:56
+apps/api test:    Duration  75.22s (transform 2.79s, setup 0ms, import 18.47s, tests 201.69s, environment 4ms)
+apps/api test: Done

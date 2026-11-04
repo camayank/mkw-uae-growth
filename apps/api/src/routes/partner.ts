@@ -9,7 +9,7 @@ import type { RouteContext } from "./context.ts";
 
 /** Partner screens: allocations, milestones, evidence, quotes, rate cards. */
 export function registerPartnerRoutes(ctx: RouteContext) {
-  const { app, db, opts, deps } = ctx;
+  const { app, db, opts, deps, putFile } = ctx;
 
   // Partner ------------------------------------------------------------------
   app.get("/api/partner/home", async (req) => partnerHome(db, requireRole(req, ...PARTNER_ROLES)));
@@ -36,14 +36,9 @@ export function registerPartnerRoutes(ctx: RouteContext) {
       (await tx.query<{ engagement_id: string }>("select engagement_id from milestones where id = $1", [req.params.id])).rows[0],
     );
     if (!m) throw notFound("Milestone not found");
-    let key: string;
-    try {
-      key = await opts.storage.put(m.engagement_id, body.fileName, Buffer.from(body.contentBase64, "base64"));
-    } catch (e) {
-      throw badRequest((e as Error).message);
-    }
-    // The document checker's event commits with the upload (O11).
+    // The document checker's event commits with the upload (O11), and the scan record with both (E22).
     await asPlatform(db, user, async (tx) => {
+      const key = await putFile(tx, user, m.engagement_id, body.fileName, body.contentBase64);
       const ev = await addEvidence(tx, user, req.params.id, { type: body.type, key, name: body.fileName });
       await opts.notify.emit("document_check", { subject: "evidence", id: ev.id });
     });

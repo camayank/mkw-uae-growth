@@ -2,7 +2,8 @@
 
 What each capability the mandate names actually is today, with the evidence. Each row is updated in the same pull
 request as the outcome that changes it. This version was written by E20 on 4 Nov 2026, from `main` at a42c487 (E19
-merged), and updated by E21. E21's rows read IN PROGRESS until its pull request is merged; they then read TESTED.
+merged), and updated by E21 and E22. An outcome's rows read IN PROGRESS until its pull request is merged; they then
+read TESTED.
 
 ## The scale
 
@@ -32,10 +33,10 @@ as a live payment.
 | One margin rule, floor, cap, ops review | TESTED | core `pricing.test.ts`, `catalogue.test.ts` |
 | Money as integer fils, rates as basis points | TESTED | core `money.ts`, `pricing.test.ts` |
 | Audit events cannot be changed or deleted at the database (revoked, and a trigger); hash-chained; checked nightly | TESTED | `runtime-login.test.ts`, `pdpl.test.ts`, `hardening.test.ts` |
-| Audit events written only through `audit_append`; an append-only nightly check, recorded by the database, that compares the chain with the night before | IN PROGRESS (E21). A well-formed event naming any actor can still be appended through `audit_append` (gap 151); the owner rewriting the trail and its checks together is not caught (gap 143) | `audit-guard.test.ts`, `runtime-login.test.ts`, migration 027 |
+| Audit events written only through `audit_append`; an append-only nightly check, recorded by the database, that compares the chain with the night before | TESTED (E21). A well-formed event naming any actor can still be appended through `audit_append` (gap 151); the owner rewriting the trail and its checks together is not caught (gap 143) | `audit-guard.test.ts`, `runtime-login.test.ts`, migration 027 |
 | Event outbox, exactly-once side effects | TESTED | `outbox.test.ts` |
 | State machines for milestone, offer, engagement | TESTED | `transitions.test.ts` |
-| Transition tables for request, payout, change order; a check constraint on every machine's status column | IN PROGRESS (E21). Statuses outside the six machines still change by direct SQL (gap 149); the database does not check moves itself (gap 150) | `transitions.test.ts`, migration 027 |
+| Transition tables for request, payout, change order; a check constraint on every machine's status column | TESTED (E21). Statuses outside the six machines still change by direct SQL (gap 149); the database does not check moves itself (gap 150) | `transitions.test.ts`, migration 027 |
 | Ops command centre, queue, digest, alerts, jobs | TESTED | `queue.test.ts`, `hardening.test.ts` |
 | PDPL: consent, masking, export, erasure, retention | TESTED; the texts are BLOCKED on the lawyer | `pdpl.test.ts`, `leads.test.ts` |
 | Arabic client screens, emails and report | TESTED; the wording is BLOCKED on the Arabic reviewer | `locale.test.ts`, `report-ar.test.ts`, smoke |
@@ -50,10 +51,10 @@ as a live payment.
 | Money privacy across parties, three layers | TESTED | `security.test.ts`, `flow.test.ts`, `role-isolation.test.ts`, smoke |
 | A partner firm sees only its own change orders | TESTED at the database and the API | E19, migration 024, `role-isolation.test.ts` |
 | Within a party: ops without margin, partner staff without any money figure, client member without partner cost | TESTED at the API; not in database grants (gap 142) | `role-isolation.test.ts`, `flow.test.ts`, `reporting.test.ts`, smoke |
-| Downloads refused to another party | TESTED for 6 of 12 routes; the other six IN PROGRESS (E21) | `BASELINE-AUDIT.md` 4.2; `downloads.test.ts` |
+| Downloads refused to another party | TESTED for 6 of 12 routes; the other six TESTED (E21) | `BASELINE-AUDIT.md` 4.2; `downloads.test.ts` |
 | Runtime database login that owns nothing; migration step as the owner; no trigger, temporary-object or migration-list rights for application roles | TESTED on PostgreSQL 16; NOT LIVE | E19, `runtime-login.test.ts`, `docs/evidence/E19/synth.txt` |
 | Upload size and extension | TESTED | `storage.test.ts` |
-| Upload content check, quarantine, malware scan | NOT STARTED (E22) | gap 45 |
+| Upload content check, quarantine, scanner adapter, held files refused everywhere, retry, System page | IN PROGRESS (E22). A live scanner is BLOCKED on T6 (gap 152) | `uploads.test.ts`, migration 028, D104 |
 | Browser headers and CSP | TESTED | `security.test.ts` |
 | Webhook signature | TESTED | `payments.test.ts` |
 | Production dependency audit | TESTED by hand: no known vulnerabilities on 4 Nov 2026 (not run in CI) | `docs/evidence/E20/audit.txt` |

@@ -145,7 +145,7 @@ export function partyEngagement(db: Database, user: SessionUser, engagementId: s
       [engagementId],
     );
     const evidence = await tx.query(
-      "select id, milestone_id, type, file_name, created_at from evidence where engagement_id = $1 order by created_at",
+      "select id, milestone_id, type, file_name, created_at, file_scan_status('evidence', id) as scan from evidence where engagement_id = $1 order by created_at",
       [engagementId],
     );
     const messages = await tx.query(
@@ -180,7 +180,7 @@ export function partyEngagement(db: Database, user: SessionUser, engagementId: s
         ? (await tx.query("select id, kind, number, payment_id, issued_at, gross_fils, net_fils, vat_fils, disbursements_fils from invoices where engagement_id = $1 and status = 'issued' order by issued_at", [engagementId])).rows.map(camel)
         : [];
     // O6: the client's document checklist, delays (without attribution), the client's credits, the rating.
-    const documentRequests = await tx.query("select id, engagement_id, milestone_id, kind, note, status, file_name, uploaded_at, decided_at, decision_note, created_at from document_requests where engagement_id = $1 order by created_at", [engagementId]);
+    const documentRequests = await tx.query("select id, engagement_id, milestone_id, kind, note, status, file_name, uploaded_at, decided_at, decision_note, created_at, file_scan_status('document_request', id) as scan from document_requests where engagement_id = $1 order by created_at", [engagementId]);
     const delays = await tx.query("select id, milestone_id, engagement_id, due_date, noticed_at, expected_date from delays where engagement_id = $1 order by noticed_at", [engagementId]);
     const credits = user.orgType === "client" ? await tx.query("select id, engagement_id, milestone_id, amount_fils, status, settled_reference, created_at from guarantee_credits where engagement_id = $1 order by created_at", [engagementId]) : { rows: [] };
     const rating = (await tx.query("select engagement_id, stars, comment_shown as comment, created_at from ratings where engagement_id = $1", [engagementId])).rows[0];
@@ -397,7 +397,7 @@ export function opsEngagement(db: Database, user: SessionUser, engagementId: str
          from allocations a join orgs o on o.id = a.partner_org_id where a.engagement_id = $1 order by a.offered_at`,
       ),
       milestones: await q("select * from milestones where engagement_id = $1 order by seq"),
-      evidence: await q("select id, milestone_id, type, file_name, created_at from evidence where engagement_id = $1"),
+      evidence: await q("select id, milestone_id, type, file_name, created_at, file_scan_status('evidence', id) as scan from evidence where engagement_id = $1"),
       messages: await q(
         "select id, author_name, body_original, body_shown, masked, created_at from messages where engagement_id = $1 order by created_at",
       ),
@@ -408,7 +408,7 @@ export function opsEngagement(db: Database, user: SessionUser, engagementId: str
       ),
       invoices: await q("select id, kind, number, status, payment_id, issued_at, gross_fils from invoices where engagement_id = $1 order by created_at"),
       changeOrders: await q("select * from change_orders where engagement_id = $1 order by created_at"),
-      documentRequests: await q("select id, milestone_id, kind, note, status, file_name, uploaded_at, decided_at, decision_note, created_at from document_requests where engagement_id = $1 order by created_at"),
+      documentRequests: await q("select id, milestone_id, kind, note, status, file_name, uploaded_at, decided_at, decision_note, created_at, file_scan_status('document_request', id) as scan from document_requests where engagement_id = $1 order by created_at"),
       delays: await q("select d.*, m.name as step from delays d join milestones m on m.id = d.milestone_id where d.engagement_id = $1 order by d.noticed_at"),
       credits: await q("select g.*, m.name as step from guarantee_credits g join milestones m on m.id = g.milestone_id where g.engagement_id = $1 order by g.created_at"),
       rating: (await q("select r.stars, r.comment_original, r.comment_shown, r.created_at, u.name as author_name from ratings r join users u on u.id = r.author_user_id where r.engagement_id = $1"))[0] ?? null,

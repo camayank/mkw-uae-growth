@@ -229,7 +229,7 @@ describe("notifications through a flow", () => {
     const eng = await env.call("ops", "GET", `/api/engagements/${engagementId}`);
     const m = eng.body.milestones[0];
     await env.call("setup", "POST", `/api/milestones/${m.id}/start`);
-    for (const t of m.evidenceRequired) await env.call("setup", "POST", `/api/milestones/${m.id}/evidence`, { type: t, fileName: `${t}.pdf`, contentBase64: Buffer.from("%PDF").toString("base64") });
+    for (const t of m.evidenceRequired) await env.call("setup", "POST", `/api/milestones/${m.id}/evidence`, { type: t, fileName: `${t}.pdf`, contentBase64: Buffer.from("%PDF-1.4").toString("base64") });
     await env.call("setup", "POST", `/api/milestones/${m.id}/submit`);
     const r = await env.call("ops", "POST", `/api/ops/milestones/${m.id}/qa`, { pass: false, note: "Stamp missing on page 2, call Ali on 050 999 8888" });
     expect(r.status).toBe(200);

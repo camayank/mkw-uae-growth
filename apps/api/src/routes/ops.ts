@@ -169,7 +169,7 @@ export function registerOpsRoutes(ctx: RouteContext) {
   // The platform watching itself (O13): runs, steps, the outbox backlog, alerts and the audit checks. No personal data.
   app.get("/api/ops/system", async (req) => {
     const user = requireRole(req, ...PLATFORM_ROLES);
-    return asPlatform(db, user, (tx) => systemOverview(tx));
+    return asPlatform(db, user, (tx) => systemOverview(tx, ctx.uploads));
   });
 
   // E21: the founder records that an audit chain finding was investigated, which closes its alert.

@@ -1406,3 +1406,27 @@ through one checked machine.** (E21, 4 Nov 2026, released by the owner: "start E
   - a bank-file test with no successful download.
 
   All are fixed, each with a test.
+
+**D104. An upload is what its name says, and is held until a malware scan finds it clean.** (E22, 4 Nov 2026,
+released by the owner: "start E22". The mandate's P0-01, item 1.3; gap 45; rules 5 and 7.)
+- **Content before name.** `checkUpload` reads the bytes: PDF, PNG, JPEG and WebP by their signatures; `doc` and `xls`
+  as OLE compound files; `docx` and `xlsx` as ZIP packages holding `word/` or `xl/`; `csv` and `txt` as UTF-8 text
+  with no binary control bytes. A mismatch is refused with what the file looks like. An empty file is refused.
+- **The scanner is an adapter** (`lib/scanner.ts`): scan bytes, answer clean or infected, or throw. `memoryScanner()`
+  finds the EICAR test file and nothing else, and every screen says it is not a malware scan; it is refused in
+  production. No live scanner exists (T6, gap 152). A scan has a 20-second limit.
+- **One record per upload** (`file_scans`, migration 028): detected type, size, SHA-256, who sent it, and its status
+  as the seventh machine (`file`): `pending`, `clean`, `infected`, `failed`, `not_scanned`. After the upload only a
+  scanner's verdict moves it, by the system, each move audited. Rows are never removed; erasure tombstones the name.
+  Clients and partners never read the table or any storage key: `file_scan_status(kind, id)` gives a status for a row
+  they already hold. Files from before E22 are backfilled as `pending`.
+- **Why a missing scan is not clean.** With no scanner, an upload is `pending` and held. The owner may instead choose
+  `UPLOADS_UNSCANNED=allow` (T6): such files are `not_scanned`, served and labelled so on every screen, and a scanner
+  added later still scans them. A failed scan holds the file and is retried by the jobs step (`filesScanned`) up to
+  five times, then waits for a person.
+- **Nothing relies on a held file.** The four routes that serve an upload answer 409 with the reason. QA pass,
+  "document received", "partner document verified", "obligation met" and a partner invoice counting towards a payout
+  each refuse a held file.
+- **Alerts and the System page.** An infected file, or a scan failed five times, opens a warning alert
+  (`upload_held`); the System page shows the scanner, counts by status and the held files.
+- **Not done:** the live scanner (gap 152); deleting infected bytes (gap 153); generated files (gap 154).

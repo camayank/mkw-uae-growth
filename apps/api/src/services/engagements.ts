@@ -17,6 +17,8 @@ import {
   type PayoutStage,
 } from "@tasees/core";
 import { audit, lockAuditChain, type SessionUser } from "../lib/context.ts";
+import { assertUsable } from "../lib/uploads.ts";
+import type { Scanner } from "../lib/scanner.ts";
 import { assertRequestOpen, lockRequestOffers, transition, withdrawOffers } from "../lib/transition.ts";
 import { num, type Queryable } from "../lib/db.ts";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.ts";
@@ -41,6 +43,10 @@ export interface Deps {
   provider?: PaymentProvider;
   /** Where invoice PDFs and partner invoices are kept (O3). */
   storage?: Storage;
+  /** The malware scanner (E22); null or absent: uploads are held until one is configured (T6). */
+  scanner?: Scanner | null;
+  /** The owner's T6 choice: serve files no scanner looked at, labelled "not scanned". */
+  allowUnscanned?: boolean;
 }
 
 /** Create a card payment link for a pending payment, when a provider is configured. Returns the URL or null. */
@@ -486,6 +492,12 @@ export async function qaMilestone(tx: Queryable, user: SessionUser, milestoneId:
     set: { qa_note: note ?? null },
     audit: { actor: user, action: pass ? "milestone.qa_passed" : "milestone.qa_rejected", data: { note } },
   });
+  // E22: a step passes QA only on evidence a scan found clean. Checked after the move is known to be allowed, so a
+  // refused move says why first; a refusal here rolls the move back.
+  if (pass) {
+    const keys = (await tx.query<{ file_key: string }>("select file_key from evidence where milestone_id = $1", [milestoneId])).rows.map((r) => r.file_key);
+    await assertUsable(tx, deps, keys, "Evidence on this step");
+  }
   if (pass) {
     const client = (await tx.query<{ client_org_id: string }>("select client_org_id from engagements where id = $1", [m.engagement_id])).rows[0];
     if (client) await notifyOrg(tx, deps, client.client_org_id, "milestone_ready_for_review", { milestoneId, engagementId: m.engagement_id });

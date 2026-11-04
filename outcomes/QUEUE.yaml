@@ -268,11 +268,18 @@ outcomes:
     # E19 and corrected after them. Documents only. E21 onwards are proposed in docs/transformation/ROADMAP.md.
   - id: E21
     title: Remaining isolation and state rules (audit events only through audit_append; an append-only nightly check that compares night to night; six downloads proven refused; request, payout and change-order machines)
-    status: verified-pending-merge
+    status: merged  # camayank/mkw-uae-growth#42, 4 Nov 2026
     contract: outcomes/E21-audit-and-state-rules.md
     depends_on: [E20]
     needs_from_owner: []
     # Released by the owner on 4 Nov 2026: "start E21". Gaps 145, 146 and 148 closed; 143 narrowed; 149 and 150 recorded.
+  - id: E22
+    title: Upload quarantine (content checked against the name; every upload held until a malware scan finds it clean; a scanner adapter with a test double; held files refused everywhere)
+    status: verified-pending-merge
+    contract: outcomes/E22-upload-quarantine.md
+    depends_on: [E21]
+    needs_from_owner: [a live malware scanner and its cost, or labelled unscanned files for the pilot (T6, gap 152)]
+    # Released by the owner on 4 Nov 2026: "start E22". Gap 45 narrowed; 152 to 154 recorded.
 
 # Roadmap from docs/VISION.md (18 Oct 2026). Order of work: O11, O12, O13 before the pilot; then O7 (launch gate);
 # then O14, O15, O16. Renumbered on 18 Oct 2026 when the owner released O10 as Real data and staging.
@@ -282,13 +289,6 @@ outcomes:
 roadmap:
   # The transformation mandate (3 Nov 2026), reconciled in docs/transformation/ROADMAP.md (T1): E21 follows E20 under
   # the mandate's instruction to continue with the next priority outcome; the owner can reorder or stop at any merge.
-  - id: E22
-    title: Upload quarantine
-    status: planned
-    business_result: A file is checked for what it really is and held until scanned; a failed or missing scan never counts as clean.
-    scope: [magic-byte checks per extension, quarantine state on file-bearing tables, scanner adapter with a memory double, downloads refused until clean]
-    depends_on: [E20]
-    needs_from_owner: [decision T6 (live scanner and its cost)]
   - id: E23
     title: Evidence operations
     status: planned

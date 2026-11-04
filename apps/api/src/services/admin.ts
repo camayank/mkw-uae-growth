@@ -308,6 +308,8 @@ export async function erasePerson(tx: Queryable, actor: SessionUser, userId: str
   // The obligation stays met (the organisation's record); only the person's file goes.
   await tx.query("update obligations set evidence_name = $2, evidence_key = null where evidence_uploaded_by = $1 and evidence_key is not null", [userId, TOMBSTONE_TEXT]);
   docKeys.push(...obligationKeys);
+  // The scan records keep the file names they were uploaded under (E22): the person's go too; the verdicts stay.
+  await tx.query("update file_scans set file_name = $2 where uploaded_by = $1", [userId, TOMBSTONE_TEXT]);
   await tx.query(
     "update users set name = $2, email = $3, status = 'erased', deactivated_at = coalesce(deactivated_at, app_now()), erased_at = app_now() where id = $1",
     [userId, TOMBSTONE_NAME, tombstoneEmail(userId)],

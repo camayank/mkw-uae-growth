@@ -14,7 +14,7 @@ import {
   type Tier,
 } from "@tasees/core";
 import { audit, lockAuditChain, type SessionUser } from "../lib/context.ts";
-import { transition, withdrawOffers } from "../lib/transition.ts";
+import { assertRequestOpen, transition, withdrawOffers } from "../lib/transition.ts";
 import { assertQuotable } from "./structure.ts";
 import { num, type Queryable } from "../lib/db.ts";
 import { assertRenewalCurrent } from "./compliance.ts";
@@ -47,6 +47,7 @@ export async function buildOffers(
   ).rows[0];
   if (!req) throw notFound("Request not found");
   await assertRenewalCurrent(tx, requestId);
+  await assertRequestOpen(tx, requestId); // E21: a closed request is never priced again
   const lines = req.scope?.lines ?? [];
   if (lines.length === 0) throw badRequest("The request has no deliverables to price");
 
@@ -73,7 +74,7 @@ export async function buildOffers(
 
   const missing = codes.filter((c) => !all.some((q) => q.code === c));
   if (missing.length > 0) {
-    await tx.query("update requests set status = 'quoting' where id = $1", [requestId]);
+    await transition(tx, "request", requestId, "quoting", "platform", { actor, idempotent: true });
     return { offerIds: [], missing };
   }
 
@@ -185,7 +186,7 @@ export async function buildOffers(
       governmentFees: picked.map((p) => ({ code: p.line.code, unitFils: p.line.govUnitFee, basis: p.basis, feeId: p.fee?.id ?? null })),
     });
   }
-  await tx.query("update requests set status = 'offered' where id = $1", [requestId]);
+  await transition(tx, "request", requestId, "offered", "platform", { actor, idempotent: true });
   return { offerIds, missing: [] };
 }
 

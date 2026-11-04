@@ -52,7 +52,9 @@ are never printed. Fix the variable named and start again.
     and its log group) or, with in-process jobs, that the app is up. `pnpm jobs` runs one by hand.
   - *A jobs step failed*: the System page shows the step and its error; the other steps still ran.
   - *Messages stuck*: due for 30 minutes and not handed to the provider. Check the email provider and the jobs.
-  - *Audit chain broken*: an audit row was changed or removed. Change nothing else. Take a database snapshot, run
+  - *Audit chain broken*: an audit row was changed or removed, or (since E21) the last event of the previous night's
+    check is missing or different, or the chain is shorter than the night before: events at the end of the trail were
+    removed or rewritten. Only the database owner can do either. Change nothing else. Take a database snapshot, run
     `pnpm verify:audit` to confirm the event, and compare with the latest backup (`docs/RESTORE-DRILL.md`) to find what
     changed and when. Tell the founder.
 - **For an external monitor.** `GET /api/health/jobs` answers 200, or 503 when the jobs are late, with the last run's

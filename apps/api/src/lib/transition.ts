@@ -1,5 +1,6 @@
 /**
- * The one way milestones, offers and engagements change status (O13). `transition()` locks the row, checks the
+ * The one way milestones, offers, engagements, requests, payouts and change orders change status (O13; the last three
+ * since E21). `transition()` locks the row, checks the
  * transition table in `packages/core/src/states.ts` for who may make the move, sets the status with the timestamp
  * that goes with it, and writes the audit event. Two requests racing for the same row cannot both pass: the second
  * waits for the lock, then finds the status already moved and is refused with what can happen next.
@@ -8,9 +9,24 @@
 import { assertTransition, type Actor, type MachineName } from "@tasees/core";
 import { audit, lockAuditChain, type SessionUser } from "./context.ts";
 import type { Queryable } from "./db.ts";
-import { notFound } from "./errors.ts";
+import { conflict, notFound } from "./errors.ts";
 
-const TABLE: Record<MachineName, string> = { milestone: "milestones", offer: "offers", engagement: "engagements" };
+const TABLE: Record<MachineName, string> = {
+  milestone: "milestones",
+  offer: "offers",
+  engagement: "engagements",
+  request: "requests",
+  payout: "payouts",
+  change_order: "change_orders",
+};
+const LABEL: Record<MachineName, string> = {
+  milestone: "Milestone",
+  offer: "Offer",
+  engagement: "Engagement",
+  request: "Request",
+  payout: "Payout",
+  change_order: "Change order",
+};
 
 /** Columns set by the move itself, by machine and destination. Fixed SQL: no input reaches it. */
 const STAMPS: Record<MachineName, Record<string, string>> = {
@@ -23,6 +39,9 @@ const STAMPS: Record<MachineName, Record<string, string>> = {
   },
   offer: { published: "published_at = app_now()", accepted: "accepted_at = app_now()" },
   engagement: { completed: "completed_at = app_now()" },
+  request: {},
+  payout: { eligible: "eligible_at = app_now()", released: "released_at = app_now()" },
+  change_order: { approved: "decided_at = app_now()", rejected: "decided_at = app_now()" },
 };
 
 /** Other columns a move may carry (a QA note, a dispute reason), by machine. Values are bound parameters. */
@@ -30,6 +49,9 @@ const EXTRA: Record<MachineName, string[]> = {
   milestone: ["qa_note", "dispute_reason"],
   offer: [],
   engagement: [],
+  request: [],
+  payout: ["released_by"],
+  change_order: [],
 };
 
 export interface TransitionOptions {
@@ -53,7 +75,7 @@ export async function transition(
   const table = TABLE[machine];
   await lockAuditChain(tx); // the lock order: audit chain first, then the row (lib/context.ts)
   const row = (await tx.query<{ status: string }>(`select status from ${table} where id = $1 for update`, [id])).rows[0];
-  if (!row) throw notFound(`${machine[0]!.toUpperCase()}${machine.slice(1)} not found`);
+  if (!row) throw notFound(`${LABEL[machine]} not found`);
   if (opts.idempotent && row.status === to) return { from: row.status, changed: false };
   assertTransition(machine, row.status, to, by);
   const sets = ["status = $2"];
@@ -85,6 +107,16 @@ export async function withdrawOffers(tx: Queryable, requestId: string, except: s
   );
   for (const o of open.rows) await transition(tx, "offer", o.id, "withdrawn", "platform", { actor });
   return open.rows.length;
+}
+
+/**
+ * Refuse more pricing or quoting on a request whose offer the client accepted, with the reason in plain words. The
+ * request machine refuses it too; this says why before any work is done.
+ */
+export async function assertRequestOpen(tx: Queryable, requestId: string): Promise<void> {
+  const r = (await tx.query<{ status: string }>("select status from requests where id = $1", [requestId])).rows[0];
+  if (!r) throw notFound("Request not found");
+  if (r.status === "closed") throw conflict("This request is closed: the client accepted its offer. Start a new request for further work.");
 }
 
 /** Lock every offer of a request, in id order: the first thing a change to one of them does (no deadlock). */

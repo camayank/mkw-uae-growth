@@ -228,8 +228,10 @@ describe("job runs, alerts and the nightly audit check", () => {
     // Inside one transaction that is rolled back, so the shared database stays intact. Only the database owner can do
     // this since E19 (the audit trail is append-only for every application role), so the test acts as the owner.
     await asPlatform(withClock(env.db, () => env.clock.now), null, async (tx) => {
-      await tx.query("delete from audit_checks");
       await tx.query("reset role"); // the test's connection is the owner's
+      // Since E21 no application role can remove a check row either (migration 027): the owner clears today's.
+      await tx.query("alter table audit_checks disable trigger audit_checks_no_change");
+      await tx.query("delete from audit_checks");
       await tx.query("alter table audit_events disable trigger audit_events_no_change");
       await tx.query("update audit_events set data = data || '{\"tampered\": true}'::jsonb where id = (select min(id) + 1 from audit_events)");
       await tx.query("set local role app_platform");

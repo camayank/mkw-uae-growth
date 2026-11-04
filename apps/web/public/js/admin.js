@@ -371,8 +371,16 @@ export async function renderSystem() {
     <p class="small muted pad">Messages that failed or whose delivery is not confirmed wait for a person in the queue.</p>
   </section>
   <section class="card flush" aria-labelledby="audit-h"><h2 id="audit-h">Audit chain, checked nightly</h2>
-    ${table(["Day", "#Events checked", "Result"], s.auditChecks.map((c) => `<tr><td>${date(c.day)}</td><td class="num">${c.checked}</td><td>${c.brokenId === null ? badge("ok", "intact") : badge("rejected", `broken at event ${c.brokenId}`)}</td></tr>`), "Not checked yet: the first jobs run of the day checks it.")}
+    ${table(["Day", "#Events checked", "Result"], s.auditChecks.map((c) => `<tr><td>${date(c.day)}</td><td class="num">${c.checked}</td><td>${auditResult(c)}</td></tr>`), "Not checked yet: the first jobs run of the day checks it.")}
   </section>`;
+}
+
+/** The nightly audit check's result (E21 adds the comparison with the night before). */
+function auditResult(c) {
+  if (c.finding === "tail_removed") return badge("rejected", "last event of the night before is missing");
+  if (c.finding === "shortened") return badge("rejected", "fewer events than the night before");
+  if (c.brokenId !== null || c.finding === "changed") return badge("rejected", `broken at event ${c.brokenId}`);
+  return badge("ok", "intact");
 }
 
 // E7B: the jurisdiction coverage matrix and the evidence backlog for the verifier.

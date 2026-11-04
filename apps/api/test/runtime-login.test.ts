@@ -131,6 +131,12 @@ describe.skipIf(!PG)("the application as a runtime login that owns nothing (Post
     // The audit trail, the fee evidence guard and the role grants are out of its reach.
     await expect(asPlatform(env.db, null, (tx) => tx.query("update audit_events set data = '{}'::jsonb where id = (select max(id) from audit_events)"))).rejects.toThrow(/permission denied|append-only/);
     await expect(asPlatform(env.db, null, (tx) => tx.query("alter table audit_events disable trigger audit_events_no_change"))).rejects.toThrow(/must be owner/);
+    // E21: nor can it write an event around audit_append, or a nightly check row of its own, as any role it may take.
+    const forged = "insert into audit_events (action, entity, prev_hash, hash) values ('payout.released', 'payout', 'x', 'y')";
+    await expect(asPlatform(env.db, null, (tx) => tx.query(forged))).rejects.toThrow(/permission denied/);
+    await expect(env.db.transaction((tx) => tx.query(forged))).rejects.toThrow(/permission denied/);
+    await expect(asPlatform(env.db, null, (tx) => tx.query("insert into audit_checks (day, checked) values ('2099-01-01', 1)"))).rejects.toThrow(/permission denied/);
+    await expect(asPlatform(env.db, null, (tx) => tx.query("alter table audit_checks disable trigger audit_checks_no_change"))).rejects.toThrow(/must be owner/);
     await expect(asPlatform(env.db, null, (tx) => tx.query("alter table offer_lines disable trigger offer_lines_fee_evidence"))).rejects.toThrow(/must be owner/);
     await expect(env.db.transaction((tx) => tx.query("create role sneaky login"))).rejects.toThrow(/permission denied/);
     // The way round the guard the independent review found: a trigger of its own on audit_events, run as the owner

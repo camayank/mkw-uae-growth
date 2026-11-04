@@ -1348,3 +1348,43 @@ after the owner's transformation mandate named the defect: "Investigate the repo
   Also corrected: the direct status writes (ten, cited exactly); the smoke evidence's commit; status words; the
   roadmap diagram; the named searches; the doc-only gate.
 
+**D103. The audit trail is written only through the database's own functions, and every money and work status moves
+through one checked machine.** (E21, 4 Nov 2026, released by the owner: "start E21". The mandate's P0-01, item 1.2.)
+- **Audit events.** Migration 027 revokes insert on `audit_events`, and every right on its id sequence, from the three
+  application roles. The platform's policy is now read-only. A trigger refuses an insert by any application role
+  (or the runtime group), so a later broad grant cannot reopen it. Inside `audit_append` the current user is the
+  function's owner, never an application role. Migration 025's comment, which said this was already so, was wrong;
+  027 says so.
+- **The nightly check is the database's.** `audit_checks` is append-only (revoked, and triggers for change, removal
+  and truncation). A check is recorded only by `audit_check_run()` (security definer), from its own reading of the
+  chain:
+  - it keeps the last event it saw (id and hash);
+  - it compares with the latest earlier check: `changed`, `tail_removed`, or `shortened` (for a check from before
+    E21, which kept no last event);
+  - a finding opens a critical alert naming it;
+  - its day is capped at the real clock, so the test clock (a session setting any role can set) cannot record a later
+    day's check early and so skip it.
+
+  Why compare the last event, not only the length: a removed tail followed by new events makes the chain longer
+  again, and the chain on its own still verifies. Not covered: the owner rewriting both the trail and the check
+  history (gap 143, narrowed); that needs an anchor outside the database.
+- **Six machines, one `transition()`.** `packages/core/src/states.ts` adds:
+  - request: `scoped → quoting | offered`, `quoting ↔ offered` by the platform, and `offered | quoting → closed` by the
+    client. `quoting → closed` is listed because a rebuild that finds a price missing leaves offers published earlier
+    open;
+  - payout: `pending → eligible` by the system (the tested rule), `eligible → released` by the platform (finance),
+    `pending | eligible → withheld` by the platform (a refund);
+  - change order: `priced → approved | rejected` by the client.
+
+  Rebuilding the same state (a second request for quotes, a rebuild of offers) is not a move (`idempotent`).
+  `STATUSES` lists every status each row may hold, and the check constraint on each status column lists exactly the
+  same; a test compares them. `draft` (request) and `proposed` (change order) are column defaults no code writes.
+- **Every move is audited.** New events: `request.status_changed`, `payout.eligible` (actor null: the rule),
+  `payout.withheld` (with the payment). `payout.released` and the change-order decisions keep their names and now
+  carry `from` and `to`. A payout run releases each payout through the machine, in id order.
+- **A defect found by the machine.** On `main`, ops could rebuild offers on a closed request, and the client could
+  accept the new offer as a second engagement on the same request. Building offers or opening a request for quotes on
+  a closed request is now refused, with the reason (`assertRequestOpen`), and the machine refuses the move too.
+- **Downloads.** `downloads.test.ts` proves the six routes of the audit's section 4.2 refused to every party they do not
+  belong to; no refusal carries the file.
+- **Recorded:** statuses outside the six machines (gap 149); no database-level move check (gap 150).

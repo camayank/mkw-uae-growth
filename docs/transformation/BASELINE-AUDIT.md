@@ -7,6 +7,9 @@ This audit was first drafted on `main` at d8104fb. Its independent review found 
 within-party defect and two untested or unsafe areas; the owner had them fixed first, as E19. Since then, E18 (quote provenance) and E19 (role
 isolation) have merged. This version reads the code after both, and applies the review's corrections.
 
+This audit stays as read on a42c487; later outcomes update `IMPLEMENTATION-STATUS.md` and `RISK-REGISTER.md`, not this
+file. Since then, E21 has addressed S5, S6, part of S4, and section 4.2 (D103).
+
 This is a reading of the code as it stands, not of what the documents say it should do:
 - every claim cites a file and line, a test or an evidence file;
 - the searches behind the main "not found" claims are named (an LLM call, a malware scanner, a payment gateway, a

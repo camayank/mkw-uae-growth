@@ -385,29 +385,36 @@ in a browser; everything listed here is not.
      Separate database roles per staff role would add the third layer; it is a larger migration (D101).
 143. **The database owner can still switch the audit guard off.** The application never logs in as the owner in
      production, and its roles can no longer add triggers, create temporary code or change the migration list (E19).
-     So only the master secret can, which only the migration container and a DBA hold. The nightly check finds an
-     edited event; it records the chain's length each night but does not yet compare it with the night before.
+     So only the master secret can, which only the migration container and a DBA hold. Narrowed by E21: the nightly
+     check now compares the chain with the night before, from a history no application role can write (D103), and
+     finds an edited event, a removed or rewritten tail, or a shorter chain. What remains: the owner could rewrite the
+     trail and the check history together. Catching that needs an anchor outside the database, for example the last
+     hash in the daily ops digest or in an external log.
 144. **The runtime login can change its own password or settings**, as PostgreSQL allows any login. A changed
      password locks the app out until the next app task's migration step resets it from the secret; a setting it gives
      itself (a default role, for instance) is cleared at the same moment. Found by the independent review of E19.
 
 ## E20: baseline audit (docs/transformation/BASELINE-AUDIT.md)
 
-145. **Six download routes have no test that another party is refused** (the audit's section 4.2):
+145. ~~**Six download routes have no test that another party is refused**~~ Closed by E21: `downloads.test.ts` tries
+     each by every party it does not belong to (D103). It was the audit's section 4.2:
      - the evidence file: no test downloads it at all;
      - the invoice PDF and the offer PDF: not tried as another client;
      - the coverage backlog CSV: no refused role tried;
      - the payout bank file: not tried as a client or a partner;
      - the accounting export: not tried as a partner.
 
-     Row-level security or the route's own check guards each; E21 adds the tests.
-146. **Request, payout and change-order statuses have no transition table.** They are set by direct SQL in the
-     services; only milestones, offers and engagements go through `transition()`. Requests and change orders have no
-     check constraint either. E21, before the agent gets write tools.
+     Row-level security or the route's own check guards each; E21 added the tests.
+146. ~~**Request, payout and change-order statuses have no transition table.**~~ Closed by E21 (D103): all six machines
+     go through `transition()`, each move audited, and each status column has a check constraint that a test compares
+     with `STATUSES`. It found a real defect: offers could be rebuilt on a closed request and accepted as a second
+     engagement. The statuses outside the six machines are gap 149.
 147. **The service catalogue (`deliverables`) is readable in full by clients and partners**, including its market
      mid-price, and has no row-level security. A reference figure, not partner cost or margin; recorded so it stays a
      choice.
-148. **The platform role can insert audit events directly**, bypassing `audit_append`. Migration 025 revoked update,
+148. ~~**The platform role can insert audit events directly**, bypassing `audit_append`.~~ Closed by E21 (D103):
+     insert and the id sequence revoked from every application role, a trigger that refuses one granted it later, and
+     an append-only `audit_checks` written only by the database's own `audit_check_run()`. Migration 025 revoked update,
      delete and truncate on `audit_events` but not insert, and its comment saying events are written only through
      `audit_append` is wrong.
      - A forged, well-formed event would verify, because the hash has no secret.
@@ -416,6 +423,17 @@ in a browser; everything listed here is not.
 
      Found by the second independent review of the baseline audit (E20). E21 revokes insert, makes `audit_checks`
      append-only, and tests both.
+
+## E21: audit trail, downloads and status machines
+
+149. **Some statuses outside the six machines still change by direct SQL.** They include payments, payout runs, document
+     requests, obligations, leads and assessments. Each column has a check constraint, and each service checks the
+     status it expects before it writes, but none has a transition table. E25 must give the agent
+     no tool that writes them directly; a machine for payments and payout runs is the natural next step.
+150. **The database does not check status moves itself.** `transition()` checks the table, and a source test fails if
+     code elsewhere sets one of the six statuses. A direct SQL update by an application role can still make any move
+     between valid statuses: the check constraints refuse only an invalid status. A trigger that knows the six tables
+     would add the database as a layer. Tests that set up a status directly would then need the owner.
 
 ## E16: report design
 

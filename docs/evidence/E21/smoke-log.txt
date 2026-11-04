@@ -1,0 +1,496 @@
+01-sign-in
+an old workspace link (/#/home) forwards to /app/#/home, signed in, with no homepage script or public request (E14): OK
+the intake asks one question at a time: OK
+focus moves to the next question: OK
+the plan builds as the client answers, with no unreviewed advice: OK
+02-client-intake
+the last question sums up the answers before anything is sent: OK
+02b-client-intake-review
+request: Request received. We will send your offers shortly.
+build: Offers built
+03-ops-pipeline
+04-ops-queue
+05-ops-offer-no-margin
+the ops offer shows each government fee with where it came from (E18): OK
+79-mobile-ops-offer-fees
+axe: no WCAG 2.1 AA violations on ops offer with government fees at 390 px (E18): OK
+publish: Published to the client
+06-finance-offer-with-margin
+axe: no WCAG 2.1 AA violations on client offer with the client terms (O10): OK
+client sees the client terms with their version before accepting: OK
+client terms show the draft note until the lawyer's review is recorded: OK
+the offer reads as a proposal with every section: OK
+the proposal states the working-day estimate, the deposit now and the balance later: OK
+the proposal says the rules where the client acts: OK
+the proposal shows no partner cost or margin: OK
+the proposal labels every government fee with where it came from (E18): OK
+the offer PDF gives each government fee the same label and sentence as the screen (E18): OK
+E18 fee labels on the demo offer: SET-FZ-LIC PARTNER-STATED, VISA-RES PARTNER-STATED
+72-client-proposal
+acceptance without ticking the terms is stopped: OK
+07-client-offer
+08-client-engagement-awaiting-payment
+the client's journey marks the request and the offer done and the deposit as the step now (E9): OK
+a services request shows no Advice step and is being priced; advice shows only when there is some to review (E9): OK
+one step at most is current, and an expired offer is never said to be being priced (E9 review): OK
+the workspace carries the UAE colours above the bar and the client's mark is T (E9): OK
+client sees a card payment link for the deposit: OK
+the deposit is the pinned next action: OK
+the timeline runs from acceptance to completion: OK
+deposit: Payment recorded
+09-finance-engagement-allocated
+admin@setup-partner.test accepted 0
+the partner's offer row carries a reply countdown, the payout, and no client price (U1): OK
+exactly one Accept is gold, on the offer whose reply time ends first (E10): OK
+10-partner-offered-work
+shot-partner
+admin@corporate-services.test accepted 1
+admin@tax-accounts.test accepted 1
+partner staff have no Payouts page in their menu (E19): OK
+partner staff see no money figure on #/home (E19): OK
+130-partner-staff-work
+partner staff see no money figure on #/performance (E19): OK
+131-partner-staff-performance
+partner staff see no money figure on #/rates (E19): OK
+132-partner-staff-rates
+partner staff opening the payouts address are told the admin sees payouts (E19): OK
+partner staff work at 390 px has no horizontal overflow (E19): OK
+133-mobile-partner-staff-work
+axe: no WCAG 2.1 AA violations on partner staff work at 390 px (E19): OK
+the partner's next step is pinned with its evidence upload (U1): OK
+the partner's next step has one gold action, Submit for checking (E10): OK
+submit: Sent to MKW Advisors for checking
+partner page shows no client price or margin: OK
+the partner's engagement carries the emirate's flag and the steps approved as a progress bar (E10): OK
+11-partner-engagement
+qa: Passed to the client for approval
+12-ops-engagement
+the step waiting for the client is pinned with its automatic approval date: OK
+73-client-timeline-approve
+the pinned card links the evidence MKW checked: OK
+approve: Approved. Thank you.
+client page hides the partner's phone and email: OK
+client page shows no partner cost or margin: OK
+the client engagement opens on the next action and folds the rest into panels (U1): OK
+13-client-engagement-approved
+the engagement page shows the emirate's flag and the steps approved as a progress bar (E9): OK
+in delivery, the journey marks the deposit and the partner done and delivery as the step now, with the steps approved (E9): OK
+106-client-home-journey
+axe: no WCAG 2.1 AA violations on client home with the journey and the money panel (E9): OK
+client bell shows unread notices after the flow: OK
+client notifications mention the offers and the deposit: OK
+client notifications carry no partner cost or margin: OK
+22-client-notifications
+mark all as read clears the bell: OK
+partner notifications come from MKW Advisors and never say Tasees: OK
+partner notifications carry no client price: OK
+23-partner-notifications
+client page at 390 px has no horizontal overflow: OK
+notifications at 390 px have no horizontal overflow: OK
+client home with the next action (O12) at 390 px has no horizontal overflow: OK
+75-mobile-client-home
+axe: no WCAG 2.1 AA violations on client home with the next action (O12) at 390 px: OK
+conversational intake (O12) at 390 px has no horizontal overflow: OK
+76-mobile-client-intake
+axe: no WCAG 2.1 AA violations on conversational intake (O12) at 390 px: OK
+client timeline (O12) at 390 px has no horizontal overflow: OK
+77-mobile-client-timeline
+axe: no WCAG 2.1 AA violations on client timeline (O12) at 390 px: OK
+client proposal (O12) at 390 px has no horizontal overflow: OK
+78-mobile-client-proposal
+axe: no WCAG 2.1 AA violations on client proposal (O12) at 390 px: OK
+the client menu is a bottom tab bar at 390 px (U1): OK
+a partner sees the MKW Advisors mark and tab title, never Tasees (E9, rule 10, gap 86): OK
+the partner menu is a bottom tab bar at 390 px, with no horizontal overflow (U1): OK
+93-mobile-partner-work
+axe: no WCAG 2.1 AA violations on partner work at 390 px (U1): OK
+statement at 390 px has no horizontal overflow: OK
+audit chain intact on the audit screen: OK
+15-audit
+16-people
+partner created: Partner firm created; its admin can sign in now
+new partner admin signed in, sees: MKW Advisors Partner Network
+invite: Invited
+role change: Role changed
+deactivate: Account deactivated
+deactivated user shows the badge and a reactivate button: OK
+export downloaded: person-2cb90b03-b287-4498-8ea9-81067b971a18.json
+erase: Personal data erased and recorded
+erased person shown as a tombstone: OK
+17-people-after-changes
+ops cannot invite MKW staff or erase anyone: OK
+finance sees no admin forms or deactivate buttons: OK
+retention UNCERTAIN badges before: 6
+18-settings-retention
+retention: Retention periods confirmed
+no UNCERTAIN retention badge after the founder confirms: OK
+19-settings-retention-confirmed
+finance cannot confirm retention periods: OK
+delivery log lists sent messages for client and partner audiences: OK
+invoice held while TRN missing: OK
+company: Company details saved
+issue held: Issued 1 invoice(s): TI-2026-000001
+held invoice issued with a sequential number: OK
+29-settings-company
+client statement shows the paid deposit and the tax invoice: OK
+client statement carries no partner cost or margin: OK
+client downloads the tax invoice PDF: OK
+30-client-statement
+bank: Bank details saved
+partner invoice: Invoice uploaded; MKW Advisors pays it in the next run
+partner payouts page shows the invoice number and no client price: OK
+31-partner-payouts
+one payout is ready for the run: OK
+run: Run PR-2026-0001 created: 1 payout(s), AED 3,200
+finance downloads the bank bulk-transfer file: OK
+run paid: Run paid; payouts released
+payout run marked paid: OK
+32-finance-payout-runs
+partner sees the payout released: OK
+ops has no payout run controls: OK
+pipeline flags advice to review: OK
+ops sees the structure advice with UNCERTAIN labels: OK
+ops sees every structure compared with its eligibility: OK
+a structure the rules exclude cannot be chosen at the review: OK
+35-ops-scoping-review
+axe: no WCAG 2.1 AA violations on ops scoping review with eligibility (E1): OK
+advice: Advice approved; the client can see it now
+client sees the approved advice with confidence labels and no money internals: OK
+client sees each option's eligibility and why other places do not fit: OK
+client sees the date the advice's rules and data stand at (E2): OK
+the advice opens with a plain summary and the points to confirm before the reasoning (U1): OK
+the client's advice page offers the reviewed report (E7D): OK
+reviewed report: 22832 bytes, words read
+the reviewed report is a designed PDF naming the reviewer, with every section and no money internals (E7D, E16): OK
+121-report-reviewed (pdf and pages)
+36-client-advice
+axe: no WCAG 2.1 AA violations on client advice with eligibility (E1): OK
+client advice at 390 px has no horizontal overflow (E1): OK
+81-mobile-client-advice
+axe: no WCAG 2.1 AA violations on client advice at 390 px (E1): OK
+AI queue shows the draft as UNCERTAIN with its lines: OK
+37-ai-queue
+draft: Draft discarded
+rule: Recorded
+verified rule shows the verifier: OK
+38-scoping-rules
+the Scoping page shows the jurisdiction catalogue with its evidence (E2): OK
+fact: Evidence recorded
+recorded evidence shows on the place (E2): OK
+the place's evidence history opens with the current fact (E2): OK
+the history shows the fact's reference and effective date (E7B): OK
+82-scoping-catalogue
+axe: no WCAG 2.1 AA violations on jurisdiction catalogue and evidence history (E2): OK
+the Coverage page counts authorities and places once, per emirate and kind, with the backlog first wave first (E7B): OK
+the Coverage page lists the public-display approvals outstanding and the expiring evidence (E7B): OK
+the backlog downloads in the importer's layout (E7B): OK
+place status: Place classified
+a place marked historical leaves the counts and the backlog (E7B): OK
+96-coverage
+axe: no WCAG 2.1 AA violations on jurisdiction coverage (E7B): OK
+the Coverage page at 390 px has no horizontal overflow (E7B): OK
+97-mobile-coverage
+axe: no WCAG 2.1 AA violations on jurisdiction coverage at 390 px (E7B): OK
+the homepage says what is measured, in aggregate, with no cookie (E7C): OK
+the homepage states the product, the call to action, the industries and what it does not do (E7A): OK
+the homepage's package cards and map are filled from the platform (E11): OK
+the homepage shows the first question to try, the strip, four kinds with no unapproved price and the emirates map (E11): OK
+95-public-home
+axe: no WCAG 2.1 AA violations on public homepage (E7A): OK
+the homepage is at /, and its sign-in link opens the workspace at /app/ (E14): OK
+the old /selector.html redirects to /, keeping its query (E14): OK
+an unknown address is a 404 page with the way home, not the workspace (E14): OK
+116-not-found
+axe: no WCAG 2.1 AA violations on not found page (E14): OK
+the 404 page at 390 px has no horizontal overflow (E14): OK
+117-mobile-not-found
+an emirate tapped on the homepage map is already chosen at question two (E11): OK
+an industry entry opens the quick match at question two with the activity set (E7A, E8): OK
+going back shows the activity chosen on the industry card (E7A, E8): OK
+the regulated-finance card keeps question one on screen so virtual assets can be chosen instead (E7A, E8): OK
+the quick match shows the places on record before any answer (E8): OK
+each emirate on the map carries its count of places not yet ruled out (E8, E13): OK
+each budget band says how many places are not yet ruled out (E8, E13): OK
+the quick match shows its result with the exact-price action (E8): OK
+with nothing approved the quick match states no figure, labels the places to be verified and offers the exact price (E8): OK
+with nothing approved the quick match names no lead: places to review in Dubai, listed by name (E13): OK
+the counts say not yet ruled out, never that places fit (E13): OK
+the answers read back with a change link each, and the profile is complete (E8): OK
+103-quick-match-desktop
+axe: no WCAG 2.1 AA violations on quick match result (E8): OK
+while the match for new answers is on its way, no earlier place, exact-price action or review form is shown (E8): OK
+a count that arrives after the founder left for the full questions does not overwrite their answers (E8): OK
+the full comparison opens at the first question the quick match did not ask, answers kept, with no review form under it (E8): OK
+the quick match map at 390 px has no horizontal overflow (E8): OK
+104-quick-match-map-phone
+axe: no WCAG 2.1 AA violations on quick match map at 390 px (E8): OK
+the quick match shows the places on record before any answer (E8): OK
+each emirate on the map carries its count of places not yet ruled out (E8, E13): OK
+each budget band says how many places are not yet ruled out (E8, E13): OK
+the quick match shows its result with the exact-price action (E8): OK
+the quick match result at 390 px has no horizontal overflow (E8): OK
+105-quick-match-phone
+the result opens with the profile, the legend and the places side by side (E7A): OK
+with nothing approved the result shows no general guidance and names the next action (E7A): OK
+the selector answers without sign-in and labels the result preliminary (E3): OK
+with nothing approved the selector shows no rule text and no figure (E3): OK
+83-public-selector-unapproved
+axe: no WCAG 2.1 AA violations on public selector result, nothing approved (E3): OK
+public rule: Approved for public display
+public place: Approved for public display
+the Scoping page counts what the public may see (E3): OK
+the quick match shows the places on record before any answer (E8): OK
+each emirate on the map carries its count of places not yet ruled out (E8, E13): OK
+each budget band says how many places are not yet ruled out (E8, E13): OK
+the quick match shows its result with the exact-price action (E8): OK
+an approved place's figures reach the quick match, labelled checked (E8): OK
+the approved IFZA, put first on its checked figures, is named as a place worth reviewing first (E13): OK
+115-quick-match-lead
+the homepage's free zone card quotes the approved place by name, labelled checked and preliminary; the others stay to be verified (E11): OK
+axe: no WCAG 2.1 AA violations on homepage with a checked package figure (E11): OK
+an approved rule and place reach the public with text and figures (E3): OK
+everything else stays to be verified (E3): OK
+the side-by-side table shows the approved place's figures, three-year estimate and source, and nothing for the rest (E7A): OK
+public guide: Approved for public display
+the Scoping page counts the guidance note the public may read (E7A): OK
+changing the answers keeps them (E7A): OK
+an approved guidance note reaches the public, labelled general information, with no figure in it (E7A): OK
+84-public-selector-approved
+axe: no WCAG 2.1 AA violations on public selector result, one rule and one place approved (E3): OK
+saving the result returns a recovery code (E4): OK
+the preliminary report downloads as a designed PDF with the label, the sections and only approved figures (E7D, E16): OK
+120-report-preliminary (pdf and pages)
+a saved result is recovered by its code and re-run on today's rules (E4): OK
+the optional consents start unticked (E4): OK
+the selector's review request is accepted (E3): OK
+the lead appears in the pipeline with its scores, consents and call request (E4): OK
+86-leads-pipeline
+axe: no WCAG 2.1 AA violations on leads pipeline (E4): OK
+lead status: Status recorded
+the lead's status change is recorded in its history (E4): OK
+the lead page shows purchase readiness and commercial value with their evidence, and the next best action with its reason (E7C): OK
+next action: Next action set
+the override shows beside the rule's suggestion (E7C): OK
+87-lead-detail
+axe: no WCAG 2.1 AA violations on lead detail (E4): OK
+the Funnel page counts the selector's visits, starts, completions and saves and follows them to the lead (E7C): OK
+the Funnel page lists the high-readiness lead that needs a person (E7C): OK
+98-funnel
+axe: no WCAG 2.1 AA violations on funnel (E7C): OK
+the Funnel page at 390 px has no horizontal overflow (E7C): OK
+99-mobile-funnel
+axe: no WCAG 2.1 AA violations on funnel at 390 px (E7C): OK
+booking: Call booked; it appears in the queue when due
+the call is booked: the lead is in consultation with a follow-up for that time (E7D): OK
+101-lead-booked
+axe: no WCAG 2.1 AA violations on lead page with the call booked (E7D): OK
+the leads page at 390 px has no horizontal overflow (E4): OK
+88-mobile-leads
+the lead page at 390 px has no horizontal overflow (E7D): OK
+102-mobile-lead-booked
+the homepage at 390 px is filled from the platform before it is checked (E11): OK
+the homepage at 390 px has no horizontal overflow (E7A): OK
+94-mobile-public-home
+axe: no WCAG 2.1 AA violations on public homepage at 390 px (E7A): OK
+the selector result at 390 px has no horizontal overflow (E3): OK
+85-mobile-public-selector
+axe: no WCAG 2.1 AA violations on public selector at 390 px (E3): OK
+the public intake page keeps its single-column layout: OK
+39-public-intake
+public intake accepted the lead: OK
+lead from the public page appears in the pipeline: OK
+search finds the new client: OK
+repeat lead gets the same answer: OK
+repeat lead is held for ops, not attached: OK
+42-held-leads
+held lead marked handled: OK
+ops turned the held enquiry into a request for the existing client (E5): OK
+89-held-enquiry-converted
+catalogue lists 82 services: OK
+25-catalogue
+fee: Fee added as UNCERTAIN
+new fee shows as UNCERTAIN: OK
+verify: Fee marked verified
+verified fee shows the verifier and no stale badge: OK
+rule: Rule scheduled
+scheduled rule change is listed with its date: OK
+26-rules
+ops sees the fee table but no margin rates, floors or settings: OK
+ops catalogue hides the rule column values: OK
+partners page links to onboarding: OK
+43-ops-partner-onboarding
+partner moved to contacted: OK
+application submitted: OK
+trade licence uploaded, awaiting MKW check: OK
+44-partner-firm
+command centre says why the partner document is waiting: OK
+the document check sits beside it, UNCERTAIN, read from the name only: OK
+every queue item says why it is ranked where it is: OK
+the licence item offers Verify and Reject as one click: OK
+70-ops-command-centre
+axe: no WCAG 2.1 AA violations on ops command centre (O11): OK
+the filter shows one kind and says it is pressed: OK
+one click records that the check is right: OK
+the check now shows as confirmed: OK
+command centre at 390 px has no horizontal overflow: OK
+71-mobile-command-centre
+axe: no WCAG 2.1 AA violations on ops command centre at 390 px (O11): OK
+the jobs run from the System page: OK
+the run is listed with its steps and the audit chain as checked: OK
+every change the web app sent for ops carried an idempotency key (12 changes): OK
+79-system
+axe: no WCAG 2.1 AA violations on System page (O13): OK
+System page at 390 px has no horizontal overflow: OK
+80-mobile-system
+axe: no WCAG 2.1 AA violations on System page at 390 px (O13): OK
+licence verified: OK
+partner moved to pilot with a verified licence: OK
+client is asked for documents per step: OK
+nothing needed now belongs to an approved step; the first open step's documents are the ones needed now (E15): OK
+the client's documents are grouped: needed now first, the rest later by step with its date (E15): OK
+the client's next action counts only the documents needed now, and later only for steps still to come (E15): OK
+documents: 8 now, 5 later, 0 sent
+118-client-documents-grouped
+a wrong file type is refused before upload, beside the item: OK
+the refused file is marked invalid for screen readers: OK
+74-client-checklist-refused
+client document uploaded: OK
+an uploaded document moves to already sent, and the count needed now falls (E15): OK
+45-client-documents
+the grouped documents at 390 px have no horizontal overflow (E15): OK
+axe: no WCAG 2.1 AA violations on client documents grouped at 390 px (E15): OK
+119-mobile-client-documents
+offer PDF downloads for the client: OK
+partner marked the client document received: OK
+46-ops-delays
+founder dashboard shows revenue, cash and margin: OK
+49-founder-dashboard
+ops dashboard hides margin: OK
+accounting export downloads as CSV: OK
+ops cannot export margin: OK
+obligation added: OK
+50-ops-compliance
+client sees the confirmed obligation: OK
+client uploaded filing evidence: OK
+51-client-compliance
+a saved result became the client's request without re-typing (E5): OK
+the review shows the saved result then against today's advice (E5): OK
+90-review-from-saved-result
+the client asked for a renewal offer from the obligation (E5): OK
+the obligation shows its renewal request after a reload too (E5): OK
+91-client-renewal-requested
+axe: no WCAG 2.1 AA violations on client compliance with a renewal request (E5): OK
+the saved-result box at 390 px has no horizontal overflow (E5): OK
+92-mobile-saved-result
+ops marked the obligation met: OK
+the next obligation rolled forward: OK
+partner performance page has no client or margin figures: OK
+the partner's menu stays on one row at 1280 px (E10): OK
+the partner's bar is dark with the M mark and the scorecard leads the performance tiles (E10): OK
+108-partner-performance
+axe: no WCAG 2.1 AA violations on partner performance with the scorecard tiles (E10): OK
+the partner's payouts are summed by state on tiles, due now first, and the sums match the rows (E10): OK
+110-partner-payouts
+the partner's work shows a flag beside each emirate in delivery and icon tiles (E10): OK
+109-partner-work
+axe: no WCAG 2.1 AA violations on partner work with icon tiles and flags (E10): OK
+111-mobile-partner-performance: page 390/390 px, tab bar rgb(255, 255, 255), top bar rgb(22, 32, 28)
+111-mobile-partner-performance at 390 px has no horizontal overflow and a light tab bar under the dark top bar (E10): OK
+111-mobile-partner-performance
+112-mobile-partner-payouts: page 390/390 px, tab bar rgb(255, 255, 255), top bar rgb(22, 32, 28)
+112-mobile-partner-payouts at 390 px has no horizontal overflow and a light tab bar under the dark top bar (E10): OK
+112-mobile-partner-payouts
+113-mobile-partner-engagement: page 390/390 px, tab bar rgb(255, 255, 255), top bar rgb(22, 32, 28)
+113-mobile-partner-engagement at 390 px has no horizontal overflow and a light tab bar under the dark top bar (E10): OK
+113-mobile-partner-engagement
+axe: no WCAG 2.1 AA violations on partner engagement at 390 px (E10): OK
+52-partner-performance
+axe: no WCAG 2.1 AA violations on sign-in (en): OK
+skip link is the first focus stop: OK
+activating the skip link moves focus to the page without changing the route: OK
+the document title follows the heading: OK
+keyboard reaches the email field: OK
+keyboard-only path opens the engagement: OK
+axe: no WCAG 2.1 AA violations on client offer (en): OK
+axe: no WCAG 2.1 AA violations on client home (en): OK
+axe: no WCAG 2.1 AA violations on client engagement (en): OK
+axe: no WCAG 2.1 AA violations on client compliance (en): OK
+axe: no WCAG 2.1 AA violations on client intake (en): OK
+axe: no WCAG 2.1 AA violations on partner home (en): OK
+axe: no WCAG 2.1 AA violations on partner firm (en): OK
+axe: no WCAG 2.1 AA violations on public intake (en): OK
+no Arabic switch for clients before the sign-off: OK
+Arabic sign-off recorded: OK
+client home renders in Arabic, right-to-left: OK
+55-client-home-ar
+offer in Arabic keeps amounts and the accept wording: OK
+56-client-offer-ar
+engagement in Arabic: OK
+57-client-engagement-ar
+compliance in Arabic: OK
+58-client-compliance-ar
+public intake in Arabic: OK
+the homepage in Arabic (E7A): OK
+the preliminary report in Arabic: a designed PDF with the Arabic font, an Arabic file name and the Arabic title (E16): OK
+122-report-preliminary-ar (pdf and pages)
+the homepage map in Arabic keeps west on the left and shows each emirate's name once (E12): OK
+114-public-home-ar
+the public selector in Arabic, first question: OK
+the public selector in Arabic, second question: OK
+59-public-intake-ar
+axe: no WCAG 2.1 AA violations on client home (ar): OK
+axe: no WCAG 2.1 AA violations on client offer (ar): OK
+axe: no WCAG 2.1 AA violations on client engagement (ar): OK
+axe: no WCAG 2.1 AA violations on client compliance (ar): OK
+axe: no WCAG 2.1 AA violations on client intake (ar): OK
+the Arabic document title follows the heading: OK
+people's own words are left untranslated: OK
+arabic gaps reported by the client screens (142): AED 22,588.75 | AED 0 | scoped | Trade licence renewal and amendment | Free zone licence and registration, Residence visa, per person | 4 Nov 2026 · Free zone licence and registration, Residence visa, per person | 4 Nov 2026 · Free zone licence and registration, Residence visa, per person, Corporate bank account opening, VAT registration and returns, per year | 1 Mar 2027 | Trade licence renewal | 28 Apr 2027 | VAT return Q4 2026 | Corporate bank account opening | Free zone licence and registration | VAT registration and returns, per year | Residence visa, per person | 20 working days | Bank-ready file submitted | Account opened | Documents collected and verified | Initial approval issued | Licence and establishment card issued | VAT registration | First return filed | Entry permit issued (2) | Medical and Emirates ID biometrics done (2) | Residence visa stamped (2) | AED 12,550 | AED 627.50 | AED 16,000 | AED 29,177.50 | AED 6,588.75 | 18 Nov 2026 | This offer is accepted. | Your engagement · | · 4 Nov, 21:36 GST · contact details hidden | photo | entry stamp or visa | medical fitness | passport copy | emirates id | trade licence | business plan or profile | sales and purchase records | proof of address | passport.pdf | 4 Nov 2026 | document_checklist.pdf | AED 2,400 | AED 3,400 | AED 9,000 | AED 2,750 | AED 2,000 | AED 3,500 | licence renewal · yearly | On the licence | Renewal requested | : your offers appear on the | overview | vat return · quarterly | FTA portal, tax period Oct-Dec | 28 Jan 2027 | vat-return-acknowledgement.pdf | Already answered on our public page? | Enter the code of your saved result and we start the request from those answers; nothing to type again. MKW Advisors checks them against today's rules before anything is priced. | Saved result code | ABCDE23456 | Start from my saved result | e.g. Three partners starting a software company; we need two visas and a bank account | e.g. IFZA, Meydan, RAKEZ | Bookkeeping, per month | Accounting software or ERP implementation | Outsourced accounting, per month | Fund accounting and administration, per year | Financial reporting pack (IFRS or management accounts) | Budgeting, forecasting and financial model | Corporate finance and fundraising retainer | Business valuation report | Fractional CFO, per month | Payroll and WPS, per month | Market entry and feasibility study | Management and strategy consulting, per project | External statutory audit, per year | Forensic accounting and court expert, per case | Free zone approved auditor, per year | ICV certification, per certificate | Internal audit, per year | ISO certification, per standard | RERA and owners association audit, per building | AML programme and goAML registration, per year | Corporate governance and risk advisory | KYC and onboarding, per month | Regulatory licensing (DFSA, FSRA, VARA) | IT and technology solution, per project | Marketing and digital marketing retainer, per month | Website or app development, per project | Employer of record (PEO), per employee per month | Health and business insurance, per year | HR outsourcing and advisory, per month | Recruitment, per hire | Corporate and commercial legal matter | Cap table and ESOP management, per year | Patents, IP and franchising | Litigation, arbitration or debt recovery, per case | Notary service, per document | Will and estate planning, per will | Trademark registration, one class | Customs and import-export registration | Real estate and property services | Attestation and legalisation, per document | Document clearing transaction | Vehicle or court transaction | Emirates ID, medical and labour card processing, per person | Amer or GDRFA immigration transaction | PRO retainer, per month | Legal translation, per page | Typing centre transaction | Private client services, per year | Family office services, per year | Trust, fiduciary and corporate administration, per year | Wealth and asset structuring, per structure | Company secretarial and registers, per year | Company liquidation and deregistration | Branch or representative office of a foreign company | DIFC or ADGM company and CSP services | Freelance licence or permit, per year | Holding, SPV, foundation and corporate structuring | Local service agent or nominee arrangement, per year | Virtual office, flexi desk or business centre, per year | Corporate tax registration and return, per year | FTA registered tax agency, per year | FTA registered tax agency (corporate tax), per year | Tax dispute, reconsideration or penalty waiver, per case | E-invoicing readiness | Excise tax registration and returns, per year | International and cross-border tax structuring | FTA tax agency for SMEs (Muwafaq), per year | Tax agent representation before the FTA, per matter | Transfer pricing documentation | Tax residency certificate | Second residency or citizenship by investment (adviser fee) | Golden visa application | Relocation support for a family
+no string U1 added appears untranslated on the client screens visited in Arabic (U1): OK
+axe: no WCAG 2.1 AA violations on public intake (ar): OK
+staff menu fits on one row at 1280 px: OK
+staff menu has four entries (Work, Partners, Dashboard, Setup): OK
+the staff console has the dark bar, an icon on each entry and the MKW Advisors mark (E9): OK
+the dashboard's figures sit on tiles with icons, the first on the dark panel (E9): OK
+107-staff-dashboard
+axe: no WCAG 2.1 AA violations on staff dashboard with icon tiles (E9): OK
+Enter opens the Work menu and focuses its first link: OK
+61-console-menu
+axe: no WCAG 2.1 AA violations on console with the Work menu open (O10): OK
+Escape closes the menu and returns focus to its button: OK
+Setup tells screen readers which page is open: OK
+staff menu still on one row with the longest label open: OK
+settings lists both legal texts as drafts: OK
+the review is recorded and the client terms are no longer a draft: OK
+the holiday shows as expected until confirmed: OK
+62-settings-legal-holidays
+axe: no WCAG 2.1 AA violations on settings: legal texts and holidays (O10): OK
+an imported prospect shows its Partner ID and an unconfirmed FTA claim: OK
+63-ops-imported-prospect
+the partner sees the agreement as a draft pending legal review: OK
+axe: no WCAG 2.1 AA violations on partner firm: the agreement (O10): OK
+partner screens never show the name Tasees: OK
+64-partner-agreement
+console menu open at 390 px has no horizontal overflow: OK
+65-mobile-console-menu
+axe: no WCAG 2.1 AA violations on console with the Setup menu open at 390 px (O10): OK
+settings with legal texts and holidays at 390 px has no horizontal overflow: OK
+66-mobile-settings-legal
+axe: no WCAG 2.1 AA violations on settings: legal texts and holidays at 390 px (O10): OK
+partner agreement at 390 px has no horizontal overflow: OK
+67-mobile-partner-agreement
+axe: no WCAG 2.1 AA violations on partner firm: the agreement at 390 px (O10): OK
+Arabic home at 390 px has no horizontal overflow: OK
+people at 390 px has no horizontal overflow: OK
+settings at 390 px has no horizontal overflow: OK
+catalogue at 390 px has no horizontal overflow: OK
+rules at 390 px has no horizontal overflow: OK
+partners at 390 px has no horizontal overflow: OK
+scoping at 390 px has no horizontal overflow: OK
+agent at 390 px has no horizontal overflow: OK
+delays at 390 px has no horizontal overflow: OK
+dashboard at 390 px has no horizontal overflow: OK
+compliance at 390 px has no horizontal overflow: OK
+firm page at 390 px has no horizontal overflow: OK
+ERRORS:
+SMOKE TEST PASSED

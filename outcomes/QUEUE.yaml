@@ -260,12 +260,19 @@ outcomes:
     # Released by the owner on 4 Nov 2026: "start E19".
   - id: E20
     title: Baseline audit and transformation tracking documents (docs/transformation)
-    status: verified-pending-merge
+    status: merged  # camayank/mkw-uae-growth#41, 4 Nov 2026
     contract: outcomes/E20-baseline-audit.md
     depends_on: [E19]
     needs_from_owner: []
     # Released by the owner on 4 Nov 2026: "start E20". The mandate's Phase 0 deliverable, first drafted before E18 and
     # E19 and corrected after them. Documents only. E21 onwards are proposed in docs/transformation/ROADMAP.md.
+  - id: E21
+    title: Remaining isolation and state rules (audit events only through audit_append; an append-only nightly check that compares night to night; six downloads proven refused; request, payout and change-order machines)
+    status: verified-pending-merge
+    contract: outcomes/E21-audit-and-state-rules.md
+    depends_on: [E20]
+    needs_from_owner: []
+    # Released by the owner on 4 Nov 2026: "start E21". Gaps 145, 146 and 148 closed; 143 narrowed; 149 and 150 recorded.
 
 # Roadmap from docs/VISION.md (18 Oct 2026). Order of work: O11, O12, O13 before the pilot; then O7 (launch gate);
 # then O14, O15, O16. Renumbered on 18 Oct 2026 when the owner released O10 as Real data and staging.
@@ -275,13 +282,6 @@ outcomes:
 roadmap:
   # The transformation mandate (3 Nov 2026), reconciled in docs/transformation/ROADMAP.md (T1): E21 follows E20 under
   # the mandate's instruction to continue with the next priority outcome; the owner can reorder or stop at any merge.
-  - id: E21
-    title: Remaining isolation and state rules
-    status: planned
-    business_result: No application role can insert an audit event around audit_append; every download is proven refused to another party; every status change goes through one checked transition.
-    scope: [revoke insert on audit_events and an append-only audit_checks (gap 148), refusal tests for the six download routes (gap 145), transition tables for request, payout and change order (gap 146), night-to-night audit chain length check (gap 143)]
-    depends_on: [E20]
-    needs_from_owner: []
   - id: E22
     title: Upload quarantine
     status: planned

@@ -7,7 +7,6 @@
 import { audit } from "../lib/context.ts";
 import type { Queryable } from "../lib/db.ts";
 import type { Notifier } from "../lib/notify.ts";
-import { verifyAuditChain } from "../lib/audit.ts";
 import { cleanErrorText } from "../lib/errors.ts";
 
 /** The jobs run every 15 minutes; three missed runs is late. */
@@ -51,17 +50,22 @@ export async function finishRun(tx: Queryable, id: number, steps: Record<string,
   );
 }
 
-/** Verify the whole audit chain once per Dubai day. Returns the events checked, or 0 when today's check is done. */
+/**
+ * Verify the whole audit chain once per Dubai day, and compare it with the night before (E21). The database records
+ * the result itself (`audit_check_run`, migration 027): no application role can write, change or remove a check row.
+ * Returns the events checked, or 0 when today's check is done.
+ */
 export async function nightlyAuditCheck(tx: Queryable): Promise<number> {
-  const done = (await tx.query("select 1 from audit_checks where day = (app_now() at time zone 'Asia/Dubai')::date")).rows.length;
-  if (done) return 0;
-  const result = await verifyAuditChain(tx);
-  await tx.query(
-    "insert into audit_checks (day, checked, broken_id) values ((app_now() at time zone 'Asia/Dubai')::date, $1, $2) on conflict (day) do nothing",
-    [result.checked, result.brokenId],
-  );
-  return result.checked;
+  const r = (await tx.query<{ checked: number | string; recorded: boolean }>("select checked, recorded from audit_check_run()")).rows[0];
+  return r?.recorded ? Number(r.checked) : 0;
 }
+
+/** What the nightly check found, in words for the alert and the console. */
+const AUDIT_FINDING: Record<string, (c: { day: string; broken_id: number | string | null }) => string> = {
+  changed: (c) => `The audit chain check on ${c.day} failed at event ${c.broken_id}: an audit row was changed or removed.`,
+  tail_removed: (c) => `The audit chain check on ${c.day} found that the last event of the previous check is missing or different: events at the end of the trail were removed or rewritten.`,
+  shortened: (c) => `The audit chain check on ${c.day} found fewer events than the night before: events were removed.`,
+};
 
 interface Condition {
   kind: AlertKind;
@@ -117,13 +121,14 @@ export async function currentConditions(tx: Queryable, since: Date | null): Prom
       summary: `${Number(stuck.n)} message(s) have been due for up to ${Math.floor(Number(stuck.oldest))} minutes and are not sent: the dispatcher is not running or cannot reach the provider.`,
     });
   }
-  const check = (await tx.query<{ day: string; broken_id: number | string | null }>("select day::text, broken_id from audit_checks order by day desc limit 1")).rows[0];
-  if (check && check.broken_id !== null) {
+  const check = (await tx.query<{ day: string; broken_id: number | string | null; finding: string | null }>("select day::text, broken_id, finding from audit_checks order by day desc limit 1")).rows[0];
+  const finding = check ? (check.finding ?? (check.broken_id !== null ? "changed" : null)) : null;
+  if (check && finding) {
     out.push({
       kind: "audit_chain",
       subject: "",
       severity: "critical",
-      summary: `The audit chain check on ${check.day} failed at event ${check.broken_id}: an audit row was changed or removed. Do not change anything else; follow the incident steps in docs/DEPLOY.md.`,
+      summary: `${(AUDIT_FINDING[finding] ?? AUDIT_FINDING.changed!)(check)} Do not change anything else; follow the incident steps in docs/DEPLOY.md.`,
     });
   }
   return out;
@@ -224,7 +229,7 @@ export async function systemOverview(tx: Queryable) {
        from alerts where closed_at is null or closed_at > app_now() - interval '7 days' order by closed_at is null desc, opened_at desc limit 50`,
   )).rows;
   const auditChecks = (await tx.query(
-    `select day::text, checked, broken_id as "brokenId", at::text from audit_checks order by day desc limit 7`,
+    `select day::text, checked, broken_id as "brokenId", finding, at::text from audit_checks order by day desc limit 7`,
   )).rows;
   return { runs, outbox, alerts, auditChecks, thresholds: { jobsLateMinutes: JOBS_LATE_MINUTES, outboxStuckMinutes: OUTBOX_STUCK_MINUTES, remindHours: REMIND_HOURS } };
 }

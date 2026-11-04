@@ -74,7 +74,7 @@ audit trail. `runtime-login.test.ts` shows each of these is refused for the new 
 | `pnpm test` (PGlite) | core 159 passed (19 files); API 402 passed, 5 skipped (the PostgreSQL-only tests; 41 files) | `tests-pglite.txt` |
 | API suite on PostgreSQL 16 | 407 passed (41 files): a whole engagement as the runtime login, the owner refused in production, what the login cannot do | `tests-postgres16.txt` |
 | Staging stack | `pnpm --dir infra synth:check` passes; the template shows the app and jobs on the runtime secret and only the migration task on the master's; `appDesiredCount=0` synthesises | `synth.txt` |
-| Browser smoke on a fresh demo | see `smoke-log.txt`; partner staff signed in for the first time: no Payouts menu, no AED on work, performance and rates, phone width with axe | `smoke-log.txt`, `screens/` |
+| Browser smoke on a fresh demo | 337 checks, 0 failed (7 new for E19); partner staff signed in for the first time: no Payouts menu, no AED on work, performance and rates, phone width with axe | `smoke-log.txt`, `screens/` |
 
 ## Dependencies
 

@@ -1,9 +1,9 @@
 pnpm typecheck: clean (2026-11-04)
 
-pnpm test (PGlite), after the independent review's fixes:
+pnpm test (PGlite), after the independent review's and Codex's fixes:
 packages/core test:  Test Files  19 passed (19)
 packages/core test:       Tests  159 passed (159)
-packages/core test:    Duration  3.19s (transform 1.02s, setup 0ms, import 1.83s, tests 5.46s, environment 1ms)
+packages/core test:    Duration  3.24s (transform 1.06s, setup 0ms, import 1.92s, tests 5.58s, environment 1ms)
 apps/api test:  Test Files  41 passed (41)
-apps/api test:       Tests  404 passed | 6 skipped (410)
-apps/api test:    Duration  68.47s (transform 3.03s, setup 0ms, import 18.54s, tests 179.47s, environment 13ms)
+apps/api test:       Tests  404 passed | 7 skipped (411)
+apps/api test:    Duration  71.33s (transform 3.19s, setup 0ms, import 18.87s, tests 188.34s, environment 7ms)

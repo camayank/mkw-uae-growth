@@ -81,8 +81,8 @@ compromised process could `RESET ROLE`, read anything, disable a trigger or edit
 | --- | --- | --- |
 | The reproduction on the old code | 2 of 4 failed (the two defects); sign-out, expiry and client member passed (tested, not broken) | `before-fix.txt` |
 | `pnpm typecheck` | clean | `tests-pglite.txt` |
-| `pnpm test` (PGlite) | core 159 passed (19 files); API 404 passed, 6 skipped (the PostgreSQL-only tests; 41 files) | `tests-pglite.txt` |
-| API suite on PostgreSQL 16 | 410 passed (41 files); verbose list of the E19, tamper and concurrency tests (56) | `tests-postgres16.txt` |
+| `pnpm test` (PGlite) | core 159 passed (19 files); API 404 passed, 7 skipped (the PostgreSQL-only tests; 41 files) | `tests-pglite.txt` |
+| API suite on PostgreSQL 16 | 411 passed (41 files); verbose list of the E19, tamper and concurrency tests (56) | `tests-postgres16.txt` |
 | Staging stack | `synth:check` passes. The template shows: the app container waits for the `migrate` container; only `migrate` holds the master secret; only the execution role can read it; the jobs use the runtime login | `synth.txt` |
 | Browser smoke on a fresh demo | 337 checks, 0 failed (7 new for E19); partner staff signed in for the first time: no Payouts menu, no AED on work, performance and rates, phone width with axe | `smoke-log.txt`, `screens/` |
 
@@ -116,6 +116,16 @@ logins. Found and fixed, each with a test:
 - **The SCRAM verifier and the truncate trigger** are now tested directly.
 
 Recorded: the runtime login can change its own password or settings (gap 144).
+
+## Codex review
+
+Two findings, both fixed:
+- **A fresh development database no longer migrated on start.** With no tables yet, the owner looked like the
+  runtime login. Owning the database now counts as being the owner; a PostgreSQL test migrates a fresh database on
+  start.
+- **Migration 025 used PostgreSQL 16 grant options** although 15 is supported. The grant now depends on the server
+  version (executed as a string, so 15 never parses the 16-only options), and the group is also set NOINHERIT, which
+  is what 15 goes by. The restore drill does the same. Only PostgreSQL 16 was available to run it on.
 
 ## Dependencies
 

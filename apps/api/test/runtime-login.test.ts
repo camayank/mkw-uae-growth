@@ -142,6 +142,25 @@ describe.skipIf(!PG)("the application as a runtime login that owns nothing (Post
     await expect(env.db.transaction((tx) => tx.query("delete from schema_migrations"))).rejects.toThrow(/permission denied/);
   });
 
+  it("a fresh database is migrated on start by the login that owns it, even before it has a table (Codex review)", async () => {
+    const admin = new pg.Client({ connectionString: process.env.TEST_DATABASE_URL });
+    await admin.connect();
+    const dbName = `tasees_fresh_${randomBytes(4).toString("hex")}`;
+    await admin.query(`create database ${dbName}`);
+    const url = new URL(process.env.TEST_DATABASE_URL!);
+    url.pathname = `/${dbName}`;
+    const fresh = await openPostgres(url.toString());
+    try {
+      expect(await loginOwnsSchema(fresh)).toBe(true);
+      expect((await prepareDatabase(fresh, { production: false })).length).toBeGreaterThan(20);
+      expect(await prepareDatabase(fresh, { production: false })).toEqual([]);
+    } finally {
+      await fresh.close();
+      await admin.query(`drop database ${dbName} with (force)`);
+      await admin.end();
+    }
+  });
+
   it("the migration step runs again as an owner who is not a superuser (as RDS's master): the login is updated, not refused", async () => {
     // E19 review: ALTER ROLE ... NOSUPERUSER is refused to a non-superuser, so every migration after the first failed.
     const admin = new pg.Client({ connectionString: process.env.TEST_DATABASE_URL });

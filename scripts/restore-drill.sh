@@ -29,8 +29,17 @@ do $$ begin
   if not exists (select 1 from pg_roles where rolname = 'app_runtime') then create role app_runtime nologin noinherit; end if;
 end $$;
 grant app_client, app_partner, app_platform to current_user;
--- E19: memberships are not in a dump either; the runtime group switches to the three roles but never inherits them.
-grant app_client, app_partner, app_platform to app_runtime with inherit false, set true;
+-- E19: memberships are not in a dump either; the runtime group switches to the three roles but never inherits them
+-- (PostgreSQL 16 per grant; PostgreSQL 15 by the group's NOINHERIT attribute).
+alter role app_runtime noinherit;
+do $$ begin
+  if current_setting('server_version_num')::int >= 160000 then
+    -- As a string, so PostgreSQL 15 never parses the 16-only options.
+    execute 'grant app_client, app_partner, app_platform to app_runtime with inherit false, set true';
+  else
+    grant app_client, app_partner, app_platform to app_runtime;
+  end if;
+end $$;
 SQL
 start=$(date +%s)
 pg_restore --no-owner --dbname="$target" "$DUMP"

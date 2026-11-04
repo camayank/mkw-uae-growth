@@ -1,9 +1,9 @@
-apps/api vitest on PostgreSQL 16 (TEST_DATABASE_URL set), after the independent review's fixes, 2026-11-04
+apps/api vitest on PostgreSQL 16 (TEST_DATABASE_URL set), after the independent review's and Codex's fixes, 2026-11-04
  Test Files  41 passed (41)
-      Tests  410 passed (410)
-   Duration  50.44s (transform 2.60s, setup 0ms, import 14.89s, tests 131.02s, environment 3ms)
+      Tests  411 passed (411)
+   Duration  54.60s (transform 2.97s, setup 0ms, import 16.47s, tests 141.87s, environment 3ms)
 
-Verbose rerun on PostgreSQL 16: the new files, the tamper tests and the concurrency tests:
+Verbose rerun on PostgreSQL 16 (before the Codex fixes): the new files, the tamper tests and the concurrency tests:
  ✓ test/hardening.test.ts > configuration at boot > accepts a sound production set and the development defaults 2ms
  ✓ test/hardening.test.ts > configuration at boot > refuses each misconfiguration, naming the variable and never its value 1ms
  ✓ test/hardening.test.ts > configuration at boot > takes the proxy's addresses, not a hop count 1ms

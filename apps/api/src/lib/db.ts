@@ -144,16 +144,20 @@ export async function pendingMigrations(db: Database): Promise<string[]> {
 }
 
 /**
- * Whether this connection's login owns the application's tables (E19). The owner can migrate; it can also disable a
- * trigger or step out of the per-request role, so it must not be what the application logs in as in production.
- * PGlite is single-user and always the owner.
+ * Whether this connection's login is the owner (E19): it owns the database, or the application's tables. The owner can
+ * migrate; it can also disable a trigger or step out of the per-request role, so it must not be what the application
+ * logs in as in production. Owning the database counts, so a fresh development database with no tables yet still
+ * migrates on start (Codex review of E19). PGlite is single-user and always the owner.
  */
 export async function loginOwnsSchema(db: Database): Promise<boolean> {
   if (db.kind !== "postgres") return true;
   const r = await db.transaction((tx) =>
-    tx.query<{ n: number }>("select count(*)::int as n from pg_tables where schemaname = 'public' and tableowner = current_user"),
+    tx.query<{ owns: boolean }>(
+      `select (select datdba = (select oid from pg_roles where rolname = current_user) from pg_database where datname = current_database())
+           or exists (select 1 from pg_tables where schemaname = 'public' and tableowner = current_user) as owns`,
+    ),
   );
-  return num(r.rows[0]?.n) > 0;
+  return r.rows[0]?.owns === true;
 }
 
 /**

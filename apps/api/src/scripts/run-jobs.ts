@@ -1,6 +1,6 @@
 // One sweep of the scheduled jobs, for cron when IN_PROCESS_JOBS=0. Uses the same recording notifier as the
 // server, so digests and reminders raised here are recorded, emailed and shown in the bell like any other.
-import { openDatabase, migrate } from "../lib/db.ts";
+import { openDatabase, prepareDatabase } from "../lib/db.ts";
 import { notifierFromEnv } from "../lib/notify.ts";
 import { providerFromEnv } from "../lib/payments.ts";
 import { storageFromEnv } from "../lib/storage.ts";
@@ -12,7 +12,10 @@ import { checkConfigOrExit } from "../lib/config.ts";
 checkConfigOrExit();
 
 const db = await openDatabase();
-await migrate(db);
+await prepareDatabase(db, { production: process.env.NODE_ENV === "production" }).catch((e: Error) => {
+  console.error(e.message);
+  process.exit(1);
+});
 const { notify } = notifierFromEnv(db);
 // The same outbox subscribers as the server, so work left by a stopped app task is finished here (O11).
 registerDocumentChecker(notify, db, modelFromEnv());

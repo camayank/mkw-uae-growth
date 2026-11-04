@@ -35,17 +35,17 @@ export async function renderPartnerHome() {
     ${kpiTile("Offers waiting for your answer", offered.length, "", "alert")}
     ${kpiTile("Engagements in delivery", active.filter((a) => a.engagementStatus !== "completed").length, "", "list")}
     ${kpiTile("Requests for a price", rfqs.length, "", "tax")}
-    ${kpiTile("Payouts due to you", aed(h.payouts.filter((p) => p.status === "eligible").reduce((s, p) => s + p.amount, 0)), "", "cash")}
+    ${admin ? kpiTile("Payouts due to you", aed(h.payouts.filter((p) => p.status === "eligible").reduce((s, p) => s + p.amount, 0)), "", "cash") : ""}
     ${kpiTile(`Quality score · <a href="#/performance">scorecard</a>`, esc(h.firm?.latestScore ?? h.firm?.quality ?? "–"), "", "shield")}
   </div>
   <div class="stack">
     <div class="card flush" style="border-inline-start: 4px solid var(--accent)"><div class="row between" style="padding: 16px 18px 0"><h2 style="padding:0">Offered to you</h2><span class="small muted">You have 4 working hours to answer; after that the work goes to the next firm.</span></div>
       ${table(
-        ["Where", "Work", "#Your payout", "Reply by", ""],
+        ["Where", "Work", ...(admin ? ["#Your payout"] : []), "Reply by", ""],
         offered.map(
           (a) => `<tr><td>${flag(a.brief?.emirate)}<b>${esc(a.brief?.emirate ?? "")}</b>${a.brief?.freeZone ? `<br><span class="small muted">${esc(a.brief.freeZone)}</span>` : ""}</td>
           <td>${esc((a.brief?.lines ?? a.codes.map((c) => ({ code: c, qty: 1 }))).map((l) => `${l.name ?? nameOf(l.code)}${l.qty > 1 ? ` ×${l.qty}` : ""}`).join(", "))}<br><span class="small muted">Step dates and the client's documents are in the brief once you accept.</span></td>
-          <td class="num"><b>${aed(a.payoutTotal)}</b><br><span class="small muted">your fees; government fees not included</span></td><td><b>${dateTime(a.deadline)}</b><br>${timeLeft(a.deadline)}</td>
+          ${admin ? `<td class="num"><b>${aed(a.payoutTotal)}</b><br><span class="small muted">your fees; government fees not included</span></td>` : ""}<td><b>${dateTime(a.deadline)}</b><br>${timeLeft(a.deadline)}</td>
           <td style="white-space:nowrap">${admin ? `<button class="primary${a.id === urgent ? " gold" : ""}" data-act="alloc" data-id="${a.id}" data-decision="accept">Accept</button> <button data-act="alloc" data-id="${a.id}" data-decision="decline">Decline</button>` : `<span class="small muted">Your admin replies</span>`}</td></tr>`,
         ),
         "Nothing waiting. New work arrives here and by email; you have 4 working hours to reply.",
@@ -199,6 +199,7 @@ export async function renderPartnerPerformance() {
   const d = await api("GET", "/api/partner/dashboard");
   const by = (s) => d.jobs.find((j) => j.status === s)?.n ?? 0;
   const pay = (s) => d.payouts.find((p) => p.status === s)?.total ?? 0;
+  const admin = role() === "partner_admin"; // E19: staff see no money figure
   $app.innerHTML = `<h1>Your performance</h1>
   <p class="muted">What MKW Advisors sees of your firm: jobs, on-time delivery, payouts and the weekly scorecard that decides who gets work.</p>
   <div class="kpis lead-kpis">
@@ -207,8 +208,8 @@ export async function renderPartnerPerformance() {
     ${kpiTile("Steps late now", d.milestones.late, "", "alert")}
     ${kpiTile("Jobs in delivery", by("in_delivery") + by("allocating") + by("disputed"), "", "list")}
     ${kpiTile("Jobs completed", by("completed"), "", "check")}
-    ${kpiTile("Paid to you", aed(pay("released")), "", "out")}
-    ${kpiTile("Due now (invoice us)", aed(pay("eligible")), "", "cash")}
+    ${admin ? kpiTile("Paid to you", aed(pay("released")), "", "out") : ""}
+    ${admin ? kpiTile("Due now (invoice us)", aed(pay("eligible")), "", "cash") : ""}
     ${kpiTile(`Client rating (${d.rating.count})`, esc(d.rating.average ?? "–"), "", "check")}
   </div>
   <div class="card flush"><h2>Scorecard trend</h2>${table(["Computed", "#Score", "On time", "First-pass QA", "Disputes", "Strikes", "Rating"], d.scorecards.map((c) => `<tr><td class="small">${date(c.computedAt)}${c.provisional ? ` ${badge("UNCERTAIN", "provisional")}` : ""}</td><td class="num"><b>${c.score}</b></td><td class="num">${c.inputs.milestonesOnTime}/${c.inputs.milestonesDone}</td><td class="num">${c.inputs.qaFirstPass}/${c.inputs.qaSubmissions}</td><td class="num">${c.inputs.disputes}</td><td class="num">${c.inputs.slaStrikes}</td><td class="num">${c.inputs.rating ?? "–"}</td></tr>`), "No scorecard yet; MKW Advisors computes it weekly.")}</div>`;
@@ -218,6 +219,11 @@ export async function renderPartnerPayouts() {
   const h = await api("GET", "/api/partner/home");
   const admin = role() === "partner_admin";
   const bank = h.bank ?? {};
+  // E19: partner staff see no money figure; the page says who does.
+  if (!admin) {
+    $app.innerHTML = `<h1>Payouts</h1><p class="muted">Your firm's admin sees payouts, invoices and bank details.</p>`;
+    return;
+  }
   $app.innerHTML = `<h1>Payouts</h1>
   <p class="muted">Paid in three stages (kick-off, key step, completion) in MKW Advisors' weekly payout run, once the client has paid and your invoice for the stage is on file. Upload your invoice to MKW Advisors for each payout below.</p>
   ${(() => { const sum = (st) => h.payouts.filter((p) => p.status === st).reduce((n, p) => n + p.amount, 0); return `<div class="kpis lead-kpis">${kpiTile("Due now: invoice us", aed(sum("eligible")), "", "cash")}${kpiTile("Paid to you", aed(sum("released")), "", "out")}${kpiTile("Not yet payable", aed(sum("pending")), "", "clock")}${sum("withheld") ? kpiTile("Withheld", aed(sum("withheld")), "", "alert") : ""}</div>`; })()}
@@ -252,9 +258,10 @@ export async function renderRateCards() {
   $app.innerHTML = `<h1>Your rate card</h1>
   <p class="muted">Standing prices MKW Advisors can use to offer your services without asking each time. Each card is valid for 90 days from the day you save it; an expired card stops new offers for that service until you save it again. Changes apply to new offers only; accepted work keeps its fees. Quote your own fee; government fees are taken from MKW's official fee table.</p>
   <div class="card flush">${table(
-    ["Service", "#Your fee", "#Govt fee stated", "#Third party", "#Days", "Not included", "Valid to"],
+    // E19: staff see the services, days and exclusions; the fees are the admin's.
+    ["Service", ...(admin ? ["#Your fee", "#Govt fee stated", "#Third party"] : []), "#Days", "Not included", "Valid to"],
     h.rateCards.map(
-      (c) => `<tr><td>${esc(c.name)}</td><td class="num">${aed(c.professional)}</td><td class="num">${aed(c.govStated)}</td><td class="num">${aed(c.thirdParty)}</td>
+      (c) => `<tr><td>${esc(c.name)}</td>${admin ? `<td class="num">${aed(c.professional)}</td><td class="num">${aed(c.govStated)}</td><td class="num">${aed(c.thirdParty)}</td>` : ""}
       <td class="num">${c.workingDays}</td><td class="small">${esc((c.exclusions ?? []).join("; ") || "–")}</td><td>${date(c.validTo)}${expiryBadge(c.validTo, 14) ? `<br>${expiryBadge(c.validTo, 14)}` : ""}</td></tr>`,
     ),
     "No rate cards yet.",

@@ -33,7 +33,9 @@ export interface StagingProps extends StackProps {
  * - the Dockerfile's image on ECS Fargate in private subnets behind an HTTPS load balancer (HTTP redirects);
  * - secrets in AWS Secrets Manager, read by the task at start and never written to the template or the logs;
  * - TRUST_PROXY set to the VPC's range (the load balancer's addresses), DEV_LOGIN unset, NODE_ENV=production;
- * - the 15-minute jobs as a scheduled Fargate task (IN_PROCESS_JOBS=0), with an alarm when a run is missing.
+ * - the 15-minute jobs as a scheduled Fargate task (IN_PROCESS_JOBS=0), with an alarm when a run is missing;
+ * - E19: the app and the jobs log in as a runtime login that owns nothing (its own secret); only the migration
+ *   container that starts each app task holds the master user's secret, and it creates or updates the runtime login.
  */
 export class StagingStack extends Stack {
   constructor(scope: Construct, id: string, props: StagingProps) {
@@ -53,6 +55,10 @@ export class StagingStack extends Stack {
 
     // Database ----------------------------------------------------------------------------------------------------
     const dbSecret = new rds.DatabaseSecret(this, "DbSecret", { username: "tasees", excludeCharacters: DB_PASSWORD_EXCLUDE });
+    // E19: the login the app and the jobs use. It owns no table and can only switch to the three application roles, so
+    // a compromised process cannot leave its per-request role, switch a guard off or edit the audit trail. The
+    // migration task creates it from this secret (scripts/migrate.ts) before the app starts with it.
+    const appDbSecret = new rds.DatabaseSecret(this, "AppDbSecret", { username: "tasees_app", excludeCharacters: DB_PASSWORD_EXCLUDE });
     const db = new rds.DatabaseInstance(this, "Db", {
       engine: rds.DatabaseInstanceEngine.postgres({ version: rds.PostgresEngineVersion.VER_16 }),
       instanceType: ec2.InstanceType.of(ec2.InstanceClass.T4G, ec2.InstanceSize.SMALL),
@@ -118,8 +124,8 @@ export class StagingStack extends Stack {
       ...(props.alarmEmail ? { ALERT_EMAIL: props.alarmEmail } : {}),
     };
     const secrets: Record<string, ecs.Secret> = {
-      DB_USER: ecs.Secret.fromSecretsManager(dbSecret, "username"),
-      DB_PASSWORD: ecs.Secret.fromSecretsManager(dbSecret, "password"),
+      DB_USER: ecs.Secret.fromSecretsManager(appDbSecret, "username"),
+      DB_PASSWORD: ecs.Secret.fromSecretsManager(appDbSecret, "password"),
       PAYMENT_WEBHOOK_SECRET: ecs.Secret.fromSecretsManager(webhookSecret),
       S3_ACCESS_KEY_ID: ecs.Secret.fromSecretsManager(storageSecret, "accessKeyId"),
       S3_SECRET_ACCESS_KEY: ecs.Secret.fromSecretsManager(storageSecret, "secretAccessKey"),
@@ -153,6 +159,27 @@ export class StagingStack extends Stack {
         logDriver: ecs.LogDrivers.awsLogs({ streamPrefix: "app", logGroup: appLogs }),
       },
     });
+    // E19: every app task runs the migration step first, in a container of its own that alone holds the master user's
+    // secret (the app container gets only the runtime login's). It applies the image's migrations as the owner, seeds
+    // the catalogue and creates or updates the runtime login; the app container starts only once it has succeeded. So
+    // every deploy, the first included, migrates with its own image before its app starts, while the old tasks keep
+    // serving (migrations are additive). The secrets are read by the ECS agent with the execution role; the app's own
+    // task role cannot read them.
+    const migrateLogs = new logs.LogGroup(this, "MigrateLogs", { retention: logs.RetentionDays.THREE_MONTHS, removalPolicy: RemovalPolicy.RETAIN });
+    const migrate = app.taskDefinition.addContainer("migrate", {
+      image,
+      essential: false,
+      environment,
+      secrets: {
+        DB_USER: ecs.Secret.fromSecretsManager(dbSecret, "username"),
+        DB_PASSWORD: ecs.Secret.fromSecretsManager(dbSecret, "password"),
+        APP_DB_USER: ecs.Secret.fromSecretsManager(appDbSecret, "username"),
+        APP_DB_PASSWORD: ecs.Secret.fromSecretsManager(appDbSecret, "password"),
+      },
+      command: withDatabaseUrl("node --conditions=production dist/scripts/migrate.js"),
+      logging: ecs.LogDrivers.awsLogs({ streamPrefix: "migrate", logGroup: migrateLogs }),
+    });
+    app.taskDefinition.defaultContainer!.addContainerDependencies({ container: migrate, condition: ecs.ContainerDependencyCondition.SUCCESS });
     app.targetGroup.configureHealthCheck({ path: "/api/health", healthyHttpCodes: "200", interval: Duration.seconds(30) });
 
     // The 15-minute sweeps (reply deadlines, auto-approval, offer expiry, digest, licence and delay watch, reminders).
@@ -201,6 +228,7 @@ export class StagingStack extends Stack {
       for (const a of [missing, unhealthy]) a.addAlarmAction(new cwActions.SnsAction(topic));
     }
 
+
     // What the runbook needs for one-off tasks (create the founder, run the importers) and the backup script.
     new CfnOutput(this, "Url", { value: `https://${domainName}` });
     new CfnOutput(this, "LoadBalancerDns", { value: app.loadBalancer.loadBalancerDnsName, description: "Point the domain's DNS (CNAME or alias) here" });
@@ -210,6 +238,7 @@ export class StagingStack extends Stack {
     new CfnOutput(this, "TaskSecurityGroup", { value: tasksSg.securityGroupId });
     new CfnOutput(this, "FilesBucket", { value: files.bucketName, description: "Evidence files; upload the go-live files under import/ and delete them after the import" });
     new CfnOutput(this, "BackupsBucket", { value: backups.bucketName });
-    new CfnOutput(this, "DatabaseSecretArn", { value: dbSecret.secretArn });
+    new CfnOutput(this, "DatabaseSecretArn", { value: dbSecret.secretArn, description: "The master user: the migration container and backups only" });
+    new CfnOutput(this, "AppDatabaseSecretArn", { value: appDbSecret.secretArn, description: "The runtime login the app and the jobs use (E19)" });
   }
 }

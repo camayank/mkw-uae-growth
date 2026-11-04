@@ -1,5 +1,5 @@
 // Tasees workspace: shell module (split from app.js in O12; plain ES modules, no build step).
-import { $app, $brand, $nav, $who, act, announceRoute, api, applyLang, deliverables, ensureLabels, esc, hooks, isClient, isPartner, isPlatform, keyboardScrollables, lang, pickLang, render, route, state, translatePage, words } from "./core.js";
+import { $app, $brand, $nav, $who, act, announceRoute, api, applyLang, deliverables, ensureLabels, esc, hooks, isClient, isPartner, isPlatform, keyboardScrollables, lang, pickLang, render, role, route, state, translatePage, words } from "./core.js";
 import { renderNotifications } from "./common.js";
 import { renderClientCompliance, renderClientHome, renderClientOffer, renderIntake, renderPayPage, renderStatement } from "./client.js";
 import { renderEngagement } from "./engagement.js";
@@ -18,7 +18,8 @@ document.addEventListener("visibilitychange", () => {
 
 export function navFor() {
   if (isClient()) return [["home", "Overview"], ["new", "New request"], ["compliance", "Compliance"], ["statement", "Statement"]];
-  if (isPartner()) return [["home", "Work"], ["performance", "Performance"], ["firm", "Your firm"], ["rates", "Rate card"], ["payouts", "Payouts"]];
+  // E19: partner staff see no money figure, so the Payouts page is the admin's only.
+  if (isPartner()) return [["home", "Work"], ["performance", "Performance"], ["firm", "Your firm"], ["rates", "Rate card"], ...(role() === "partner_admin" ? [["payouts", "Payouts"]] : [])];
   // MKW staff: fifteen pages in four entries, so the bar stays on one row at desktop and phone width.
   return [
     { group: "Work", items: [["home", "Queue"], ["leads", "Leads"], ["funnel", "Funnel"], ["pipeline", "Pipeline"], ["new", "New request"], ["delays", "Delays"], ["compliance", "Compliance"], ["agent", "AI queue"]] },

@@ -6,7 +6,7 @@
  *   pnpm --filter @tasees/api create-founder connect@mkwadvisors.com "Mayank Wadhera"
  */
 import { asPlatform, audit } from "../lib/context.ts";
-import { migrate, openDatabase } from "../lib/db.ts";
+import { openDatabase, prepareDatabase } from "../lib/db.ts";
 import { checkConfigOrExit } from "../lib/config.ts";
 
 checkConfigOrExit();
@@ -20,7 +20,10 @@ if (!/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(email) || name.length < 2) {
 }
 
 const db = await openDatabase();
-await migrate(db);
+await prepareDatabase(db, { production: process.env.NODE_ENV === "production" }).catch((e: Error) => {
+  console.error(e.message);
+  process.exit(1);
+});
 const result = await asPlatform(db, null, async (tx) => {
   let org = (await tx.query<{ id: string }>("select id from orgs where type = 'platform' order by created_at limit 1")).rows[0];
   const createdOrg = !org;

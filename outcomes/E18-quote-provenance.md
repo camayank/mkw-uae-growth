@@ -1,6 +1,6 @@
 # E18 Trusted quotation: each government fee keeps the evidence it was quoted on
 
-Status: verified-pending-merge (branch `outcome/E18-quote-provenance`, on `main` at d8104fb with E17 merged; released
+Status: merged (camayank/mkw-uae-growth#39, 4 Nov 2026; previously verified-pending-merge, branch `outcome/E18-quote-provenance`, on `main` at d8104fb with E17 merged; released
 by the owner on 4 Nov 2026: "Execute E18: trusted quotation and fee provenance… Complete this one outcome thoroughly
 before beginning the next major enhancement.")
 

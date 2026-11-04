@@ -302,6 +302,32 @@ for (const email of ["admin@setup-partner.test", "admin@corporate-services.test"
   log.push(`${email} accepted ${n}`);
   if (n) partnerPages.push(p);
 }
+// E19: partner staff work the steps and see no money figure: no Payouts page, no fee, payout or rate on any screen.
+{
+  const sp = await sessionByEmail("staff@setup-partner.test");
+  const menu = await sp.locator("#nav").innerText();
+  check("partner staff have no Payouts page in their menu (E19):", !/Payouts/.test(menu) && /Work/.test(menu));
+  for (const [route, ready, name] of [["#/home", "main h1", "130-partner-staff-work"], ["#/performance", "main h1", "131-partner-staff-performance"], ["#/rates", "main h1", "132-partner-staff-rates"]]) {
+    await sp.goto(APP + route); await sp.reload();
+    await sp.waitForSelector(ready);
+    await sp.waitForTimeout(600);
+    check(`partner staff see no money figure on ${route} (E19):`, !/AED|your payout|Paid to you|Due now|Your fee/i.test(await sp.locator("main").innerText()));
+    await shot(sp, name);
+  }
+  await sp.goto(APP + "#/payouts"); await sp.reload();
+  await sp.waitForSelector("main h1");
+  check("partner staff opening the payouts address are told the admin sees payouts (E19):", /admin sees payouts/.test(await sp.locator("main").innerText()) && !/AED/.test(await sp.locator("main").innerText()));
+  const spm = await (await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, storageState: await sp.context().storageState() })).newPage();
+  await spm.goto(APP + "#/home");
+  await spm.waitForSelector("main h1");
+  await spm.waitForTimeout(500);
+  check("partner staff work at 390 px has no horizontal overflow (E19):", !(await spm.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
+  await spm.screenshot({ path: `${OUT}/133-mobile-partner-staff-work.png`, fullPage: false });
+  log.push("133-mobile-partner-staff-work");
+  await axeCheck(spm, "partner staff work at 390 px (E19)");
+  await spm.context().close();
+  await sp.context().close();
+}
 // The partner holding the first step uploads evidence and submits it
 let worked = false;
 for (const p of partnerPages) {
@@ -1752,13 +1778,11 @@ for (const [route, name] of [["people", "20-mobile-people"], ["settings", "21-mo
 }
 
 // The new partner's firm page at phone width
-const mpp = await (await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 })).newPage();
+// The new partner's session is reused (E19): sign-in code requests are limited to 20 per address in 15 minutes, and the
+// run signs partner staff in too.
+const mpp = await (await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, storageState: await newPartnerAdmin.context().storageState() })).newPage();
 mpp.on("pageerror", (e) => errors.push(`mobile partner: ${e.message}`));
 await mpp.goto(APP);
-await mpp.fill('form[data-form="request-code"] input[name="email"]', partnerEmail);
-await mpp.locator('form[data-form="request-code"] button[type="submit"]').click();
-await mpp.waitForSelector('form[data-form="verify"]');
-await mpp.locator('form[data-form="verify"] button[type="submit"]').click();
 await mpp.waitForSelector("#nav > :is(a, .navgroup)");
 await mpp.goto(APP + "#/firm"); await mpp.reload();
 await mpp.waitForSelector("main h1");

@@ -1,0 +1,14 @@
+E19 reproduction: apps/api/test/role-isolation.test.ts against main at 95ee18d (before the fix), 2026-11-04
+     × one partner firm never reads the cost another firm put on its change order, at the database or over the API 58ms
+     × partner staff are sent no money figure: work, dashboard, engagement and rate card 19ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  test/role-isolation.test.ts > role isolation (E19) > one partner firm never reads the cost another firm put on its change order, at the database or over the API
+AssertionError: expected [ { …(6) } ] to deeply equal []
+- Expected
++ Received
+ FAIL  test/role-isolation.test.ts > role isolation (E19) > partner staff are sent no money figure: work, dashboard, engagement and rate card
+AssertionError: expected [ { …(8) }, { …(8) }, { …(8) } ] to deeply equal []
+- Expected
++ Received
+ Test Files  1 failed (1)
+      Tests  2 failed | 2 passed (4)

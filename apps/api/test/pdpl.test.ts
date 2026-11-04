@@ -161,9 +161,13 @@ describe("PDPL export and erasure", () => {
   });
 
   it("detects a tampered audit row", async () => {
-    // Corrupt one row inside a transaction that is rolled back, so the shared database stays intact.
+    // Corrupt one row inside a transaction that is rolled back, so the shared database stays intact. Since E19 only the
+    // database owner can, with the append-only trigger off, so the test acts as the owner.
     await asPlatform(env.db, null, async (tx) => {
+      await tx.query("reset role"); // the test's connection is the owner's
+      await tx.query("alter table audit_events disable trigger audit_events_no_change");
       await tx.query("update audit_events set data = data || '{\"tampered\": true}'::jsonb where id = (select min(id) + 2 from audit_events)");
+      await tx.query("set local role app_platform");
       const check = await verifyAuditChain(tx);
       expect(check.intact).toBe(false);
       expect(check.brokenId).not.toBeNull();

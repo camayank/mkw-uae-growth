@@ -1258,3 +1258,62 @@ after the owner's transformation mandate named the defect: "Investigate the repo
     before.
 - **Recorded, not changed:** a free-zone request priced on an emirate-wide verified record reads VERIFIED (the lookup
   policy of D23; gap 140), and the verifier's name is kept on the frozen line (gap 141).
+
+**D101. Parties and staff see only their own; the application logs in as a role that owns nothing.** (E19, 4 Nov
+2026, released by the owner: "start E19", the four security problems the paused baseline audit's review found.)
+- **The defects, reproduced first** (`docs/evidence/E19/before-fix.txt`, failing on `main` at 95ee18d):
+  - one partner firm read the cost another firm put on its change order on an engagement they share: the policy let
+    every party read every change order, and `partner_fils` is granted to partners;
+  - partner staff were sent payouts, payout lines, payout totals and rate-card figures, although the spec gives them
+    no money figure.
+- **Fixes.**
+  - Migration 024: a partner firm reads only the change orders it raised (the client still reads all of its
+    engagement's); the engagement view filters the same way.
+  - Partner staff get no money figure from the work list, the dashboard, the engagement or the rate card. Their
+    screens leave the columns out and say the admin sees them; the Payouts page is the admin's.
+- **Sign-out and expiry** were already right but untested: signing out ends that session only, and a session past
+  its time is refused (`role-isolation.test.ts`). So is a client member's view of the offer, the engagement and the
+  statement.
+- **The database login.**
+  - Staging logged in as the RDS master user, which owns every table. A compromised process could leave its
+    per-request role, read anything, switch a guard off or edit the audit trail.
+  - Migration 025 adds `app_runtime`, which owns nothing and may only switch to the three application roles, and
+    makes the audit trail append-only at the database (privileges revoked, and a trigger).
+  - `prepareDatabase`: in production the app refuses to start as the owner. The runtime login never migrates and
+    refuses a schema that is behind.
+  - `scripts/migrate.ts` runs as the owner, applies migrations, seeds the catalogue, and creates or updates the runtime
+    login from its secret. It sends Postgres a SCRAM verifier, never the password, so no statement the server logs
+    carries it.
+  - Staging: the app and the jobs use the runtime login's secret, and only the migration step holds the master's (since the review, a container that starts each app task)
+    (`infra/lib/staging-stack.ts`; the runbook in `docs/DEPLOY.md`).
+- **Proof on PostgreSQL 16** (`runtime-login.test.ts`):
+  - a whole engagement runs as a fresh runtime login: request, offer, acceptance, payment, allocation, every step
+    delivered and approved, the jobs and the nightly audit check;
+  - that login cannot read without a role, cannot read after RESET ROLE, cannot change the audit trail and cannot
+    switch a guard off.
+- **The tamper tests** (`pdpl.test.ts`, `hardening.test.ts`) now act as the owner with the guard off, the only login
+  that still can.
+- **Not done here (gap 142).** Separate database roles for ops and finance, or for partner admin and staff. Within a
+  party the split stays in the API, now tested on every path the paused audit listed.
+- **Found by the independent review of E19, and fixed with tests:**
+  - **The runtime login could still rewrite the audit trail.** Earlier migrations granted the platform role every
+    right on every table, TRIGGER included. A trigger of its own on `audit_events` ran as the owner inside the
+    security-definer `audit_append`, and from there could switch the guard off.
+    Migration 026 revokes TRIGGER and REFERENCES from the application roles on every table, every right on the
+    migration list, and temporary objects. It also pins every security-definer function's search path. A test checks
+    that no application role holds TRIGGER or REFERENCES, or any write on the migration list.
+  - **The migration step failed on its second run on RDS.** ALTER ROLE may not name SUPERUSER unless the caller is a
+    superuser, and the RDS master is not. The login is now created with every attribute but altered without that
+    one. Its attributes are checked afterwards and its own settings cleared. A test runs the step twice as a
+    non-superuser owner.
+  - **"Migrate, then deploy" could not work.** The migration task's new image exists only after the deploy. Each app
+    task now starts with a `migrate` container that alone holds the master secret; the app container waits for it to
+    succeed. Every deploy, the first included, is one step. The separate task and the zero-task first deploy are gone.
+  - **`app_runtime`'s memberships** are granted `with inherit false, set true` (inheritance is decided per grant).
+    The restore drill grants them too.
+  - **Partner staff's engagement screen** drops the payouts panel, the fees, the change-order cost and the
+    government fees, which the API no longer sends them.
+  - **The SCRAM verifier** is checked against an independent computation.
+  - **The owner's truncate** is refused by the trigger.
+- **Recorded:** the runtime login can change its own password or settings, as any PostgreSQL login can (gap 144).
+

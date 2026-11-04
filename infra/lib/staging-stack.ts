@@ -24,6 +24,11 @@ export interface StagingProps extends StackProps {
   certificateArn?: string;
   /** Where alarms go (a job that did not run, a failing service). Optional. */
   alarmEmail?: string;
+  /**
+   * App tasks to run (default 1). The first deploy uses 0: the app logs in as the runtime login, which the migration
+   * task creates, so the app can start only after that task has run once (E19, docs/DEPLOY.md).
+   */
+  appDesiredCount?: number;
 }
 
 /**
@@ -33,7 +38,9 @@ export interface StagingProps extends StackProps {
  * - the Dockerfile's image on ECS Fargate in private subnets behind an HTTPS load balancer (HTTP redirects);
  * - secrets in AWS Secrets Manager, read by the task at start and never written to the template or the logs;
  * - TRUST_PROXY set to the VPC's range (the load balancer's addresses), DEV_LOGIN unset, NODE_ENV=production;
- * - the 15-minute jobs as a scheduled Fargate task (IN_PROCESS_JOBS=0), with an alarm when a run is missing.
+ * - the 15-minute jobs as a scheduled Fargate task (IN_PROCESS_JOBS=0), with an alarm when a run is missing;
+ * - E19: the app and the jobs log in as a runtime login that owns nothing (its own secret); only the one-off migration
+ *   task holds the master user's secret, and it creates or updates the runtime login.
  */
 export class StagingStack extends Stack {
   constructor(scope: Construct, id: string, props: StagingProps) {
@@ -53,6 +60,10 @@ export class StagingStack extends Stack {
 
     // Database ----------------------------------------------------------------------------------------------------
     const dbSecret = new rds.DatabaseSecret(this, "DbSecret", { username: "tasees", excludeCharacters: DB_PASSWORD_EXCLUDE });
+    // E19: the login the app and the jobs use. It owns no table and can only switch to the three application roles, so
+    // a compromised process cannot leave its per-request role, switch a guard off or edit the audit trail. The
+    // migration task creates it from this secret (scripts/migrate.ts) before the app starts with it.
+    const appDbSecret = new rds.DatabaseSecret(this, "AppDbSecret", { username: "tasees_app", excludeCharacters: DB_PASSWORD_EXCLUDE });
     const db = new rds.DatabaseInstance(this, "Db", {
       engine: rds.DatabaseInstanceEngine.postgres({ version: rds.PostgresEngineVersion.VER_16 }),
       instanceType: ec2.InstanceType.of(ec2.InstanceClass.T4G, ec2.InstanceSize.SMALL),
@@ -118,8 +129,8 @@ export class StagingStack extends Stack {
       ...(props.alarmEmail ? { ALERT_EMAIL: props.alarmEmail } : {}),
     };
     const secrets: Record<string, ecs.Secret> = {
-      DB_USER: ecs.Secret.fromSecretsManager(dbSecret, "username"),
-      DB_PASSWORD: ecs.Secret.fromSecretsManager(dbSecret, "password"),
+      DB_USER: ecs.Secret.fromSecretsManager(appDbSecret, "username"),
+      DB_PASSWORD: ecs.Secret.fromSecretsManager(appDbSecret, "password"),
       PAYMENT_WEBHOOK_SECRET: ecs.Secret.fromSecretsManager(webhookSecret),
       S3_ACCESS_KEY_ID: ecs.Secret.fromSecretsManager(storageSecret, "accessKeyId"),
       S3_SECRET_ACCESS_KEY: ecs.Secret.fromSecretsManager(storageSecret, "secretAccessKey"),
@@ -153,6 +164,9 @@ export class StagingStack extends Stack {
         logDriver: ecs.LogDrivers.awsLogs({ streamPrefix: "app", logGroup: appLogs }),
       },
     });
+    // The pattern refuses 0 tasks, which the first deploy needs (before the migration task has created the runtime
+    // login, E19), so the count is set on the service resource itself.
+    (app.service.node.defaultChild as ecs.CfnService).desiredCount = props.appDesiredCount ?? 1;
     app.targetGroup.configureHealthCheck({ path: "/api/health", healthyHttpCodes: "200", interval: Duration.seconds(30) });
 
     // The 15-minute sweeps (reply deadlines, auto-approval, offer expiry, digest, licence and delay watch, reminders).
@@ -201,15 +215,34 @@ export class StagingStack extends Stack {
       for (const a of [missing, unhealthy]) a.addAlarmAction(new cwActions.SnsAction(topic));
     }
 
+    // E19: the migration step, run before every deploy (docs/DEPLOY.md). The only task with the master user's secret:
+    // it applies migrations as the owner, seeds the catalogue and creates or updates the runtime login.
+    const migrateLogs = new logs.LogGroup(this, "MigrateLogs", { retention: logs.RetentionDays.THREE_MONTHS, removalPolicy: RemovalPolicy.RETAIN });
+    const migrateTask = new ecs.FargateTaskDefinition(this, "MigrateTask", { cpu: 256, memoryLimitMiB: 512 });
+    migrateTask.addContainer("migrate", {
+      image,
+      environment,
+      secrets: {
+        DB_USER: ecs.Secret.fromSecretsManager(dbSecret, "username"),
+        DB_PASSWORD: ecs.Secret.fromSecretsManager(dbSecret, "password"),
+        APP_DB_USER: ecs.Secret.fromSecretsManager(appDbSecret, "username"),
+        APP_DB_PASSWORD: ecs.Secret.fromSecretsManager(appDbSecret, "password"),
+      },
+      command: withDatabaseUrl("node --conditions=production dist/scripts/migrate.js"),
+      logging: ecs.LogDrivers.awsLogs({ streamPrefix: "migrate", logGroup: migrateLogs }),
+    });
+
     // What the runbook needs for one-off tasks (create the founder, run the importers) and the backup script.
     new CfnOutput(this, "Url", { value: `https://${domainName}` });
     new CfnOutput(this, "LoadBalancerDns", { value: app.loadBalancer.loadBalancerDnsName, description: "Point the domain's DNS (CNAME or alias) here" });
     new CfnOutput(this, "ClusterName", { value: cluster.clusterName });
     new CfnOutput(this, "TaskDefinitionArn", { value: jobs.taskDefinition.taskDefinitionArn, description: "Use for one-off tasks (create-founder, import) with a command override" });
+    new CfnOutput(this, "MigrateTaskDefinitionArn", { value: migrateTask.taskDefinitionArn, description: "Run before every deploy: migrations as the owner, and the runtime login (E19)" });
     new CfnOutput(this, "TaskSubnets", { value: vpc.selectSubnets({ subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS }).subnetIds.join(",") });
     new CfnOutput(this, "TaskSecurityGroup", { value: tasksSg.securityGroupId });
     new CfnOutput(this, "FilesBucket", { value: files.bucketName, description: "Evidence files; upload the go-live files under import/ and delete them after the import" });
     new CfnOutput(this, "BackupsBucket", { value: backups.bucketName });
-    new CfnOutput(this, "DatabaseSecretArn", { value: dbSecret.secretArn });
+    new CfnOutput(this, "DatabaseSecretArn", { value: dbSecret.secretArn, description: "The master user: migration task and backups only" });
+    new CfnOutput(this, "AppDatabaseSecretArn", { value: appDbSecret.secretArn, description: "The runtime login the app and the jobs use (E19)" });
   }
 }

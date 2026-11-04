@@ -377,6 +377,18 @@ in a browser; everything listed here is not.
      remove it there. The name is already in the fee table and the audit trail; the retention basis (the record of
      a quotation) is for the lawyer to confirm with the PDPL notice. Snapshotting a staff id instead would close it.
 
+## E19: role isolation
+
+142. **Within one party the database does not tell roles apart.** Ops, finance and the founder share `app_platform`;
+     partner admin and staff share `app_partner`. "Ops never see margin" and "staff never see a money figure" hold in
+     the API (route guards, the visibility map, the views E19 changed) and are tested, but not as database grants.
+     Separate database roles per staff role would add the third layer; it is a larger migration (D101).
+143. **The database owner can still switch the audit guard off.** The application never logs in as the owner in
+     production (E19), so only a person with the master secret (the migration task, a DBA) can. The nightly check
+     finds an edited event; it records the chain's length each night but does not yet compare it with the night before.
+144. **The first staging deploy is three steps** (no app task, the migration task, then the app), and every later
+     deploy runs the migration task first (docs/DEPLOY.md). A deploy pipeline that runs the task itself would close it.
+
 ## E16: report design
 
 129. **The Arabic report's wording is a draft** until the Arabic reviewer signs it off (with gaps 111, 116, 119, 128).

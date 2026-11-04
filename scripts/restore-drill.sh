@@ -25,6 +25,8 @@ do $$ begin
   if not exists (select 1 from pg_roles where rolname = 'app_client') then create role app_client nologin; end if;
   if not exists (select 1 from pg_roles where rolname = 'app_partner') then create role app_partner nologin; end if;
   if not exists (select 1 from pg_roles where rolname = 'app_platform') then create role app_platform nologin; end if;
+  -- E19: the group the runtime login joins; it owns nothing and only switches to the three roles above.
+  if not exists (select 1 from pg_roles where rolname = 'app_runtime') then create role app_runtime nologin noinherit; end if;
 end $$;
 grant app_client, app_partner, app_platform to current_user;
 SQL

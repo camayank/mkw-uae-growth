@@ -72,8 +72,20 @@ One-off DBA step on managed Postgres: the first migration creates three cluster-
 `app_partner`, `app_platform`) and grants them to the connecting user, so that user needs `CREATEROLE` the first
 time migrations run. If the application user may not have `CREATEROLE`, a DBA runs the `do $$ ... $$` block and the
 `grant ... to <app user>` line at the top of `apps/api/migrations/001_init.sql` once, before the first start. The
-same block is needed on any server a backup is restored to (`scripts/restore-drill.sh` does it). Migrations run
-automatically on start and are recorded in `schema_migrations`.
+same block is needed on any server a backup is restored to (`scripts/restore-drill.sh` does it). Migrations are
+recorded in `schema_migrations`.
+
+**Two logins (E19, D101).** In production the application never logs in as the owner of its tables:
+- **Migration step.** It runs as the owner (on RDS, the master user) and is the only thing that does:
+  `pnpm --filter @tasees/api migrate` (`dist/scripts/migrate.js`). It applies migrations, seeds the catalogue and, given
+  `APP_DB_USER` and `APP_DB_PASSWORD`, creates or updates the **runtime login**. That login is a member of
+  `app_runtime` (migration 025), owns nothing, and may only switch to the three application roles. Its password
+  reaches Postgres as a SCRAM verifier, so it is never in a statement the server could log.
+- **App, jobs and one-off scripts.** They log in as the runtime login (`DATABASE_URL`). At start they only check the
+  schema is current: if a migration is missing they refuse to start and name it. With `NODE_ENV=production`, the
+  app also refuses to start if its login owns the tables.
+
+In development, tests and the demo the one login is the owner, and migrations run on start as before.
 
 The audit hash covers each event's time stamp as text; the `audit_append` and `audit_verify` functions pin their
 own time zone and date style, so the chain verifies whatever the server or a DBA session has set.
@@ -225,8 +237,20 @@ hour (RDS, NAT gateway, load balancers, Fargate); the owner approves the account
    pnpm run deploy -- TaseesStaging -c domainName=app.tasees.ae -c certificateArn=<arn> -c alarmEmail=<email>
    ```
    Point the domain at the `LoadBalancerDns` output (CNAME or Route 53 alias). Confirm the alarm subscription email.
-   The first task runs the migrations and loads the catalogue; no demo data is loaded (`NODE_ENV=production`).
-   RDS's master user owns the database, so migration 001 can create its three roles on the first start.
+
+   **The first deploy is three steps (E19).** The app logs in as the runtime login, which the migration task creates:
+   1. Deploy with no app task: add `-c appDesiredCount=0` to the deploy command above.
+   2. Run the migration task (`MigrateTaskDefinitionArn` output, the only task holding the master user's secret):
+      ```bash
+      aws ecs run-task --cluster <ClusterName> --task-definition <MigrateTaskDefinitionArn> --launch-type FARGATE \
+        --network-configuration 'awsvpcConfiguration={subnets=[<subnet-a>,<subnet-b>],securityGroups=[<sg>],assignPublicIp=DISABLED}'
+      ```
+      Its log (`MigrateLogs` group) prints the migrations applied and `runtime-login tasees_app`. RDS's master user
+      owns the database, so migration 001 can create its roles. No demo data is loaded (`NODE_ENV=production`).
+   3. Deploy again without `appDesiredCount`. The app starts as `tasees_app`.
+
+   **Every later deploy:** run the migration task first, then deploy. An app task that finds a migration missing
+   refuses to start and names it, and the deployment circuit breaker rolls back to the previous version.
 3. **Check it.** `curl https://app.tasees.ae/api/health` answers `{"ok":true,"db":"postgres",...,"devLogin":false}`.
 4. **Create the founder.** One-off task with the stack's outputs (`ClusterName`, `TaskDefinitionArn`, `TaskSubnets`,
    `TaskSecurityGroup`):

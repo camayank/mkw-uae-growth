@@ -246,11 +246,18 @@ outcomes:
     # defect and write a failing reproduction test".
   - id: E18
     title: Trusted quotation and fee provenance (each offer line keeps its government fee's evidence; one disclosure everywhere)
-    status: verified-pending-merge
+    status: merged  # camayank/mkw-uae-growth#39, 4 Nov 2026
     contract: outcomes/E18-quote-provenance.md
     depends_on: [E17]
     needs_from_owner: [whether a partner-stated fee needs an acknowledgement before publication (D100, gap 135)]
     # Released by the owner on 4 Nov 2026: "Execute E18: trusted quotation and fee provenance".
+  - id: E19
+    title: Role isolation (a partner reads only its own change orders; partner staff see no money; a runtime database login that owns nothing; append-only audit)
+    status: verified-pending-merge
+    contract: outcomes/E19-role-isolation.md
+    depends_on: [E18]
+    needs_from_owner: [separate database roles within a party, or not (D101, gap 142)]
+    # Released by the owner on 4 Nov 2026: "start E19".
 
 # Roadmap from docs/VISION.md (18 Oct 2026). Order of work: O11, O12, O13 before the pilot; then O7 (launch gate);
 # then O14, O15, O16. Renumbered on 18 Oct 2026 when the owner released O10 as Real data and staging.

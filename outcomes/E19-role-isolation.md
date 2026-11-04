@@ -1,6 +1,6 @@
 # E19 Role isolation: each party and each person sees only theirs; the app logs in as a role that owns nothing
 
-Status: verified-pending-merge (branch `outcome/E19-role-isolation`, on `main` at 95ee18d with E18 merged; released
+Status: merged (camayank/mkw-uae-growth#40, 4 Nov 2026; previously verified-pending-merge, branch `outcome/E19-role-isolation`, on `main` at 95ee18d with E18 merged; released
 by the owner on 4 Nov 2026: "start E19", the four security problems the paused baseline audit's independent review
 found.)
 

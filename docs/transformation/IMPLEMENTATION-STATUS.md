@@ -31,10 +31,10 @@ as a live payment.
 | Marketplace loop: intake, scope, quotes, offer, accept, deposit, allocate, deliver, QA, approve, balance, payout | TESTED | `flow.test.ts`, `scenarios.test.ts` (26), `pilot-journeys.test.ts` A–F |
 | One margin rule, floor, cap, ops review | TESTED | core `pricing.test.ts`, `catalogue.test.ts` |
 | Money as integer fils, rates as basis points | TESTED | core `money.ts`, `pricing.test.ts` |
-| Append-only audit trail, guarded at the database (revoked, and a trigger), hash-chained, checked nightly | TESTED | `runtime-login.test.ts`, `pdpl.test.ts`, `hardening.test.ts` |
+| Audit events cannot be changed or deleted at the database (revoked, and a trigger); hash-chained; checked nightly | TESTED. Direct insert by the platform role is still allowed (S6, gap 148; E21) | `runtime-login.test.ts`, `pdpl.test.ts`, `hardening.test.ts` |
 | Event outbox, exactly-once side effects | TESTED | `outbox.test.ts` |
 | State machines for milestone, offer, engagement | TESTED | `transitions.test.ts` |
-| State rules for request, payout, change order | CODE COMPLETE: direct SQL, no transition table (E21) | `BASELINE-AUDIT.md` S5 |
+| Transition tables for request, payout, change order | NOT STARTED (gap 146; E21). Today each service checks the state it expects before its direct update | `BASELINE-AUDIT.md` S5 |
 | Ops command centre, queue, digest, alerts, jobs | TESTED | `queue.test.ts`, `hardening.test.ts` |
 | PDPL: consent, masking, export, erasure, retention | TESTED; the texts are BLOCKED on the lawyer | `pdpl.test.ts`, `leads.test.ts` |
 | Arabic client screens, emails and report | TESTED; the wording is BLOCKED on the Arabic reviewer | `locale.test.ts`, `report-ar.test.ts`, smoke |
@@ -55,7 +55,7 @@ as a live payment.
 | Upload content check, quarantine, malware scan | NOT STARTED (E22) | gap 45 |
 | Browser headers and CSP | TESTED | `security.test.ts` |
 | Webhook signature | TESTED | `payments.test.ts` |
-| Production dependency audit | No known vulnerabilities on 4 Nov 2026 (not run in CI) | `docs/evidence/E20/audit.txt` |
+| Production dependency audit | TESTED by hand: no known vulnerabilities on 4 Nov 2026 (not run in CI) | `docs/evidence/E20/audit.txt` |
 
 ## Jurisdiction intelligence (Phase 2)
 
@@ -68,7 +68,7 @@ as a live payment.
 | Conflict detection, version comparison view, stale-fact alerts | NOT STARTED (E23) | — |
 | Entity scenarios: one activity and one entity; mainland vs free zone; international customers; regulated activities; foreign shareholders; renewal; visas and premises | TESTED as engine cases | core `eligibility.test.ts`, `engine-cases.test.ts` |
 | Multiple activities, a holding with a subsidiary, India–UAE ownership | NOT STARTED (gaps 48, 75, 76) | — |
-| Setup, renewal and government charges from approved figures | TESTED | `public.ts`, `report.test.ts` |
+| Setup, renewal and government charges from approved figures | TESTED | core `public.test.ts`, `report.test.ts` |
 | Government fees on a quotation keep their evidence; one disclosure online, in the PDF and at acceptance | TESTED | E18, `fee-provenance.test.ts` |
 | Three-year cost, visa cost | NOT STARTED | — |
 
@@ -76,7 +76,7 @@ as a live payment.
 
 | Capability | Status | Evidence |
 | --- | --- | --- |
-| Deterministic scoping drafts into a review queue | TESTED | `services/drafts.ts`, `queue.test.ts` |
+| Deterministic scoping drafts into a review queue | TESTED | `scoping.test.ts`, `journey.test.ts` (document-check drafts: `queue.test.ts`) |
 | Live LLM provider | NOT STARTED; BLOCKED on the provider, a key and a cap (T5). No adapter code exists | `lib/ai.ts:212-216`, gap 7 (corrected) |
 | Agent tools, planning, run store, approvals | NOT STARTED (E25, E26) | — |
 | Document content analysis | NOT STARTED: the checker reads file names only (E27) | `lib/ai.ts:168` |

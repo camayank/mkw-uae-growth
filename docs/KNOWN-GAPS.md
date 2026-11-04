@@ -393,15 +393,29 @@ in a browser; everything listed here is not.
 
 ## E20: baseline audit (docs/transformation/BASELINE-AUDIT.md)
 
-145. **Six download routes have no test that another party is refused**: the evidence file, the invoice PDF and the
-     offer PDF as another client, the coverage backlog CSV, the payout bank file and the accounting export as a
-     partner (the audit's section 4.2). Row-level security or the route's own check guards each; E21 adds the tests.
+145. **Six download routes have no test that another party is refused** (the audit's section 4.2):
+     - the evidence file: no test downloads it at all;
+     - the invoice PDF and the offer PDF: not tried as another client;
+     - the coverage backlog CSV: no refused role tried;
+     - the payout bank file: not tried as a client or a partner;
+     - the accounting export: not tried as a partner.
+
+     Row-level security or the route's own check guards each; E21 adds the tests.
 146. **Request, payout and change-order statuses have no transition table.** They are set by direct SQL in the
      services; only milestones, offers and engagements go through `transition()`. Requests and change orders have no
      check constraint either. E21, before the agent gets write tools.
 147. **The service catalogue (`deliverables`) is readable in full by clients and partners**, including its market
      mid-price, and has no row-level security. A reference figure, not partner cost or margin; recorded so it stays a
      choice.
+148. **The platform role can insert audit events directly**, bypassing `audit_append`. Migration 025 revoked update,
+     delete and truncate on `audit_events` but not insert, and its comment saying events are written only through
+     `audit_append` is wrong.
+     - A forged, well-formed event would verify, because the hash has no secret.
+     - A malformed one breaks the chain for good.
+     - `audit_checks` is writable by the same role.
+
+     Found by the second independent review of the baseline audit (E20). E21 revokes insert, makes `audit_checks`
+     append-only, and tests both.
 
 ## E16: report design
 

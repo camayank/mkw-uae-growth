@@ -23,7 +23,8 @@ Every outcome passes this before its status is set to `verified-pending-merge` (
 | 12 | `docs/KNOWN-GAPS.md`, `docs/DECISIONS.md` and the transformation documents updated | the pull request |
 | 13 | Infrastructure synthesises, where the change touches `infra/` | `pnpm --dir infra synth:check`; CI job `infra` |
 
-A document-only outcome runs checks 1–3 and 10–12, and says so.
+A document-only outcome runs checks 1–3 and 10–12 locally and says so. It relies on CI (check 10) for the browser
+smoke on its head, as CLAUDE.md's smoke requirement is met there.
 
 The owner merges. A merge deploys nothing.
 

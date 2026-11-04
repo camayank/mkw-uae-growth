@@ -278,8 +278,8 @@ roadmap:
   - id: E21
     title: Remaining isolation and state rules
     status: planned
-    business_result: Every download is proven refused to another party; every status change goes through one checked transition.
-    scope: [refusal tests for the six download routes (gap 145), transition tables for request, payout and change order (gap 146), night-to-night audit chain length check (gap 143)]
+    business_result: No application role can insert an audit event around audit_append; every download is proven refused to another party; every status change goes through one checked transition.
+    scope: [revoke insert on audit_events and an append-only audit_checks (gap 148), refusal tests for the six download routes (gap 145), transition tables for request, payout and change order (gap 146), night-to-night audit chain length check (gap 143)]
     depends_on: [E20]
     needs_from_owner: []
   - id: E22

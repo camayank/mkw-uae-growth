@@ -22,8 +22,9 @@ need an agreed method; none exists, so none is given.
 **T3. Security hardening comes before the AI agent.** (E20.) An agent that acts on behalf of users must inherit limits
 that are already proven.
 - E17, E18 and E19 have done the first part.
-- E21 (downloads and state rules) and E22 (upload quarantine) come before E24 to E26 (the provider and the agent).
-- E25 depends on E21, so that agent tools cannot change a status no machine checks.
+- E21 (the audit insert, downloads and state rules) and E22 (upload quarantine) come before E24 to E26 (the provider
+  and the agent). This is the order of work; E24 does not depend on them in the queue and could be built alone.
+- E25 depends on E21, so that agent tools cannot change a status no machine checks or write the audit trail directly.
 
 ## Open (owner)
 

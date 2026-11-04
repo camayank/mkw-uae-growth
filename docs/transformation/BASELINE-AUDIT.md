@@ -3,13 +3,14 @@
 Date: 4 Nov 2026. Code: `main` at a42c487 (E19 merged). Outcome: E20. Delivered under the owner's transformation
 mandate of 3 Nov 2026 ("TASEES AI — Product Transformation & Engineering Execution Mandate", Phase 0).
 
-This audit was first drafted on `main` at d8104fb. Its independent review found two cross-party defects and two
-untested or unsafe areas; the owner had them fixed first, as E19. Since then, E18 (quote provenance) and E19 (role
+This audit was first drafted on `main` at d8104fb. Its independent review found one cross-party defect, one
+within-party defect and two untested or unsafe areas; the owner had them fixed first, as E19. Since then, E18 (quote provenance) and E19 (role
 isolation) have merged. This version reads the code after both, and applies the review's corrections.
 
 This is a reading of the code as it stands, not of what the documents say it should do:
 - every claim cites a file and line, a test or an evidence file;
-- where something was searched for and not found, the search is named;
+- the searches behind the main "not found" claims are named (an LLM call, a malware scanner, a payment gateway, a
+  calendar, WhatsApp);
 - status words are the mandate's seven, defined in `IMPLEMENTATION-STATUS.md`;
 - no percentage of completion is given, because no agreed method for one exists.
 
@@ -25,7 +26,8 @@ The platform is a working managed marketplace with its hardest parts built and t
 - a priced offer under one margin rule, whose government fees keep the evidence they were quoted on (E18);
 - money private by role, across parties at three layers and within a party at two;
 - evidenced milestones and staged payouts;
-- an append-only, hash-chained audit trail, guarded by the database (E19);
+- a hash-chained audit trail that no application role can change or delete (E19). One way round it remains: the
+  platform role can still insert rows directly (S6, the first item of E21);
 - an event outbox;
 - a jurisdiction engine that will not conclude without approved evidence;
 - a public selector, lead intelligence and a designed bilingual report.
@@ -42,15 +44,19 @@ What it is not yet:
    (`apps/api/src/lib/ai.ts:212-216`).
    - No LLM API is called anywhere. A search for `anthropic|openai|bedrock|gpt-|x-api-key|generativelanguage`
      outside `node_modules` finds comments only.
-   - No provider adapter exists either. Gap 7 said one was written; it was not, and this outcome corrects the gap.
+   - No provider adapter exists either (`git log -S` finds none). Gap 7 said one was written; it was not, and this
+     outcome corrects the gap.
    - The "agent" today is a scoping drafter and a file-name checker, whose output goes to a review queue.
 3. **No verified regulatory data.** Every scoping rule and place is UNCERTAIN or a rule of thumb (gaps 46, 92), and
    nothing is approved for public display (gap 63). The engine is built to say so, and does.
 4. **No live payments, WhatsApp, bank API, calendar or malware scanner.**
-   - Payments have only a memory provider (`lib/payments.ts:74-90`).
-   - WhatsApp messages are recorded as skipped (`lib/notify.ts:228-230`).
+   - Payments have only a memory provider (`lib/payments.ts:74-90`); `PAYMENT` is never read. A search for
+     `stripe|checkout\.com|telr|network international|paytabs` outside `node_modules` finds nothing.
+   - WhatsApp messages are recorded as skipped (`lib/notify.ts:228-230`); no sender uses the channel (searched
+     `whatsapp`).
    - The bank file is a generic CSV (`services/payouts.ts:121`).
    - There is no scanner (searched `clamav|malware|virus|quarantin|scanFile`).
+   - There is no calendar integration (searched `ical|ics|google calendar|outlook`).
    - Email (SES) and storage (S3) have live code selected by configuration (`EMAIL=ses`, `STORAGE=s3`), never run
      against a real account.
 
@@ -62,7 +68,8 @@ Three security outcomes have now merged:
 E19 also fixed the two defects found while drafting this audit: one partner firm reading another firm's change-order
 cost, and partner staff receiving money figures.
 
-What remains is section 4: missing guards and missing tests. None of them is a known leak.
+What remains is section 4: missing guards and missing tests. None of them is a known leak. The most serious is S6, a
+way to forge audit events from the platform role, which the second review of this audit found.
 
 ## 2. Capability inventory
 
@@ -161,22 +168,22 @@ The maintained version of this table is `IMPLEMENTATION-STATUS.md`.
 | Sign-out and session expiry (1.1) | TESTED (since E19; the first draft overstated this) | `role-isolation.test.ts` |
 | Multi-instance rate limiting (1.1) | The per-code limit is TESTED (it lives in the database). The per-address throttle is in-process only (gap 13, shared rate limiting) | `server.ts:105-113` |
 | Downloads refused to another party (1.2) | TESTED for 6 of 12 download routes; the other six are listed in section 4.2 | section 4.2 |
-| Runtime database login and append-only audit (1.2) | TESTED on PostgreSQL 16; NOT LIVE (no staging) | E19, `runtime-login.test.ts` |
+| Runtime database login; audit events cannot be changed or deleted (1.2) | TESTED on PostgreSQL 16; NOT LIVE (no staging). Inserting an audit row directly is still allowed (S6) | E19, `runtime-login.test.ts` |
 | Upload security (1.3) | Size, extension and body caps are TESTED; there is no content check, quarantine or scan | gap 45, `lib/storage.ts:23-34` |
-| Release integrity (1.4) | Done: E16 to E19 merged green (#37 to #40); no open PRs | GitHub, 4 Nov 2026 |
+| Release integrity (1.4) | TESTED: E16 to E19 merged with CI green on their final heads (#37 to #40); no open PRs | GitHub, 4 Nov 2026 |
 | Quote provenance and fee disclosure (2.4, 4.4) | TESTED | E18, `fee-provenance.test.ts` |
 | Evidence-classified jurisdiction facts (2.1) | CODE COMPLETE; data BLOCKED on a named verifier. Source, authority, dates, verifier, confidence, version and approval all exist | migration 015, `catalogue.ts`, gap 92 |
 | Classification: verified, rule of thumb, UNCERTAIN, stale, data unavailable (2.1) | TESTED | core `catalogue`, `eligibility`, `jurisdiction.test.ts` |
-| Evidence operations (2.2) | CODE COMPLETE for imports, history, staleness, coverage and backlog. Conflict detection and a version diff view are NOT STARTED | E7B, `coverage.test.ts`, `jurisdiction.test.ts` |
-| Entity scenarios A–L (2.3) | A, D, E, G, H, I, J and L are TESTED as cases of one engine, with specialist review where data is missing. B, C and K are NOT STARTED: one entity and one activity per assessment (gaps 48, 75, 76) | core `eligibility`, `engine-cases` |
-| Economic comparison (2.4) | Setup estimates, renewal and government charges from approved figures only are TESTED. Three-year cost and visa cost are NOT STARTED | `public.ts`, `report.ts` |
+| Evidence operations (2.2) | TESTED for imports, history, staleness, coverage and backlog. Conflict detection and a version diff view are NOT STARTED | E7B, `coverage.test.ts`, `import.test.ts`, `jurisdiction.test.ts` |
+| Entity scenarios A–L (2.3) | A, D, E, F, G, H, I, J and L are TESTED as cases of one engine, with specialist review where data is missing (F, manufacturing and industrial facilities, is answered with "facilities not on record" until the data exists, gaps 50, 78). B, C and K are NOT STARTED: one entity and one activity per assessment (gaps 48, 75, 76) | core `eligibility`, `engine-cases` |
+| Economic comparison (2.4) | Setup estimates, renewal and government charges from approved figures only are TESTED. Three-year cost and visa cost are NOT STARTED | core `public.test.ts`, `report.test.ts` |
 | AI agent (3) | NOT STARTED as an agent. A memory-model drafter with a review queue is TESTED | `lib/ai.ts`, `services/drafts.ts` |
 | Document intelligence (3.4) | NOT STARTED: the checker reads file names and declared metadata, never the file (`lib/ai.ts:168`) | `services/doccheck.ts` |
 | Evaluation suite (3.5) | NOT STARTED | — |
 | Public flow (4.1) | TESTED: homepage, quick match, assessment, saved result, review request, lead, request | `lead-to-tasees`, smoke |
 | Client workspace (4.2) | TESTED, with one next action per screen | `journey`, smoke |
 | Document vault (4.3) | Needed now, later and sent (E15) is TESTED. Reuse across steps, an expiry vault and partner-disclosure approval are NOT STARTED (gaps 34, 71, 125) | `documents.test.ts` |
-| Priority services (4.4) | The tier is TESTED as priced on the fastest quote, with no pace promised on screen. Carrying its speed into the offer and the plan is NOT STARTED (gap 85, D84) | `select.ts:57-66` |
+| Priority services (4.4) | The tier is TESTED as priced on the fastest quote, with no pace promised on screen. Carrying its speed into the offer and the plan is NOT STARTED (gap 85, D84) | core `pricing.test.ts`, smoke (U1 tier check) |
 | Conversion intelligence (4.5) | Visits through acceptance and revenue are TESTED; contribution margin goes to finance only. A calendar is NOT STARTED | `funnel`, `leads`, `reporting` |
 | Commercial infrastructure (5) | BLOCKED on owner accounts; the staging stack is CODE COMPLETE and synthesises in CI | `docs/evidence/E7E/STAGING-CHECKLIST.md`, `docs/evidence/E19/synth.txt` |
 | Competition demo (6) | NOT STARTED | — |
@@ -192,8 +199,9 @@ Ordered by what could go wrong in a pilot. None is a known leak today; each is a
 | S1 | **Uploads are not inspected.** Only extension and size are checked (`lib/storage.ts:23-34`), and the MIME type never is. A magic-byte check exists on one path, partner invoice PDFs (`services/payouts.ts:61`). There is no quarantine and no scan. Files are always served as `application/octet-stream` attachments, which limits the risk of passing malware between parties but does not remove it. | gap 45, `SECURITY-BRIEF.md` | E22: magic-byte checks per allowed extension; a quarantine state that blocks downloads until a file is scanned; a scanner adapter with a memory double; an unavailable scan counts as not clean. A live scanner costs money to run: owner decision (T6) |
 | S2 | **Within one party, the database does not separate roles** (gap 142). Ops, finance and the founder share `app_platform`; partner admin and staff share `app_partner`. Every within-party path is tested at the API since E19, so this is two layers, not three. | D101, `visibility.ts:15-24`, `role-isolation.test.ts` | Open owner decision (T4). Recommendation: keep the API split unless the outside security reviewer asks |
 | S3 | **The per-address throttle counts per process** (gap 13, shared rate limiting). With two instances an attacker gets twice the budget. The sign-in code limit no longer depends on it (E17). | `server.ts:105-113` | A WAF rate rule on the load balancer, or a shared store, when staging runs two tasks |
-| S4 | **The audit trail's database owner can still switch the guard off** (gap 143). The hash has no secret, so the owner could also recompute the chain. The nightly check stores the chain's length but does not compare it with the night before. | `002_admin_and_pdpl.sql:48-69`, `services/system.ts:55-61` | Only the master secret can do this, and only the migration container and a DBA hold it (E19). E21: compare the length night to night |
-| S5 | **Some states change by direct SQL with no transition table:** requests, payouts and change orders. Requests and change orders have no check constraint either. A new code path, such as the agent, could set an invalid state. | `packages/core/src/states.ts` (milestone, offer, engagement only), `services/engagements.ts:82,144,548,587,630`, `services/pricing.ts:73,162` | E21: transition tables for the three, before the agent gets write tools (E25) |
+| S4 | **The audit trail's database owner can still switch the guard off** (gap 143). The hash has no secret, so the owner could also recompute the chain. The nightly check stores the chain's length but does not compare it with the night before. | The guard: `025_runtime_role.sql:29-35`; the check: `002_admin_and_pdpl.sql:48-69`, `services/system.ts:55-61` | Only the master secret can switch the guard off, and only the migration container and a DBA hold it (E19). E21: compare the length night to night, from a history the application cannot rewrite (S6) |
+| S5 | **Some states change by direct SQL with no transition table:** requests, payouts and change orders. Requests and change orders have no check constraint either. A new code path, such as the agent, could set an invalid state. | `packages/core/src/states.ts` (milestone, offer, engagement only). The ten direct writes: requests at `services/engagements.ts:82,690` and `services/pricing.ts:76,188`; payouts at `services/engagements.ts:146,550,589`, `services/payouts.ts:161` and `services/invoices.ts:207`; change orders at `services/engagements.ts:632`. (Payout runs change status at `services/payouts.ts:145,162,204`, with a check constraint.) | E21: transition tables for the three, before the agent gets write tools (E25) |
+| S6 | **The platform role can insert audit rows directly, bypassing `audit_append`.** Migration 001 grants `app_platform` every right on `audit_events`, with a "for all" policy (`001_init.sql:394, 449-457`). Migration 025 revoked update, delete and truncate but not insert (`025_runtime_role.sql:29`); its comment that events are written only through `audit_append` is wrong. A compromised process, or a SQL bug on an `asPlatform` path, could append an event attributed to anyone. The hash has no secret, so a well-formed forged row verifies. A malformed one breaks the chain for good, because the append-only trigger then refuses to remove it. `audit_checks` is also writable by `app_platform` (`012_hardening.sql:50-52`). Found by the second independent review of this audit. | probe on PGlite with all 26 migrations | E21, first: revoke insert on `audit_events` from the application roles (writes only through the security-definer `audit_append`); make `audit_checks` append-only; a refusal test for each (gap 148) |
 
 ### 4.2 Download routes without a test that another party is refused
 
@@ -258,8 +266,9 @@ The transformation should build on these, not beside them:
 
 Against the mandate, in its phase order:
 
-1. Refusal tests for the six download routes in section 4.2. Transition tables for requests, payouts and change
-   orders (S5). A night-to-night check of the audit chain's length (S4).
+1. No direct audit insert by the application roles (S6). Refusal tests for the six download routes in section 4.2.
+   Transition tables for requests, payouts and change orders (S5). A night-to-night check of the audit chain's length
+   (S4).
 2. Upload content checks, quarantine and a scanner adapter (S1).
 3. Conflict detection and a version comparison view for evidence facts (2.2).
 4. Multi-activity, multi-entity and holding structures in one assessment, and India–UAE ownership (2.3 B, C, K;
@@ -324,11 +333,12 @@ On `main` at a42c487, `docs/evidence/E20/`:
 | `pnpm typecheck` | clean | `typecheck.txt` |
 | `pnpm test` (PGlite) | core 159 passed (19 files); API 404 passed, 7 skipped (41 files) | `tests-pglite.txt` |
 | `pnpm audit --prod` | no known vulnerabilities (the lockfile with pdfkit and bidi-js, since E16) | `audit.txt` |
-| API tests on PostgreSQL 16 | 411 passed on the same code (E19's final run) | `docs/evidence/E19/tests-postgres16.txt`; CI job `postgres` on every merge |
-| Browser smoke on a fresh demo | 337 checks, 0 failed, 60 axe scans, phone width | `docs/evidence/E19/smoke-log.txt` (the same code); CI runs it on every merge |
+| API tests on PostgreSQL 16 | 411 passed on E19's final code, dd95236 (the same code as a42c487) | `docs/evidence/E19/tests-postgres16.txt`; CI job `postgres` on every merge |
+| Browser smoke on a fresh demo | 337 checks, 0 failed, 60 axe scans, phone width | `docs/evidence/E19/smoke-log.txt`, run on E19's 2efd78e (dd95236 then changed migration 025 and `lib/db.ts`). The final code's smoke is CI's, green on a42c487 and on this PR's head |
 | Audit chain | verified by CI after the smoke run | `.github/workflows/ci.yml` |
 
-E20 changes documents only, so the smoke test and the PostgreSQL suite were not re-run for it.
+E20 changes documents only, so the smoke test and the PostgreSQL suite were not re-run locally for it. CI runs both
+on its pull request.
 
 ## 11. Prioritised execution backlog
 
@@ -342,10 +352,10 @@ maintained version is `ROADMAP.md`.
 | done | E18 Quote provenance | 2.4, 4.4 | E17 | gap 135, gap 140 |
 | done | E19 Role isolation and the runtime login | P0-01, 1.2 | E18 | T4 (gap 142) |
 | this | E20 Baseline audit and tracking documents | Phase 0 | E19 | — |
-| 1 | E21 Remaining isolation and state rules: refusal tests for the six download routes (4.2); transition tables for request, payout and change order (S5); the night-to-night audit chain length check (S4) | P0-01, 1.2 | E20 | — |
+| 1 | E21 Remaining isolation and state rules: no direct audit insert and an append-only `audit_checks` (S6); refusal tests for the six download routes (4.2); transition tables for request, payout and change order (S5); the night-to-night audit chain length check (S4) | P0-01, 1.2 | E20 | — |
 | 2 | E22 Upload quarantine: magic-byte checks, a quarantine state, a scanner adapter with a memory double, downloads refused until clean | P0-01, 1.3 | E20 | a live scanner's cost (T6) |
 | 3 | E23 Evidence operations: conflict detection, version comparison, stale-fact alerts on the queue | P0-02, 2.2 | E20 | a named verifier for real data |
-| 4 | E24 AI provider adapter: a live adapter behind configuration, budgets, timeouts, structured output, capability status on screen | P1-01, 3.3 | E20 | provider, key, monthly cap (T5) |
+| 4 | E24 AI provider adapter: a live adapter behind configuration, budgets, timeouts, structured output, capability status on screen | P1-01, 3.3 | E21, E22 (order, T3) | provider, key, monthly cap (T5) |
 | 5 | E25 Agent tools and planning: a typed tool registry over the existing services, an agent identity with least privilege, a launch plan from the existing engines | P1-02, 3.2 A–C | E21, E24 | — |
 | 6 | E26 Agent execution and approval: run store, resume, idempotency, budgets, approval records, progress on screen | P1-03, 3.2 D–F | E25 | — |
 | 7 | E27 Document intelligence: content extraction for authorised uploads, a reviewer checklist, never auto-approving identity | P1-04, 3.4 | E22, E24 | — |

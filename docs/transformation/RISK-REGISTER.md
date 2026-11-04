@@ -6,7 +6,7 @@ are judgements (low, medium, high), not measurements.
 
 | ID | Risk | Likelihood | Impact | Treatment | Owner | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| R1 | Audit rows could be edited or deleted by the application's own database role | — | high (rule 8) | E19: append-only at the database (revoked, and a trigger); the app logs in as a role that owns nothing, with no trigger rights | build | closed (E19) |
+| R1 | Audit rows could be edited or deleted by the application's own database role | — | high (rule 8) | E19: update, delete and truncate revoked and refused by a trigger; the app logs in as a role that owns nothing, with no trigger rights. Closed for changing and removing events only; inserting them is R20 | build | closed for update, delete and truncate (E19) |
 | R2 | One partner reads another's change-order cost, or partner staff see money | — | high (rule 1) | E19: migration 024, staff views, tests, smoke | build | closed (E19) |
 | R3 | Within a party, role limits rest on two layers (the API), not on database grants | low | high | Tested on every path (E19); decision T4 | owner (T4) | open |
 | R4 | A download route serves a file to another party (six routes untested) | low (RLS or code checks exist) | high | E21: a refusal test for each | build | open |
@@ -25,3 +25,4 @@ are judgements (low, medium, high), not measurements.
 | R17 | CI timing flakes on a busy runner make PRs red when nothing is wrong; the smoke run is at the sign-in code limit | low | low | Fixed when seen, with a timeout or by reusing a session, never by skipping (E17, E19) | build | watching |
 | R18 | The mandate's breadth turns into a rebuild | medium | high | One outcome per PR, additive only, in the roadmap's order; the owner merges each | build | watching |
 | R19 | Migration 025's PostgreSQL 15 branch has not been run (only 16 is installed here) | low (staging is 16) | medium | Run it once on a 15 server before relying on 15 | build | open |
+| R20 | The platform role inserts an audit event directly, bypassing `audit_append`: a forged event attributed to anyone, or a malformed one that breaks the chain for good. `audit_checks` is writable too | low (needs a compromised process or a SQL bug on an `asPlatform` path) | high (rule 8, trust, disputes) | E21, first: revoke insert on `audit_events` from the application roles; an append-only `audit_checks`; a refusal test (gap 148) | build | open |

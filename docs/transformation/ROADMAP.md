@@ -26,7 +26,7 @@ The order of work under the owner's transformation mandate of 3 Nov 2026, reconc
 | 2 | E18 Quote provenance | 2.4, 4.4 | Every quoted government fee says where it came from, in the same words everywhere, and keeps it | TESTED, merged (camayank/mkw-uae-growth#39) | partner-stated fees (gap 135); emirate-wide fees (gap 140) |
 | 3 | E19 Role isolation and the runtime login | P0-01 (1.2) | Each party and each person sees only theirs. The app logs in as a role that owns nothing, and the audit trail is append-only at the database | TESTED, merged (camayank/mkw-uae-growth#40) | database roles within a party (T4, gap 142) |
 | 4 | E20 Baseline audit and tracking documents | Phase 0 | A factual baseline and a plan everyone can check | IN PROGRESS | — |
-| 5 | E21 Remaining isolation and state rules | P0-01 (1.2) | Every download is proven refused to another party, and every status change goes through one checked transition | NOT STARTED | — |
+| 5 | E21 Remaining isolation and state rules | P0-01 (1.2) | No application role can insert an audit event around `audit_append`; every download is proven refused to another party; every status change goes through one checked transition | NOT STARTED | — |
 | 6 | E22 Upload quarantine | P0-01 (1.3) | A file is checked for what it really is and held until scanned; a failed or missing scan never counts as clean | NOT STARTED | the cost of running a live scanner (T6) |
 | 7 | E23 Evidence operations | P0-02 (2.2) | Conflicting or changed facts are flagged to the verifier, and stale facts reach the ops queue | NOT STARTED | a named verifier for real data (gap 92) |
 | 8 | E24 AI provider adapter | P1-01 (3.3) | A real model behind a budget, a timeout and schema checks, with the deterministic model kept as the fallback | NOT STARTED | provider, API key, monthly spending cap (T5) |
@@ -44,16 +44,19 @@ owner can reorder or stop the work at any merge.
 ## Dependencies
 
 ```
-E17 ─ E18 ─ E19 ─ E20 ─┬─ E21 ──────────────┐
-                       ├─ E22 ─────────┐    │
-                       ├─ E23          │    │
-                       ├─ E24 ─┬───────┴─ E27
-                       │       └─ E25 ─ E26 ─ E29
+E17 ─ E18 ─ E19 ─ E20 ─┬─ E21 ─────────────────┐
+                       ├─ E22 ──────────┐       │
+                       ├─ E23           │       │
+                       ├─ E24 ─┬────────┴ E27   │
+                       │       └──── E25 ◄──────┘ ─ E26 ─ E29
                        └─ E28
+
+E25 needs E21 and E24.  E27 needs E22 and E24.
 ```
 
-E25 needs E21 because agent tools must not change a status that no machine checks. E27 needs E22 because a document
-is read only after it is scanned.
+E25 needs E21 because agent tools must not change a status that no machine checks, or write the audit trail around
+`audit_append`. E27 needs E22 because a document is read only after it is scanned. E24 comes after E21 and E22 by
+order (T3), not by dependency: it can be built without them.
 
 ## What does not move without the owner
 

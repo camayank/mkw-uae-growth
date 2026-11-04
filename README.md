@@ -90,9 +90,9 @@ apps/api          Fastify 5 + zod + Postgres (pg in production, PGlite in dev an
   src/lib/templates.ts   the eleven message templates, branded by audience
   src/services/rules.ts  margin rule versions with effective dates, pricing settings, government fee table
   src/services/invoices.ts  tax invoices, credit notes, statements; src/lib/pdf.ts writes the PDFs
-  src/services/payouts.ts   partner invoices, payout runs, bank bulk-transfer file; src/lib/payments.ts the card provider adapter
+  src/services/payouts.ts   partner invoices, payout runs, bank bulk-transfer file; src/lib/payments.ts the card provider interface (a test double only; no gateway yet)
   src/services/scoping.ts   scoping rules and zones with sign-off, advice review and approval, search
-  src/services/drafts.ts    the AI review queue; src/lib/ai.ts the model adapter with its in-memory double
+  src/services/drafts.ts    the AI review queue; src/lib/ai.ts the model interface with its in-memory double (no live provider yet)
   src/services/intake.ts    public intake with PDPL consent (apps/web/public/intake.html posts here)
   src/services/partners.ts  onboarding pipeline and documents, licence watch, scorecards, partner staff (O6)
   src/services/delivery.ts  client document requests, delay watch and guarantee, ratings, manual allocation, offer PDF (O6)

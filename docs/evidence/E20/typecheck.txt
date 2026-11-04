@@ -1,1 +1,3 @@
+pnpm typecheck on main at a42c487, 2026-11-04
+(no output: no type errors)
 exit 0

@@ -85,7 +85,35 @@ The PostgreSQL 16 run (411 passed) and the browser smoke (337 checks, 60 axe sca
 
 ## Independent review
 
-To be recorded after the review of this version.
+A second independent reviewer checked this version against the code at a42c487. It re-ran the tests and the
+typecheck, and probed on PGlite with all 26 migrations.
+
+- **(Blocking, a missed risk) The platform role can still insert audit events directly**, bypassing `audit_append`.
+  E19 revoked update, delete and truncate but not insert, and migration 025's comment says otherwise.
+  - A forged, well-formed event would verify, because the hash has no secret; a malformed one breaks the chain for
+    good. `audit_checks` is writable too.
+  - Recorded as S6, R20 and gap 148, and made E21's first item. R1 is now closed for update, delete and truncate
+    only. This outcome changes documents only; the fix is code, with a failing test first, in E21.
+- **Minor, all corrected:**
+  - the ten direct status writes, cited line by line;
+  - the smoke evidence's commit (2efd78e; CI's smoke covers the final code);
+  - status words, and evidence citations that pointed at source files instead of tests;
+  - scenario F;
+  - the roadmap diagram, and T3 stated as order, not dependency;
+  - the named searches;
+  - "one cross-party and one within-party defect";
+  - the document-only gate, which relies on CI's smoke;
+  - gap 145's wording, and the typecheck evidence;
+  - README lines that read as live adapters.
+
+The reviewer verified as correct:
+- the counts;
+- the 12 download routes, with the six tested against another party and the six not;
+- that no provider adapter has ever existed;
+- the E17–E19 security rows;
+- that every cited gap and decision exists;
+- the queue's dependencies;
+- that nothing claims a double is live.
 
 ## Dependencies
 

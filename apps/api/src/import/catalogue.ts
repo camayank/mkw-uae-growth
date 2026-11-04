@@ -20,6 +20,7 @@ import { newReport, readTable, sameValue, type Report, type ReportRow } from "./
  */
 export async function importCatalogueFacts(tx: Queryable, grid: string[][], source: string, actor: SessionUser | null = null): Promise<Report> {
   const report = newReport("catalogue-facts", source);
+  let conflicts = 0;
   const t = readTable(grid, ["Place or authority", "Field", "Value", "Source", "Evidence date", "Confidence"]);
   if (!t) throw new Error('No header row with "Place or authority", "Field", "Value", "Source", "Evidence date" and "Confidence"');
   const C = {
@@ -142,14 +143,18 @@ export async function importCatalogueFacts(tx: Queryable, grid: string[][], sour
       row.action = "unchanged";
       continue;
     }
+    let change: { kind: string; reason: string };
     try {
-      await appendFact(tx, actor, { subjectKind: kind, subject, field, value: parsed.value, sourceUrl, evidenceDate, confidence, verifiedBy, nextVerification: next, note: cell(cells, C.note), effectiveDate, reference, sourceKind: sourceKindRaw });
+      ({ change } = await appendFact(tx, actor, { subjectKind: kind, subject, field, value: parsed.value, sourceUrl, evidenceDate, confidence, verifiedBy, nextVerification: next, note: cell(cells, C.note), effectiveDate, reference, sourceKind: sourceKindRaw }));
     } catch (e) {
       row.reason = (e as Error).message;
       continue;
     }
-    row.action = latest ? "updated" : "created";
-    row.reason = `${FIELD_LABEL[field] ?? field}, ${confidence}`;
+    // E23: a figure that contradicts the current one is recorded as a conflict for the founder; it changes nothing yet.
+    row.action = change.kind === "conflict" ? "created" : latest ? "updated" : "created";
+    row.reason = `${FIELD_LABEL[field] ?? field}, ${confidence}${change.kind === "conflict" ? ` · CONFLICT, waits for the founder: ${change.reason}` : change.kind === "change" && latest ? ` · ${change.reason}` : ""}`;
+    if (change.kind === "conflict") conflicts += 1;
   }
+  if (conflicts) report.notes.push(`${conflicts} figure(s) contradict the current fact and are recorded as conflicts: the founder decides each on the Scoping page or the queue; nothing changed until then.`);
   return report;
 }

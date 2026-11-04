@@ -275,11 +275,18 @@ outcomes:
     # Released by the owner on 4 Nov 2026: "start E21". Gaps 145, 146 and 148 closed; 143 narrowed; 149 and 150 recorded.
   - id: E22
     title: Upload quarantine (content checked against the name; every upload held until a malware scan finds it clean; a scanner adapter with a test double; held files refused everywhere)
-    status: verified-pending-merge
+    status: merged  # camayank/mkw-uae-growth#43, 4 Nov 2026
     contract: outcomes/E22-upload-quarantine.md
     depends_on: [E21]
     needs_from_owner: [a live malware scanner and its cost, or labelled unscanned files for the pilot (T6, gap 152)]
     # Released by the owner on 4 Nov 2026: "start E22". Gap 45 narrowed; 152 to 154 recorded.
+  - id: E23
+    title: Evidence operations (a contradicting source is a conflict for the founder, not a new figure; every change explained and compared; stale and conflicting facts on the queue)
+    status: verified-pending-merge
+    contract: outcomes/E23-evidence-operations.md
+    depends_on: [E22]
+    needs_from_owner: [a named verifier for real data (gap 92)]
+    # Released by the owner on 4 Nov 2026: "start E23". Gaps 156 and 157 recorded.
 
 # Roadmap from docs/VISION.md (18 Oct 2026). Order of work: O11, O12, O13 before the pilot; then O7 (launch gate);
 # then O14, O15, O16. Renumbered on 18 Oct 2026 when the owner released O10 as Real data and staging.
@@ -289,13 +296,6 @@ outcomes:
 roadmap:
   # The transformation mandate (3 Nov 2026), reconciled in docs/transformation/ROADMAP.md (T1): E21 follows E20 under
   # the mandate's instruction to continue with the next priority outcome; the owner can reorder or stop at any merge.
-  - id: E23
-    title: Evidence operations
-    status: planned
-    business_result: Conflicting or changed facts are flagged to the verifier; stale facts reach the ops queue.
-    scope: [conflict detection, version comparison, stale-fact queue items]
-    depends_on: [E20]
-    needs_from_owner: [a named verifier for real data (gap 92)]
   - id: E24
     title: AI provider adapter
     status: planned

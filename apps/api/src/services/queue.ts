@@ -1,8 +1,9 @@
-import { addWorkingHours, QUEUE_POLICY, rankQueue, workingHoursBetween, type QueueKind, type QueueSignals, type WorkCalendar } from "@tasees/core";
+import { addWorkingHours, ENGINE_FIELDS, QUEUE_POLICY, rankQueue, workingHoursBetween, type QueueKind, type QueueSignals, type WorkCalendar } from "@tasees/core";
 import type { SessionUser } from "../lib/context.ts";
 import type { Queryable } from "../lib/db.ts";
 import { badRequest } from "../lib/errors.ts";
 import { loadCalendar } from "./calendar.ts";
+import { loadPlaces } from "./catalogue.ts";
 import { latestChecks, type CheckSubject } from "./doccheck.ts";
 
 /**
@@ -158,6 +159,13 @@ select case ob.status when 'failed' then 'delivery_failed' else 'delivery_unknow
        jsonb_build_object('template', ob.payload->>'template', 'to', ob.payload->>'to', 'attempts', ob.attempts, 'error', ob.last_error), false, false, false
   from outbox ob where ob.topic = 'notify' and ob.status in ('failed', 'unknown')
 union all
+select 'fact_conflict', f.id::text, f.id::text, null, null, 'Evidence conflict: ' || f.subject || ' · ' || replace(f.field, '_', ' '), f.recorded_at,
+       jsonb_build_object('subject', f.subject, 'field', f.field, 'subjectKind', f.subject_kind, 'reason', f.change_reason), false, false, false
+  from catalogue_facts f
+ where f.change_kind = 'conflict' and not exists (select 1 from catalogue_fact_reviews r where r.fact_id = f.id)
+   and not exists (select 1 from catalogue_facts n where n.subject_kind = f.subject_kind and n.subject = f.subject and n.field = f.field and n.id > f.id
+                   and (n.change_kind <> 'conflict' or exists (select 1 from catalogue_fact_reviews r2 where r2.fact_id = n.id and r2.decision = 'accept')))
+union all
 select 'licence_expiring', o.id::text, pd.id::text, null, o.id::text, 'Trade licence expires ' || pd.expires_on::text || ' (' || o.name || ')',
        greatest(pd.verified_at, (pd.expires_on - ${LICENCE_WARNING_DAYS})::timestamp at time zone 'Asia/Dubai'),
        jsonb_build_object('firm', o.name, 'expiresOn', pd.expires_on::text), false, false, false
@@ -175,6 +183,10 @@ function why(r: Row): string {
   switch (r.kind) {
     case "system_alert":
       return `${str(i.summary)} The platform raised this (${str(i.severity)}); it closes on its own when the cause clears.`;
+    case "fact_conflict":
+      return `${str(i.subject)}, ${str(i.field).replace(/_/g, " ")}: ${str(i.reason)}. The current figure stays until the founder accepts the new one or keeps the current.`;
+    case "evidence_stale":
+      return `${str(i.fields)} on ${str(i.place)} passed re-verification (the oldest on ${str(i.oldestDue)}); the engine shows them a level lower until a new fact is recorded.`;
     case "offer_review":
       return `${str(i.lines)} line(s) of the ${str(i.tier)} offer for ${str(i.client)} fall below the margin floor or lack a price; the client sees no offer until a person decides them.`;
     case "offer_ready":
@@ -251,6 +263,9 @@ function linkFor(r: Row): string {
       return "#/compliance";
     case "partner_document":
       return "#/partners";
+    case "fact_conflict":
+    case "evidence_stale":
+      return "#/scoping";
     case "partner_review":
     case "licence_expiring":
       return `#/partner/${r.ref}`;
@@ -307,6 +322,11 @@ function actionsFor(r: Row): QueueAction[] {
       ];
     case "obligation_evidence":
       return [{ label: "Mark met", method: "POST", path: `/api/ops/obligations/${id}/met`, body: {}, primary: true }];
+    case "fact_conflict":
+      return [
+        { label: "Keep the current figure", method: "POST", path: `/api/admin/jurisdictions/facts/${id}/review`, body: { decision: "keep" }, prompt: "Why does the current figure stand? (kept with the decision)", primary: true },
+        { label: "Accept the new figure", method: "POST", path: `/api/admin/jurisdictions/facts/${id}/review`, body: { decision: "accept" }, prompt: "Why is the new figure right? (kept with the decision)" },
+      ];
     case "delivery_failed":
       return [
         { label: "Retry", method: "POST", path: `/api/ops/outbox/${id}/resolve`, body: { action: "retry" }, prompt: "Note for the record (optional)", primary: true },
@@ -321,6 +341,31 @@ function actionsFor(r: Row): QueueAction[] {
     default:
       return [];
   }
+}
+
+/** E23: active places whose recorded engine facts passed their re-verification date, one item per place. */
+async function staleEvidence(tx: Queryable): Promise<Row[]> {
+  const places = await loadPlaces(tx);
+  const out: Row[] = [];
+  for (const p of places) {
+    const stale = ENGINE_FIELDS.map((f) => p.evidence?.[f]).filter((e): e is NonNullable<typeof e> => !!e && e.stale && e.factId !== null && !!e.nextVerification);
+    if (!stale.length) continue;
+    const oldest = stale.map((e) => e.nextVerification!).sort()[0]!;
+    out.push({
+      kind: "evidence_stale",
+      ref: p.name,
+      subject_id: p.name,
+      engagement_id: null,
+      partner_org_id: null,
+      detail: `Stale evidence on ${p.name}: ${stale.map((e) => e.field.replace(/_/g, " ")).join(", ")}`,
+      at: `${oldest}T00:00:00Z`,
+      info: { place: p.name, fields: stale.map((e) => e.field.replace(/_/g, " ")).join(", "), oldestDue: oldest },
+      client_waiting: false,
+      partner_waiting: false,
+      money_waiting: false,
+    });
+  }
+  return out;
 }
 
 /** Client documents asked for three working days ago or more and still missing, one item per engagement. */
@@ -363,7 +408,7 @@ async function weakPartners(tx: Queryable): Promise<Set<string>> {
 /** The ranked queue. `viewer` decides which buttons show; null (the jobs runner) gets none. */
 export async function opsQueue(tx: Queryable, viewer: Pick<SessionUser, "role"> | null, now: Date): Promise<QueueItem[]> {
   const cal = await loadCalendar(tx);
-  const rows = [...(await tx.query<Row>(SOURCES)).rows, ...(await overdueDocuments(tx, now, cal))];
+  const rows = [...(await tx.query<Row>(SOURCES)).rows, ...(await overdueDocuments(tx, now, cal)), ...(await staleEvidence(tx))];
   const weak = await weakPartners(tx);
   // Document checks shown beside the item they concern: evidence of a step in QA, a partner document, filing evidence.
   const evidence = (

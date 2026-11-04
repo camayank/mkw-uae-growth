@@ -1438,3 +1438,28 @@ released by the owner: "start E22". The mandate's P0-01, item 1.3; gap 45; rules
   clean one; a clean invoice stays final. The superseded row and its file stay recorded and quarantined, the step's
   QA and the payout look only at live rows, and the audit trail says what replaced what (migration 029).
 - **Not done:** the live scanner (gap 152); deleting infected bytes (gap 153); generated files (gap 154).
+
+**D105. A contradicting source never changes a figure on its own; every change is explained; stale facts reach the
+queue.** (E23, 4 Nov 2026, released by the owner: "start E23". The mandate's P0-02, item 2.2.)
+- **Classification** (`classifyFactChange`, core): a new fact against the current one for its field is `first`, `same`,
+  `change` or `conflict`, with the reason in words. A differing value is a conflict when it is weaker than the current
+  figure deserves today, older than the current evidence, or of the same date from another source; otherwise it is a
+  change. Every fact stores what it was and what it superseded (migration 030). Facts from before E23 are backfilled
+  by order, none as a conflict.
+- **A conflict changes nothing until the verifier decides.** The engine's current fact per field is the newest that
+  is not an unreviewed or kept conflict; the current-value cache is untouched by a conflict. The founder decides once
+  (`catalogue_fact_reviews`, append-only): `accept` makes the new figure current, `keep` leaves the current one. A
+  later superseding fact closes an open conflict on its own. On `main` the newest fact always won: an UNCERTAIN
+  intermediary figure replaced a verified official one in the engine and on every screen, and nothing said so.
+- **Version comparison** (`GET /api/admin/jurisdictions/compare`; `diffVersions`, core): every version of a field,
+  oldest first, each against the fact it superseded (not a conflict recorded in between), with the difference for
+  amounts and ranges, its change and reason, its review, and whether it is current. The history panel shows the
+  change, the previous value and the founder's Accept / Keep buttons on an open conflict.
+- **Queue items.** `fact_conflict`: one per open conflict, the decision as its action, founder only. `evidence_stale`:
+  one per active place with a recorded engine fact past its re-verification date, naming the fields and the oldest
+  due date; a new fact clears it. Both link to the Scoping page. The coverage report counts open conflicts; the
+  importer reports each conflict it would record, in its dry run too.
+- **Public display.** A conflict leaves the place's version unchanged, so an approval does not lapse for a figure the
+  public never sees; a superseding fact lapses it as before.
+- **Recorded:** rule versions compared as a whole (gap 156); stale items only for recorded facts, not for the seed's
+  legacy verifications (gap 157).

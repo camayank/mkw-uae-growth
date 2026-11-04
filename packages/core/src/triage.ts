@@ -26,6 +26,8 @@ export type QueueKind =
   | "partner_document"
   | "ai_draft"
   | "document_check"
+  | "fact_conflict"
+  | "evidence_stale"
   | "lead"
   | "new_lead"
   | "consultation"
@@ -66,6 +68,9 @@ export const QUEUE_POLICY: Record<QueueKind, QueuePolicy> = {
   consultation: { targetHours: 4, weight: 15, label: "Call requested" },
   lead_followup: { targetHours: 4, weight: 10, label: "Follow-up due" },
   partner_review: { targetHours: 27, weight: 5, label: "Partner application to review" },
+  // E23: evidence operations. A conflict waits for the founder; stale evidence drops a level until re-verified.
+  fact_conflict: { targetHours: 9, weight: 20, label: "Evidence conflict to resolve" },
+  evidence_stale: { targetHours: 27, weight: 10, label: "Stale evidence to re-verify" },
 };
 
 /** Facts about an item that raise its risk. Each is known to the caller from the item's own rows. */

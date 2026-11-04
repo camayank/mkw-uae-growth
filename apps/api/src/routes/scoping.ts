@@ -1,10 +1,11 @@
+import { notFound } from "../lib/errors.ts";
 import { z } from "zod";
 import { ACTIVITIES, aed, QUICK_BUDGETS, QUICK_EMIRATES, type Activity, type AdviceInput, type QuickBudget } from "@tasees/core";
 import { PLATFORM_ROLES, requireRole } from "../lib/auth.ts";
 import { asPlatform } from "../lib/context.ts";
 import { approveAdvice, recomputeAdvice, requestScoping, scopingOverview, search, verifyRule, verifyZone } from "../services/scoping.ts";
 import { listDrafts, reviewDraft } from "../services/drafts.ts";
-import { backlogCsv, catalogueOverview, coverageReport, factHistory, recordFact, setPlaceStatus } from "../services/catalogue.ts";
+import { backlogCsv, catalogueOverview, compareVersions, coverageReport, factHistory, recordFact, reviewFactConflict, setPlaceStatus } from "../services/catalogue.ts";
 import { approveForDisplay, displayOverview, publicAssess, publicQuick, revokeDisplay } from "../services/public.ts";
 import { IntakeSchema } from "../services/requests.ts";
 import { markPaymentPaid } from "../services/engagements.ts";
@@ -87,6 +88,21 @@ export function registerScopingRoutes(ctx: RouteContext) {
     const user = requireRole(req, "founder");
     const body = CatalogueFactBody.parse(req.body);
     return asPlatform(db, user, (tx) => recordFact(tx, user, body));
+  });
+
+  // E23: every version of one field against the one before; the founder's decision on a conflict.
+  const CompareQuery = z.object({ kind: z.enum(["place", "authority", "rule"]), subject: z.string().min(1).max(120), field: z.string().min(1).max(40) });
+  app.get("/api/admin/jurisdictions/compare", { config: { query: CompareQuery } }, async (req) => {
+    const user = requireRole(req, ...PLATFORM_ROLES);
+    const q = CompareQuery.parse(req.query);
+    return asPlatform(db, user, (tx) => compareVersions(tx, q.kind, q.subject, q.field));
+  });
+  const FactReviewBody = z.object({ decision: z.enum(["accept", "keep"]), note: z.string().trim().min(5).max(2000) });
+  app.post<{ Params: { id: string } }>("/api/admin/jurisdictions/facts/:id/review", { config: { body: FactReviewBody } }, async (req) => {
+    const user = requireRole(req, "founder");
+    if (!/^\d{1,12}$/.test(req.params.id)) throw notFound("No such fact");
+    const body = FactReviewBody.parse(req.body);
+    return asPlatform(db, user, (tx) => reviewFactConflict(tx, user, Number(req.params.id), body.decision, body.note));
   });
 
   // E7B: coverage matrix, evidence backlog and place classification -------------------------------------

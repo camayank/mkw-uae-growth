@@ -7,7 +7,7 @@ import { openQueueItem, opsQueue, syncQueueTimings } from "../services/queue.ts"
 import { resolveOutbox } from "../lib/outbox.ts";
 import { markPaymentPaid, openQuoteRequest, qaMilestone, releasePayout, resolveDispute, runAllocation } from "../services/engagements.ts";
 import { runJobs } from "../jobs/run.ts";
-import { systemOverview } from "../services/system.ts";
+import { reviewAuditFinding, systemOverview } from "../services/system.ts";
 import { buildOffers, overrideLinePrice, publishOffer } from "../services/pricing.ts";
 import { auditTrail, deliveryLog, myNotifications, opsOffer, opsOverview } from "../services/views.ts";
 import type { RouteContext } from "./context.ts";
@@ -170,6 +170,15 @@ export function registerOpsRoutes(ctx: RouteContext) {
   app.get("/api/ops/system", async (req) => {
     const user = requireRole(req, ...PLATFORM_ROLES);
     return asPlatform(db, user, (tx) => systemOverview(tx));
+  });
+
+  // E21: the founder records that an audit chain finding was investigated, which closes its alert.
+  const AuditReviewBody = z.object({ note: z.string().trim().min(10).max(2000) });
+  app.post<{ Params: { day: string } }>("/api/ops/system/audit-checks/:day/review", { config: { body: AuditReviewBody } }, async (req) => {
+    const user = requireRole(req, "founder");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(req.params.day)) throw notFound("No audit check on that day");
+    const { note } = AuditReviewBody.parse(req.body);
+    return asPlatform(db, user, (tx) => reviewAuditFinding(tx, user, req.params.day, note));
   });
 
   // Notifications: each person's own bell ---------------------------------------------------------

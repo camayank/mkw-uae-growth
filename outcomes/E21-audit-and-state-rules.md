@@ -8,7 +8,9 @@ released by the owner on 4 Nov 2026: "start E21". It covers the transformation m
 
 - **The audit trail.** No application role can write an audit event except through `audit_append`, or write, change
   or remove a nightly check. A removed or rewritten tail of the trail is found the next night, even after new events
-  have made the trail longer again.
+  have made the trail longer again, and its alert stays open until the founder records the investigation. Not closed:
+  `audit_append` takes the actor from its caller, so a compromised process can still append a well-formed event
+  naming anyone (gap 151).
 - **Downloads.** Each of the six download routes that had no such test is now tried by every party it does not belong
   to, and refused.
 - **Status changes.** Requests, payouts and change orders change status only through the one checked
@@ -20,7 +22,8 @@ released by the owner on 4 Nov 2026: "start E21". It covers the transformation m
 1. **Audit events (S6, gap 148, R20).** Migration 027:
    - revokes insert on `audit_events`, and every right on its id sequence, from the application roles;
    - makes the platform's policy read-only;
-   - adds a trigger that refuses an insert by any application role, including one granted the privilege later.
+   - adds a trigger that lets only the table's owner insert (the current user inside `audit_append`). A grant made
+     later is refused, whether to an application role, to PUBLIC or to the runtime login.
 2. **The nightly check (S4, gaps 143 and 148, R8).**
    - `audit_checks` is append-only: no application role may insert, update, delete or truncate it, and a trigger
      refuses any change or removal.
@@ -30,9 +33,13 @@ released by the owner on 4 Nov 2026: "start E21". It covers the transformation m
      - `tail_removed`: the last event of the previous check is missing or different;
      - `shortened`: the chain has fewer events than the night before (the only comparison for a check from before
        E21, which kept no last event).
-   - A finding opens a critical alert that names it, and the System page shows it.
-   - The check's day is never later than the real clock, so the test clock (a session setting) cannot record a later
-     day's check ahead of time.
+   - A finding opens a critical alert that names it, and the System page shows it. The alert stays open until the
+     founder records what the investigation found: "Record the investigation" on the System page, or
+     `POST /api/ops/system/audit-checks/:day/review`. The record goes in `audit_check_reviews`, append-only, once per
+     check, and is audited.
+   - The check's day is never later than the real clock, and never on or before the latest recorded day. So the test
+     clock, a session setting, can neither record a later day early nor fill in a past one. Its time is the real
+     clock.
 3. **Download refusal tests (gap 145, R4).** `downloads.test.ts` covers:
    - the evidence file;
    - the invoice PDF;
@@ -41,8 +48,14 @@ released by the owner on 4 Nov 2026: "start E21". It covers the transformation m
    - the payout bank file;
    - the accounting export.
 
-   Each route is tried by its owner, by another client, by a partner firm (on the engagement or not, as fits), by
-   partner staff where relevant, and anonymously. No refusal carries the file's bytes.
+   Each route is downloaded by a party it belongs to, as a control: the bank file comes from a real payout run. It is
+   then tried by every party it does not belong to and refused:
+   - another client;
+   - a partner firm, on the engagement or not, as fits;
+   - partner staff, for the staff-only routes;
+   - anonymously.
+
+   No refusal carries the file's bytes.
 4. **Transition tables (S5, gap 146, R7).**
    - `packages/core/src/states.ts` adds the request, payout and change-order machines, and `STATUSES`, every status
      each machine's row may hold.
@@ -53,8 +66,15 @@ released by the owner on 4 Nov 2026: "start E21". It covers the transformation m
      - change orders: decided.
    - Two guards follow from the machine: a request whose offer was accepted is never priced or quoted again, and a
      change order is decided once.
-   - The source test (`transitions.test.ts`) now fails if any code outside `transition()` sets one of the six
-     statuses.
+   - The source scan (`transitions.test.ts`) fails if code outside `transition()` sets one of the six statuses, in any
+     form its own test lists:
+     - with a schema or quotes;
+     - a column tuple;
+     - a subquery;
+     - no WHERE;
+     - an `on conflict` update.
+
+     On `main` it finds the ten writes this outcome moved.
    - A check constraint on each of the five status columns that lacked one (payouts had one). A test compares each
      constraint with `STATUSES`.
 
@@ -76,19 +96,24 @@ released by the owner on 4 Nov 2026: "start E21". It covers the transformation m
 - **`before-fix.txt`.** The new tests on `main` at 0b16552: 12 failed. A probe on the same code shows the closed
   request defect: offers rebuilt on a closed request, published, and accepted as a second engagement on the same
   request.
-- **`tests-pglite.txt`.** Core 159 passed (19 files). API 421 passed, 7 skipped (43 files).
-- **`tests-postgres16.txt`.** API 428 passed (43 files), on PostgreSQL 16.15, with the runtime-login suite.
+- **`tests-pglite.txt`.** Core 159 passed (19 files). API 422 passed, 7 skipped (43 files).
+- **`tests-postgres16.txt`.** API 429 passed (43 files), on PostgreSQL 16.15, with the runtime-login suite.
 - **`typecheck.txt`.** Clean.
 - **`smoke-log.txt`.** 337 checks and 60 axe scans passed, on a fresh demo. They include the System page with the
   audit chain checked and "intact".
 - **`screens/79-system.png` and `screens/80-mobile-system.png`.** The System page at 1280 and 390 px.
+- **`screens/e21-system-finding-*.png` and `finding-screens.json`.** The System page with a staged `tail_removed`
+  finding in the local demo, as the founder, at 1280 and 390 px, before and after "Record the investigation". Each
+  has its axe result, no horizontal overflow and no page errors.
 
 The new and changed tests:
-- `audit-guard.test.ts` (7);
+- `audit-guard.test.ts` (7), including the founder's review and the alert that stays open;
 - `downloads.test.ts` (6);
-- `transitions.test.ts`: four new tests, and the generic tests now run every move of all six machines on real rows;
+- `transitions.test.ts`: five new tests, including the scanner's own test. The generic tests now run every move of
+  all six machines on real rows;
 - `runtime-login.test.ts`: a forged insert and a forged check row, as the runtime login;
-- `hardening.test.ts`: it clears check rows as the owner.
+- `hardening.test.ts`: it clears check rows as the owner;
+- `contract.test.ts`: `docs/openapi.json` has the review route.
 
 ## Business invariants touched
 
@@ -98,6 +123,33 @@ The new and changed tests:
 - **Rule 6 (no unattended side effects).** Unchanged: payouts become eligible by the same tested rule (actor null,
   `payout.eligible`); finance alone releases.
 - **Rule 1 (money privacy).** Unchanged, with six more routes now proven.
+
+## Independent review
+
+An independent reviewer read the change against the code, and probed it on PGlite and PostgreSQL 16.
+
+- **Should fix, the docs overclaimed:** a well-formed event naming any actor can still be appended through
+  `audit_append`. Corrected: the docs say so, and gap 151 is recorded. Gap 148 is closed only for direct and malformed
+  inserts, and R20 is reduced, not closed.
+- **Significant:** a `tail_removed` alert closed itself the next night. Fixed: a finding stays alerted until the
+  founder records the investigation (`audit_check_reviews`).
+- **Minor, all fixed with tests:**
+  - back-dated check rows (refused, and the time is the real clock);
+  - the insert guard keyed on role names (now owner-only, tested with a grant to PUBLIC);
+  - six SQL forms the source scan missed (widened, and tested on each form);
+  - the bank-file test had no successful download (now a real run);
+  - roadmap wording.
+
+The reviewer verified as correct:
+- the grants;
+- the owner's functions under a non-superuser owner;
+- the first night, an empty chain and checks from before E21;
+- the restore drill;
+- every caller of the changed services;
+- the actors and lock order;
+- that no audit event was lost;
+- that the constraints match `STATUSES`;
+- the evidence counts.
 
 ## Dependencies
 

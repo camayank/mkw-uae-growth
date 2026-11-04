@@ -195,7 +195,60 @@ describe("requests, payouts and change orders (E21)", () => {
   });
 });
 
+/**
+ * Where SQL in the source writes `status` on one of the six machines' tables (E21; widened after its review). A
+ * statement runs to the end of its string literal. The SET list ends at the first WHERE, RETURNING or FROM outside
+ * brackets. Deliberately broad: anything flagged moves into `transition()`.
+ */
+const MACHINE_TABLES = "milestones|offers|engagements|requests|payouts|change_orders";
+const TABLE = `(?:only\\s+)?(?:public\\s*\\.\\s*)?"?(?:${MACHINE_TABLES})"?`;
+function setsStatus(setList: string): boolean {
+  let depth = 0;
+  let top = "";
+  for (let i = 0; i < setList.length; i++) {
+    const ch = setList[i]!;
+    if (ch === "(") depth++;
+    if (ch === ")") depth--;
+    if (depth === 0 && /^\s(where|returning|from)\s/i.test(setList.slice(i, i + 12))) break;
+    top += ch;
+  }
+  // A target is `status =`, or `status` inside a column tuple: `set (a, status) = (...)`.
+  return /(^|[\s,(])"?status"?\s*(=|,|\))/i.test(top);
+}
+function statusWrites(text: string): string[] {
+  const out: string[] = [];
+  const statements = [
+    ...text.matchAll(new RegExp(`update\\s+${TABLE}(?:\\s+(?:as\\s+)?(?!set\\b)\\w+)?\\s+set\\b([^"\`]*)`, "gi")),
+    ...text.matchAll(new RegExp(`insert\\s+into\\s+${TABLE}[^"\`]*?on\\s+conflict[^"\`]*?do\\s+update\\s+set\\b([^"\`]*)`, "gi")),
+  ];
+  for (const m of statements) if (setsStatus(m[1]!)) out.push(m[0].replace(/\s+/g, " ").slice(0, 90));
+  return out;
+}
+
 describe("the source", () => {
+  it("the scan finds a status write in every form SQL can take, and not a status in a WHERE", () => {
+    const writes = [
+      "update payouts set status = 'released' where id = $1",
+      "update public.payouts set status = 'released' where id = $1",
+      'update "payouts" set status = $2 where id = $1',
+      "update payouts p set released_at = app_now(), status = 'released' where p.id = $1",
+      "update requests set (status, notes) = ('closed', null) where id = $1",
+      "update change_orders set decided_at = (select max(at) from audit_events where entity = 'x'), status = 'approved' where id = $1",
+      "insert into payouts (id, status) values ($1, 'eligible') on conflict (id) do update set status = excluded.status",
+      "update offers set status = 'withdrawn'",
+      "UPDATE Milestones\n   SET\n   status = $2 WHERE id = $1",
+    ];
+    for (const w of writes) expect(statusWrites(`tx.query("${w}")`), w).toHaveLength(1);
+    const reads = [
+      "update payouts set run_id = $1 where id = any($2::uuid[]) and status = 'eligible' returning id",
+      "update payments set status = 'paid' where id = $1",
+      "update requests set advice_status = 'approved' where id = $1",
+      "select status from offers where id = $1 for update",
+      "update payouts set amount_fils = amount_fils - $2 where id = $1",
+    ];
+    for (const r of reads) expect(statusWrites(`tx.query("${r}")`), r).toEqual([]);
+  });
+
   it("changes these statuses nowhere but transition()", () => {
     const files: string[] = [];
     const walk = (dir: string) => {
@@ -207,12 +260,7 @@ describe("the source", () => {
     };
     walk(join(__dirname, "..", "src"));
     const offenders: string[] = [];
-    for (const f of files) {
-      const text = readFileSync(f, "utf8");
-      for (const m of text.matchAll(/update\s+(?:only\s+)?(milestones|offers|engagements|requests|payouts|change_orders)(?:\s+(?:as\s+)?(?!set\b)\w+)?\s+set\s+([\s\S]*?)\swhere\s/gi)) {
-        if (/(^|[\s,])status\s*=/.test(m[2]!)) offenders.push(`${f}: ${m[0].slice(0, 80)}`);
-      }
-    }
+    for (const f of files) for (const w of statusWrites(readFileSync(f, "utf8"))) offenders.push(`${f}: ${w}`);
     expect(offenders).toEqual([]);
     expect(files.length).toBeGreaterThan(30);
   });

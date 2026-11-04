@@ -1351,19 +1351,24 @@ after the owner's transformation mandate named the defect: "Investigate the repo
 **D103. The audit trail is written only through the database's own functions, and every money and work status moves
 through one checked machine.** (E21, 4 Nov 2026, released by the owner: "start E21". The mandate's P0-01, item 1.2.)
 - **Audit events.** Migration 027 revokes insert on `audit_events`, and every right on its id sequence, from the three
-  application roles. The platform's policy is now read-only. A trigger refuses an insert by any application role
-  (or the runtime group), so a later broad grant cannot reopen it. Inside `audit_append` the current user is the
-  function's owner, never an application role. Migration 025's comment, which said this was already so, was wrong;
-  027 says so.
+  application roles. The platform's policy is now read-only. A trigger lets only the table's owner insert, which is
+  the current user inside `audit_append`. So a later grant cannot reopen it: a broad one, one to PUBLIC, or one to the
+  runtime login itself. Migration 025's comment, which said this was already so, was wrong; 027 says so.
+  - What this does not close: `audit_append` takes the actor from its caller. A compromised process can still append
+    a well-formed event naming anyone (gap 151). Events can no longer be malformed, changed or removed, and their time
+    and hash are the database's.
 - **The nightly check is the database's.** `audit_checks` is append-only (revoked, and triggers for change, removal
   and truncation). A check is recorded only by `audit_check_run()` (security definer), from its own reading of the
   chain:
   - it keeps the last event it saw (id and hash);
   - it compares with the latest earlier check: `changed`, `tail_removed`, or `shortened` (for a check from before
     E21, which kept no last event);
-  - a finding opens a critical alert naming it;
-  - its day is capped at the real clock, so the test clock (a session setting any role can set) cannot record a later
-    day's check early and so skip it.
+  - a finding opens a critical alert naming it. The alert stays open until the founder records what the
+    investigation found, in `audit_check_reviews` (append-only, once per check; Setup → System). Before this, a
+    removed tail was found once: the next night compared with the shortened trail, found nothing, and closed the alert;
+  - its day is capped at the real clock, and no check is recorded for a day on or before the latest one. So the test
+    clock, a session setting any role can set, can neither record a later day early nor fill in a past day. Its time is
+    the database's real clock.
 
   Why compare the last event, not only the length: a removed tail followed by new events makes the chain longer
   again, and the chain on its own still verifies. Not covered: the owner rewriting both the trail and the check
@@ -1387,4 +1392,17 @@ through one checked machine.** (E21, 4 Nov 2026, released by the owner: "start E
   a closed request is now refused, with the reason (`assertRequestOpen`), and the machine refuses the move too.
 - **Downloads.** `downloads.test.ts` proves the six routes of the audit's section 4.2 refused to every party they do not
   belong to; no refusal carries the file.
-- **Recorded:** statuses outside the six machines (gap 149); no database-level move check (gap 150).
+- **The source scan** (`transitions.test.ts`) finds a status write with a schema or quotes, a column tuple, a
+  subquery, no WHERE, or an `on conflict` update. Its own test lists each form. On `main` it finds the ten writes this
+  outcome moved.
+- **Recorded:** statuses outside the six machines (gap 149); no database-level move check (gap 150); an event naming
+  any actor through `audit_append` (gap 151).
+- **The independent review** found:
+  - that the first draft's docs claimed forged events were closed (corrected; gap 151);
+  - the alert closing itself;
+  - back-dated check rows;
+  - an insert guard keyed on role names;
+  - scan forms it missed;
+  - a bank-file test with no successful download.
+
+  All are fixed, each with a test.

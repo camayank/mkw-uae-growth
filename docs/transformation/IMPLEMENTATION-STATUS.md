@@ -32,7 +32,7 @@ as a live payment.
 | One margin rule, floor, cap, ops review | TESTED | core `pricing.test.ts`, `catalogue.test.ts` |
 | Money as integer fils, rates as basis points | TESTED | core `money.ts`, `pricing.test.ts` |
 | Audit events cannot be changed or deleted at the database (revoked, and a trigger); hash-chained; checked nightly | TESTED | `runtime-login.test.ts`, `pdpl.test.ts`, `hardening.test.ts` |
-| Audit events written only through `audit_append`; an append-only nightly check, recorded by the database, that compares the chain with the night before | IN PROGRESS (E21). The owner rewriting the trail and its checks together is not caught (gap 143) | `audit-guard.test.ts`, `runtime-login.test.ts`, migration 027 |
+| Audit events written only through `audit_append`; an append-only nightly check, recorded by the database, that compares the chain with the night before | IN PROGRESS (E21). A well-formed event naming any actor can still be appended through `audit_append` (gap 151); the owner rewriting the trail and its checks together is not caught (gap 143) | `audit-guard.test.ts`, `runtime-login.test.ts`, migration 027 |
 | Event outbox, exactly-once side effects | TESTED | `outbox.test.ts` |
 | State machines for milestone, offer, engagement | TESTED | `transitions.test.ts` |
 | Transition tables for request, payout, change order; a check constraint on every machine's status column | IN PROGRESS (E21). Statuses outside the six machines still change by direct SQL (gap 149); the database does not check moves itself (gap 150) | `transitions.test.ts`, migration 027 |

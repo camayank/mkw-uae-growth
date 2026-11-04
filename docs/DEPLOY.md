@@ -56,7 +56,9 @@ are never printed. Fix the variable named and start again.
     check is missing or different, or the chain is shorter than the night before: events at the end of the trail were
     removed or rewritten. Only the database owner can do either. Change nothing else. Take a database snapshot, run
     `pnpm verify:audit` to confirm the event, and compare with the latest backup (`docs/RESTORE-DRILL.md`) to find what
-    changed and when. Tell the founder.
+    changed and when. Tell the founder. The alert stays open until the founder records what the investigation found
+    (Setup → System, "Record the investigation"). That record is kept with the check and never changed. An edited
+    event is found again every night until the trail is restored.
 - **For an external monitor.** `GET /api/health/jobs` answers 200, or 503 when the jobs are late, with the last run's
   time (no other data). `GET /api/health` stays the load balancer's liveness check.
 - **The System page** (Setup → System; founder, ops, finance) shows recent runs with each step's count and duration,

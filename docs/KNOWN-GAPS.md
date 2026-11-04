@@ -387,7 +387,8 @@ in a browser; everything listed here is not.
      production, and its roles can no longer add triggers, create temporary code or change the migration list (E19).
      So only the master secret can, which only the migration container and a DBA hold. Narrowed by E21: the nightly
      check now compares the chain with the night before, from a history no application role can write (D103), and
-     finds an edited event, a removed or rewritten tail, or a shorter chain. What remains: the owner could rewrite the
+     finds an edited event, a removed or rewritten tail, or a shorter chain. Its alert stays open until the founder
+     records the investigation. What remains: the owner could rewrite the
      trail and the check history together. Catching that needs an anchor outside the database, for example the last
      hash in the daily ops digest or in an external log.
 144. **The runtime login can change its own password or settings**, as PostgreSQL allows any login. A changed
@@ -412,9 +413,11 @@ in a browser; everything listed here is not.
 147. **The service catalogue (`deliverables`) is readable in full by clients and partners**, including its market
      mid-price, and has no row-level security. A reference figure, not partner cost or margin; recorded so it stays a
      choice.
-148. ~~**The platform role can insert audit events directly**, bypassing `audit_append`.~~ Closed by E21 (D103):
-     insert and the id sequence revoked from every application role, a trigger that refuses one granted it later, and
-     an append-only `audit_checks` written only by the database's own `audit_check_run()`. Migration 025 revoked update,
+148. ~~**The platform role can insert audit events directly**, bypassing `audit_append`.~~ Closed by E21 (D103) for
+     direct inserts and malformed events. Insert and the id sequence are revoked from every application role, and a
+     trigger lets only the table's owner insert. `audit_checks` is append-only, written only by the database's own
+     `audit_check_run()`. Not closed: a well-formed event naming any actor, appended through `audit_append` itself
+     (gap 151). Migration 025 revoked update,
      delete and truncate on `audit_events` but not insert, and its comment saying events are written only through
      `audit_append` is wrong.
      - A forged, well-formed event would verify, because the hash has no secret.
@@ -430,10 +433,26 @@ in a browser; everything listed here is not.
      requests, obligations, leads and assessments. Each column has a check constraint, and each service checks the
      status it expects before it writes, but none has a transition table. E25 must give the agent
      no tool that writes them directly; a machine for payments and payout runs is the natural next step.
-150. **The database does not check status moves itself.** `transition()` checks the table, and a source test fails if
-     code elsewhere sets one of the six statuses. A direct SQL update by an application role can still make any move
+150. **The database does not check status moves itself.** `transition()` checks the table. A source scan fails if code
+     elsewhere sets one of the six statuses in any form its own test lists:
+     - with a schema or quotes;
+     - a column tuple;
+     - a subquery;
+     - no WHERE;
+     - an `on conflict` update.
+
+     SQL built at run time from pieces would escape it. A direct SQL update by an application role can still make any move
      between valid statuses: the check constraints refuse only an invalid status. A trigger that knows the six tables
      would add the database as a layer. Tests that set up a status directly would then need the owner.
+151. **An application process can append a well-formed audit event naming any actor.** Every application role may
+     call `audit_append` (it must, to audit its own work), and the function takes the actor, the organisation and the
+     action from its caller. The chain then verifies. So a compromised process, or an SQL injection on any path, could
+     record "finance released payout X". The database does not know who the person behind a request is.
+
+     The rest stays true: no event can be changed, removed or malformed, and the time and the hash are the
+     database's. Binding the actor to the signed-in session would need the database to verify the session. Today a
+     session setting is only a claim, settable by any role. So would an outside anchor of the chain. Found by the
+     independent review of E21.
 
 ## E16: report design
 

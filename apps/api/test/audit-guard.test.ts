@@ -51,7 +51,7 @@ describe("the audit trail is written only through audit_append (E21)", () => {
   it("refuses a direct insert even to a role later granted the privilege (the trigger)", async () => {
     await asPlatform(env.db, null, async (tx) => {
       await tx.query("reset role"); // the test's connection is the owner's: grant, try, and roll back
-      await tx.query("grant insert on audit_events to app_platform");
+      await tx.query("grant insert on audit_events to app_platform, public"); // a later grant, and one to PUBLIC
       await tx.query("set local role app_platform");
       await expect(forged(tx)).rejects.toThrow(/written only through audit_append/);
       throw new Error("rollback");
@@ -85,6 +85,10 @@ describe("the audit trail is written only through audit_append (E21)", () => {
     const at = withClock(env.db, () => env.clock.now);
     expect(await asPlatform(at, null, (tx) => nightlyAuditCheck(tx))).toBeGreaterThan(0);
     expect(await asPlatform(at, null, (tx) => nightlyAuditCheck(tx))).toBe(0); // once per Dubai day
+    // Nor back-dated: a clock set to the day before records nothing once today's check exists (E21 review).
+    const yesterday = withClock(env.db, () => new Date(env.clock.now.getTime() - day));
+    expect(await asPlatform(yesterday, null, (tx) => nightlyAuditCheck(tx))).toBe(0);
+    expect((await asPlatform(env.db, null, (tx) => tx.query<{ n: number }>("select count(*)::int as n from audit_checks"))).rows[0]!.n).toBe(1);
     // A clock set in the future (app.now is a session setting) cannot record a later day's check ahead of time.
     const future = withClock(env.db, () => new Date(Date.now() + 30 * day));
     expect(await asPlatform(future, null, (tx) => nightlyAuditCheck(tx))).toBeGreaterThan(0); // recorded for today, not for the future day
@@ -121,6 +125,30 @@ describe("the audit trail is written only through audit_append (E21)", () => {
       const alert = (await asPlatform(fresh.db, null, (tx) => tx.query<any>("select kind, severity, summary from alerts where kind = 'audit_chain' and closed_at is null"))).rows[0];
       expect(alert).toMatchObject({ kind: "audit_chain", severity: "critical" });
       expect(alert.summary).toMatch(/last event of the previous check/);
+      // The next night compares with the shortened trail and finds nothing new; the alert stays open until the founder
+      // records the investigation (E21 review: it used to close itself).
+      fresh.clock.now = new Date(fresh.clock.now.getTime() + day);
+      await asPlatform(at2, null, (tx) => nightlyAuditCheck(tx));
+      expect((await asPlatform(fresh.db, null, (tx) => tx.query<any>("select finding from audit_checks order by day desc limit 1"))).rows[0].finding).toBeNull();
+      const sweep = () => asPlatform(at2, null, (tx) => sweepAlerts(tx, { notify: fresh.notify, alertEmail: "alerts@mkwadvisors.test", since: new Date(0) }));
+      const auditAlertOpen = async () => (await asPlatform(fresh.db, null, (tx) => tx.query<any>("select 1 from alerts where kind = 'audit_chain' and closed_at is null"))).rows.length === 1;
+      await sweep();
+      expect(await auditAlertOpen()).toBe(true);
+      const tamperDay = (await asPlatform(fresh.db, null, (tx) => tx.query<any>("select day::text from audit_checks where finding is not null"))).rows[0].day;
+      const review = (who: string, note = "Restored the trail from the 02:00 backup; DBA access rotated.") =>
+        fresh.call(who, "POST", `/api/ops/system/audit-checks/${tamperDay}/review`, { note });
+      expect((await review("ops")).status).toBe(403);
+      expect((await review("founder", "short")).status).toBe(400);
+      expect((await review("founder")).status).toBe(200);
+      expect((await review("founder")).status).toBe(409); // once
+      await sweep();
+      expect(await auditAlertOpen()).toBe(false);
+      const sys = (await fresh.call("founder", "GET", "/api/ops/system")).body.auditChecks.find((c: any) => c.day === tamperDay);
+      expect(sys).toMatchObject({ finding: "tail_removed", reviewNote: expect.stringMatching(/Restored the trail/) });
+      // The review is append-only too.
+      await expect(asPlatform(fresh.db, null, (tx) => tx.query("update audit_check_reviews set note = 'nothing happened here'"))).rejects.toThrow(/permission denied|append-only/);
+      await expect(asPlatform(fresh.db, null, (tx) => tx.query("delete from audit_check_reviews"))).rejects.toThrow(/permission denied|append-only/);
+      await expect(fresh.db.transaction((tx) => tx.query("update audit_check_reviews set note = 'even the owner cannot'"))).rejects.toThrow(/append-only/);
     } finally {
       await fresh.db.close();
     }

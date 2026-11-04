@@ -1,5 +1,4 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { asPlatform } from "../src/lib/context.ts";
 import { createSession } from "../src/lib/auth.ts";
 import { makeEnv, type TestEnv } from "./helpers.ts";
 
@@ -9,6 +8,7 @@ import { makeEnv, type TestEnv } from "./helpers.ts";
  * party it does not (it is refused, and the body carries none of the file).
  */
 const pdf = Buffer.from("%PDF-1.4 E21 evidence").toString("base64");
+const IBAN = "AE070331234567890123456";
 const partnerKey = (name: string) => (name.startsWith("Example Setup") ? "setup" : name.startsWith("Example Corporate") ? "corp" : "tax");
 
 describe("downloads are refused to every other party (E21)", () => {
@@ -47,8 +47,17 @@ describe("downloads are refused to every other party (E21)", () => {
     expect((await env.call(deliverer, "POST", `/api/milestones/${m.id}/evidence`, { type: m.evidenceRequired[0] ?? "receipt", fileName: "licence.pdf", contentBase64: pdf })).status).toBe(200);
     evidenceId = (await env.call("client", "GET", `/api/engagements/${engagementId}`)).body.evidence[0].id;
     invoiceId = (await env.call("client", "GET", "/api/client/statement")).body.invoices[0].id;
-    const finance = (await env.call("finance", "GET", "/api/me")).body;
-    runId = (await asPlatform(env.db, finance, (tx) => tx.query<{ id: string }>("insert into payout_runs (reference, created_by) values ('PR-E21-0001', $1) returning id", [finance.id]))).rows[0]!.id;
+    // A real payout run: the delivering firm gives its bank details and invoices its kickoff payout; finance runs it.
+    expect((await env.call(deliverer, "PUT", "/api/partner/bank", { beneficiary: "E21 Delivery LLC", iban: IBAN, bank: "Test Bank" })).status).toBe(200);
+    const payouts = (await env.call("finance", "GET", "/api/ops/payouts/payable")).body as any[];
+    expect(payouts.length).toBeGreaterThan(0);
+    for (const p of payouts) {
+      const amountAed = p.amount / 100;
+      expect((await env.call(deliverer, "POST", `/api/payouts/${p.id}/invoice`, { number: `INV-E21-${p.id.slice(0, 4)}`, amountAed, vatAed: Math.round(amountAed * 5) / 100, fileName: "invoice.pdf", contentBase64: Buffer.from("%PDF-1.4 inv").toString("base64") })).status).toBe(200);
+    }
+    const run = await env.call("finance", "POST", "/api/ops/payout-runs");
+    expect(run.status).toBe(200);
+    runId = run.body.id;
     // Another client, with its own owner signed in.
     expect((await env.call("ops", "POST", "/api/ops/clients", { company: "Other Client LLC", ownerName: "Other Owner", ownerEmail: "owner@other-e21.test" })).status).toBe(200);
     env.tokens.other = await createSession(env.db, "owner@other-e21.test");
@@ -100,12 +109,11 @@ describe("downloads are refused to every other party (E21)", () => {
 
   it("the payout bank file: finance and the founder only", async () => {
     const url = `/api/ops/payout-runs/${runId}/file`;
-    // Finance reaches the run (an empty run is refused for what it is, not for who asks).
     const f = await get("finance", url);
-    expect(f.statusCode).toBe(409);
-    expect(f.json().message).toMatch(/no payouts left/);
-    for (const who of ["ops", "client", "other", deliverer, stranger, "setupStaff"]) await refused(who, url, [403]);
-    await refused("anon", url, [401]);
+    expect(f.statusCode).toBe(200);
+    expect(f.body).toContain(IBAN);
+    for (const who of ["ops", "client", "other", deliverer, stranger, "setupStaff"]) await refused(who, url, [403], IBAN);
+    await refused("anon", url, [401], IBAN);
   });
 
   it("the accounting export: never to a partner or a client", async () => {

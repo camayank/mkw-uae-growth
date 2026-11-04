@@ -2,20 +2,25 @@
 -- column holds only its machine's statuses.
 
 -- 1. Audit events (S6, gap 148). Migration 001 granted app_platform every privilege on every table, so the platform
---    role could insert an event directly: a forged, well-formed event attributed to anyone (the hash has no secret), or
---    a malformed one that breaks the chain for good. Every application role appends through `audit_append` (security
---    definer, owned by the migration login), which computes the link and the hash itself; none may insert, and none
---    may take or move the event ids. Migration 025's comment said this was already so; it was not.
+--    role could insert an event directly, with any link, hash or time: a malformed one breaks the chain for good. Every
+--    application role appends through `audit_append` (security definer, owned by the migration login), which takes the
+--    time and computes the link and the hash itself; none may insert, and none may take or move the event ids.
+--    Migration 025's comment said this was already so; it was not. `audit_append` still takes the actor from its
+--    caller, so a compromised application process can append a well-formed event naming any actor (gap 151).
 revoke insert on audit_events from app_platform, app_client, app_partner;
 revoke all on sequence audit_events_id_seq from app_platform, app_client, app_partner;
 -- The platform reads the trail; it writes nothing to it but through the function. The policy said "for all".
 drop policy audit_events_platform on audit_events;
 create policy audit_events_platform on audit_events for select to app_platform using (true);
--- A role granted INSERT later (a broad "grant all on all tables", as migration 001 did) is still refused: inside
--- `audit_append` the current user is the function's owner, never an application role.
+-- Only the table's owner inserts: inside `audit_append` the current user is the function's owner, who owns the table
+-- (both are created by the migration login). Any other role is refused, whatever it was granted later: a broad "grant
+-- all on all tables", as migration 001 did, a grant to PUBLIC, or one to the runtime login itself (E21 review).
+create function app_is_table_owner(t oid) returns boolean language sql stable as $$
+  select current_user = (select pg_get_userbyid(c.relowner) from pg_class c where c.oid = t)
+$$;
 create function audit_events_insert_guard() returns trigger language plpgsql as $$
 begin
-  if current_user in ('app_platform', 'app_client', 'app_partner', 'app_runtime') then
+  if not app_is_table_owner(tg_relid) then
     raise exception 'Audit events are written only through audit_append (E21, rule 8)';
   end if;
   return new;
@@ -27,7 +32,8 @@ create trigger audit_events_insert_only_by_append before insert on audit_events 
 --    itself, from its own reading of the chain, and nobody but the owner changes or removes a row.
 --    The check also compares the chain with the night before. It keeps the last event it saw (id and hash): if that
 --    event is gone or different the next night, the tail was removed or rewritten, even when new events have made the
---    chain longer again. A row from before E21 has no last event, so the length alone is compared with it.
+--    chain longer again. A row from before E21 has no last event, so the length alone is compared with it. A finding
+--    stays alerted until the founder records the investigation (audit_check_reviews, below).
 alter table audit_checks
   add column last_id bigint,
   add column last_hash text,
@@ -41,7 +47,7 @@ create policy audit_checks_platform on audit_checks for select to app_platform u
 create function audit_checks_append_only() returns trigger language plpgsql as $$
 begin
   if tg_op = 'INSERT' then
-    if current_user in ('app_platform', 'app_client', 'app_partner', 'app_runtime') then
+    if not app_is_table_owner(tg_relid) then
       raise exception 'Audit checks are recorded only by audit_check_run (E21, rule 8)';
     end if;
     return new;
@@ -53,7 +59,9 @@ create trigger audit_checks_no_change before update or delete on audit_checks fo
 create trigger audit_checks_no_truncate before truncate on audit_checks for each statement execute function audit_checks_append_only();
 
 -- Once per Dubai day: verify the whole chain, compare it with the latest earlier check, and record the result. Returns
--- the events checked, or 0 (recorded = false) when today's check is already done.
+-- the events checked, or 0 (recorded = false) when today's check, or a later one, is already recorded. A check is never
+-- recorded for a day before the latest one, and its time is the database's real clock (E21 review): the history shows
+-- only checks that ran, when they ran.
 create function audit_check_run() returns table (checked bigint, broken_id bigint, finding text, recorded boolean)
 language plpgsql security definer set search_path = public, pg_temp set timezone to 'UTC' set datestyle to 'ISO, MDY' as $$
 declare
@@ -68,7 +76,7 @@ declare
   v_prev record;
 begin
   perform pg_advisory_xact_lock(777010); -- two job runners record one check (an id no other lock uses)
-  if exists (select 1 from audit_checks c where c.day = v_day) then
+  if exists (select 1 from audit_checks c where c.day >= v_day) then
     return query select 0::bigint, null::bigint, null::text, false;
     return;
   end if;
@@ -82,12 +90,33 @@ begin
   elsif v_prev.day is not null and v_checked < v_prev.checked then
     v_finding := 'shortened';
   end if;
-  insert into audit_checks (day, checked, broken_id, last_id, last_hash, finding)
-  values (v_day, v_checked, v_broken, v_last_id, v_last_hash, v_finding);
+  insert into audit_checks (day, checked, broken_id, last_id, last_hash, finding, at)
+  values (v_day, v_checked, v_broken, v_last_id, v_last_hash, v_finding, now());
   return query select v_checked, v_broken, v_finding, true;
 end $$;
 revoke all on function audit_check_run() from public;
 grant execute on function audit_check_run() to app_platform;
+
+-- A finding stays alerted until a person records that it was investigated (E21 review: a removed tail was found once,
+-- and the next night's check, comparing with the already-shortened trail, found nothing and closed the alert). The
+-- review is append-only: written once, never changed or removed. An edited event is found again every night until the
+-- trail is restored, so its alert reopens with the next check.
+create table audit_check_reviews (
+  day date primary key references audit_checks(day),
+  reviewed_by uuid not null references users(id),
+  note text not null check (length(note) between 10 and 2000),
+  at timestamptz not null default now()
+);
+grant select, insert on audit_check_reviews to app_platform;
+alter table audit_check_reviews enable row level security;
+create policy audit_check_reviews_read on audit_check_reviews for select to app_platform using (true);
+create policy audit_check_reviews_add on audit_check_reviews for insert to app_platform with check (true);
+create function append_only_refuse() returns trigger language plpgsql as $$
+begin
+  raise exception '% is append-only: a row is never changed or removed (E21, rule 8)', tg_table_name;
+end $$;
+create trigger audit_check_reviews_no_change before update or delete on audit_check_reviews for each row execute function append_only_refuse();
+create trigger audit_check_reviews_no_truncate before truncate on audit_check_reviews for each statement execute function append_only_refuse();
 
 -- 3. Status columns (S5, gap 146). Each holds only its machine's statuses (`STATUSES` in packages/core/src/states.ts;
 --    `test/transitions.test.ts` compares the two). Payouts already had one.

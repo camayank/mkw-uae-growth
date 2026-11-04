@@ -1,0 +1,14 @@
+{
+ "phone: alert open": true,
+ "phone: button shown": true,
+ "phone: overflow": false,
+ "phone: axe before": [],
+ "desktop: alert open": true,
+ "desktop: button shown": true,
+ "desktop: overflow": false,
+ "desktop: axe before": [],
+ "desktop: reviewed shown": true,
+ "desktop: alert cleared after review": true,
+ "desktop: axe after": [],
+ "errors": []
+}

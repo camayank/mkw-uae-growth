@@ -111,6 +111,7 @@ export async function renderEngagement(id) {
       )}` : ""}
       <p class="small muted pad" style="padding-top:0">Pay by bank transfer to MKW Advisors quoting reference ${esc(e.engagement.id.slice(0, 8).toUpperCase())}, or by card. A tax invoice is issued for every payment.</p></div>`;
     if (isPartner()) {
+      if (role() !== "partner_admin") return ""; // E19: partner staff see no payout; the admin does
       const list = [...(e.payouts ?? [])].sort(byStage);
       const paid = list.filter((p) => p.status === "released").reduce((n, p) => n + p.amount, 0);
       const toCome = list.filter((p) => p.status !== "released").reduce((n, p) => n + p.amount, 0);
@@ -159,10 +160,12 @@ export async function renderEngagement(id) {
       ${["ops", "founder"].includes(role()) ? `<div class="pad" style="padding-top:8px"><button class="sm" data-act="reallocate" data-id="${e.engagement.id}">Allocate open lines now</button></div>` : ""}${manualAllocation()}</div>`;
     const priceCol = isClient() ? "clientUnitPrice" : "partnerUnitCost";
     const showMoney = e.lines.some((l) => l[priceCol] != null);
+    // E19: partner staff are sent no money figure, government fees included, so the column goes with it.
+    const showGov = e.lines.some((l) => l.govUnitFee != null);
     return `<div class="card flush"><h2>Scope</h2>${table(
-      ["Service", "#Qty", ...(showMoney ? [isClient() ? "#Fee each" : "#Your fee each"] : []), "#Govt fee each"],
+      ["Service", "#Qty", ...(showMoney ? [isClient() ? "#Fee each" : "#Your fee each"] : []), ...(showGov ? ["#Govt fee each"] : [])],
       e.lines.map(
-        (l) => `<tr><td>${esc(l.name)}</td><td class="num">${l.qty}</td>${showMoney ? `<td class="num">${aed(l[priceCol])}</td>` : ""}<td class="num">${aed(l.govUnitFee)}</td></tr>`,
+        (l) => `<tr><td>${esc(l.name)}</td><td class="num">${l.qty}</td>${showMoney ? `<td class="num">${aed(l[priceCol])}</td>` : ""}${showGov ? `<td class="num">${aed(l.govUnitFee)}</td>` : ""}</tr>`,
       ),
     )}</div>`;
   };
@@ -171,11 +174,12 @@ export async function renderEngagement(id) {
     const list = e.changeOrders ?? [];
     const rows = list.map((c) => {
       const amount = isClient() ? c.client : isPartner() ? c.partner : c.client;
+      const staff = isPartner() && role() !== "partner_admin"; // E19: no cost for partner staff
       const decide =
         isClient() && role() === "client_owner" && c.status === "priced"
           ? `<button class="sm primary" data-act="co-decide" data-id="${c.id}" data-approve="1">Approve</button> <button class="sm" data-act="co-decide" data-id="${c.id}" data-approve="0">Decline</button>`
           : "";
-      return `<tr><td>${esc(c.description)}</td><td class="num">${aed(amount)}${isPlatform() ? `<br><span class="small muted">partner ${aed(c.partner)}</span>` : ""}</td><td>${badge(c.status)}</td><td>${decide}</td></tr>`;
+      return `<tr><td>${esc(c.description)}</td><td class="num">${staff ? '<span class="small muted">admin sees it</span>' : aed(amount)}${isPlatform() ? `<br><span class="small muted">partner ${aed(c.partner)}</span>` : ""}</td><td>${badge(c.status)}</td><td>${decide}</td></tr>`;
     });
     const form =
       isPartner() && role() === "partner_admin" && e.engagement.status === "in_delivery"
@@ -403,7 +407,11 @@ function renderPartnerEngagement(e, parts) {
     <div class="stack">
       ${panel("All steps", stepsList, { state: `${parts.done} of ${ms.length} approved${next ? " · 1 yours now" : ""}`, open: true })}
       ${parts.docsCard() ? panel(`Documents from the client ${toReceive ? badge("warn", `${toReceive} to confirm`) : docsOpen ? badge("pending", `${docsOpen} outstanding`) : badge("ok", "complete")}`, stripCard(parts.docsCard()).replace(/^[^]*?<\/h2>/, ""), { id: "docs", open: toReceive > 0 }) : ""}
-      ${panel("Scope and your fees", `${stripCard(parts.linesCard())}<p class="small muted">Your own rate card as accepted; government fees are not part of this figure. The client's price is set by MKW Advisors and is not shown here.</p>`, { state: e.lines.some((l) => l.partnerUnitCost != null) ? `${aed(fees)} your fees` : "" })}
+      ${
+        role() === "partner_admin"
+          ? panel("Scope and your fees", `${stripCard(parts.linesCard())}<p class="small muted">Your own rate card as accepted; government fees are not part of this figure. The client's price is set by MKW Advisors and is not shown here.</p>`, { state: e.lines.some((l) => l.partnerUnitCost != null) ? `${aed(fees)} your fees` : "" })
+          : panel("Scope", `${stripCard(parts.linesCard())}<p class="small muted">Your firm's admin sees the fees.</p>`)
+      }
       ${parts.moneyCard()}
       ${parts.creditsCard()}
       ${parts.changeOrders()}

@@ -88,7 +88,7 @@ describe("role isolation (E19)", () => {
       expect(eng.body.milestones.length).toBeGreaterThan(0);
       const { payouts: engPayouts, ...engRest } = eng.body;
       expect(engPayouts).toEqual([]);
-      expect(JSON.stringify(engRest)).not.toMatch(/"amount"|payout|partner_fils|"partner":\d|partnerUnit|clientUnit|margin/i);
+      expect(JSON.stringify(engRest)).not.toMatch(/"amount"|payout|partner_fils|"partner":\d|partnerUnit|clientUnit|govUnit|margin/i);
     }
   });
 

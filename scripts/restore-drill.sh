@@ -29,6 +29,8 @@ do $$ begin
   if not exists (select 1 from pg_roles where rolname = 'app_runtime') then create role app_runtime nologin noinherit; end if;
 end $$;
 grant app_client, app_partner, app_platform to current_user;
+-- E19: memberships are not in a dump either; the runtime group switches to the three roles but never inherits them.
+grant app_client, app_partner, app_platform to app_runtime with inherit false, set true;
 SQL
 start=$(date +%s)
 pg_restore --no-owner --dbname="$target" "$DUMP"

@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { asPlatform } from "../src/lib/context.ts";
-import { loginOwnsSchema, prepareDatabase, scramVerifier } from "../src/lib/db.ts";
+import { randomBytes } from "node:crypto";
+import pg from "pg";
+import { ensureRuntimeLogin, loginOwnsSchema, openPostgres, prepareDatabase, scramVerifier } from "../src/lib/db.ts";
 import { signWebhook } from "../src/lib/payments.ts";
 import { runJobs } from "../src/jobs/run.ts";
 import { nightlyAuditCheck } from "../src/services/system.ts";
@@ -40,12 +42,35 @@ describe("the audit trail is append-only (E19)", () => {
     expect(await prepareDatabase(env.db, { production: false })).toEqual([]); // development and tests: the owner migrates
   });
 
-  it("a SCRAM verifier is computed as libpq does (RFC 7677 test vector shape) and never contains the password", () => {
+  it("a SCRAM verifier matches an independent computation (Python's hashlib, RFC 7677) and never contains the password", () => {
     const v = scramVerifier("correct-horse-battery-staple-0123456789", Buffer.alloc(16, 7));
-    expect(v).toMatch(/^SCRAM-SHA-256\$4096:[A-Za-z0-9+/=]{24}\$[A-Za-z0-9+/=]{44}:[A-Za-z0-9+/=]{44}$/);
+    // Computed with Python's hashlib.pbkdf2_hmac and hmac (E19 review: the suite's PostgreSQL trusts local logins, so a
+    // wrong verifier would otherwise pass every test).
+    expect(v).toBe("SCRAM-SHA-256$4096:BwcHBwcHBwcHBwcHBwcHBw==$+IOlLVdmptQ6t2kJ9+bC/sx1M/3z66Y/w61fwtatf6s=:dIbrFgSdmPumBP0a33JHN+pPIvzs6rKStvPDn7Ohu+Y=");
     expect(v).not.toContain("correct-horse");
-    expect(scramVerifier("correct-horse-battery-staple-0123456789", Buffer.alloc(16, 7))).toBe(v); // deterministic for a salt
     expect(() => scramVerifier("has a space")).toThrow(/printable ASCII/);
+  });
+
+  it("the owner's truncate is refused too: the guard is a trigger, not only a revoked privilege", async () => {
+    await expect(env.db.transaction((tx) => tx.query("truncate audit_events"))).rejects.toThrow(/append-only/);
+  });
+
+  it("no application role may add a trigger or a foreign key to any table, or change the migration list (E19 review)", async () => {
+    const roles = ["app_client", "app_partner", "app_platform", "app_runtime"];
+    const held = await env.db.transaction((tx) =>
+      tx.query<{ role: string; relname: string; priv: string }>(
+        `select r.role, c.relname, p.priv from pg_class c join pg_namespace n on n.oid = c.relnamespace
+           cross join unnest($1::text[]) as r(role) cross join unnest(array['TRIGGER', 'REFERENCES', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE']) as p(priv)
+         where n.nspname = 'public' and c.relkind in ('r', 'p') and has_table_privilege(r.role, c.oid, p.priv)
+           and (p.priv in ('TRIGGER', 'REFERENCES') or c.relname = 'schema_migrations')`,
+        [roles],
+      ),
+    );
+    expect(held.rows).toEqual([]);
+    if (env.db.kind === "postgres") {
+      const temp = await env.db.transaction((tx) => tx.query<{ role: string }>("select r.role from unnest($1::text[]) as r(role) where has_database_privilege(r.role, current_database(), 'TEMPORARY')", [roles]));
+      expect(temp.rows).toEqual([]);
+    }
   });
 });
 
@@ -108,5 +133,43 @@ describe.skipIf(!PG)("the application as a runtime login that owns nothing (Post
     await expect(asPlatform(env.db, null, (tx) => tx.query("alter table audit_events disable trigger audit_events_no_change"))).rejects.toThrow(/must be owner/);
     await expect(asPlatform(env.db, null, (tx) => tx.query("alter table offer_lines disable trigger offer_lines_fee_evidence"))).rejects.toThrow(/must be owner/);
     await expect(env.db.transaction((tx) => tx.query("create role sneaky login"))).rejects.toThrow(/permission denied/);
+    // The way round the guard the independent review found: a trigger of its own on audit_events, run as the owner
+    // inside the security-definer audit_append; or code in the temporary schema. Both are refused.
+    await expect(asPlatform(env.db, null, (tx) => tx.query("create trigger sneaky before insert on audit_events for each row execute function audit_events_append_only()"))).rejects.toThrow(/permission denied/);
+    await expect(asPlatform(env.db, null, (tx) => tx.query("create function pg_temp.sneaky() returns int language sql as 'select 1'"))).rejects.toThrow(/permission denied/);
+    // The migration list is the migration step's: a future migration cannot be marked as applied or removed.
+    await expect(asPlatform(env.db, null, (tx) => tx.query("insert into schema_migrations (name) values ('999_skip_me.sql')"))).rejects.toThrow(/permission denied/);
+    await expect(env.db.transaction((tx) => tx.query("delete from schema_migrations"))).rejects.toThrow(/permission denied/);
+  });
+
+  it("the migration step runs again as an owner who is not a superuser (as RDS's master): the login is updated, not refused", async () => {
+    // E19 review: ALTER ROLE ... NOSUPERUSER is refused to a non-superuser, so every migration after the first failed.
+    const admin = new pg.Client({ connectionString: process.env.TEST_DATABASE_URL });
+    await admin.connect();
+    const tag = randomBytes(4).toString("hex");
+    const ownerRole = `rds_like_${tag}`;
+    const dbName = `tasees_rds_${tag}`;
+    const login = `tasees_rt_${tag}`;
+    await admin.query(`create role ${ownerRole} login createrole createdb`);
+    await admin.query(`grant app_runtime to ${ownerRole} with admin option`);
+    await admin.query(`create database ${dbName} owner ${ownerRole}`);
+    const url = new URL(process.env.TEST_DATABASE_URL!);
+    url.username = ownerRole;
+    url.pathname = `/${dbName}`;
+    const asOwner = await openPostgres(url.toString());
+    try {
+      await ensureRuntimeLogin(asOwner, login, randomBytes(24).toString("base64url"));
+      // The login gives itself a default role; the next migration step clears it, and updates the password.
+      await asOwner.transaction((tx) => tx.query(`alter role ${login} set role = 'app_platform'`));
+      await ensureRuntimeLogin(asOwner, login, randomBytes(24).toString("base64url"));
+      const r = await admin.query("select rolsuper, rolcreaterole, rolcreatedb, rolconfig from pg_roles where rolname = $1", [login]);
+      expect(r.rows[0]).toEqual({ rolsuper: false, rolcreaterole: false, rolcreatedb: false, rolconfig: null });
+    } finally {
+      await asOwner.close();
+      await admin.query(`drop database ${dbName} with (force)`);
+      await admin.query(`drop role if exists ${login}`);
+      await admin.query(`drop role if exists ${ownerRole}`);
+      await admin.end();
+    }
   });
 });

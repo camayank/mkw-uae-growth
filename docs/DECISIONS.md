@@ -1284,7 +1284,7 @@ after the owner's transformation mandate named the defect: "Investigate the repo
   - `scripts/migrate.ts` runs as the owner, applies migrations, seeds the catalogue, and creates or updates the runtime
     login from its secret. It sends Postgres a SCRAM verifier, never the password, so no statement the server logs
     carries it.
-  - Staging: the app and the jobs use the runtime login's secret, and only the migration task holds the master's
+  - Staging: the app and the jobs use the runtime login's secret, and only the migration step holds the master's (since the review, a container that starts each app task)
     (`infra/lib/staging-stack.ts`; the runbook in `docs/DEPLOY.md`).
 - **Proof on PostgreSQL 16** (`runtime-login.test.ts`):
   - a whole engagement runs as a fresh runtime login: request, offer, acceptance, payment, allocation, every step
@@ -1295,4 +1295,25 @@ after the owner's transformation mandate named the defect: "Investigate the repo
   that still can.
 - **Not done here (gap 142).** Separate database roles for ops and finance, or for partner admin and staff. Within a
   party the split stays in the API, now tested on every path the paused audit listed.
+- **Found by the independent review of E19, and fixed with tests:**
+  - **The runtime login could still rewrite the audit trail.** Earlier migrations granted the platform role every
+    right on every table, TRIGGER included. A trigger of its own on `audit_events` ran as the owner inside the
+    security-definer `audit_append`, and from there could switch the guard off.
+    Migration 026 revokes TRIGGER and REFERENCES from the application roles on every table, every right on the
+    migration list, and temporary objects. It also pins every security-definer function's search path. A test checks
+    that no application role holds TRIGGER or REFERENCES, or any write on the migration list.
+  - **The migration step failed on its second run on RDS.** ALTER ROLE may not name SUPERUSER unless the caller is a
+    superuser, and the RDS master is not. The login is now created with every attribute but altered without that
+    one. Its attributes are checked afterwards and its own settings cleared. A test runs the step twice as a
+    non-superuser owner.
+  - **"Migrate, then deploy" could not work.** The migration task's new image exists only after the deploy. Each app
+    task now starts with a `migrate` container that alone holds the master secret; the app container waits for it to
+    succeed. Every deploy, the first included, is one step. The separate task and the zero-task first deploy are gone.
+  - **`app_runtime`'s memberships** are granted `with inherit false, set true` (inheritance is decided per grant).
+    The restore drill grants them too.
+  - **Partner staff's engagement screen** drops the payouts panel, the fees, the change-order cost and the
+    government fees, which the API no longer sends them.
+  - **The SCRAM verifier** is checked against an independent computation.
+  - **The owner's truncate** is refused by the trigger.
+- **Recorded:** the runtime login can change its own password or settings, as any PostgreSQL login can (gap 144).
 

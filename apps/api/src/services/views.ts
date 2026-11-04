@@ -186,7 +186,11 @@ export function partyEngagement(db: Database, user: SessionUser, engagementId: s
     const rating = (await tx.query("select engagement_id, stars, comment_shown as comment, created_at from ratings where engagement_id = $1", [engagementId])).rows[0];
     return {
       engagement: camel(e),
-      lines: lines.rows.map((l) => serialize("engagementLine", user.role, camel(l))),
+      lines: lines.rows.map((l) => {
+        const line = serialize("engagementLine", user.role, camel(l)) as Record<string, unknown>;
+        if (staff) delete line.govUnitFee; // E19: partner staff see no money figure, government fees included
+        return line;
+      }),
       milestones: milestones.rows.map(camel),
       documentRequests: documentRequests.rows.map(camel),
       // E15: the client's documents as needed now, needed later (by step) and already sent.

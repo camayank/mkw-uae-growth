@@ -202,9 +202,24 @@ export async function ensureRuntimeLogin(db: Database, user: string, password: s
   const ident = pg.escapeIdentifier(user);
   const verifier = pg.escapeLiteral(scramVerifier(password));
   await db.transaction(async (tx) => {
+    // One migration step at a time: every app task's migration container may start at once (E19 review).
+    await tx.query("select pg_advisory_xact_lock($1)", [MIGRATION_LOCK]);
     const exists = (await tx.query("select 1 from pg_roles where rolname = $1", [user])).rows.length > 0;
-    await tx.query(`${exists ? "alter" : "create"} role ${ident} with login inherit nocreatedb nocreaterole nosuperuser password ${verifier}`);
+    // CREATE may state every attribute. ALTER may not name SUPERUSER unless the caller is a superuser, which RDS's
+    // master user is not (E19 review), so the attributes are checked below instead.
+    if (exists) await tx.query(`alter role ${ident} with login inherit nocreatedb nocreaterole password ${verifier}`);
+    else await tx.query(`create role ${ident} with login inherit nocreatedb nocreaterole nosuperuser password ${verifier}`);
+    // Settings the login may have given itself since (a default role, a search path) are cleared.
+    await tx.query(`alter role ${ident} reset all`);
     await tx.query(`grant app_runtime to ${ident}`);
+    const r = (
+      await tx.query<{ rolsuper: boolean; rolcreaterole: boolean; rolcreatedb: boolean; rolbypassrls: boolean; rolreplication: boolean }>(
+        "select rolsuper, rolcreaterole, rolcreatedb, rolbypassrls, rolreplication from pg_roles where rolname = $1",
+        [user],
+      )
+    ).rows[0]!;
+    const unsafe = Object.entries(r).filter(([, v]) => v === true).map(([k]) => k);
+    if (unsafe.length) throw new Error(`${user} has ${unsafe.join(", ")}; the runtime login must have none of them`);
     const owns = await tx.query<{ n: number }>("select count(*)::int as n from pg_tables where schemaname = 'public' and tableowner = $1", [user]);
     if (num(owns.rows[0]?.n) > 0) throw new Error(`${user} owns tables; the runtime login must own nothing`);
   });

@@ -1,11 +1,10 @@
-pnpm --dir infra synth:check (2026-11-04): exit 0
-AI agent detected
-Successfully synthesized to /home/user/mkw-uae-growth/infra/cdk.out
-Supply a stack id (TaseesStaging, TaseesDemo) to display its template.
-78 feature flags are not configured. Run 'cdk flags --unstable=flags' to learn more.
+pnpm --dir infra synth:check (2026-11-04): exit 0, after the independent review's fixes
 
-Database secrets per task definition in the synthesised TaseesStaging template:
-  web : DB_USER <- AppDbSecret, DB_PASSWORD <- AppDbSecret
-  ScheduledContainer : DB_USER <- AppDbSecret, DB_PASSWORD <- AppDbSecret
-  migrate : DB_USER <- DbSecret (master), DB_PASSWORD <- DbSecret (master), APP_DB_USER <- AppDbSecret, APP_DB_PASSWORD <- AppDbSecret
-App service desired count (default): [1]
+Containers and database secrets in the synthesised TaseesStaging template:
+  AppTaskDef782520AE / web | essential: True | waits for: [{'Condition': 'SUCCESS', 'ContainerName': 'migrate'}] | DB_USER <- AppDbSecret, DB_PASSWORD <- AppDbSecret
+  AppTaskDef782520AE / migrate | essential: False | waits for: None | DB_USER <- DbSecret (master), DB_PASSWORD <- DbSecret (master), APP_DB_USER <- AppDbSecret, APP_DB_PASSWORD <- AppDbSecret
+  JobsScheduledTaskDef854F8FF5 / ScheduledContainer | essential: True | waits for: None | DB_USER <- AppDbSecret, DB_PASSWORD <- AppDbSecret
+
+IAM policies that can read the master secret:
+  AppTaskDefExecutionRoleDefaultPolicy338176A6 ['secretsmanager:DescribeSecret', 'secretsmanager:GetSecretValue']
+App service desired count: [1]

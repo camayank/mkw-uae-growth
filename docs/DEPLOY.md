@@ -80,12 +80,17 @@ recorded in `schema_migrations`.
   `pnpm --filter @tasees/api migrate` (`dist/scripts/migrate.js`). It applies migrations, seeds the catalogue and, given
   `APP_DB_USER` and `APP_DB_PASSWORD`, creates or updates the **runtime login**. That login is a member of
   `app_runtime` (migration 025), owns nothing, and may only switch to the three application roles. Its password
-  reaches Postgres as a SCRAM verifier, so it is never in a statement the server could log.
+  reaches Postgres as a SCRAM verifier, so it is never in a statement the server could log. The step may run again
+  at any time (every app task starts with it on staging): it updates the login's password, clears any setting the
+  login gave itself, and checks the login has no superuser, role-creating, database-creating or RLS-bypassing right.
 - **App, jobs and one-off scripts.** They log in as the runtime login (`DATABASE_URL`). At start they only check the
   schema is current: if a migration is missing they refuse to start and name it. With `NODE_ENV=production`, the
   app also refuses to start if its login owns the tables.
 
 In development, tests and the demo the one login is the owner, and migrations run on start as before.
+
+A server a backup is restored to also needs `app_runtime` and its three memberships (`with inherit false, set true`),
+which a dump does not carry; `scripts/restore-drill.sh` creates them with the three roles.
 
 The audit hash covers each event's time stamp as text; the `audit_append` and `audit_verify` functions pin their
 own time zone and date style, so the chain verifies whatever the server or a DBA session has set.
@@ -238,19 +243,18 @@ hour (RDS, NAT gateway, load balancers, Fargate); the owner approves the account
    ```
    Point the domain at the `LoadBalancerDns` output (CNAME or Route 53 alias). Confirm the alarm subscription email.
 
-   **The first deploy is three steps (E19).** The app logs in as the runtime login, which the migration task creates:
-   1. Deploy with no app task: add `-c appDesiredCount=0` to the deploy command above.
-   2. Run the migration task (`MigrateTaskDefinitionArn` output, the only task holding the master user's secret):
-      ```bash
-      aws ecs run-task --cluster <ClusterName> --task-definition <MigrateTaskDefinitionArn> --launch-type FARGATE \
-        --network-configuration 'awsvpcConfiguration={subnets=[<subnet-a>,<subnet-b>],securityGroups=[<sg>],assignPublicIp=DISABLED}'
-      ```
-      Its log (`MigrateLogs` group) prints the migrations applied and `runtime-login tasees_app`. RDS's master user
-      owns the database, so migration 001 can create its roles. No demo data is loaded (`NODE_ENV=production`).
-   3. Deploy again without `appDesiredCount`. The app starts as `tasees_app`.
-
-   **Every later deploy:** run the migration task first, then deploy. An app task that finds a migration missing
-   refuses to start and names it, and the deployment circuit breaker rolls back to the previous version.
+   **Migrations run inside each app task (E19).**
+   - Every app task starts with a short `migrate` container, the only container holding the master user's secret.
+     It applies the image's migrations, seeds the catalogue and creates or updates the runtime login `tasees_app`.
+   - The app container starts only once that container has succeeded, and logs in as `tasees_app`. Its log
+     (`MigrateLogs` group) prints the migrations applied and `runtime-login tasees_app`.
+   - So the first deploy and every later one are a single `deploy`, and the old tasks keep serving until the new ones
+     are healthy (migrations are additive).
+   - If the migration step fails, the app container never starts and the circuit breaker rolls back.
+   - RDS's master user owns the database, so migration 001 can create its roles. No demo data is loaded
+     (`NODE_ENV=production`).
+   - **On the very first deploy**, a scheduled jobs run that starts before the first app task has migrated refuses to
+     start (no runtime login yet). It runs again 15 minutes later; `JobsNotRunning` may alarm once.
 3. **Check it.** `curl https://app.tasees.ae/api/health` answers `{"ok":true,"db":"postgres",...,"devLogin":false}`.
 4. **Create the founder.** One-off task with the stack's outputs (`ClusterName`, `TaskDefinitionArn`, `TaskSubnets`,
    `TaskSecurityGroup`):

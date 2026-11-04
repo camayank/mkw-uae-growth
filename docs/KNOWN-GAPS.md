@@ -384,10 +384,12 @@ in a browser; everything listed here is not.
      the API (route guards, the visibility map, the views E19 changed) and are tested, but not as database grants.
      Separate database roles per staff role would add the third layer; it is a larger migration (D101).
 143. **The database owner can still switch the audit guard off.** The application never logs in as the owner in
-     production (E19), so only a person with the master secret (the migration task, a DBA) can. The nightly check
-     finds an edited event; it records the chain's length each night but does not yet compare it with the night before.
-144. **The first staging deploy is three steps** (no app task, the migration task, then the app), and every later
-     deploy runs the migration task first (docs/DEPLOY.md). A deploy pipeline that runs the task itself would close it.
+     production, and its roles can no longer add triggers, create temporary code or change the migration list (E19).
+     So only the master secret can, which only the migration container and a DBA hold. The nightly check finds an
+     edited event; it records the chain's length each night but does not yet compare it with the night before.
+144. **The runtime login can change its own password or settings**, as PostgreSQL allows any login. A changed
+     password locks the app out until the next app task's migration step resets it from the secret; a setting it gives
+     itself (a default role, for instance) is cleared at the same moment. Found by the independent review of E19.
 
 ## E16: report design
 

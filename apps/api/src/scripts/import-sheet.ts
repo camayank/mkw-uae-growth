@@ -37,7 +37,7 @@ if (!process.env.DATABASE_URL && !(process.env.PGLITE_DIR && existsSync(join(pro
 const db = await openDatabase();
 const pending = await pendingMigrations(db);
 if (pending.length) {
-  console.error(`The database is missing migrations (${pending.join(", ")}); start the server once so it migrates. The importer never changes the schema.`);
+  console.error(`The database is missing migrations (${pending.join(", ")}); run the migration step first (production: scripts/migrate.ts as the owner; development: start the server once). The importer never changes the schema.`);
   await db.close();
   process.exit(2);
 }

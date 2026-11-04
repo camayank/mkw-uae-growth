@@ -18,7 +18,7 @@
  *                dry run shows exactly what applying does (rate cards see the partners created just before)
  *
  * The target database must be named: DATABASE_URL, or PGLITE_DIR pointing at an existing development database. The
- * importer never migrates: a database with pending migrations is refused (start the server once to migrate it).
+ * importer never migrates: a database with pending migrations is refused (run the migration step first: scripts/migrate.ts in production, or start the server once in development).
  * `--evidence dir` also writes a redacted copy of each report (no firm names or contact details) to dir/<kind>.md.
  * `--from-storage` reads the file (or, for `all`, the folder) from the configured storage bucket instead of local disk,
  * so on staging the go-live files stay in the private UAE bucket and never enter the container image:
@@ -71,7 +71,7 @@ const db = await openDatabase();
 const pending = await pendingMigrations(db);
 if (pending.length) {
   await db.close();
-  fail(`The database is missing migrations (${pending.join(", ")}). Start the server once so it migrates, then import. The importer never changes the schema.`);
+  fail(`The database is missing migrations (${pending.join(", ")}). Run the migration step first (production: scripts/migrate.ts as the owner; development: start the server once), then import. The importer never changes the schema.`);
 }
 console.log(`Target: ${process.env.DATABASE_URL ? `Postgres at ${new URL(process.env.DATABASE_URL).host}` : `development database ${process.env.PGLITE_DIR}`} · ${apply ? "APPLY" : "dry run"}`);
 

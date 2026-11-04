@@ -2,7 +2,7 @@
 
 What each capability the mandate names actually is today, with the evidence. Each row is updated in the same pull
 request as the outcome that changes it. This version was written by E20 on 4 Nov 2026, from `main` at a42c487 (E19
-merged), and updated by E21 and E22. An outcome's rows read IN PROGRESS until its pull request is merged; they then
+merged), and updated by E21, E22 and E23. An outcome's rows read IN PROGRESS until its pull request is merged; they then
 read TESTED.
 
 ## The scale
@@ -54,7 +54,7 @@ as a live payment.
 | Downloads refused to another party | TESTED for 6 of 12 routes; the other six TESTED (E21) | `BASELINE-AUDIT.md` 4.2; `downloads.test.ts` |
 | Runtime database login that owns nothing; migration step as the owner; no trigger, temporary-object or migration-list rights for application roles | TESTED on PostgreSQL 16; NOT LIVE | E19, `runtime-login.test.ts`, `docs/evidence/E19/synth.txt` |
 | Upload size and extension | TESTED | `storage.test.ts` |
-| Upload content check, quarantine, scanner adapter, held files refused everywhere, retry, System page | IN PROGRESS (E22). A live scanner is BLOCKED on T6 (gap 152) | `uploads.test.ts`, migration 028, D104 |
+| Upload content check, quarantine, scanner adapter, held files refused everywhere, retry, System page | TESTED (E22). A live scanner is BLOCKED on T6 (gap 152) | `uploads.test.ts`, migration 028, D104 |
 | Browser headers and CSP | TESTED | `security.test.ts` |
 | Webhook signature | TESTED | `payments.test.ts` |
 | Production dependency audit | TESTED by hand: no known vulnerabilities on 4 Nov 2026 (not run in CI) | `docs/evidence/E20/audit.txt` |
@@ -67,7 +67,7 @@ as a live payment.
 | Classification: verified, rule of thumb, UNCERTAIN, stale, data unavailable | TESTED | core `catalogue.test.ts`, `eligibility.test.ts`, `jurisdiction.test.ts` |
 | Public display only of approved statements | TESTED | `public-selector.test.ts`, D80, D95 |
 | Bulk evidence import, history, staleness, coverage matrix, backlog | TESTED | `coverage.test.ts`, `import.test.ts` |
-| Conflict detection, version comparison view, stale-fact alerts | NOT STARTED (E23) | — |
+| Conflict detection (a weaker, older or same-dated other source never changes a figure on its own), version comparison, conflicts and stale facts on the queue | IN PROGRESS (E23) | `evidence-ops.test.ts`, migration 030, D105 |
 | Entity scenarios: one activity and one entity; mainland vs free zone; international customers; regulated activities; foreign shareholders; renewal; visas and premises | TESTED as engine cases | core `eligibility.test.ts`, `engine-cases.test.ts` |
 | Multiple activities, a holding with a subsidiary, India–UAE ownership | NOT STARTED (gaps 48, 75, 76) | — |
 | Setup, renewal and government charges from approved figures | TESTED | core `public.test.ts`, `report.test.ts` |

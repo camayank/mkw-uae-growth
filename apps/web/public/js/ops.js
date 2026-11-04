@@ -460,14 +460,32 @@ export async function renderRequest(id) {
 const evidenceChip = (e) =>
   `<span class="small" title="${esc(`${e.field}: recorded ${e.recorded}${e.evidenceDate ? `, evidence ${e.evidenceDate}` : ""}${e.nextVerification ? `, check again by ${e.nextVerification}` : ""}${e.verifiedBy ? `, verified by ${e.verifiedBy}` : ""}`)}">${esc(words(e.field))} ${confBadge(e.confidence)}${e.stale ? ` ${badge("UNCERTAIN", "stale")}` : ""}</span>`;
 
+// E23: what a fact is against the one that was current when it was recorded, and the verifier's decision on a conflict.
+const CHANGE_LABEL = { first: ["info", "first"], same: ["ok", "same value"], change: ["pending", "changed"], conflict: ["rejected", "conflict"] };
+function changeCell(f, rows) {
+  const c = f.change ?? { kind: "change", reason: "", supersedes: null };
+  const [tone, label] = CHANGE_LABEL[c.kind] ?? ["pending", words(c.kind)];
+  const prev = c.supersedes ? rows.find((x) => x.id === c.supersedes) : null;
+  const previous = prev && c.kind !== "same" ? `<br><span class="muted" data-no-i18n>was ${esc(factValueText(prev.value))}</span>` : "";
+  const reason = c.reason ? `<br><span class="muted">${esc(c.reason)}</span>` : "";
+  let decision = "";
+  if (c.kind === "conflict") {
+    if (f.review) decision = `<br>${badge(f.review.decision === "accept" ? "ok" : "pending", f.review.decision === "accept" ? "accepted" : "kept the current")}<span class="muted"> · ${esc(f.review.by ?? "")}: ${esc(f.review.note ?? "")}</span>`;
+    else if (role() === "founder") decision = `<br><button type="button" class="sm primary" data-act="fact-review" data-id="${f.id}" data-decision="keep">Keep the current figure</button> <button type="button" class="sm" data-act="fact-review" data-id="${f.id}" data-decision="accept">Accept this figure</button>`;
+    else decision = `<br><span class="muted">waiting for the founder's decision</span>`;
+  }
+  return `${badge(tone, label)}${previous}${reason}${decision}`;
+}
+const factValueText = (v) => (v && typeof v === "object" && "minFils" in v ? `${aed(v.minFils)} to ${aed(v.maxFils)}` : Array.isArray(v) ? v.join(", ") : v && typeof v === "object" ? Object.entries(v).map(([k, x]) => `${k}: ${x}`).join(", ") : String(v ?? "–"));
+
 export async function renderFactHistory(kind, subject, target) {
   const rows = await api("GET", `/api/admin/jurisdictions/history?kind=${encodeURIComponent(kind)}&subject=${encodeURIComponent(subject)}`);
   target.hidden = false;
   const value = (v) => (v && typeof v === "object" && "minFils" in v ? `${aed(v.minFils)} to ${aed(v.maxFils)}` : Array.isArray(v) ? v.join(", ") : v && typeof v === "object" ? Object.entries(v).map(([k, x]) => `${k}: ${x}`).join(", ") : String(v ?? "–"));
   target.innerHTML = rows.length
     ? table(
-        ["Field", "Value", "Evidence", "Confidence", "Recorded", ""],
-        rows.map((f) => `<tr><td class="small">${esc(f.label)}</td><td class="small" data-no-i18n>${esc(value(f.value))}</td>
+        ["Field", "Value", "Change", "Evidence", "Confidence", "Recorded", ""],
+        rows.map((f) => `<tr><td class="small">${esc(f.label)}</td><td class="small" data-no-i18n>${esc(value(f.value))}</td><td class="small">${changeCell(f, rows)}</td>
           <td class="small">${date(f.evidenceDate)}${f.sourceUrl ? ` · <a href="${esc(f.sourceUrl)}" target="_blank" rel="noopener noreferrer">source</a>` : ""}${f.sourceKind === "intermediary" ? ` ${badge("warn", "intermediary")}` : ""}${f.reference ? `<br><span class="muted" data-no-i18n>${esc(f.reference)}</span>` : ""}${f.effectiveDate ? `<br><span class="muted">effective ${date(f.effectiveDate)}</span>` : ""}${f.verifiedBy ? `<br>${esc(f.verifiedBy)}` : ""}${f.nextVerification ? `<br><span class="muted">check by ${date(f.nextVerification)}</span>` : ""}</td>
           <td>${confBadge(f.effective.confidence)}${f.effective.stale ? ` ${badge("UNCERTAIN", "stale")}` : ""}</td><td class="small">${dateTime(f.recordedAt)}${f.recordedBy ? `<br>${esc(f.recordedBy)}` : ""}</td><td>${f.current ? badge("ok", "current") : badge("pending", "superseded")}</td></tr>`),
       )

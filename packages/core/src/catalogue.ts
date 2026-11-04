@@ -226,3 +226,85 @@ export const normaliseName = (s: string) =>
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim();
+
+// E23: evidence operations ----------------------------------------------------------------------------------------
+
+/** What a new fact is, against the current one for the same subject and field. */
+export type FactChangeKind = "first" | "same" | "change" | "conflict";
+export interface FactChange {
+  kind: FactChangeKind;
+  /** In words, for the verifier and the audit trail. */
+  reason: string;
+}
+export interface FactForChange {
+  value: unknown;
+  confidence: Confidence;
+  evidenceDate: string;
+  nextVerification?: string | null;
+  sourceUrl?: string | null;
+  sourceKind?: SourceKind | null;
+}
+
+const RANK: Record<Confidence, number> = { verified: 2, rule_of_thumb: 1, UNCERTAIN: 0 };
+
+/** Deep equality for fact values (numbers, strings, arrays, plain objects). */
+export function sameValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== typeof b || a === null || b === null || typeof a !== "object") return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a)) return a.length === (b as unknown[]).length && a.every((x, i) => sameValue(x, (b as unknown[])[i]));
+  const ka = Object.keys(a as object).sort();
+  const kb = Object.keys(b as object).sort();
+  return ka.length === kb.length && ka.every((k, i) => k === kb[i] && sameValue((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]));
+}
+
+/**
+ * A contradicting source never changes a figure on its own (E23). A differing value is a conflict when it is weaker
+ * than the current figure deserves today, older than the current evidence, or of the same date from another source;
+ * otherwise it is a change (newer evidence, at least as strong), which supersedes. The verifier decides a conflict.
+ */
+export function classifyFactChange(current: FactForChange | null, incoming: FactForChange, asOf: string): FactChange {
+  if (!current) return { kind: "first", reason: "the first fact recorded for this field" };
+  const today = effectiveConfidence(current.confidence, current.nextVerification ?? null, asOf);
+  const agrees = sameValue(current.value, incoming.value);
+  // A weaker source never becomes current, even when it agrees: it would replace the figure's confidence (review of E23).
+  if (RANK[incoming.confidence] < RANK[today.confidence]) {
+    const who = `a ${incoming.confidence} ${incoming.sourceKind === "intermediary" ? "intermediary " : ""}source`;
+    return { kind: "conflict", reason: agrees ? `${who} agrees with the current ${today.confidence} figure but cannot replace it` : `${who} contradicts the current ${today.confidence} figure${today.stale ? " (stale)" : ""}` };
+  }
+  if (agrees) return { kind: "same", reason: "the same value as the current fact" };
+  if (incoming.evidenceDate < current.evidenceDate) {
+    return { kind: "conflict", reason: `older evidence (${incoming.evidenceDate}) contradicts the current figure (evidence ${current.evidenceDate})` };
+  }
+  // Two sources of equal strength and the same date disagree: a person decides. A stronger one of the same date supersedes.
+  if (incoming.evidenceDate === current.evidenceDate && RANK[incoming.confidence] === RANK[today.confidence] && (incoming.sourceUrl ?? "") !== (current.sourceUrl ?? "")) {
+    return { kind: "conflict", reason: `two sources of the same date (${incoming.evidenceDate}) disagree` };
+  }
+  return { kind: "change", reason: `newer evidence (${incoming.evidenceDate}, ${incoming.confidence}) supersedes the figure of ${current.evidenceDate}` };
+}
+
+export interface VersionDiff<T extends { id: number; value: unknown }> {
+  previous: unknown;
+  /** For amounts: the difference; for ranges: the difference of each bound; null when values are not comparable. */
+  delta: number | { minFils: number; maxFils: number } | null;
+}
+
+const isRange = (v: unknown): v is { minFils: number; maxFils: number } =>
+  !!v && typeof v === "object" && typeof (v as { minFils?: unknown }).minFils === "number" && typeof (v as { maxFils?: unknown }).maxFils === "number";
+
+/**
+ * Each version against what it replaced, oldest first: the fact it superseded when `previousOf` says so (a conflict
+ * recorded in between is not what a new figure replaced), else the version listed before it.
+ */
+export function diffVersions<T extends { id: number; value: unknown }>(versions: T[], previousOf?: (v: T) => unknown): Array<T & VersionDiff<T>> {
+  return versions.map((v, i) => {
+    const named = previousOf?.(v);
+    const prev = named !== undefined ? named : i > 0 ? versions[i - 1]!.value : null;
+    let delta: VersionDiff<T>["delta"] = null;
+    if (i > 0) {
+      if (typeof v.value === "number" && typeof prev === "number") delta = v.value - prev;
+      else if (isRange(v.value) && isRange(prev)) delta = { minFils: v.value.minFils - prev.minFils, maxFils: v.value.maxFils - prev.maxFils };
+    }
+    return { ...v, previous: prev, delta };
+  });
+}

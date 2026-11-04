@@ -1,0 +1,33 @@
+E23 before the fix: main at 7f97829 (E22 merged), PGlite, 4 Nov 2026.
+
+A probe on the unchanged code, using only existing routes. The founder records a verified cost for IFZA from the
+authority's own schedule (evidence 30 days ago), then an UNCERTAIN cost from an intermediary's page (evidence 10 days
+ago). What the engine and the zones cache hold after each:
+
+{
+ "verified official fact (evidence 30 days ago) recorded": 200,
+ "the response names a change kind": false,
+ "engine cost before": {
+  "confidence": "verified",
+  "sourceKind": "official",
+  "factId": 1,
+  "cacheFils": [
+   1000000,
+   1500000
+  ]
+ },
+ "weaker intermediary fact (UNCERTAIN, evidence 10 days ago) recorded": 200,
+ "engine cost after": {
+  "confidence": "UNCERTAIN",
+  "sourceKind": "intermediary",
+  "factId": 2,
+  "cacheFils": [
+   800000,
+   1200000
+  ]
+ },
+ "queue kinds about evidence": []
+}
+So on main the newest fact always won: the weaker, older-sourced figure replaced the verified one for the engine and
+every screen, nothing said so, and nothing reached the queue. The new suite (apps/api/test/evidence-ops.test.ts)
+cannot load on main: classifyFactChange and diffVersions do not exist in @tasees/core.

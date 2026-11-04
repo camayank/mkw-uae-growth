@@ -1,7 +1,7 @@
 # Risk register
 
 Risks to a safe pilot and to the transformation, each with its treatment and owner. This version was written by E20
-on 4 Nov 2026, from the baseline audit on `main` at a42c487, and is updated with every outcome (last: E22). Likelihood and impact
+on 4 Nov 2026, from the baseline audit on `main` at a42c487, and is updated with every outcome (last: E23). Likelihood and impact
 are judgements (low, medium, high), not measurements.
 
 | ID | Risk | Likelihood | Impact | Treatment | Owner | Status |
@@ -10,14 +10,14 @@ are judgements (low, medium, high), not measurements.
 | R2 | One partner reads another's change-order cost, or partner staff see money | — | high (rule 1) | E19: migration 024, staff views, tests, smoke | build | closed (E19) |
 | R3 | Within a party, role limits rest on two layers (the API), not on database grants | low | high | Tested on every path (E19); decision T4 | owner (T4) | open |
 | R4 | A download route serves a file to another party (six routes untested) | low (RLS or code checks exist) | high | E21: a refusal test for each, by every party the file does not belong to (`downloads.test.ts`) | build | closed (E21) |
-| R5 | An uploaded file is not checked for what it is, or for malware, before another party downloads it | low once E22 merges | high | E22: content checked against the name; every upload held until scanned clean, and never served or relied on before; a scanner adapter with a test double. Remaining: no live scanner (T6, gap 152), so staging holds every upload | build; owner for T6 | reduced by E22 when merged; the live scan waits on T6 |
+| R5 | An uploaded file is not checked for what it is, or for malware, before another party downloads it | low once E22 merges | high | E22: content checked against the name; every upload held until scanned clean, and never served or relied on before; a scanner adapter with a test double. Remaining: no live scanner (T6, gap 152), so staging holds every upload | build; owner for T6 | reduced (E22); the live scan waits on T6 |
 | R6 | The per-address throttle counts per process | low until two instances run | medium | A WAF rate rule or a shared store when staging runs two tasks (gap 13, shared rate limiting) | build with staging | open |
 | R7 | A future code path (the agent) sets a request, payout or change-order status that no machine checks | medium once the agent exists | medium | E21: the three machines, check constraints on all six status columns, and a source test. Remaining: statuses outside the six machines (gap 149), and no database-level move check (gap 150); E25 gives the agent no tool that writes them directly | build | reduced (E21) |
 | R8 | The database owner (the master secret) switches the audit guard off, or truncates the chain's tail unnoticed | low | high | Only the migration container and a DBA hold the secret. E21: the nightly check, recorded by the database and append-only, keeps the last event it saw and finds a removed or rewritten tail the next night. Remaining: the owner rewriting the trail and its checks together needs an anchor outside the database (gap 143) | build; ops | reduced (E21) |
 | R9 | The AI is presented as more than it is (gap 7 said an adapter existed; it did not) | medium | high (mandate; trust) | E20 corrects gap 7; capability status on screen and outputs labelled (E24); evaluation results only from real runs (E29) | build | open |
 | R10 | An AI action has a consequence without a person | low with today's code | high | The agent writes drafts and requests approval; every consequential tool needs an approval record (E26) | build | open |
 | R11 | Personal data sent to an AI provider outside the UAE without a legal basis | medium once a provider is live | high (PDPL) | T5 asks this first; redaction as in today's document checker (D54) | owner, lawyer | open |
-| R12 | No verified regulatory data: the public answer is "to be verified" for every place | certain today | high (conversion) | A named verifier records first-wave facts (gap 92); E23 makes it faster | owner | open |
+| R12 | No verified regulatory data: the public answer is "to be verified" for every place | certain today | high (conversion) | A named verifier records first-wave facts (gap 92); E23 makes it faster | owner | open; E23 keeps a weaker or older source from replacing a verified figure once data exists |
 | R13 | A partner-stated fee publishes with no person's acknowledgement | certain today | medium | Labelled PARTNER-STATED everywhere (E18); decision T8 | owner | open |
 | R14 | Priority tier priced for speed that is not promised | certain today | medium (commercial) | E28 carries quoted working days into the offer and the plan (gap 85) | build | open |
 | R15 | No staging: nothing proven against real email, storage, a real database backup or the runtime login on RDS | certain today | high | Owner accounts (STAGING-CHECKLIST, section 2) | owner | open |

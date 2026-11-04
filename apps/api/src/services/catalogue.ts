@@ -26,11 +26,11 @@ import {
   type FieldEvidence,
   type ScopingRule,
   type SubjectKind,
-  type Zone,
+  type Zone, classifyFactChange, diffVersions, type FactChange,
 } from "@tasees/core";
 import { audit, type SessionUser } from "../lib/context.ts";
 import { num, type Queryable } from "../lib/db.ts";
-import { badRequest, forbidden, notFound } from "../lib/errors.ts";
+import { badRequest, conflict, forbidden, notFound } from "../lib/errors.ts";
 import type { Queryable as Q } from "../lib/db.ts";
 
 /** Today in the Gulf (Asia/Dubai) by the application clock: the day evidence is dated and judged on (D77). */
@@ -56,6 +56,8 @@ export interface FactInput {
   verifiedBy?: string | null;
   nextVerification?: string | null;
   note?: string;
+  /** E23: recorded by the founder's own verification of the place or rule, so a would-be conflict is a change. */
+  decided?: boolean;
   /** E7B: when the figure takes effect, the exact reference in the source, and whether the source is official. */
   effectiveDate?: string | null;
   reference?: string;
@@ -81,15 +83,29 @@ interface FactRow {
   effective_date: string | null;
   reference: string;
   source_kind: SourceKind;
+  /** E23: what the fact was against the current one when recorded, and the verifier's decision. */
+  supersedes_id?: number | string | null;
+  change_kind?: "first" | "same" | "change" | "conflict";
+  change_reason?: string;
 }
 
 const FACT_COLUMNS = `id, subject_kind, subject, field, value, source_url, evidence_date::text as evidence_date, confidence, verified_by,
-  next_verification::text as next_verification, note, recorded_at, effective_date::text as effective_date, reference, source_kind`;
+  next_verification::text as next_verification, note, recorded_at, effective_date::text as effective_date, reference, source_kind,
+  supersedes_id, change_kind, change_reason`;
+
+/** The same columns qualified with the facts table's alias, for queries that join other tables. */
+const FACT_COLUMNS_F = FACT_COLUMNS.replace(/(^|,\s*)(\w+)/g, "$1f.$2");
+
+/**
+ * E23: a fact counts as current only if it is not a conflict, or the verifier accepted it. The newest such fact per
+ * field is the figure the engine and every screen use; an unreviewed or kept conflict never is.
+ */
+const CURRENT_FACT = `(f.change_kind <> 'conflict' or exists (select 1 from catalogue_fact_reviews r where r.fact_id = f.id and r.decision = 'accept'))`;
 
 /** The latest fact per subject and field, for one kind of subject. */
 async function latestFacts(tx: Queryable, kind: SubjectKind): Promise<Map<string, Map<string, FactRow>>> {
   const r = await tx.query<FactRow>(
-    `select distinct on (subject, field) ${FACT_COLUMNS} from catalogue_facts where subject_kind = $1 order by subject, field, id desc`,
+    `select distinct on (subject, field) ${FACT_COLUMNS} from catalogue_facts f where subject_kind = $1 and ${CURRENT_FACT} order by subject, field, id desc`,
     [kind],
   );
   const out = new Map<string, Map<string, FactRow>>();
@@ -259,7 +275,7 @@ export async function engineInputs(tx: Queryable) {
 }
 
 /** Append one fact (validated) and refresh the current-value cache. No role check: callers decide who may. */
-export async function appendFact(tx: Queryable, actor: SessionUser | null, input: FactInput): Promise<{ id: number }> {
+export async function appendFact(tx: Queryable, actor: SessionUser | null, input: FactInput): Promise<{ id: number; change: { kind: FactChange["kind"]; reason: string; supersedes: number | null } }> {
   const { subjectKind: kind, subject, field } = input;
   if (!isoDate(input.evidenceDate)) throw badRequest("The evidence date must be a date (YYYY-MM-DD)");
   const today = await catalogueToday(tx);
@@ -290,33 +306,81 @@ export async function appendFact(tx: Queryable, actor: SessionUser | null, input
   } else if (kind === "authority") {
     if (!(AUTHORITY_FIELDS as readonly string[]).includes(field)) throw badRequest(`Unknown authority field ${field}`);
     if (!(await tx.query("select 1 from authorities where id = $1 for update", [subject])).rows.length) throw notFound(`No authority ${subject}`);
-    if (field === "parent") {
-      const parent = String(input.value);
-      if (parent === subject) throw badRequest("An authority cannot be its own parent");
-      if (!(await tx.query("select 1 from authorities where id = $1", [parent])).rows.length) throw badRequest(`No authority ${parent}`);
-      // No cycles: walk up from the proposed parent.
-      const chain = await tx.query<{ id: string }>(
-        `with recursive up(id, parent_id) as (select id, parent_id from authorities where id = $1
-           union all select a.id, a.parent_id from authorities a join up on a.id = up.parent_id) select id from up`,
-        [parent],
-      );
-      if (chain.rows.some((r) => r.id === subject)) throw badRequest("That parent would make a loop");
-    }
+    if (field === "parent") await assertParentAllowed(tx, subject, String(input.value));
   } else if (kind === "rule") {
     if (field !== "rule") throw badRequest("Rule facts record a rule version");
     if (!(await tx.query("select 1 from scoping_rules where key = $1 for update", [subject])).rows.length) throw notFound(`No rule ${subject}`);
   }
 
+  // E23: what this fact is against the current one. A conflict is recorded but changes nothing until the verifier decides.
+  const classified = await classifyIncoming(tx, { ...input, sourceUrl, sourceKind, nextVerification: next }, today);
+  const current = classified.current;
+  const change: FactChange =
+    classified.change.kind === "conflict" && input.decided
+      ? { kind: "change", reason: `${classified.change.reason}; recorded by the founder's own verification as the figure in force` }
+      : classified.change;
   const r = (
     await tx.query<{ id: number }>(
-      `insert into catalogue_facts (subject_kind, subject, field, value, source_url, evidence_date, confidence, verified_by, next_verification, note, recorded_by, effective_date, reference, source_kind)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) returning id`,
-      [kind, subject, field, JSON.stringify(input.value ?? null), sourceUrl, input.evidenceDate, input.confidence, verifiedBy, next, input.note?.trim() ?? "", actor?.id ?? null, effectiveDate, reference, sourceKind],
+      `insert into catalogue_facts (subject_kind, subject, field, value, source_url, evidence_date, confidence, verified_by, next_verification, note, recorded_by, effective_date, reference, source_kind, supersedes_id, change_kind, change_reason)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) returning id`,
+      [kind, subject, field, JSON.stringify(input.value ?? null), sourceUrl, input.evidenceDate, input.confidence, verifiedBy, next, input.note?.trim() ?? "", actor?.id ?? null, effectiveDate, reference, sourceKind, current?.id ?? null, change.kind, change.reason],
     )
   ).rows[0]!;
 
-  // The current-value cache.
-  const v = input.value as any;
+  if (change.kind !== "conflict") await refreshCache(tx, kind, subject, field, input.value);
+  await audit(tx, actor, "catalogue.fact_recorded", kind === "place" ? "zone" : kind === "authority" ? "authority" : "scoping_rule", subject, {
+    factId: num(r.id),
+    field,
+    confidence: input.confidence,
+    evidenceDate: input.evidenceDate,
+    nextVerification: next,
+    sourceKind,
+    change: change.kind,
+    reason: change.reason,
+    ...(current ? { supersedes: current.id } : {}),
+    ...(effectiveDate ? { effectiveDate } : {}),
+  });
+  return { id: num(r.id), change: { kind: change.kind, reason: change.reason, supersedes: current?.id ?? null } };
+}
+
+/** An authority's proposed parent exists, is not itself, and makes no loop (walking up from the proposed parent). */
+async function assertParentAllowed(tx: Queryable, subject: string, parent: string): Promise<void> {
+  if (parent === subject) throw badRequest("An authority cannot be its own parent");
+  if (!(await tx.query("select 1 from authorities where id = $1", [parent])).rows.length) throw badRequest(`No authority ${parent}`);
+  const chain = await tx.query<{ id: string }>(
+    `with recursive up(id, parent_id) as (select id, parent_id from authorities where id = $1
+       union all select a.id, a.parent_id from authorities a join up on a.id = up.parent_id) select id from up`,
+    [parent],
+  );
+  if (chain.rows.some((r) => r.id === subject)) throw badRequest("That parent would make a loop");
+}
+
+/** The current fact for one field (E23's rule), or null. */
+async function currentFact(tx: Queryable, kind: SubjectKind, subject: string, field: string): Promise<FactRow | null> {
+  const r = await tx.query<FactRow>(`select ${FACT_COLUMNS} from catalogue_facts f where subject_kind = $1 and subject = $2 and field = $3 and ${CURRENT_FACT} order by id desc limit 1`, [kind, subject, field]);
+  const f = r.rows[0];
+  return f ? { ...f, id: num(f.id) } : null;
+}
+
+/** Classify an incoming fact against the current one, without recording it (the importer's dry run asks too). */
+export async function classifyIncoming(
+  tx: Queryable,
+  input: Pick<FactInput, "subjectKind" | "subject" | "field" | "value" | "confidence" | "evidenceDate"> & { sourceUrl?: string | null; sourceKind?: SourceKind | null; nextVerification?: string | null },
+  asOf?: string,
+): Promise<{ current: FactRow | null; change: FactChange }> {
+  const today = asOf ?? (await catalogueToday(tx));
+  const current = await currentFact(tx, input.subjectKind, input.subject, input.field);
+  const change = classifyFactChange(
+    current ? { value: current.value, confidence: current.confidence, evidenceDate: current.evidence_date, nextVerification: current.next_verification, sourceUrl: current.source_url, sourceKind: current.source_kind ?? "official" } : null,
+    { value: input.value, confidence: input.confidence, evidenceDate: input.evidenceDate, nextVerification: input.nextVerification ?? null, sourceUrl: input.sourceUrl ?? "", sourceKind: input.sourceKind ?? "official" },
+    today,
+  );
+  return { current, change };
+}
+
+/** The current-value cache on the place or authority: what the engine reads without walking the facts. */
+async function refreshCache(tx: Queryable, kind: SubjectKind, subject: string, field: string, value: unknown): Promise<void> {
+  const v = value as any;
   if (kind === "place") {
     const set: Record<string, string> = {
       cost: "cost_min_fils = $2, cost_max_fils = $3",
@@ -340,16 +404,75 @@ export async function appendFact(tx: Queryable, actor: SessionUser | null, input
     const col = { parent: "parent_id", registrar: "registrar", website: "website" }[field as "parent" | "registrar" | "website"];
     await tx.query(`update authorities set ${col} = $2 where id = $1`, [subject, v]);
   }
-  await audit(tx, actor, "catalogue.fact_recorded", kind === "place" ? "zone" : kind === "authority" ? "authority" : "scoping_rule", subject, {
-    factId: num(r.id),
-    field,
-    confidence: input.confidence,
-    evidenceDate: input.evidenceDate,
-    nextVerification: next,
-    sourceKind,
-    ...(effectiveDate ? { effectiveDate } : {}),
+}
+
+/**
+ * E23: the verifier's decision on a conflict, once. `accept` makes the new figure current, if nothing newer has
+ * superseded the field since; `keep` leaves the current figure. Either way the conflict leaves the queue.
+ */
+export async function reviewFactConflict(tx: Queryable, actor: SessionUser, factId: number, decision: "accept" | "keep", note: string) {
+  if (actor.role !== "founder") throw forbidden("Only the founder decides an evidence conflict");
+  if (note.trim().length < 5) throw badRequest("Say why, in a few words: the decision is kept with the fact");
+  const f = (await tx.query<FactRow>(`select ${FACT_COLUMNS} from catalogue_facts f where id = $1`, [factId])).rows[0];
+  if (!f) throw notFound("No such fact");
+  if (f.change_kind !== "conflict") throw conflict("This fact is not a conflict: nothing to decide");
+  if ((await tx.query("select 1 from catalogue_fact_reviews where fact_id = $1", [factId])).rows.length) throw conflict("This conflict has already been decided");
+  // The same subject lock appendFact takes (Codex review): a decision and a recording never interleave, so what is
+  // current and what the cache holds are read and written under one lock.
+  const kind = f.subject_kind as SubjectKind;
+  await tx.query(kind === "place" ? "select 1 from zones where name = $1 for update" : kind === "authority" ? "select 1 from authorities where id = $1 for update" : "select 1 from scoping_rules where key = $1 for update", [f.subject]);
+  const before = await currentFact(tx, kind, f.subject, f.field);
+  if (decision === "accept" && before && num(before.id) > num(f.id)) throw conflict("The field has been recorded again since this figure: it cannot become current. Keep it, or record a new fact.");
+  await tx.query("insert into catalogue_fact_reviews (fact_id, decision, note, reviewed_by) values ($1, $2, $3, $4)", [factId, decision, note.trim(), actor.id]);
+  if (decision === "accept") {
+    // The hierarchy may have moved since the fact was recorded (Codex review): an accepted parent is checked again.
+    if (kind === "authority" && f.field === "parent") await assertParentAllowed(tx, f.subject, String(f.value));
+    const now = await currentFact(tx, kind, f.subject, f.field);
+    if (now) await refreshCache(tx, kind, f.subject, f.field, now.value);
+  }
+  await audit(tx, actor, "catalogue.conflict_reviewed", f.subject_kind === "place" ? "zone" : f.subject_kind === "authority" ? "authority" : "scoping_rule", f.subject, {
+    factId: num(f.id),
+    field: f.field,
+    decision,
+    note: note.trim(),
   });
-  return { id: num(r.id) };
+  return { ok: true };
+}
+
+/** E23: every version of one field, oldest first, each against the one before, with what it is and whether it is current. */
+export async function compareVersions(tx: Queryable, kind: SubjectKind, subject: string, field: string) {
+  const asOf = await catalogueToday(tx);
+  const r = await tx.query<FactRow & { recorded_by_name: string | null; review_decision: string | null; review_note: string | null; review_by: string | null; review_at: string | null }>(
+    `select ${FACT_COLUMNS_F}, u.name as recorded_by_name, rv.decision as review_decision, rv.note as review_note, ru.name as review_by, rv.at::text as review_at
+       from catalogue_facts f left join users u on u.id = f.recorded_by
+       left join catalogue_fact_reviews rv on rv.fact_id = f.id left join users ru on ru.id = rv.reviewed_by
+      where f.subject_kind = $1 and f.subject = $2 and f.field = $3 order by f.id`,
+    [kind, subject, field],
+  );
+  const current = await currentFact(tx, kind, subject, field);
+  const byId = new Map(r.rows.map((f) => [num(f.id), f.value]));
+  const supersedes = (f: FactRow) => (f.supersedes_id === null || f.supersedes_id === undefined ? null : num(f.supersedes_id));
+  const versions = diffVersions(
+    r.rows.map((f) => ({ id: num(f.id), value: f.value, supersedesId: supersedes(f) })),
+    (v) => (v.supersedesId === null ? null : (byId.get(v.supersedesId) ?? null)),
+  ).map((d, i) => {
+    const f = r.rows[i]!;
+    return {
+      ...d,
+      evidenceDate: f.evidence_date,
+      confidence: f.confidence,
+      effective: effectiveConfidence(f.confidence, f.next_verification, asOf),
+      sourceUrl: f.source_url,
+      sourceKind: f.source_kind ?? "official",
+      verifiedBy: f.verified_by,
+      recordedBy: f.recorded_by_name,
+      recordedAt: f.recorded_at,
+      change: { kind: f.change_kind ?? "change", reason: f.change_reason ?? "", supersedes: f.supersedes_id === null || f.supersedes_id === undefined ? null : num(f.supersedes_id) },
+      review: f.review_decision ? { decision: f.review_decision, note: f.review_note, by: f.review_by, at: f.review_at } : null,
+      current: current?.id === num(f.id),
+    };
+  });
+  return { subjectKind: kind, subject, field, label: FIELD_LABEL[field] ?? field, versions };
 }
 
 /** The founder records a fact from the console, typed as text (the importer parses the same way). */
@@ -363,15 +486,24 @@ export async function recordFact(tx: Queryable, actor: SessionUser, input: Omit<
 /** Every fact recorded for one subject, newest first, each with what it deserves today. */
 export async function factHistory(tx: Queryable, kind: SubjectKind, subject: string) {
   const asOf = await catalogueToday(tx);
-  const r = await tx.query<FactRow & { recorded_by_name: string | null }>(
+  const r = await tx.query<FactRow & { recorded_by_name: string | null; review_decision: string | null; review_note: string | null; review_by: string | null; review_at: string | null }>(
     `select f.id, f.subject_kind, f.subject, f.field, f.value, f.source_url, f.evidence_date::text as evidence_date, f.confidence, f.verified_by,
-       f.next_verification::text as next_verification, f.note, f.recorded_at, f.effective_date::text as effective_date, f.reference, f.source_kind, u.name as recorded_by_name
-     from catalogue_facts f left join users u on u.id = f.recorded_by where f.subject_kind = $1 and f.subject = $2 order by f.id desc`,
+       f.next_verification::text as next_verification, f.note, f.recorded_at, f.effective_date::text as effective_date, f.reference, f.source_kind, u.name as recorded_by_name,
+       f.supersedes_id, f.change_kind, f.change_reason, rv.decision as review_decision, rv.note as review_note, ru.name as review_by, rv.at::text as review_at
+     from catalogue_facts f left join users u on u.id = f.recorded_by
+     left join catalogue_fact_reviews rv on rv.fact_id = f.id left join users ru on ru.id = rv.reviewed_by
+     where f.subject_kind = $1 and f.subject = $2 order by f.id desc`,
     [kind, subject],
   );
+  // Current per field by E23's rule: the newest fact that is not an unreviewed or kept conflict.
   const current = new Set<number>();
   const seen = new Set<string>();
-  for (const f of r.rows) if (!seen.has(f.field)) (seen.add(f.field), current.add(num(f.id)));
+  for (const f of r.rows) {
+    if (seen.has(f.field)) continue;
+    if (f.change_kind === "conflict" && f.review_decision !== "accept") continue;
+    seen.add(f.field);
+    current.add(num(f.id));
+  }
   return r.rows.map((f) => ({
     id: num(f.id),
     field: f.field,
@@ -390,6 +522,8 @@ export async function factHistory(tx: Queryable, kind: SubjectKind, subject: str
     effectiveDate: f.effective_date ?? null,
     reference: f.reference ?? "",
     sourceKind: f.source_kind ?? "official",
+    change: { kind: f.change_kind ?? "change", reason: f.change_reason ?? "", supersedes: f.supersedes_id === null || f.supersedes_id === undefined ? null : num(f.supersedes_id) },
+    review: f.review_decision ? { decision: f.review_decision, note: f.review_note, by: f.review_by, at: f.review_at } : null,
   }));
 }
 
@@ -521,12 +655,20 @@ export async function coverageReport(tx: Queryable, approvals: CoverageApproval[
     confidence: p.confidence,
     stale: !!p.stale,
   }));
-  return coverageMatrix(
+  const matrix = coverageMatrix(
     asOf,
     authorities.map((a) => ({ id: String(a.id), name: String(a.name), kind: a.kind as never, emirate: (a.emirate as string | null) ?? null, parentId: (a.parent_id as string | null) ?? null, active: !!a.active })),
     rows,
     approvals,
   );
+  // E23: conflicts waiting for the founder, beside the backlog.
+  const openConflicts = num((await tx.query<{ n: number }>(
+    `select count(*)::int as n from catalogue_facts f where f.change_kind = 'conflict'
+       and not exists (select 1 from catalogue_fact_reviews r where r.fact_id = f.id)
+       and not exists (select 1 from catalogue_facts n where n.subject_kind = f.subject_kind and n.subject = f.subject and n.field = f.field and n.id > f.id
+                       and (n.change_kind = 'change' or exists (select 1 from catalogue_fact_reviews r2 where r2.fact_id = n.id and r2.decision = 'accept')))`,
+  )).rows[0]!.n);
+  return { ...matrix, conflicts: { open: openConflicts } };
 }
 
 export { backlogCsv };

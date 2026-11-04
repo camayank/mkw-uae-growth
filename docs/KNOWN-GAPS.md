@@ -468,6 +468,14 @@ in a browser; everything listed here is not.
      "Unicode text" is refused as "a file of another kind", although it is a real spreadsheet export. Found by the
      review of E22. Accepting those encodings needs a check that cannot mistake binary for text.
 
+## E23: evidence operations
+
+156. **A rule's versions are compared as a whole.** A rule fact is one JSON value, so the comparison says "changed"
+     with the whole previous value; a field-by-field diff of a rule's parameters is not built.
+157. **Stale-evidence queue items cover recorded facts only.** A place whose figure was verified before facts existed
+     (the seed's `verified_at`) is labelled stale on the Scoping page when its date passes, but gets no queue item:
+     the item needs a fact to point at. Recording one fact per engine field makes every place eligible.
+
 ## E16: report design
 
 129. **The Arabic report's wording is a draft** until the Arabic reviewer signs it off (with gaps 111, 116, 119, 128).

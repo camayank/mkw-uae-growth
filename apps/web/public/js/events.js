@@ -243,6 +243,12 @@ document.addEventListener("click", (ev) => {
       if (note === null) return;
       act(() => api("POST", "/api/admin/public-display/approve", { kind: el.dataset.kind, subject: el.dataset.subject, note }), "Approved for public display");
     },
+    "fact-review": () => {
+      const keep = el.dataset.decision === "keep";
+      const note = prompt(keep ? "Why does the current figure stand? (at least 5 characters; kept with the decision)" : "Why is the new figure right? (at least 5 characters; kept with the decision)", "");
+      if (note === null || note.trim().length < 5) return;
+      act(() => api("POST", `/api/admin/jurisdictions/facts/${id}/review`, { decision: el.dataset.decision, note }), keep ? "Kept the current figure" : "Accepted the new figure");
+    },
     "display-revoke": () => {
       const note = prompt("Withdraw this from public display? Why (optional):", "");
       if (note === null) return;

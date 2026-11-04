@@ -94,8 +94,12 @@ describe("public display and the public selector", () => {
     // E7A: the approved place carries its official source; no other place carries a source or facilities.
     expect(ifza.sourceUrl).toBe("https://ifza.com/");
     expect((await assess()).body.places.filter((x: any) => x.zone !== "IFZA").every((x: any) => x.sourceUrl === undefined && x.facilities === undefined)).toBe(true);
-    // A recorded fact changes the place's version.
-    expect((await env.call("founder", "POST", "/api/admin/jurisdictions/facts", { subjectKind: "place", subject: "IFZA", field: "visa_quota", valueText: "2", sourceUrl: "https://ifza.com/packages", evidenceDate: "2026-10-01", confidence: "rule_of_thumb" })).status).toBe(200);
+    // A recorded fact that supersedes the current figure (newer evidence, as strong) changes the place's version. Since
+    // E23 a weaker or older figure is a conflict for the founder and changes nothing until decided.
+    const today = env.clock.now.toISOString().slice(0, 10);
+    const changed = await env.call("founder", "POST", "/api/admin/jurisdictions/facts", { subjectKind: "place", subject: "IFZA", field: "visa_quota", valueText: "2", sourceUrl: "https://ifza.com/", evidenceDate: today, confidence: "verified", verifiedBy: "A. Qualified" });
+    expect(changed.status).toBe(200);
+    expect(changed.body.change.kind).not.toBe("conflict");
     ifza = (await assess()).body.places.find((x: any) => x.zone === "IFZA");
     expect(ifza.toBeVerified).toBe(true);
     expect(ifza.figures).toBeUndefined();

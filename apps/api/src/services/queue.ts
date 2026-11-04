@@ -80,7 +80,7 @@ select 'needs_quote', r.id::text, r.id::text, null, null, 'No rate card for part
   from requests r join orgs c on c.id = r.client_org_id where r.status = 'quoting'
 union all
 select 'qa', m.engagement_id::text, m.id::text, m.engagement_id::text, m.partner_org_id::text, 'Evidence to check: ' || m.name, m.updated_at,
-       jsonb_build_object('step', m.name, 'partner', p.name, 'files', (select count(*) from evidence e where e.milestone_id = m.id)), true, true, false
+       jsonb_build_object('step', m.name, 'partner', p.name, 'files', (select count(*) from evidence e where e.milestone_id = m.id and e.superseded_at is null)), true, true, false
   from milestones m left join orgs p on p.id = m.partner_org_id where m.status = 'evidence_submitted'
 union all
 select 'dispute', m.engagement_id::text, m.id::text, m.engagement_id::text, m.partner_org_id::text, 'Client raised an issue: ' || coalesce(m.dispute_reason, ''), m.updated_at,

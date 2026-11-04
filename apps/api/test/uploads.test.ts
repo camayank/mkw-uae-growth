@@ -121,6 +121,22 @@ describe("with the test scanner (E22)", () => {
     expect(system.alerts.find((a: any) => a.kind === "upload_held" && !a.closedAt)?.summary).toMatch(/malware/);
   });
 
+  it("a clean file of the same kind supersedes the refused one: the step passes QA, and the refused file stays in quarantine (Codex review)", async () => {
+    // The step was rejected above with one refused file. The partner uploads a clean copy of that kind.
+    const type = d.m.evidenceRequired[0];
+    expect((await env.call(d.who, "POST", `/api/milestones/${d.m.id}/evidence`, { type, fileName: "bank-letter-clean.pdf", contentBase64: b64(PDF) })).status).toBe(200);
+    const listed = (await env.call("client", "GET", `/api/engagements/${d.engagementId}`)).body.evidence.filter((x: any) => x.milestoneId === d.m.id);
+    expect(listed.map((x: any) => [x.fileName, x.scan])).not.toContainEqual(["bad.pdf", "infected"]);
+    expect(listed.find((x: any) => x.fileName === "bank-letter-clean.pdf").scan).toBe("clean");
+    expect((await env.call(d.who, "POST", `/api/milestones/${d.m.id}/submit`)).status).toBe(200);
+    expect((await env.call("ops", "POST", `/api/ops/milestones/${d.m.id}/qa`, { pass: true })).status).toBe(200);
+    const kept = (await asPlatform(env.db, null, (tx) => tx.query<any>("select f.status, e.superseded_at is not null as superseded from evidence e join file_scans f on f.key = e.file_key where e.file_name = 'bad.pdf'"))).rows[0];
+    expect(kept).toEqual({ status: "infected", superseded: true }); // recorded and quarantined, never served
+    const ev = (await asPlatform(env.db, null, (tx) => tx.query<any>("select data from audit_events where action = 'evidence.superseded'"))).rows;
+    expect(ev).toHaveLength(1);
+    expect(ev[0].data).toMatchObject({ type, replaced: [expect.any(String)] });
+  });
+
   it("clients and partners never read the scan table; they see a file's status only", async () => {
     const client = (await env.call("client", "GET", "/api/me")).body;
     const partner = (await env.call(d.who, "GET", "/api/me")).body;
@@ -183,6 +199,33 @@ describe("with no scanner (staging until T6) (E22)", () => {
     // The jobs step does nothing while no scanner is configured, and says so on the System page.
     const system = (await env.call("ops", "GET", "/api/ops/system")).body;
     expect(system.uploads.scanner).toEqual({ name: null, live: false });
+  });
+});
+
+describe("a refused partner invoice (Codex review) (E22)", () => {
+  it("does not count towards the payout, and a clean invoice replaces it; a clean one is final", async () => {
+    const env = await makeEnv();
+    try {
+      const d = await delivering(env);
+      expect((await env.call(d.who, "PUT", "/api/partner/bank", { beneficiary: "Delivery LLC", iban: "AE070331234567890123456", bank: "Test Bank" })).status).toBe(200);
+      const payable = () => env.call("finance", "GET", "/api/ops/payouts/payable");
+      const mine = (await payable()).body.filter((p: any) => p.engagementId === d.engagementId && p.stage === "kickoff");
+      expect(mine).toHaveLength(1);
+      const p = mine[0];
+      const invoice = (name: string, bytes: Buffer, number = "INV-1") => env.call(d.who, "POST", `/api/payouts/${p.id}/invoice`, { number, amountAed: p.amount / 100, vatAed: 0, fileName: name, contentBase64: b64(bytes) });
+      expect((await invoice("invoice.pdf", Buffer.concat([Buffer.from("%PDF-1.4\n"), Buffer.from(eicar())]))).status).toBe(200);
+      let row = (await payable()).body.find((x: any) => x.id === p.id);
+      expect(row).toMatchObject({ payable: false, blocked: "partner invoice held: not yet scanned clean for malware" });
+      expect((await invoice("invoice-clean.pdf", PDF, "INV-1b")).status).toBe(200); // a replacement
+      row = (await payable()).body.find((x: any) => x.id === p.id);
+      expect(row).toMatchObject({ payable: true, invoiceNumber: "INV-1b", blocked: null });
+      expect((await invoice("again.pdf", PDF, "INV-1c")).status).toBe(409); // a clean invoice is final
+      const rows = (await asPlatform(env.db, null, (tx) => tx.query<any>("select number, superseded_at is not null as superseded from partner_invoices where payout_id = $1 order by number", [p.id]))).rows;
+      expect(rows).toEqual([{ number: "INV-1", superseded: true }, { number: "INV-1b", superseded: false }]);
+      expect((await asPlatform(env.db, null, (tx) => tx.query<any>("select count(*)::int as n from audit_events where action = 'partner_invoice.superseded'"))).rows[0].n).toBe(1);
+    } finally {
+      await env.db.close();
+    }
   });
 });
 

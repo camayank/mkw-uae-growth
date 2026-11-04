@@ -145,7 +145,7 @@ export function partyEngagement(db: Database, user: SessionUser, engagementId: s
       [engagementId],
     );
     const evidence = await tx.query(
-      "select id, milestone_id, type, file_name, created_at, file_scan_status('evidence', id) as scan from evidence where engagement_id = $1 order by created_at",
+      "select id, milestone_id, type, file_name, created_at, file_scan_status('evidence', id) as scan from evidence where engagement_id = $1 and superseded_at is null order by created_at",
       [engagementId],
     );
     const messages = await tx.query(
@@ -172,7 +172,7 @@ export function partyEngagement(db: Database, user: SessionUser, engagementId: s
         ? await tx.query("select id, kind, amount_fils, status, paid_at, pay_url, refunded_at from payments where engagement_id = $1 order by created_at, case kind when 'deposit' then 0 when 'balance' then 1 else 2 end", [engagementId])
         : await tx.query(
             `select p.id, p.stage, p.amount_fils, p.status, p.released_at, p.run_id, pi.number as invoice_number, pi.uploaded_at as invoice_uploaded_at
-             from payouts p left join partner_invoices pi on pi.payout_id = p.id where p.engagement_id = $1 order by p.stage`,
+             from payouts p left join partner_invoices pi on pi.payout_id = p.id and pi.superseded_at is null where p.engagement_id = $1 order by p.stage`,
             [engagementId],
           );
     const invoices =
@@ -244,7 +244,7 @@ export function partnerHome(db: Database, user: SessionUser) {
     );
     const payouts = await tx.query(
       `select p.id, p.engagement_id, p.stage, p.amount_fils, p.status, p.released_at, p.run_id, pi.number as invoice_number
-       from payouts p left join partner_invoices pi on pi.payout_id = p.id
+       from payouts p left join partner_invoices pi on pi.payout_id = p.id and pi.superseded_at is null
        order by p.engagement_id, case p.stage when 'kickoff' then 0 when 'key_milestone' then 1 when 'completion' then 2 else 3 end`,
     );
     // Only the partner admin, who maintains them, sees the firm's bank details.
@@ -397,14 +397,14 @@ export function opsEngagement(db: Database, user: SessionUser, engagementId: str
          from allocations a join orgs o on o.id = a.partner_org_id where a.engagement_id = $1 order by a.offered_at`,
       ),
       milestones: await q("select * from milestones where engagement_id = $1 order by seq"),
-      evidence: await q("select id, milestone_id, type, file_name, created_at, file_scan_status('evidence', id) as scan from evidence where engagement_id = $1"),
+      evidence: await q("select id, milestone_id, type, file_name, created_at, file_scan_status('evidence', id) as scan from evidence where engagement_id = $1 and superseded_at is null"),
       messages: await q(
         "select id, author_name, body_original, body_shown, masked, created_at from messages where engagement_id = $1 order by created_at",
       ),
       payments: await q("select id, kind, amount_fils, status, paid_at, pay_url, refunded_at, refund_reference from payments where engagement_id = $1 order by created_at, case kind when 'deposit' then 0 when 'balance' then 1 else 2 end"),
       payouts: await q(
         `select p.id, p.stage, p.amount_fils, p.status, p.run_id, o.name as partner, pi.number as invoice_number
-         from payouts p join orgs o on o.id = p.partner_org_id left join partner_invoices pi on pi.payout_id = p.id where p.engagement_id = $1`,
+         from payouts p join orgs o on o.id = p.partner_org_id left join partner_invoices pi on pi.payout_id = p.id and pi.superseded_at is null where p.engagement_id = $1`,
       ),
       invoices: await q("select id, kind, number, status, payment_id, issued_at, gross_fils from invoices where engagement_id = $1 order by created_at"),
       changeOrders: await q("select * from change_orders where engagement_id = $1 order by created_at"),

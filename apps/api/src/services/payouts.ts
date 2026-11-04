@@ -61,9 +61,12 @@ export async function uploadPartnerInvoice(tx: Queryable, actor: SessionUser, in
   const vatDue = applyBp(input.amountFils, DEFAULT_SETTINGS.vatBp);
   if (input.vatFils !== 0 && input.vatFils !== vatDue) throw badRequest(`VAT must be 0 or exactly 5% of the payout (AED ${(vatDue / 100).toFixed(2)})`);
   if (/\.pdf$/i.test(input.fileName) && !input.content.subarray(0, 5).toString("latin1").startsWith("%PDF-")) throw badRequest("That file is not a PDF");
-  const existing = await tx.query("select 1 from partner_invoices where payout_id = $1", [input.payoutId]);
-  if (existing.rows.length) throw conflict("An invoice has already been uploaded for this payout");
+  // E22: an invoice whose file the scan has not found clean (refused, failed or held) may be replaced by a clean one;
+  // the held file stays recorded and quarantined. A clean invoice is final.
+  const existing = (await tx.query<{ id: string; status: string | null }>("select pi.id, f.status from partner_invoices pi left join file_scans f on f.key = pi.file_key where pi.payout_id = $1 and pi.superseded_at is null", [input.payoutId])).rows[0];
+  if (existing && usable(existing.status, uploads)) throw conflict("An invoice has already been uploaded for this payout");
   const key = await storeUpload(tx, uploads, actor, String(p.engagement_id), input.fileName, input.content); // held until scanned (E22)
+  if (existing) await tx.query("update partner_invoices set superseded_at = app_now() where id = $1", [existing.id]);
   const row = (
     await tx.query<{ id: string }>(
       `insert into partner_invoices (payout_id, partner_org_id, number, amount_fils, vat_fils, file_key, file_name, uploaded_by)
@@ -71,6 +74,10 @@ export async function uploadPartnerInvoice(tx: Queryable, actor: SessionUser, in
       [input.payoutId, actor.orgId, number, input.amountFils, input.vatFils, key, input.fileName, actor.id],
     )
   ).rows[0]!;
+  if (existing) {
+    await tx.query("update partner_invoices set superseded_by = $2 where id = $1", [existing.id, row.id]);
+    await audit(tx, actor, "partner_invoice.superseded", "payout", input.payoutId, { replaced: existing.id, by: row.id, wasStatus: existing.status ?? "pending" });
+  }
   await audit(tx, actor, "partner_invoice.uploaded", "payout", input.payoutId, { invoiceId: row.id, number, amount: input.amountFils, vat: input.vatFils });
   return { id: row.id };
 }
@@ -80,7 +87,7 @@ export async function payablePayouts(tx: Queryable, uploads: { allowUnscanned?: 
   const r = await tx.query<Record<string, unknown>>(
     `select p.id, p.engagement_id, p.partner_org_id, p.stage, p.amount_fils, o.name as partner, o.profile->'bank' as bank,
        pi.number as invoice_number, pi.vat_fils as invoice_vat_fils, fs.status as invoice_scan
-     from payouts p join orgs o on o.id = p.partner_org_id left join partner_invoices pi on pi.payout_id = p.id
+     from payouts p join orgs o on o.id = p.partner_org_id left join partner_invoices pi on pi.payout_id = p.id and pi.superseded_at is null
        left join file_scans fs on fs.key = pi.file_key
      where p.status = 'eligible' and p.run_id is null order by o.name, p.engagement_id, p.stage`,
   );
@@ -138,7 +145,7 @@ export async function exportPayoutRun(tx: Queryable, actor: SessionUser, runId: 
   const rows = (
     await tx.query<Record<string, unknown>>(
       `select o.id, o.name, o.profile->'bank' as bank, sum(p.amount_fils + coalesce(pi.vat_fils, 0))::bigint as total, count(*)::int as n, string_agg(pi.number, ' ') as invoices
-       from payouts p join orgs o on o.id = p.partner_org_id left join partner_invoices pi on pi.payout_id = p.id
+       from payouts p join orgs o on o.id = p.partner_org_id left join partner_invoices pi on pi.payout_id = p.id and pi.superseded_at is null
        where p.run_id = $1 and p.status = 'eligible' group by o.id, o.name, o.profile->'bank' order by o.name`,
       [runId],
     )
@@ -175,7 +182,7 @@ export async function markPayoutRunPaid(tx: Queryable, actor: SessionUser, runId
     await transition(tx, "payout", String(p.id), "released", "platform", { set: { released_by: actor.id }, audit: { actor, action: "payout.released", data: { amount: num(p.amount_fils), runId } } });
   }
   // The remittance states what the bank paid: payout plus the partner's own VAT.
-  const paidRows = (await tx.query<Record<string, unknown>>("select p.partner_org_id, p.amount_fils, coalesce(pi.vat_fils, 0) as vat_fils from payouts p left join partner_invoices pi on pi.payout_id = p.id where p.run_id = $1", [runId])).rows;
+  const paidRows = (await tx.query<Record<string, unknown>>("select p.partner_org_id, p.amount_fils, coalesce(pi.vat_fils, 0) as vat_fils from payouts p left join partner_invoices pi on pi.payout_id = p.id and pi.superseded_at is null where p.run_id = $1", [runId])).rows;
   const byPartner = new Map<string, { total: number; count: number }>();
   for (const p of paidRows) {
     const cur = byPartner.get(String(p.partner_org_id)) ?? { total: 0, count: 0 };
@@ -194,7 +201,7 @@ async function assertRunIntact(tx: Queryable, runId: string, total: number) {
     await tx.query<{ n: number; bad: number; sum: number }>(
       `select count(*)::int as n, count(*) filter (where p.status <> 'eligible')::int as bad,
          coalesce(sum(p.amount_fils + coalesce(pi.vat_fils, 0)), 0)::bigint as sum
-       from payouts p left join partner_invoices pi on pi.payout_id = p.id where p.run_id = $1`,
+       from payouts p left join partner_invoices pi on pi.payout_id = p.id and pi.superseded_at is null where p.run_id = $1`,
       [runId],
     )
   ).rows[0]!;

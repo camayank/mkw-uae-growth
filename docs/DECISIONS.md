@@ -1433,4 +1433,8 @@ released by the owner: "start E22". The mandate's P0-01, item 1.3; gap 45; rules
   each refuse a held file.
 - **Alerts and the System page.** An infected file, or a scan failed five times, opens a warning alert
   (`upload_held`); the System page shows the scanner, counts by status and the held files.
+- **A refused file is replaced, not removed** (Codex review of the pull request). A new evidence file of the same kind
+  supersedes earlier ones the scan has not found clean, and a partner invoice whose file is held may be replaced by a
+  clean one; a clean invoice stays final. The superseded row and its file stay recorded and quarantined, the step's
+  QA and the payout look only at live rows, and the audit trail says what replaced what (migration 029).
 - **Not done:** the live scanner (gap 152); deleting infected bytes (gap 153); generated files (gap 154).

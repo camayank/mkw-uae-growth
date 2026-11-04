@@ -53,9 +53,12 @@ orders it.)
    - "partner document verified";
    - "obligation met";
    - a partner invoice counting as uploaded for a payout.
-7. **Retry.** A jobs step (`filesScanned`) re-reads and scans files that are `pending`, `failed` (up to five attempts)
+7. **Replacement.** A refused file must not block the work for good (Codex review): a new evidence file of the same
+   kind supersedes earlier ones the scan has not found clean, and a held partner invoice may be replaced by a clean
+   one. The held rows stay, quarantined; the replacement is audited (migration 029).
+8. **Retry.** A jobs step (`filesScanned`) re-reads and scans files that are `pending`, `failed` (up to five attempts)
    or `not_scanned`, once a scanner is configured.
-8. **Screens.** Every file link shows the file's state instead of a link while it is held. The System page shows the
+9. **Screens.** Every file link shows the file's state instead of a link while it is held. The System page shows the
    scanner and the files by status. An alert opens for infected or failed files.
 
 ## Exclusions
@@ -72,8 +75,8 @@ orders it.)
 
 - **`before-fix.txt`.** A probe on `main` at 548fa49: PNG bytes named `.pdf` and a Windows program named `.jpg` were
   both stored, and the client downloaded the EICAR test file at once. The new suite cannot load on `main`.
-- **`tests-pglite.txt`.** Core 159 passed (19 files). API 432 passed, 7 skipped (44 files).
-- **`tests-postgres16.txt`.** API 439 passed (44 files), on PostgreSQL 16.15, with the runtime-login suite.
+- **`tests-pglite.txt`.** Core 159 passed (19 files). API 434 passed, 7 skipped (44 files).
+- **`tests-postgres16.txt`.** API 441 passed (44 files), on PostgreSQL 16.15, with the runtime-login suite.
 - **`typecheck.txt`.** Clean.
 - **`smoke-log.txt`.** 337 checks and 60 axe scans passed on a fresh demo, with `SCANNER=memory`: every upload the
   smoke makes is scanned by the test double and served as clean.
@@ -86,7 +89,8 @@ orders it.)
   horizontal overflow and no page errors.
 
 The new and changed tests:
-- `uploads.test.ts` (10): the content check for each type, and the forms real files take; a clean file served and recorded; an infected file held on
+- `uploads.test.ts` (12): the content check for each type, and the forms real files take; a clean replacement of a refused
+  evidence file and of a refused partner invoice; a clean file served and recorded; an infected file held on
   download, on QA and on the System page, with its alert; the scan table unreadable by clients and partners; with no
   scanner, evidence, a client document and a partner document held on every route and refused as received or
   verified, then released by the jobs step; a failing scanner and its retry; unscanned files allowed by the owner;
@@ -120,6 +124,10 @@ An independent reviewer read the change against the code and probed it on PGlite
 - **Noted, not changed:** `file_scan_status` answers for any id (SQL only; no route passes a caller's id; recorded in
   D104); an object written before a rolled-back row is held and only wastes space (D104); CSV from Excel in a
   Windows code page and UTF-16 text are refused as "another kind" (gap 155).
+
+**Codex, on the pull request,** found two blocking consequences of quarantine: a refused evidence file blocked the
+step's QA for good, and a refused partner invoice could never be replaced, so its payout was unpayable. Fixed with
+migration 029 (scope item 7) and a test for each.
 
 The reviewer verified as correct: every reader of uploaded bytes is guarded; all five upload paths go through
 `storeUpload`; a missing row is held; the machine's moves and cap; the grants, RLS and erasure; the configuration and

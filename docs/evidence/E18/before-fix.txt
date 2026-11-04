@@ -1,0 +1,24 @@
+E18 reproduction: apps/api/test/fee-provenance.test.ts run against main at d8104fb (before the fix), 2026-11-04
+     × a fee quoted as the partner stated it keeps that disclosure after MKW verifies a fee record for it 143ms
+     × a fee quoted from an unverified record keeps its estimate disclosure after the record is verified 97ms
+     × the downloadable offer says what the online proposal says about each government fee 99ms
+     × an ops price on a line whose government fee needs a decision does not clear that decision 81ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  test/fee-provenance.test.ts > government fee provenance: the defects (E18) > a fee quoted as the partner stated it keeps that disclosure after MKW verifies a fee record for it
+AssertionError: expected undefined to be 'As quoted by the partner firm; you pa…' // Object.is equality
+- Expected:
++ Received:
+ FAIL  test/fee-provenance.test.ts > government fee provenance: the defects (E18) > a fee quoted from an unverified record keeps its estimate disclosure after the record is verified
+AssertionError: expected undefined to be 'Estimate: MKW Advisors confirms this …' // Object.is equality
+- Expected:
++ Received:
+ FAIL  test/fee-provenance.test.ts > government fee provenance: the defects (E18) > the downloadable offer says what the online proposal says about each government fee
+AssertionError: expected '%PDF-1.4\n%\ufffd\ufffd\ufffd\ufffd\n…' to contain 'As quoted by the partner firm; you pa…'
+- Expected
++ Received
+ FAIL  test/fee-provenance.test.ts > government fee provenance: the defects (E18) > an ops price on a line whose government fee needs a decision does not clear that decision
+AssertionError: expected 200 to be 409 // Object.is equality
+- Expected
++ Received
+ Test Files  1 failed (1)
+      Tests  4 failed (4)

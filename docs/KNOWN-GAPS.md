@@ -358,6 +358,25 @@ in a browser; everything listed here is not.
      takes longer for a known email, which sends one, than for an unknown one; checking a code differs by far less.
      Sending the email from the outbox rather than in the request would close most of it.
 
+## E18: quote provenance
+
+135. **A partner-stated government fee publishes without an acknowledgement.** The existing rule (D23), kept until the
+     owner decides; D100 recommends requiring one, as for an UNCERTAIN fee. The client sees it labelled PARTNER-STATED.
+136. **Offers priced before E18 read LEGACY.** Their lines recorded no basis, so each fee shows as an estimate; nothing
+     is back-filled, by design (a later record would present an old quotation as checked).
+137. **The engagement page, invoices and payment screens show government fees without their label.** The label is on
+     the proposal, the PDF and the acceptance record; carrying it onto the engagement and the invoice is a later change.
+138. **The Arabic for the fee labels and sentences is a draft** for the Arabic reviewer (with gaps 111, 116, 119, 128).
+139. **The snapshot keeps the source link, not a copy of the authority's page.** If the authority changes or removes
+     the page, the link no longer shows what was checked; an archived copy at verification would close it.
+140. **An emirate-wide verified fee is VERIFIED on a free-zone request.** Pricing uses the free zone's own row when
+     there is one, else the emirate's (D23), and the label follows the row. Whether an emirate-wide figure is good
+     enough to call a free-zone fee checked is the owner's decision; the alternative is UNCERTAIN unless the row is the
+     free zone's own. Found by the independent review of E18.
+141. **The verifier's name is kept on each priced offer line**, which can never change, so erasing that person cannot
+     remove it there. The name is already in the fee table and the audit trail; the retention basis (the record of
+     a quotation) is for the lawyer to confirm with the PDPL notice. Snapshotting a staff id instead would close it.
+
 ## E16: report design
 
 129. **The Arabic report's wording is a draft** until the Arabic reviewer signs it off (with gaps 111, 116, 119, 128).

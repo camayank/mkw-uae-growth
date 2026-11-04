@@ -28,7 +28,7 @@ import { assertRenewalCurrent, generateObligations } from "./compliance.ts";
 import { completeRenewal } from "./handoff.ts";
 import { loadCalendar } from "./calendar.ts";
 import { requiredTermsVersion } from "./legal.ts";
-import { loadDeliverables, loadPartners, loadRateCards, loadRules, loadSettings, today } from "./repo.ts";
+import { loadDeliverables, loadFeeDisclosures, loadPartners, loadRateCards, loadRules, loadSettings, today } from "./repo.ts";
 
 export const ALLOCATION_SLA_HOURS = 4;
 export const CLIENT_REVIEW_DAYS = 5;
@@ -117,7 +117,9 @@ export async function acceptOffer(tx: Queryable, user: SessionUser, offerId: str
   await tx.query(`insert into payments (engagement_id, client_org_id, kind, amount_fils, status) values ($1,$2,'balance',$3,'scheduled')`, [eng.id, o.client_org_id, plan.clientOnCompletion]);
   // The client's acceptance is the action that creates the payment link.
   const payUrl = await attachPaymentLink(tx, deps, deposit.id, eng.id, "deposit", plan.clientOnAcceptance);
-  await audit(tx, user, "offer.accepted", "engagement", eng.id, { offerId, deposit: plan.clientOnAcceptance, paymentLink: !!payUrl, clientTermsVersion: acceptedTerms });
+  // E18: the government-fee disclosures the client accepted, as they read them (from the offer line's evidence).
+  const governmentFees = (await loadFeeDisclosures(tx, offerId)).map((d) => ({ code: d.code, label: d.label, text: d.text }));
+  await audit(tx, user, "offer.accepted", "engagement", eng.id, { offerId, deposit: plan.clientOnAcceptance, paymentLink: !!payUrl, clientTermsVersion: acceptedTerms, governmentFees });
   await deps.notify.send({ to: user.email, channel: "email", template: "payment_due", vars: { engagementId: eng.id, amountFils: plan.clientOnAcceptance, kind: "deposit", payUrl: payUrl ?? undefined } });
   return eng.id;
 }

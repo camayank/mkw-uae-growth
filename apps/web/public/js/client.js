@@ -147,7 +147,9 @@ export async function renderClientOffer(id) {
   const p = o.proposal;
   const terms = o.status === "published" && role() === "client_owner" ? await api("GET", "/api/legal/client_terms") : null;
   const siblings = h.offers.filter((x) => x.requestId === o.requestId && ["published", "accepted"].includes(x.status));
-  const notes = Object.entries(p.feeNotes ?? {});
+  // E18: every government fee with where its figure came from, as recorded when the offer was priced.
+  const fees = p.feeDisclosures ?? [];
+  const estimates = fees.filter((f) => !f.confirmed);
   const guaranteePct = (p.guaranteeBp ?? 1000) / 100;
   $app.innerHTML = `
   <p><a href="#/">← Overview</a></p>
@@ -176,10 +178,10 @@ export async function renderClientOffer(id) {
         <tr><td>Professional fees</td><td class="num">${aed(o.professional)}</td></tr>
         ${o.mkwFees ? `<tr><td>MKW coordination fees</td><td class="num">${aed(o.mkwFees)}</td></tr>` : ""}
         <tr><td>VAT at 5%</td><td class="num">${aed(o.vat)}</td></tr>
-        <tr><td>Government fees, at cost${notes.length ? ` ${badge("UNCERTAIN", "estimate")}` : ""}</td><td class="num">${aed(o.government)}</td></tr>
+        <tr><td>Government fees, at cost${estimates.length ? ` ${badge("UNCERTAIN", "estimate")}` : ""}</td><td class="num">${aed(o.government)}</td></tr>
         <tfoot><tr><td>Total</td><td class="num">${aed(o.clientTotal)}</td></tr></tfoot>
       </table>
-      ${notes.length ? `<ul class="small notes">${notes.map(([code, n]) => `<li><b>${esc(o.lines.find((l) => l.code === code)?.name ?? code)}:</b> ${esc(n)}</li>`).join("")}</ul>` : ""}
+      ${fees.length ? `<ul class="small notes" data-fee-disclosures>${fees.map((f) => `<li data-fee="${esc(f.code)}"><b>${esc(o.lines.find((l) => l.code === f.code)?.name ?? f.code)}</b> ${badge(f.confirmed ? "verified" : "UNCERTAIN", f.label)} ${esc(f.text)}</li>`).join("")}</ul>` : ""}
       <div class="paysplit"><div><span class="small muted">On acceptance</span><b>${aed(p.depositFils)}</b><span class="small muted">half the fees and VAT, plus the government fees</span></div>
         <div><span class="small muted">When every step is approved</span><b>${aed(p.balanceFils)}</b><span class="small muted">the balance, with your tax invoice</span></div></div>
       <p><a class="btn sm" href="/api/client/offers/${o.id}/pdf" target="_blank" rel="noopener" data-offer-pdf>Download the offer (PDF)</a></p></section>
@@ -190,6 +192,7 @@ export async function renderClientOffer(id) {
         <li>This offer is valid until <b>${date(o.validTo)}</b>.</li>
         <li>Each step comes to you once MKW Advisors has checked it. You approve it or raise an issue; if you do nothing for ${p.reviewWorkingDays} working days, it is approved automatically.</li>
         <li>We do not file returns or notifications with the authorities for you unless that service is part of this offer.</li>
+        ${estimates.length ? `<li>${estimates.length === 1 ? "One government fee is an estimate" : `${estimates.length} government fees are estimates`} (marked above): the authority's actual fee may differ, and you pay it at cost.</li>` : ""}
       </ul>
       ${
         o.status === "published"

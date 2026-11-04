@@ -118,7 +118,7 @@ describe("government fee table", () => {
     expect((await env.call("client", "GET", `/api/client/offers/${offer.id}`)).status).toBe(404);
     expect((await env.call("ops", "POST", `/api/ops/offers/${offer.id}/publish`, { acknowledgeReview: true })).status).toBe(200);
     const ev = await asPlatform(env.db, null, (tx) => tx.query<any>("select data from audit_events where action = 'offer.published' and entity_id = $1", [offer.id]));
-    expect(ev.rows[0].data.acknowledgedLines).toEqual([{ code: "SET-FZ-LIC", reason: expect.stringMatching(/UNCERTAIN/), govUnit: 900_000, clientUnit: expect.any(Number) }]);
+    expect(ev.rows[0].data.acknowledgedLines).toEqual([{ code: "SET-FZ-LIC", reason: expect.stringMatching(/UNCERTAIN/), govUnit: 900_000, clientUnit: expect.any(Number), govFeeBasis: "uncertain" }]);
   });
 
   it("a free-zone row beats the emirate row, and a verified row clears the review", async () => {

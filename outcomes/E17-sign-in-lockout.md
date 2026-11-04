@@ -1,6 +1,6 @@
 # E17 Sign-in lockout: a wrong code is counted, and every failure reads the same
 
-Status: verified-pending-merge (branch `outcome/E17-sign-in-lockout`, on `main` at 71ae116 with E16 merged; released
+Status: merged (camayank/mkw-uae-growth#38, 4 Nov 2026; previously verified-pending-merge, branch `outcome/E17-sign-in-lockout`, on `main` at 71ae116 with E16 merged; released
 by the owner on 3 Nov 2026 in the transformation mandate, Phase 1.1: "Investigate the reported OTP failure-counter
 rollback… Begin with the OTP security defect and write a failing reproduction test")
 

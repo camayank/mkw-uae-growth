@@ -184,6 +184,22 @@ const standard = offerLinks.find(([t]) => t === "standard") ?? offerLinks[0];
 await ops.goto(APP + standard[1]);
 await ops.waitForSelector('button[data-act="publish"]');
 await shot(ops, "05-ops-offer-no-margin");
+// E18: MKW's offer review shows each line's government fee with the evidence it was quoted on.
+check("the ops offer shows each government fee with where it came from (E18):", await ops.evaluate(() => {
+  const cells = [...document.querySelectorAll("td[data-gov-fee]")];
+  return cells.length > 0 && cells.some((c) => /VERIFIED|PARTNER-STATED|UNCERTAIN|STALE|LEGACY/.test(c.textContent) && /From /.test(c.textContent));
+}));
+{
+  const mo = await (await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, storageState: await ops.context().storageState() })).newPage();
+  await mo.goto(APP + standard[1]);
+  await mo.waitForSelector("td[data-gov-fee]");
+  await mo.locator("td[data-gov-fee]").last().scrollIntoViewIfNeeded(); // the column sits in the table's own scroll
+  await mo.waitForTimeout(400);
+  await mo.screenshot({ path: `${OUT}/79-mobile-ops-offer-fees.png`, fullPage: false });
+  log.push("79-mobile-ops-offer-fees");
+  await axeCheck(mo, "ops offer with government fees at 390 px (E18)");
+  await mo.context().close();
+}
 await ops.locator('button[data-act="publish"]').click();
 await ops.waitForTimeout(700);
 log.push("publish: " + (await toastText(ops)));
@@ -207,6 +223,16 @@ check("client terms show the draft note until the lawyer's review is recorded:",
   check("the proposal states the working-day estimate, the deposit now and the balance later:", /About \d+ working days/.test(proposal) && /On acceptance/.test(proposal) && /When every step is approved/.test(proposal));
   check("the proposal says the rules where the client acts:", /valid until/.test(proposal) && /approved automatically/.test(proposal) && /We do not file returns or notifications/.test(proposal));
   check("the proposal shows no partner cost or margin:", !/partner cost|margin|payout/i.test(proposal));
+  // E18: each government fee carries its label and sentence, and the downloadable offer says the same.
+  {
+    const offerId = standard[1].split("/").pop();
+    const fees = (await (await client.request.get(BASE + "/api/client/offers/" + offerId)).json()).proposal.feeDisclosures ?? [];
+    const pdfWordsOf = (await (await client.request.get(BASE + "/api/client/offers/" + offerId + "/pdf")).text()).replace(/\\([()\\])/g, "$1");
+    const shown = await client.locator("[data-fee-disclosures] li").allInnerTexts();
+    check("the proposal labels every government fee with where it came from (E18):", fees.length > 0 && shown.length === fees.length && fees.every((f) => shown.some((s) => s.includes(f.label) && s.includes(f.text))));
+    check("the offer PDF gives each government fee the same label and sentence as the screen (E18):", fees.every((f) => pdfWordsOf.includes(`(${f.label})`) && pdfWordsOf.includes(f.text.slice(0, 50))) && !/as published on the offer date/.test(pdfWordsOf));
+    log.push(`E18 fee labels on the demo offer: ${fees.map((f) => `${f.code} ${f.label}`).join(", ")}`);
+  }
   // U1: one offer shown as selected, the others as a switch; no tier promises a pace (gap 85).
   if ((await client.locator(".tiers .tier").count()) > 1) check("the offer shows one selected tier and the others as a switch (U1):", (await client.locator(".tiers .tier.best").count()) === 1 && /Switch to/.test(proposal) && !/faster|quicker|sooner/i.test(await client.locator(".tiers").innerText()));
   await shot(client, "72-client-proposal");

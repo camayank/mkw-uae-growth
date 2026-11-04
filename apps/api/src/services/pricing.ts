@@ -1,10 +1,13 @@
 import {
   assertOffer,
+  feeBasis,
+  feeNeedsReview,
   offerTotals,
   priceLine,
   scoreQuotes,
   selectForTier,
   type CostQuote,
+  type FeeBasis,
   type OfferStatus,
   type PricedLine,
   type ScopeLine,
@@ -16,7 +19,7 @@ import { assertQuotable } from "./structure.ts";
 import { num, type Queryable } from "../lib/db.ts";
 import { assertRenewalCurrent } from "./compliance.ts";
 import { badRequest, conflict, notFound } from "../lib/errors.ts";
-import { addDays, dbToday, loadDeliverables, loadGovernmentFees, loadPartners, loadRateCards, loadRfqQuotes, loadRules, loadSettings, type FeeLookup } from "./repo.ts";
+import { addDays, dbToday, FEE_STALE_DAYS, loadDeliverables, loadFeeDisclosures, loadGovernmentFees, loadPartners, loadRateCards, loadRfqQuotes, loadRules, loadSettings, type FeeLookup } from "./repo.ts";
 
 export const OFFER_VALID_DAYS = 14;
 
@@ -80,7 +83,7 @@ export async function buildOffers(
   const offerIds: string[] = [];
   const seen = new Set<string>();
   for (const tier of tiers) {
-    const picked: Array<{ line: PricedLine; partnerId: string; fallbackId: string | null; sourceId: string }> = [];
+    const picked: Array<{ line: PricedLine; partnerId: string; fallbackId: string | null; sourceId: string; fee: FeeLookup | undefined; basis: FeeBasis }> = [];
     for (const sl of lines) {
       const d = deliverables.get(sl.code);
       if (!d) throw badRequest(`Unknown deliverable ${sl.code}`);
@@ -95,7 +98,10 @@ export async function buildOffers(
         priceLine({ deliverable: d, qty: sl.qty, partnerUnitCost: sel.chosen.partnerUnitCost, govUnitFee: sel.chosen.govFeeUsed, rule }, settings),
         fees.get(sl.code),
       );
-      picked.push({ line, partnerId: sel.chosen.partnerId, fallbackId: sel.fallback?.partnerId ?? null, sourceId: sel.chosen.quoteId });
+      // E18 (review): with no MKW record, a figure from the catalogue itself (`deliverables.gov_fee_fils`, unused today)
+      // is MKW's own unverified figure, not the partner's.
+      const basis: FeeBasis = fees.has(sl.code) ? feeBasis(fees.get(sl.code)) : d.govFeeTable != null ? "uncertain" : "partner_stated";
+      picked.push({ line, partnerId: sel.chosen.partnerId, fallbackId: sel.fallback?.partnerId ?? null, sourceId: sel.chosen.quoteId, fee: fees.get(sl.code), basis });
     }
     // Skip a tier that comes out identical to one already built (common with few partners).
     const signature = picked.map((p) => `${p.line.code}:${p.sourceId}`).join("|");
@@ -133,10 +139,14 @@ export async function buildOffers(
     ).rows[0]!;
     for (const p of picked) {
       const l = p.line;
+      // E18: the government fee's evidence as it stands now, written once with the line (migration 023 freezes it).
+      const basis = p.basis;
       await tx.query(
         `insert into offer_lines (offer_id, code, qty, model, partner_org_id, fallback_partner_org_id, cost_source_id,
-           partner_unit_fils, gov_unit_fils, client_unit_fils, mkw_fee_unit_fils, margin_unit_fils, cap_unit_fils, status, reason)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+           partner_unit_fils, gov_unit_fils, client_unit_fils, mkw_fee_unit_fils, margin_unit_fils, cap_unit_fils, status, reason,
+           gov_fee_basis, gov_fee_id, gov_fee_emirate, gov_fee_free_zone, gov_fee_source_url, gov_fee_verified_by, gov_fee_verified_at,
+           gov_fee_quoted_on, gov_fee_review)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
         [
           offer.id,
           l.code,
@@ -153,11 +163,27 @@ export async function buildOffers(
           l.capUnit,
           l.status,
           l.reason ?? null,
+          basis,
+          p.fee?.id ?? null,
+          p.fee?.emirate ?? req.answers.emirate ?? null,
+          p.fee ? p.fee.freeZone : (req.answers.freeZone ?? null),
+          p.fee?.sourceUrl ?? null,
+          p.fee?.verifiedBy ?? null,
+          p.fee?.verifiedAt ?? null,
+          asOf,
+          // A fee that needs a decision needs it whatever its amount: an unverified "no fee" is not a fact either.
+          feeNeedsReview(basis) ? "required" : "none",
         ],
       );
     }
     offerIds.push(offer.id);
-    await audit(tx, actor, "offer.built", "offer", offer.id, { tier, status, margin: totals.margin, requestId });
+    await audit(tx, actor, "offer.built", "offer", offer.id, {
+      tier,
+      status,
+      margin: totals.margin,
+      requestId,
+      governmentFees: picked.map((p) => ({ code: p.line.code, unitFils: p.line.govUnitFee, basis: p.basis, feeId: p.fee?.id ?? null })),
+    });
   }
   await tx.query("update requests set status = 'offered' where id = $1", [requestId]);
   return { offerIds, missing: [] };
@@ -199,25 +225,46 @@ export async function publishOffer(tx: Queryable, actor: SessionUser, offerId: s
   const codes = (await tx.query<{ code: string }>("select code from offer_lines where offer_id = $1", [offerId])).rows.map((l) => l.code);
   await assertQuotable(tx, o.request_id, codes);
   await assertRenewalCurrent(tx, o.request_id);
+  // E18: a line whose government fee needs a decision stays flagged even after ops set its price (which marks the
+  // line 'ok' and rewrites its reason): the fee review is its own column.
   const flagged = (
-    await tx.query<{ code: string; reason: string | null; gov_unit_fils: number; client_unit_fils: number }>(
-      "select code, reason, gov_unit_fils, client_unit_fils from offer_lines where offer_id = $1 and status <> 'ok' order by code",
+    await tx.query<{ code: string; reason: string | null; gov_unit_fils: number; client_unit_fils: number; gov_fee_basis: FeeBasis | null; gov_fee_review: string | null; stale_now: boolean }>(
+      `select code, reason, gov_unit_fils, client_unit_fils, gov_fee_basis, gov_fee_review,
+         (gov_fee_basis = 'verified' and gov_fee_verified_at < app_now()::date - ${FEE_STALE_DAYS}) as stale_now
+       from offer_lines
+       where offer_id = $1 and (status <> 'ok' or gov_fee_review = 'required'
+         or (gov_fee_basis = 'verified' and gov_fee_verified_at < app_now()::date - ${FEE_STALE_DAYS})) order by code`,
       [offerId],
     )
   ).rows;
+  // E18 (review): a fee verified when the offer was built may have gone past 90 days by the time it is published; the
+  // client still reads its verification date, and the person publishing acknowledges it (in the audit event).
+  const why = (l: (typeof flagged)[number]) =>
+    l.stale_now
+      ? [l.reason, `government fee verified over ${FEE_STALE_DAYS} days before publication`].filter(Boolean).join("; ")
+      : l.gov_fee_review === "required" && !/government fee/i.test(l.reason ?? "")
+        ? [l.reason, `government fee ${l.gov_fee_basis} at quotation`].filter(Boolean).join("; ")
+        : (l.reason ?? "review");
   if (flagged.length && !acknowledgeReview) {
-    throw conflict(`${flagged.length} line(s) need a decision before this offer can go to the client: ${flagged.map((l) => `${l.code} (${l.reason ?? "review"})`).join("; ")}`);
+    throw conflict(`${flagged.length} line(s) need a decision before this offer can go to the client: ${flagged.map((l) => `${l.code} (${why(l)})`).join("; ")}`);
   }
+  // The person publishing acknowledges each fee that needed it; the acknowledgement is recorded on the line, once.
+  await tx.query("update offer_lines set gov_fee_review = 'acknowledged', gov_fee_ack_by = $2, gov_fee_ack_at = app_now() where offer_id = $1 and gov_fee_review = 'required'", [
+    offerId,
+    actor.id,
+  ]);
   await transition(tx, "offer", offerId, "published", "platform", {
     audit: {
       actor,
       action: "offer.published",
       data: {
-        acknowledgedLines: flagged.map((l) => ({ code: l.code, reason: l.reason, govUnit: num(l.gov_unit_fils), clientUnit: num(l.client_unit_fils) })),
+        acknowledgedLines: flagged.map((l) => ({ code: l.code, reason: why(l), govUnit: num(l.gov_unit_fils), clientUnit: num(l.client_unit_fils), govFeeBasis: l.gov_fee_basis })),
+        governmentFees: (await loadFeeDisclosures(tx, offerId)).map((d) => ({ code: d.code, label: d.label })),
       },
     },
   });
 }
+
 
 /** Ops may override one line's client price, for example after a negotiation. Totals are recomputed. */
 export async function overrideLinePrice(
@@ -227,7 +274,10 @@ export async function overrideLinePrice(
   code: string,
   clientUnitFils: number,
 ): Promise<void> {
-  const o = (await tx.query<{ status: string }>("select status from offers where id = $1", [offerId])).rows[0];
+  // E18 (review): the same lock order as publication, and the offer row locked before its status is checked, so a
+  // price set at the moment of publication waits and is then refused rather than landing on a published offer.
+  await lockAuditChain(tx);
+  const o = (await tx.query<{ status: string }>("select status from offers where id = $1 for update", [offerId])).rows[0];
   if (!o) throw notFound("Offer not found");
   if (!["draft", "ops_review"].includes(o.status)) throw conflict("Only unpublished offers can be changed");
   const line = (
@@ -267,6 +317,8 @@ export async function recomputeOffer(tx: Queryable, offerId: string): Promise<vo
     status: r.status as PricedLine["status"],
   }));
   const t = offerTotals(lines, settings);
+  // E18: a fee that still needs a decision counts as a line needing one, whatever the line's price status says.
+  t.linesNeedingReview = rows.filter((r) => r.status !== "ok" || r.gov_fee_review === "required").length;
   await tx.query(
     `update offers set professional_fils=$2, mkw_fees_fils=$3, vat_fils=$4, government_fils=$5, client_total_fils=$6,
        partner_payout_fils=$7, margin_fils=$8, margin_bp=$9, lines_needing_review=$10 where id=$1`,

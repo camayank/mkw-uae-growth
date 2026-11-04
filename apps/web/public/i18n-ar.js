@@ -81,6 +81,13 @@ export const AR = {
   "We do not file returns or notifications with the authorities for you unless that service is part of this offer.": "لا نقدّم الإقرارات أو الإخطارات إلى الجهات الرسمية نيابة عنك ما لم تكن هذه الخدمة ضمن هذا العرض.",
   "Estimate: MKW Advisors confirms this government fee with the authority before it is paid; you pay the actual fee, at cost.": "تقدير: تؤكد MKW Advisors هذا الرسم الحكومي مع الجهة المختصة قبل دفعه؛ وتدفع الرسم الفعلي بسعر التكلفة.",
   "As quoted by the partner firm; you pay the authority's actual fee, at cost.": "كما قدّرته الشركة الشريكة؛ وتدفع الرسم الفعلي للجهة بسعر التكلفة.",
+  // E18: where each government fee came from (drafts for the Arabic reviewer, gap 138).
+  "VERIFIED": "موثّق",
+  "PARTNER-STATED": "بحسب الشريك",
+  "STALE": "تحقق قديم",
+  "LEGACY": "عرض سابق",
+  "Estimate given by the delivery partner firm; MKW Advisors has not yet confirmed it with the authority. You pay the authority's actual fee, at cost.": "تقدير قدّمته الشركة الشريكة المنفّذة؛ ولم تؤكده MKW Advisors بعد مع الجهة المختصة. وتدفع الرسم الفعلي للجهة بسعر التكلفة.",
+  "Estimate: this offer was prepared before MKW Advisors recorded where each government fee came from. You pay the authority's actual fee, at cost.": "تقدير: أُعدّ هذا العرض قبل أن تسجّل MKW Advisors مصدر كل رسم حكومي. وتدفع الرسم الفعلي للجهة بسعر التكلفة.",
   "A few questions, one at a time. Your plan builds as you answer; nothing is sent until you ask for your offers.": "بضعة أسئلة، واحداً تلو الآخر. تتشكّل خطتك إلى الجانب أثناء إجابتك؛ ولا يُرسل شيء حتى تطلب عروضك.",
   "Where are you starting from?": "من أين تبدأ؟",
   "Set up a new company in the UAE": "تأسيس شركة جديدة في الإمارات",
@@ -798,6 +805,11 @@ export const AR = {
 
 /** Patterns for strings composed at render time. Each maps a regex over the English text to Arabic. */
 export const AR_PATTERNS = [
+  // E18: government fee sentences that carry a date or a count (drafts for the Arabic reviewer, gap 138).
+  [/^Checked by MKW Advisors against the authority's published fee, verified(?: on (\S+))?\. You pay the authority's actual fee, at cost\.$/, (m) => `تحققت MKW Advisors منه مقابل الرسم المنشور للجهة${m[1] ? `، بتاريخ ${m[1]}` : ""}. وتدفع الرسم الفعلي للجهة بسعر التكلفة.`],
+  [/^Estimate: MKW Advisors last verified this fee(?: on (\S+))?, more than (\d+) days before this offer, and confirms it with the authority before it is paid\. You pay the authority's actual fee, at cost\.$/, (m) => `تقدير: آخر تحقق من MKW Advisors من هذا الرسم${m[1] ? ` كان بتاريخ ${m[1]}` : ""}، قبل أكثر من ${m[2]} يوماً من هذا العرض، وتؤكده مع الجهة المختصة قبل دفعه. وتدفع الرسم الفعلي للجهة بسعر التكلفة.`],
+  [/^One government fee is an estimate \(marked above\): the authority's actual fee may differ, and you pay it at cost\.$/, () => "أحد الرسوم الحكومية تقديري (موضّح أعلاه): قد يختلف الرسم الفعلي للجهة، وتدفعه بسعر التكلفة."],
+  [/^(\d+) government fees are estimates \(marked above\): the authority's actual fee may differ, and you pay it at cost\.$/, (m) => `${m[1]} من الرسوم الحكومية تقديرية (موضّحة أعلاه): قد يختلف الرسم الفعلي للجهة، وتدفعه بسعر التكلفة.`],
   // The card renders the estimate's label as one text node: both sentences together, with or without the date.
   [/^Preliminary estimate(?:, as of (\S+))?\. Not advice\.$/, (m) => `تقدير أولي${m[1] ? `، حتى ${m[1]}` : ""}. ليست مشورة.`],
   [/^(.+), (\d+) place\(s\) on record$/, (m) => `${m[1]}، ${m[2]} جهة مسجلة`],

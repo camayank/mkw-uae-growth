@@ -399,6 +399,8 @@ balance come from the same `paymentPlan` acceptance uses. The guarantee rate (`g
 stated on the proposal because it is a promise to the client; the wording says finance confirms each credit and that a
 delay caused by something only the client can provide may not qualify (for the owner's wording review). The working-day
 estimate is the longest one-off line from the start of work; recurring services are listed but not counted.
+(Superseded for the fee notes by D100, E18: they now come from each offer line's own record of its fee, made when it was
+priced, not from the fee table on the day the proposal is read.)
 
 **D61. Uploads are checked before they leave the page, by the server's rules.** (O12.) `GET /api/upload-rules` publishes
 the storage adapter's own extensions and size limit; the page checks type, size and emptiness when a file is chosen or
@@ -1209,3 +1211,50 @@ after the owner's transformation mandate named the defect: "Investigate the repo
   - the failures read the same.
 
   They pass on PGlite and on PostgreSQL 16, and fail on the old code.
+
+**D100. A quoted government fee keeps the evidence it was quoted on; one disclosure says it everywhere.** (E18, 4 Nov
+2026, released by the owner: "Execute E18: trusted quotation and fee provenance".)
+- **The defect, reproduced first** (`docs/evidence/E18/before-fix.txt`, four tests that failed on `main` at d8104fb):
+  - the proposal looked each fee up in MKW's fee table again whenever it was read (D60), so a fee recorded or verified
+    after the offer was published changed what the client was told while the quoted amount stayed the same;
+  - the downloadable offer said nothing about where a fee came from, and its assumptions said fees were "as published
+    on the offer date", which a partner's figure is not;
+  - ops setting a line's price marked the line `ok`, which also cleared a fee that still needed a person's decision.
+- **The snapshot.** Each offer line records, when it is priced, its fee's basis (`verified`, `partner_stated`,
+  `uncertain`, `stale`), the fee record it used, the place, the source link, who verified it and when, the quotation
+  date and whether a person must acknowledge it (migration 023). The amount was already on the line. A trigger refuses
+  any later change to the amount or the evidence; the only change allowed is a person's acknowledgement at publication
+  (`required` to `acknowledged`, with who and when, once). Lines priced before E18 have no basis and read LEGACY: never
+  verified, and nothing can be back-filled into them.
+- **One disclosure.** `feeDisclosure` (`packages/core/src/fee-disclosure.ts`) turns the snapshot into a label and one
+  sentence: VERIFIED, PARTNER-STATED, UNCERTAIN, STALE or LEGACY. The online proposal, the PDF, the acceptance record
+  (`offer.accepted` audit event) and MKW's offer review all read it through `loadFeeDisclosures`, so they cannot
+  disagree. The client gets the label and the sentence only; the evidence columns are not granted to the client role.
+  The UNCERTAIN sentence is the one clients read before E18, unchanged. The `feeNotes` field keeps its meaning for older
+  pages.
+- **The PDF** gives each fee its label and sentence, says only a VERIFIED fee was checked against the authority's
+  figure, wraps every paragraph to the page (longer lines used to run off its edge) and prints its dates with the year.
+- **Rules kept.** Prices, VAT, the deposit, partner selection, publication and acceptance are unchanged; the fee
+  amount on an offer is the same figure as before. UNCERTAIN and stale fees need an acknowledgement as before (D22b);
+  the acknowledgement now survives an ops price change and is recorded on the line.
+- **Recommendation for the owner, not applied.** A partner-stated fee is an estimate MKW has not checked, yet it
+  publishes with no acknowledgement (the existing rule, D23). Requiring the same acknowledgement as an UNCERTAIN fee
+  would make every unverified figure a person's decision before it reaches a client, at the cost of one more tick per
+  such offer while the fee table is empty. `feeNeedsReview` is the one place to change it (gap 135).
+- **Found by the independent review of E18, and fixed with tests:**
+  - an UNCERTAIN or stale fee of zero escaped the acknowledgement and the disclosure ("no fee" from an unverified
+    record is a statement like any other): the review now follows the basis whatever the amount, and such a line is
+    disclosed;
+  - an ops price set at the moment of publication could land on the published offer (the status was read without a
+    lock): setting a price now takes the audit lock and locks the offer row first, as publication does;
+  - ops could read margin in the audit trail (`offer.built` and `offer.line_overridden` record it): the trail is shown
+    to ops without margin figures; the stored events and their hashes are unchanged (rule 1);
+  - a fee verified when the offer was built but more than 90 days old at publication now needs the same
+    acknowledgement, recorded in the `offer.published` event; the client reads its verification date;
+  - a figure from the catalogue itself with no fee record is labelled UNCERTAIN, not partner-stated;
+  - the guard also freezes the line's offer, code and quantity, refuses acknowledgement fields without the review they
+    acknowledge, and refuses deleting an offer line;
+  - MKW's offer review shows the evidence dates as the database's text, so a server east of UTC does not show the day
+    before.
+- **Recorded, not changed:** a free-zone request priced on an emirate-wide verified record reads VERIFIED (the lookup
+  policy of D23; gap 140), and the verifier's name is kept on the frozen line (gap 141).

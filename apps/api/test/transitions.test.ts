@@ -42,8 +42,8 @@ describe("transition tables", () => {
 
 describe("transition()", () => {
   let env: TestEnv;
-  const ids: Record<MachineName, string> = { milestone: "", offer: "", engagement: "", request: "", payout: "", change_order: "" };
-  const table: Record<MachineName, string> = { milestone: "milestones", offer: "offers", engagement: "engagements", request: "requests", payout: "payouts", change_order: "change_orders" };
+  const ids: Record<MachineName, string> = { milestone: "", offer: "", engagement: "", request: "", payout: "", change_order: "", file: "" };
+  const table: Record<MachineName, string> = { milestone: "milestones", offer: "offers", engagement: "engagements", request: "requests", payout: "payouts", change_order: "change_orders", file: "file_scans" };
   const run = (fn: (tx: any) => Promise<any>): Promise<any> => asPlatform(env.db, null, fn);
   beforeAll(async () => {
     env = await makeEnv();
@@ -63,6 +63,11 @@ describe("transition()", () => {
     const partner = e.allocations[0].partner as string;
     ids.change_order = (await env.call(key(partner), "POST", `/api/engagements/${ids.engagement}/change-orders`, { description: "An extra visa", partnerCostAed: 500 })).body.id;
     expect(ids.change_order).toBeTruthy();
+    // E22: an uploaded file's scan record.
+    const m = (await env.call(key(partner), "GET", `/api/engagements/${ids.engagement}`)).body.milestones[0];
+    await env.call(key(partner), "POST", `/api/milestones/${m.id}/start`);
+    expect((await env.call(key(partner), "POST", `/api/milestones/${m.id}/evidence`, { type: m.evidenceRequired[0], fileName: "proof.pdf", contentBase64: Buffer.from("%PDF-1.4 t").toString("base64") })).status).toBe(200);
+    ids.file = (await run((tx) => tx.query("select id from file_scans limit 1"))).rows[0].id;
   });
   afterAll(() => env.db.close());
 
@@ -179,17 +184,20 @@ describe("requests, payouts and change orders (E21)", () => {
     expect(moved[0]).toMatchObject({ actor_user_id: null, data: { from: "pending", to: "eligible", stage: "change_order" } });
   });
 
-  it("a status outside the machine is refused by the database, on all six tables", async () => {
-    for (const t of ["requests", "offers", "engagements", "milestones", "payouts", "change_orders"]) {
-      await expect(run((tx) => tx.query(`update ${t} set status = 'bogus' where id = (select id from ${t} limit 1)`)), t).rejects.toThrow(/check constraint/);
+  it("a status outside the machine is refused by the database, on all seven tables", async () => {
+    for (const t of ["requests", "offers", "engagements", "milestones", "payouts", "change_orders", "file_scans"]) {
+      const sql = t === "file_scans" // this environment has no upload yet: an insert is refused the same way
+        ? "insert into file_scans (key, file_name, detected_type, size_bytes, sha256, status) values ('k', 'n', 'pdf', 1, 'x', 'bogus')"
+        : `update ${t} set status = 'bogus' where id = (select id from ${t} limit 1)`;
+      await expect(run((tx) => tx.query(sql)), t).rejects.toThrow(/check constraint/);
     }
     const defs = (await run((tx) => tx.query(
       `select c.conrelid::regclass::text as tbl, pg_get_constraintdef(c.oid) as def from pg_constraint c
         where c.contype = 'c' and c.conrelid::regclass::text = any($1::text[]) and pg_get_constraintdef(c.oid) like '%((status = %'`,
-      [["requests", "offers", "engagements", "milestones", "payouts", "change_orders"]],
+      [["requests", "offers", "engagements", "milestones", "payouts", "change_orders", "file_scans"]],
     ))).rows;
     const allowed = (tbl: string) => [...(defs.find((d: any) => d.tbl === tbl)?.def ?? "").matchAll(/'([a-z_]+)'/g)].map((m) => m[1]).sort();
-    for (const [m, tbl] of Object.entries({ request: "requests", offer: "offers", engagement: "engagements", milestone: "milestones", payout: "payouts", change_order: "change_orders" })) {
+    for (const [m, tbl] of Object.entries({ request: "requests", offer: "offers", engagement: "engagements", milestone: "milestones", payout: "payouts", change_order: "change_orders", file: "file_scans" })) {
       expect(allowed(tbl), tbl).toEqual([...STATUSES[m as MachineName]].sort());
     }
   });
@@ -200,7 +208,7 @@ describe("requests, payouts and change orders (E21)", () => {
  * statement runs to the end of its string literal. The SET list ends at the first WHERE, RETURNING or FROM outside
  * brackets. Deliberately broad: anything flagged moves into `transition()`.
  */
-const MACHINE_TABLES = "milestones|offers|engagements|requests|payouts|change_orders";
+const MACHINE_TABLES = "milestones|offers|engagements|requests|payouts|change_orders|file_scans";
 const TABLE = `(?:only\\s+)?(?:public\\s*\\.\\s*)?"?(?:${MACHINE_TABLES})"?`;
 function setsStatus(setList: string): boolean {
   let depth = 0;

@@ -7,6 +7,7 @@ import { memoryTransport, recordingNotifier, type Notifier, type OutboundEmail }
 import { memoryProvider } from "../src/lib/payments.ts";
 import { memoryModel } from "../src/lib/ai.ts";
 import { memoryStorage } from "../src/lib/storage.ts";
+import { memoryScanner } from "../src/lib/scanner.ts";
 import { seedCatalogue, seedDemo, type DemoIds } from "../src/db/seed.ts";
 import { DEMO } from "../src/db/seed-data.ts";
 import { buildApp, type AppOptions } from "../src/server.ts";
@@ -70,7 +71,7 @@ async function openTestDatabase(): Promise<Database & { url?: string }> {
 
 export async function makeEnv(
   start = new Date("2026-10-19T06:00:00Z"),
-  extra: Partial<Pick<AppOptions, "trustProxy" | "logger" | "alertEmail" | "startedAt" | "webDir" | "appUrl">> = {},
+  extra: Partial<Pick<AppOptions, "trustProxy" | "logger" | "alertEmail" | "startedAt" | "webDir" | "appUrl" | "scanner" | "allowUnscanned">> = {},
   opts: { runtimeLogin?: boolean } = {},
 ): Promise<TestEnv> {
   const owner = await openTestDatabase();
@@ -85,7 +86,8 @@ export async function makeEnv(
   const notify = recordingNotifier({ db, transport, appUrl: "https://app.test", fromClient: "tasees@mkwadvisors.test", fromPartner: "partners@mkwadvisors.test", now: () => clock.now, log: (m) => (process.env.NOTIFY_DEBUG ? console.log(m) : undefined) });
   const storage = memoryStorage();
   const provider = memoryProvider("test-secret", "https://app.test", () => clock.now);
-  const app = await buildApp({ db, notify, storage, provider, model: memoryModel(), now: () => clock.now, devLogin: true, webhookSecret: "test-secret", ...extra });
+  // E22: the test scanner unless a test asks for none (staging until T6) or its own.
+  const app = await buildApp({ db, notify, storage, provider, model: memoryModel(), now: () => clock.now, devLogin: true, webhookSecret: "test-secret", scanner: memoryScanner(), ...extra });
   const tokens: Record<string, string> = {};
   for (const [k, email] of Object.entries(EMAILS)) tokens[k] = await createSession(db, email);
   const send = async (who: string, method: string, url: string, body?: unknown, headers: Record<string, string> = {}) => {

@@ -1,0 +1,9 @@
+
+ RUN  v4.1.12 /home/user/mkw-uae-growth/apps/api
+
+
+ Test Files  44 passed (44)
+      Tests  441 passed (441)
+   Start at  19:32:02
+   Duration  61.23s (transform 2.69s, setup 0ms, import 16.33s, tests 158.27s, environment 3ms)
+

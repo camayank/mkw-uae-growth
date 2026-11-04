@@ -1,5 +1,5 @@
 // Tasees workspace: partner module (split from app.js in O12; plain ES modules, no build step).
-import { $app, act, aed, api, badge, date, dateTime, deliverables, esc, flag, isPartner, isPlatform, kpiTile, legalBlock, nameOf, role, table, words } from "./core.js";
+import { fileLink, $app, act, aed, api, badge, date, dateTime, deliverables, esc, flag, isPartner, isPlatform, kpiTile, legalBlock, nameOf, role, table, words } from "./core.js";
 
 /** How long is left to answer an offer, as a chip (U1). */
 export const timeLeft = (deadline) => {
@@ -124,7 +124,7 @@ export async function renderFirm(orgId) {
   const all = await deliverables();
   const emirates = ["Dubai", "Abu Dhabi", "Sharjah", "Ajman", "Ras Al Khaimah", "Umm Al Quwain", "Fujairah", "All"];
   const latest = f.scorecards?.[0];
-  const docRow = (d) => `<tr><td>${esc(words(d.kind))}${d.reference ? `<br><span class="small muted">${esc(d.reference)}</span>` : ""}</td><td class="small"><a href="/api/partner-documents/${d.id}/file" target="_blank" rel="noopener">${esc(d.fileName)}</a><br><span class="muted">${dateTime(d.uploadedAt)}</span></td><td class="small">${d.expiresOn ? date(d.expiresOn) : "–"}${d.expiresOn && d.status === "verified" ? `<br>${expiryBadge(d.expiresOn)}` : ""}</td>
+  const docRow = (d) => `<tr><td>${esc(words(d.kind))}${d.reference ? `<br><span class="small muted">${esc(d.reference)}</span>` : ""}</td><td class="small">${fileLink(`/api/partner-documents/${d.id}/file`, d.fileName, d.scan)}<br><span class="muted">${dateTime(d.uploadedAt)}</span></td><td class="small">${d.expiresOn ? date(d.expiresOn) : "–"}${d.expiresOn && d.status === "verified" ? `<br>${expiryBadge(d.expiresOn)}` : ""}</td>
     <td>${badge(d.status === "verified" ? "ok" : d.status === "rejected" ? "bad" : d.status === "superseded" ? "expired" : "UNCERTAIN", d.status === "uploaded" ? "awaiting MKW check" : words(d.status))}${d.note ? `<br><span class="small muted">${esc(d.note)}</span>` : ""}</td>
     <td>${canAct && d.status === "uploaded" ? `<button class="sm primary" data-act="doc-review" data-id="${d.id}" data-decision="verified">Verify</button> <button class="sm" data-act="doc-review" data-id="${d.id}" data-decision="rejected">Reject</button>` : ""}</td></tr>`;
   $app.innerHTML = `

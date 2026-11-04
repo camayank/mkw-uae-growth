@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { CLIENT_ROLES, requireRole, requireUser } from "../lib/auth.ts";
+import { assertUsable } from "../lib/uploads.ts";
 import { asPlatform, asUser } from "../lib/context.ts";
 import { notFound } from "../lib/errors.ts";
 import { UPLOAD_RULES } from "../lib/storage.ts";
@@ -13,7 +14,7 @@ import { clientReportPdf } from "../services/report.ts";
 
 /** The catalogue, the client's own screens and the shared engagement view. */
 export function registerClientRoutes(ctx: RouteContext) {
-  const { app, db, opts, deps } = ctx;
+  const { app, db, opts, deps, uploads } = ctx;
 
   // Catalogue (any signed-in user) ------------------------------------------------
   app.get("/api/deliverables", async (req) => {
@@ -118,7 +119,12 @@ export function registerClientRoutes(ctx: RouteContext) {
         ? await asPlatform(db, user, async (tx) => (await tx.query<{ file_key: string; file_name: string }>("select file_key, file_name from evidence where id = $1", [req.params.id])).rows[0])
         : await asUser(db, user, async (tx) => (await tx.query<{ id: string; file_name: string }>("select id, file_name from evidence where id = $1", [req.params.id])).rows[0]);
     if (!row) throw notFound("File not found");
-    const key = await asPlatform(db, user, async (tx) => (await tx.query<{ file_key: string }>("select file_key from evidence where id = $1", [req.params.id])).rows[0]!.file_key);
+    // E22: a file is served only once a scan found it clean.
+    const key = await asPlatform(db, user, async (tx) => {
+      const k = (await tx.query<{ file_key: string }>("select file_key from evidence where id = $1", [req.params.id])).rows[0]!.file_key;
+      await assertUsable(tx, uploads, [k]);
+      return k;
+    });
     const data = await opts.storage.get(key);
     reply.header("content-disposition", `attachment; filename="${row.file_name.replace(/"/g, "")}"`);
     return reply.type("application/octet-stream").send(data);

@@ -27,10 +27,83 @@ const ALLOWED = new RegExp(`\\.(${EXTENSIONS.join("|")})$`, "i");
 /** What any upload must be, as the page reads it before sending (O12) and as `checkUpload` enforces it. */
 export const UPLOAD_RULES = { extensions: EXTENSIONS, maxBytes: MAX_BYTES } as const;
 
-/** The same rules for every adapter: size, type, and a key that cannot escape its engagement folder. */
-export function checkUpload(fileName: string, data: Buffer): void {
+/** What a file's bytes say it is (E22): the formats' own signatures, never the name. */
+export type DetectedType = "pdf" | "png" | "jpeg" | "webp" | "ole" | "docx" | "xlsx" | "zip" | "text" | "unknown";
+const LABEL: Record<DetectedType, string> = {
+  pdf: "a PDF",
+  png: "a PNG image",
+  jpeg: "a JPEG image",
+  webp: "a WebP image",
+  ole: "an old-style Office file (.doc or .xls)",
+  docx: "a Word document in the .docx format",
+  xlsx: "an Excel workbook in the .xlsx format",
+  zip: "a ZIP archive",
+  text: "plain text",
+  unknown: "a file of another kind",
+};
+
+export function detectType(data: Buffer): DetectedType {
+  const starts = (bytes: number[], at = 0) => bytes.every((b, i) => data[at + i] === b);
+  // Readers accept a byte-order mark or other junk before the header, within the first kilobyte.
+  if (data.subarray(0, 1024).indexOf("%PDF-") >= 0) return "pdf";
+  if (starts([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return "png";
+  if (starts([0xff, 0xd8, 0xff])) return "jpeg";
+  if (data.subarray(0, 4).toString("latin1") === "RIFF" && data.subarray(8, 12).toString("latin1") === "WEBP") return "webp";
+  if (starts([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1])) return "ole";
+  if (starts([0x50, 0x4b, 0x03, 0x04])) {
+    // An Office Open XML package names its parts in the archive's file headers. The package's own parts come first
+    // (word/ or xl/); a workbook that embeds a Word document names word/ later, so the earliest decides.
+    const word = data.indexOf("word/");
+    const xl = data.indexOf("xl/");
+    if (word >= 0 && (xl < 0 || word < xl)) return "docx";
+    if (xl >= 0) return "xlsx";
+    return "zip";
+  }
+  if (isText(data)) return "text";
+  return "unknown";
+}
+
+/** UTF-8 with no binary control bytes (tab, line feed, form feed and carriage return are text). */
+function isText(data: Buffer): boolean {
+  for (const b of data) if (b < 0x20 && b !== 0x09 && b !== 0x0a && b !== 0x0c && b !== 0x0d) return false;
+  try {
+    new TextDecoder("utf-8", { fatal: true }).decode(data);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** What each allowed extension's bytes must be, and the word for it in a refusal. */
+const EXPECTED: Record<string, { type: DetectedType; word: string }> = {
+  pdf: { type: "pdf", word: "a PDF" },
+  png: { type: "png", word: "a PNG image" },
+  jpg: { type: "jpeg", word: "a JPEG image" },
+  jpeg: { type: "jpeg", word: "a JPEG image" },
+  webp: { type: "webp", word: "a WebP image" },
+  doc: { type: "ole", word: "a Word document" },
+  xls: { type: "ole", word: "an Excel workbook" },
+  docx: { type: "docx", word: "a Word document" },
+  xlsx: { type: "xlsx", word: "an Excel workbook" },
+  csv: { type: "text", word: "a CSV file" },
+  txt: { type: "text", word: "a text file" },
+};
+
+/**
+ * The same rules for every adapter: size, extension, and (E22) content that is what the extension says. Returns what
+ * the bytes are. A key cannot escape its engagement folder (`objectKey`).
+ */
+export function checkUpload(fileName: string, data: Buffer): DetectedType {
   if (data.length > MAX_BYTES) throw new Error("File is larger than 15 MB");
   if (!ALLOWED.test(fileName)) throw new Error("File type not allowed. Use PDF, image, Word, Excel, CSV or text.");
+  if (data.length === 0) throw new Error("The file is empty");
+  const ext = fileName.toLowerCase().split(".").pop()!;
+  const want = EXPECTED[ext]!;
+  const got = detectType(data);
+  if (got !== want.type) {
+    throw new Error(`This file is named .${ext} but is not ${want.word}: its content is ${LABEL[got]}. Upload the document itself in its own format.`);
+  }
+  return got;
 }
 
 export function objectKey(engagementId: string, fileName: string, prefix = ""): string {

@@ -1,5 +1,5 @@
 // Tasees workspace: engagement module (split from app.js in O12; plain ES modules, no build step).
-import { $app, MILESTONE_LABEL, aed, api, badge, byStage, date, dateTime, dropzone, esc, flag, isClient, isPartner, isPlatform, nameOf, panel, role, seesMargin, table, uploadRules, words } from "./core.js";
+import { fileLink, $app, MILESTONE_LABEL, aed, api, badge, byStage, date, dateTime, dropzone, esc, flag, isClient, isPartner, isPlatform, nameOf, panel, role, seesMargin, table, uploadRules, words } from "./core.js";
 import { nextActionCard } from "./client.js";
 
 export async function renderEngagement(id) {
@@ -55,7 +55,7 @@ export async function renderEngagement(id) {
     const open = list.filter((r) => ["requested", "rejected"].includes(r.status)).length;
     const row = (r) => {
       const step = ms.find((m) => m.id === r.milestoneId);
-      const file = r.fileName ? `<a href="/api/document-requests/${r.id}/file" target="_blank" rel="noopener">${esc(r.fileName)}</a>` : "–";
+      const file = r.fileName ? `${fileLink(`/api/document-requests/${r.id}/file`, r.fileName, r.scan)}` : "–";
       let action = "";
       if (isClient() && ["requested", "rejected"].includes(r.status)) action = `<form class="row" data-form="doc-upload" data-id="${r.id}"><input type="file" name="file" required style="width:auto;max-width:100%" /><button class="sm primary" type="submit">Upload</button></form>`;
       if ((isPartner() || ["ops", "founder"].includes(role())) && r.status === "uploaded") action = `<button class="sm primary" data-act="doc-decide" data-id="${r.id}" data-decision="received">Received</button> <button class="sm" data-act="doc-decide" data-id="${r.id}" data-decision="rejected">Ask again</button>`;
@@ -230,7 +230,7 @@ export async function renderEngagement(id) {
                 ${docsFor(m.id).length ? `<div class="small muted">Client documents: ${docsFor(m.id).filter((r) => r.status === "received").length}/${docsFor(m.id).length} received</div>` : ""}
                 ${m.qaNote ? `<div class="small">MKW note: <span data-no-i18n>${esc(m.qaNote)}</span></div>` : ""}
                 ${m.disputeReason ? `<div class="small">Client issue: <span data-no-i18n>${esc(m.disputeReason)}</span></div>` : ""}
-                ${evidenceFor(m.id).length ? `<div class="small">${evidenceFor(m.id).map((x) => `<a href="/api/evidence/${x.id}/file" target="_blank" rel="noopener">${esc(x.fileName)}</a> <span class="muted">(${esc(words(x.type))})</span>`).join(" · ")}</div>` : ""}
+                ${evidenceFor(m.id).length ? `<div class="small">${evidenceFor(m.id).map((x) => `${fileLink(`/api/evidence/${x.id}/file`, x.fileName, x.scan)} <span class="muted">(${esc(words(x.type))})</span>`).join(" · ")}</div>` : ""}
                 ${milestoneActions(m)}</div></li>`,
               )
               .join("")}</ul>`
@@ -276,7 +276,7 @@ function renderClientEngagement(e, parts) {
       ${t.note ? `<div class="small">${esc(t.note)}</div>` : ""}
       ${t.detail ? `<div class="small">Your words: <span data-no-i18n>${esc(t.detail)}</span></div>` : ""}
       ${step ? parts.delayLine(step) : ""}
-      ${evidence.length ? `<div class="small">Evidence: ${evidence.map((x) => `<a href="/api/evidence/${x.id}/file" target="_blank" rel="noopener">${esc(x.fileName)}</a>`).join(" · ")}</div>` : ""}
+      ${evidence.length ? `<div class="small">Evidence: ${evidence.map((x) => `${fileLink(`/api/evidence/${x.id}/file`, x.fileName, x.scan)}`).join(" · ")}</div>` : ""}
       ${t.kind === "step" && t.state === "now" ? `<div class="actions"><button class="sm primary" data-act="ms-review" data-id="${t.ref}" data-approve="1" aria-describedby="tl-${esc(t.ref)}">Approve</button><button class="sm danger" data-act="ms-review" data-id="${t.ref}" data-approve="0" aria-describedby="tl-${esc(t.ref)}">Raise an issue</button></div>` : ""}
       ${pay && pay.status === "pending" && pay.payUrl ? `<div class="actions"><a class="btn sm primary" href="${esc(pay.payUrl)}">Pay by card</a></div>` : ""}
     </div></li>`;
@@ -305,7 +305,7 @@ function renderClientEngagement(e, parts) {
         ["requested", "rejected"].includes(r.status)
           ? `<form class="upload-row" data-form="doc-upload" data-id="${r.id}">${dropzone(r.kind, "Drop the file here, or choose it")}<button class="sm primary" type="submit">Upload</button></form>`
           : r.fileName
-            ? `<div class="small"><a href="/api/document-requests/${r.id}/file" target="_blank" rel="noopener">${esc(r.fileName)}</a></div>`
+            ? `<div class="small">${fileLink(`/api/document-requests/${r.id}/file`, r.fileName, r.scan)}</div>`
             : ""
       }</li>`;
   };
@@ -372,7 +372,7 @@ function renderPartnerEngagement(e, parts) {
         ${parts.delayLine(next)}
         ${next.qaNote ? `<p class="small">MKW note: <span data-no-i18n>${esc(next.qaNote)}</span></p>` : ""}
         ${parts.docsFor(next.id).length ? `<p class="small muted">Client documents for this step: ${parts.docsFor(next.id).filter((r) => r.status === "received").length}/${parts.docsFor(next.id).length} received</p>` : ""}
-        ${parts.evidenceFor(next.id).length ? `<p class="small">Uploaded: ${parts.evidenceFor(next.id).map((x) => `<a href="/api/evidence/${x.id}/file" target="_blank" rel="noopener">${esc(x.fileName)}</a>`).join(" · ")}</p>` : ""}
+        ${parts.evidenceFor(next.id).length ? `<p class="small">Uploaded: ${parts.evidenceFor(next.id).map((x) => `${fileLink(`/api/evidence/${x.id}/file`, x.fileName, x.scan)}`).join(" · ")}</p>` : ""}
         ${parts.milestoneActions(next, { goldSubmit: true })}
         ${waiting.length || docsOpen || toReceive ? `<ul class="todo">${toReceive ? `<li>${badge("warn", "yours")}<span>${toReceive} client document${toReceive > 1 ? "s" : ""} uploaded: <a href="#docs" data-act="jump" data-target="docs">confirm you received ${toReceive > 1 ? "them" : "it"}</a></span></li>` : ""}${waiting.map((m) => `<li>${badge("info", m.status === "qa_passed" ? "with the client" : "with MKW")}<span>${esc(m.name)}: ${m.status === "qa_passed" ? "checked, waiting for the client's approval" : "evidence with MKW Advisors for checking"}</span></li>`).join("")}${docsOpen ? `<li>${badge("pending", "waiting")}<span>${docsOpen} client document${docsOpen > 1 ? "s" : ""} outstanding; the delay is attributed to the client</span></li>` : ""}</ul>` : ""}
       </section>`
@@ -387,7 +387,7 @@ function renderPartnerEngagement(e, parts) {
             ${parts.docsFor(m.id).length ? `<div class="small muted">Client documents: ${parts.docsFor(m.id).filter((r) => r.status === "received").length}/${parts.docsFor(m.id).length} received</div>` : ""}
             ${m.qaNote && m.id !== next?.id ? `<div class="small">MKW note: <span data-no-i18n>${esc(m.qaNote)}</span></div>` : ""}
             ${m.disputeReason ? `<div class="small">Client issue: <span data-no-i18n>${esc(m.disputeReason)}</span></div>` : ""}
-            ${parts.evidenceFor(m.id).length ? `<div class="small">${parts.evidenceFor(m.id).map((x) => `<a href="/api/evidence/${x.id}/file" target="_blank" rel="noopener">${esc(x.fileName)}</a> <span class="muted">(${esc(words(x.type))})</span>`).join(" · ")}</div>` : ""}
+            ${parts.evidenceFor(m.id).length ? `<div class="small">${parts.evidenceFor(m.id).map((x) => `${fileLink(`/api/evidence/${x.id}/file`, x.fileName, x.scan)} <span class="muted">(${esc(words(x.type))})</span>`).join(" · ")}</div>` : ""}
             ${m.id === next?.id ? "" : parts.milestoneActions(m)}</div></li>`,
         )
         .join("")}</ul>`

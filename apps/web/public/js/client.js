@@ -1,6 +1,6 @@
 // Tasees workspace: client module (split from app.js in O12; plain ES modules, no build step).
 import { STRUCTURE_LABEL } from "./ops.js";
-import { $app, aed, api, badge, date, deliverables, dropzone, esc, flag, isPlatform, journey, legalBlock, nameOf, obligationLabel, obligationTone, panel, role, table, translatePage, words } from "./core.js";
+import { $app, fileLink, aed, api, badge, date, deliverables, dropzone, esc, flag, isPlatform, journey, legalBlock, nameOf, obligationLabel, obligationTone, panel, role, table, translatePage, words } from "./core.js";
 
 /** How an offer's tier reads to the client (U1). The priority tier is priced on the quickest partner quote, but the proposal's
  * estimate and the delivery plan come from the scope templates, so the screen makes no pace promise (gap 85). */
@@ -21,7 +21,7 @@ export function nextActionCard(actions, whatsNext, opts = {}) {
   const button = a.kind === "payment" && /^https?:/.test(a.link) ? `<a class="btn primary gold" href="${esc(a.link)}">Pay by card</a>` : opts.inline && a.kind === "approve" ? "" : `<a class="btn primary gold" href="${esc(opts.inline && JUMP[a.kind] ? `#${JUMP[a.kind]}` : a.link)}"${opts.inline && JUMP[a.kind] ? ` data-act="jump" data-target="${JUMP[a.kind]}"` : ""}>${esc(ACTION_BUTTON[a.kind])}</a>`;
   const approve =
     opts.inline && a.kind === "approve"
-      ? `${evidence.length ? `<p class="small">Evidence checked by MKW Advisors: ${evidence.map((x) => `<a href="/api/evidence/${x.id}/file" target="_blank" rel="noopener">${esc(x.fileName)}</a>`).join(" · ")}</p>` : ""}
+      ? `${evidence.length ? `<p class="small">Evidence checked by MKW Advisors: ${evidence.map((x) => `${fileLink(`/api/evidence/${x.id}/file`, x.fileName, x.scan)}`).join(" · ")}</p>` : ""}
          <div class="row"><button class="primary gold" data-act="ms-review" data-id="${esc(a.ref)}" data-approve="1" aria-describedby="next-h">Approve this step</button><button data-act="ms-review" data-id="${esc(a.ref)}" data-approve="0" aria-describedby="next-h">Raise an issue</button></div>`
       : "";
   const dueLabel = a.kind === "approve" ? `approved automatically on ${date(a.due)}` : a.kind === "offer" ? `valid until ${date(a.due)}` : `due ${date(a.due)}`;
@@ -464,7 +464,7 @@ export async function renderClientCompliance() {
     ["Due", "Obligation", "Status", "Evidence", ""],
     list.map((o) => `<tr><td><b>${date(o.dueDate)}</b>${o.periodLabel ? `<br><span class="small muted">${esc(o.periodLabel)}</span>` : ""}</td><td>${esc(o.title)}${o.confidence !== "confirmed" ? ` ${badge("UNCERTAIN")}` : ""}<br><span class="small muted">${esc(words(o.kind))}${o.recurrence !== "none" ? ` · ${esc(o.recurrence)}` : ""}</span>${o.basis ? `<br><span class="small muted">${esc(o.basis)}</span>` : ""}</td>
       <td>${badge(obligationTone(o), obligationLabel(o))}${o.metAt ? `<br><span class="small muted">${date(o.metAt)}</span>` : ""}</td>
-      <td class="small">${o.evidenceName ? `<a href="/api/obligations/${o.id}/file" target="_blank" rel="noopener">${esc(o.evidenceName)}</a>` : "–"}</td>
+      <td class="small">${o.evidenceName ? `${fileLink(`/api/obligations/${o.id}/file`, o.evidenceName, o.evidenceScan)}` : "–"}</td>
       <td>${o.kind === "licence_renewal" && o.status === "open" ? (o.renewalRequestId ? `<p class="small">${o.renewalEngagementId ? `Renewal in progress ${badge(o.renewalEngagementStatus)} <a href="#/engagement/${o.renewalEngagementId}">follow it</a>` : `Renewal requested ${badge(o.renewalRequestStatus)}: your offers appear on the <a href="#/">overview</a>`}</p>` : `<button class="sm primary" data-act="renewal-request" data-id="${o.id}">Ask for a renewal offer</button>`) : ""}${["open", "evidence_uploaded"].includes(o.status) ? `<form data-form="obligation-evidence" data-id="${o.id}">${dropzone("filing confirmation", "Drop the filing confirmation here, or choose it")}<button class="sm primary" type="submit">Upload filing confirmation</button></form>` : ""}</td></tr>`),
     "Nothing on your calendar yet. Obligations appear when an engagement completes and MKW Advisors confirms the dates.",
   )}</div>

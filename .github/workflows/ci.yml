@@ -47,7 +47,8 @@ jobs:
             exit 1
           fi
           cd apps/api
-          DEV_LOGIN=1 PAYMENT_WEBHOOK_SECRET=ci-secret PGLITE_DIR=./data/pglite LOG=0 \
+          # E22: the smoke server scans uploads with the test double, as the demo does; without a scanner every upload is held.
+          DEV_LOGIN=1 SCANNER=memory PAYMENT_WEBHOOK_SECRET=ci-secret PGLITE_DIR=./data/pglite LOG=0 \
             node --conditions=production dist/main.js > ../../smoke-server.log 2>&1 &
           echo $! > ../../smoke-server.pid
           # A cold runner loads the PGlite engine slowly: allow 90 s, then show the server log on failure.

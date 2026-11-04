@@ -15,6 +15,7 @@ export const STATUSES = {
   milestone: ["pending", "in_progress", "evidence_submitted", "qa_passed", "qa_rejected", "client_approved", "disputed"],
   payout: ["pending", "eligible", "released", "withheld"],
   change_order: ["proposed", "priced", "approved", "rejected"],
+  file: ["pending", "clean", "infected", "failed", "not_scanned"],
 } as const;
 
 export type RequestStatus = (typeof STATUSES.request)[number];
@@ -23,6 +24,7 @@ export type EngagementStatus = (typeof STATUSES.engagement)[number];
 export type MilestoneStatus = (typeof STATUSES.milestone)[number];
 export type PayoutStatus = (typeof STATUSES.payout)[number];
 export type ChangeOrderStatus = (typeof STATUSES.change_order)[number];
+export type FileStatus = (typeof STATUSES.file)[number];
 
 export type Actor = "client" | "partner" | "platform" | "system";
 
@@ -100,6 +102,22 @@ const changeOrderTransitions: Transition<ChangeOrderStatus>[] = [
 ];
 
 /**
+ * An uploaded file's malware scan (E22). The upload records the first result (pending, clean, infected, failed, or
+ * not_scanned when the owner allows unscanned files under T6); after that only a scanner's verdict moves it, by the
+ * system. A failed scan that fails again is not a move (its attempts are counted). An infected file never moves again:
+ * a person uploads a clean copy. Only `clean` and, if allowed, `not_scanned` are ever served (`apps/api/src/lib/uploads.ts`).
+ */
+const fileTransitions: Transition<FileStatus>[] = [
+  { from: "pending", to: "clean", by: ["system"] },
+  { from: "pending", to: "infected", by: ["system"] },
+  { from: "pending", to: "failed", by: ["system"] },
+  { from: "failed", to: "clean", by: ["system"] },
+  { from: "failed", to: "infected", by: ["system"] },
+  { from: "not_scanned", to: "clean", by: ["system"] },
+  { from: "not_scanned", to: "infected", by: ["system"] },
+];
+
+/**
  * The machines that move money and work, as data (O13; requests, payouts and change orders since E21). The API changes
  * their status only through these (`apps/api/src/lib/transition.ts`).
  */
@@ -110,6 +128,7 @@ export const MACHINES = {
   request: requestTransitions,
   payout: payoutTransitions,
   change_order: changeOrderTransitions,
+  file: fileTransitions,
 } as const;
 export type MachineName = keyof typeof MACHINES;
 export type MachineStatus<M extends MachineName> = (typeof MACHINES)[M][number]["to"];

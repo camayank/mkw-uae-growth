@@ -464,3 +464,13 @@ export const dropzone = (expect, label = "Drop the file here, or choose it") => 
   const id = `drop-msg-${++dropSeq}`;
   return `<label class="dropzone"><span class="small">${esc(label)}</span><input type="file" name="file" data-expect="${esc(expect)}" aria-describedby="${id}" accept="${uploadRules.extensions.map((e) => `.${e}`).join(",")}" /></label><p class="field-msg small" id="${id}" aria-live="polite"></p>`;
 };
+
+/** A link to an uploaded file, or its state while it is held (E22): a file opens only once a malware scan found it clean. */
+export const SCAN_HELD = { pending: "not scanned yet", failed: "scan failed; MKW is retrying", infected: "refused by the malware scan", not_scanned: "not scanned" };
+export function fileLink(href, name, scan) {
+  if (!name) return "–";
+  const link = `<a href="${esc(href)}" target="_blank" rel="noopener">${esc(name)}</a>`;
+  if (scan === "clean") return link;
+  if (scan === "not_scanned") return `${link} ${badge("UNCERTAIN", SCAN_HELD.not_scanned)}`;
+  return `<span>${esc(name)}</span> ${badge(scan === "infected" || scan === "failed" ? "rejected" : "pending", SCAN_HELD[scan] ?? SCAN_HELD.pending)}`;
+}

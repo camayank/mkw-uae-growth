@@ -4,6 +4,7 @@ import { openDatabase, prepareDatabase } from "../lib/db.ts";
 import { notifierFromEnv } from "../lib/notify.ts";
 import { providerFromEnv } from "../lib/payments.ts";
 import { storageFromEnv } from "../lib/storage.ts";
+import { scannerFromEnv } from "../lib/scanner.ts";
 import { runJobs } from "../jobs/run.ts";
 import { modelFromEnv } from "../lib/ai.ts";
 import { registerDocumentChecker } from "../services/doccheck.ts";
@@ -19,7 +20,7 @@ await prepareDatabase(db, { production: process.env.NODE_ENV === "production" })
 const { notify } = notifierFromEnv(db);
 // The same outbox subscribers as the server, so work left by a stopped app task is finished here (O11).
 registerDocumentChecker(notify, db, modelFromEnv());
-const result = await runJobs(db, { notify, storage: storageFromEnv().storage, provider: providerFromEnv() }, null, {
+const result = await runJobs(db, { notify, storage: storageFromEnv().storage, provider: providerFromEnv(), scanner: scannerFromEnv(), allowUnscanned: process.env.UPLOADS_UNSCANNED === "allow" }, null, {
   alertEmail: process.env.ALERT_EMAIL || undefined,
   log: (line) => console.log(JSON.stringify({ time: new Date().toISOString(), ...line })),
 });

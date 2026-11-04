@@ -160,16 +160,16 @@ describe("storage adapters", () => {
         const key = await s.put(ENGAGEMENT, "trade licence.pdf", Buffer.from("%PDF-1.4 hello"));
         expect(key).toMatch(new RegExp(`^(evidence/)?${ENGAGEMENT}/[0-9a-f-]{36}-trade licence.pdf$`));
         expect((await s.get(key)).toString()).toBe("%PDF-1.4 hello");
-        const again = await s.put(ENGAGEMENT, "trade licence.pdf", Buffer.from("second"));
+        const again = await s.put(ENGAGEMENT, "trade licence.pdf", Buffer.from("%PDF-1.4 second"));
         expect(again).not.toBe(key);
-        expect((await s.get(again)).toString()).toBe("second");
+        expect((await s.get(again)).toString()).toBe("%PDF-1.4 second");
       });
 
       it("refuses files of the wrong type or size and keys that escape their folder", async () => {
         const s = make();
         await expect(s.put(ENGAGEMENT, "virus.exe", Buffer.from("x"))).rejects.toThrow(/File type not allowed/);
         await expect(s.put(ENGAGEMENT, "big.pdf", Buffer.alloc(15 * 1024 * 1024 + 1))).rejects.toThrow(/larger than 15 MB/);
-        await expect(s.put("../etc", "a.pdf", Buffer.from("x"))).rejects.toThrow(/bad engagement id/);
+        await expect(s.put("../etc", "a.pdf", Buffer.from("%PDF-1.4"))).rejects.toThrow(/bad engagement id/);
         await expect(s.get(`${ENGAGEMENT}/does-not-exist.pdf`)).rejects.toThrow(/not found|ENOENT|bad key/);
       });
     });
@@ -177,17 +177,17 @@ describe("storage adapters", () => {
 
   it("asks the bucket for server-side encryption on every upload and signs exactly what it sends", async () => {
     const s = s3Storage({ ...creds, bucket: "tasees-evidence", endpoint, prefix: "evidence/", sse: "AES256" });
-    const key = await s.put(ENGAGEMENT, "report & summary (final).pdf", Buffer.from("content"));
+    const key = await s.put(ENGAGEMENT, "report & summary (final).pdf", Buffer.from("%PDF-1.4 content"));
     expect(fake.objects.has(`tasees-evidence/${key}`)).toBe(true);
     expect(fake.log.at(-1)).toBe(`PUT tasees-evidence/${key}`);
-    expect((await s.get(key)).toString()).toBe("content");
+    expect((await s.get(key)).toString()).toBe("%PDF-1.4 content");
   });
 
   it("reports the bucket's error code and rejects wrong credentials", async () => {
     const wrong = s3Storage({ ...creds, secretAccessKey: "nope", bucket: "tasees-evidence", endpoint });
-    await expect(wrong.put(ENGAGEMENT, "a.pdf", Buffer.from("x"))).rejects.toThrow(/SignatureDoesNotMatch/);
+    await expect(wrong.put(ENGAGEMENT, "a.pdf", Buffer.from("%PDF-1.4"))).rejects.toThrow(/SignatureDoesNotMatch/);
     const otherRegion = s3Storage({ ...creds, region: "eu-west-1", bucket: "tasees-evidence", endpoint });
-    await expect(otherRegion.put(ENGAGEMENT, "a.pdf", Buffer.from("x"))).rejects.toThrow(/AuthorizationHeaderMalformed/);
+    await expect(otherRegion.put(ENGAGEMENT, "a.pdf", Buffer.from("%PDF-1.4"))).rejects.toThrow(/AuthorizationHeaderMalformed/);
   });
 
   it("uses virtual-hosted addressing for AWS and path style for other endpoints", async () => {
@@ -197,10 +197,10 @@ describe("storage adapters", () => {
       return new Response("", { status: 200 });
     }) as typeof fetch;
     const aws = s3Storage({ ...creds, bucket: "mkw-evidence", fetchImpl });
-    await aws.put(ENGAGEMENT, "a.pdf", Buffer.from("x"));
+    await aws.put(ENGAGEMENT, "a.pdf", Buffer.from("%PDF-1.4"));
     expect(seen[0]).toMatch(/^https:\/\/mkw-evidence\.s3\.me-central-1\.amazonaws\.com\/[^ ]+ host=\(none\)$/);
     const other = s3Storage({ ...creds, bucket: "mkw-evidence", endpoint: "https://objects.example.ae", fetchImpl });
-    await other.put(ENGAGEMENT, "a.pdf", Buffer.from("x"));
+    await other.put(ENGAGEMENT, "a.pdf", Buffer.from("%PDF-1.4"));
     expect(seen[1]).toMatch(/^https:\/\/objects\.example\.ae\/mkw-evidence\//);
   });
 

@@ -1,4 +1,5 @@
 import { scorePartner, type PartnerStatus, type ScorecardInputs } from "@tasees/core";
+import { assertUsable } from "../lib/uploads.ts";
 import { audit, type SessionUser } from "../lib/context.ts";
 import { num, type Queryable } from "../lib/db.ts";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.ts";
@@ -110,12 +111,13 @@ export async function uploadDocument(tx: Queryable, actor: SessionUser, orgId: s
   return { id: row.id };
 }
 
-export async function reviewDocument(tx: Queryable, actor: SessionUser, docId: string, decision: "verified" | "rejected", note: string, notify: Notifier) {
+export async function reviewDocument(tx: Queryable, actor: SessionUser, docId: string, decision: "verified" | "rejected", note: string, notify: Notifier, uploads: { allowUnscanned?: boolean } = {}) {
   if (!isStaff(actor)) throw forbidden("Only MKW Advisors verifies partner documents");
   const d = (await tx.query<Record<string, unknown>>("select *, expires_on::text as expires_on from partner_documents where id = $1", [docId])).rows[0];
   if (!d) throw notFound("Document not found");
   if (d.status !== "uploaded") throw conflict(`This document is already ${String(d.status)}`);
   if (decision === "rejected" && !note.trim()) throw badRequest("Say why the document is rejected");
+  if (decision === "verified") await assertUsable(tx, uploads, [d.file_key as string], "This document"); // E22: verified only once scanned clean
   const orgId = String(d.partner_org_id);
   if (decision === "verified") {
     await tx.query("update partner_documents set status = 'superseded' where partner_org_id = $1 and kind = $2 and status = 'verified' and id <> $3", [orgId, d.kind, docId]);
@@ -297,7 +299,7 @@ export async function partnerOnboarding(tx: Queryable, actor: SessionUser, orgId
   if (!ownFirm(actor, orgId) && !isStaff(actor)) throw forbidden("Not your firm");
   if (actor.orgType === "partner" && actor.role !== "partner_admin") throw forbidden("Only the firm's admin sees onboarding, documents and staff");
   const p = await loadPartner(tx, orgId);
-  const docs = (await tx.query("select id, kind, file_name, uploaded_at, reference, expires_on::text as expires_on, status, verified_at, note from partner_documents where partner_org_id = $1 order by uploaded_at desc", [orgId])).rows;
+  const docs = (await tx.query("select id, kind, file_name, uploaded_at, reference, expires_on::text as expires_on, status, verified_at, note, file_scan_status('partner_document', id) as scan from partner_documents where partner_org_id = $1 order by uploaded_at desc", [orgId])).rows;
   // Erased people are MKW's record, not the firm's list.
   const staff = (await tx.query(`select id, name, email, role, status from users where org_id = $1 ${isStaff(actor) ? "" : "and status <> 'erased'"} order by role, name`, [orgId])).rows;
   const scorecards = await scorecardHistory(tx, orgId, 12);

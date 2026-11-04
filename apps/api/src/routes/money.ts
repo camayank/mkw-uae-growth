@@ -88,13 +88,13 @@ export function registerMoneyRoutes(ctx: RouteContext) {
     const user = requireRole(req, "partner_admin");
     const body = PayoutsInvoiceBody.parse(req.body);
     return asPlatform(db, user, (tx) =>
-      uploadPartnerInvoice(tx, user, { payoutId: req.params.id, number: body.number, amountFils: aed(body.amountAed), vatFils: aed(body.vatAed), fileName: body.fileName, content: Buffer.from(body.contentBase64, "base64") }, opts.storage),
+      uploadPartnerInvoice(tx, user, { payoutId: req.params.id, number: body.number, amountFils: aed(body.amountAed), vatFils: aed(body.vatAed), fileName: body.fileName, content: Buffer.from(body.contentBase64, "base64") }, ctx.uploads),
     );
   });
 
   app.get("/api/ops/payouts/payable", async (req) => {
     const user = requireRole(req, "finance", "founder");
-    return asPlatform(db, user, (tx) => payablePayouts(tx));
+    return asPlatform(db, user, (tx) => payablePayouts(tx, ctx.uploads));
   });
 
   app.get("/api/ops/payout-runs", async (req) => {
@@ -104,7 +104,7 @@ export function registerMoneyRoutes(ctx: RouteContext) {
 
   app.post("/api/ops/payout-runs", { config: { body: null } }, async (req) => {
     const user = requireRole(req, "finance", "founder");
-    return asPlatform(db, user, (tx) => createPayoutRun(tx, user));
+    return asPlatform(db, user, (tx) => createPayoutRun(tx, user, ctx.uploads));
   });
 
   app.get<{ Params: { id: string } }>("/api/ops/payout-runs/:id/file", async (req, reply) => {

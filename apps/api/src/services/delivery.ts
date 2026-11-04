@@ -9,6 +9,7 @@ import {
   MILESTONE_TEMPLATES,
   type DelayCause,
 } from "@tasees/core";
+import { assertUsable } from "../lib/uploads.ts";
 import { audit, lockAuditChain, type SessionUser } from "../lib/context.ts";
 import { num, type Queryable } from "../lib/db.ts";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.ts";
@@ -76,6 +77,7 @@ export async function decideDocument(tx: Queryable, actor: SessionUser, requestI
   if (actor.orgType === "partner" ? r.partner_org_id !== actor.orgId : !isOps(actor)) throw forbidden("Only the partner doing the work or MKW Advisors checks documents");
   if (r.status !== "uploaded") throw conflict("Nothing has been uploaded for this request yet");
   if (decision === "rejected" && !note.trim()) throw badRequest("Say what is wrong with the document");
+  if (decision === "received") await assertUsable(tx, deps, [r.file_key as string | null], "This document"); // E22
   await tx.query("update document_requests set status = $2, decided_by = $3, decided_at = app_now(), decision_note = $4 where id = $1", [requestId, decision, actor.id, maskContacts(note).text || null]);
   await audit(tx, actor, decision === "received" ? "documents.received" : "documents.rejected", "document_request", requestId, { kind: r.kind, note });
   if (decision === "rejected") {

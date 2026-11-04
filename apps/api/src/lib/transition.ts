@@ -18,6 +18,7 @@ const TABLE: Record<MachineName, string> = {
   request: "requests",
   payout: "payouts",
   change_order: "change_orders",
+  file: "file_scans",
 };
 const LABEL: Record<MachineName, string> = {
   milestone: "Milestone",
@@ -26,6 +27,7 @@ const LABEL: Record<MachineName, string> = {
   request: "Request",
   payout: "Payout",
   change_order: "Change order",
+  file: "File",
 };
 
 /** Columns set by the move itself, by machine and destination. Fixed SQL: no input reaches it. */
@@ -42,6 +44,7 @@ const STAMPS: Record<MachineName, Record<string, string>> = {
   request: {},
   payout: { eligible: "eligible_at = app_now()", released: "released_at = app_now()" },
   change_order: { approved: "decided_at = app_now()", rejected: "decided_at = app_now()" },
+  file: { clean: "scanned_at = app_now()", infected: "scanned_at = app_now()" },
 };
 
 /** Other columns a move may carry (a QA note, a dispute reason), by machine. Values are bound parameters. */
@@ -52,6 +55,7 @@ const EXTRA: Record<MachineName, string[]> = {
   request: [],
   payout: ["released_by"],
   change_order: [],
+  file: ["scanner", "finding", "last_error"],
 };
 
 export interface TransitionOptions {

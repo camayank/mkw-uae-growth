@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { CLIENT_ROLES, PARTNER_ROLES, PLATFORM_ROLES, requireRole, requireUser } from "../lib/auth.ts";
+import { assertUsable } from "../lib/uploads.ts";
 import { asPlatform, asUser } from "../lib/context.ts";
 import { conflict, notFound } from "../lib/errors.ts";
 import { supersedeChecks } from "../services/doccheck.ts";
@@ -10,7 +11,7 @@ import type { RouteContext } from "./context.ts";
 
 /** Dashboards, accounting exports and compliance calendars. */
 export function registerReportingRoutes(ctx: RouteContext) {
-  const { app, db, opts, fileBody, putFile, throttle } = ctx;
+  const { app, db, opts, fileBody, putFile, throttle, uploads } = ctx;
 
   // Reporting and compliance (O8) ------------------------------------------------------------------
   app.get<{ Querystring: { period?: string } }>("/api/admin/dashboard", async (req) => {
@@ -73,7 +74,7 @@ export function registerReportingRoutes(ctx: RouteContext) {
   app.post<{ Params: { id: string } }>("/api/ops/obligations/:id/met", { config: { body: OpsObligationsMetBody.optional() } }, async (req) => {
     const user = requireRole(req, "ops", "founder");
     const { note } = OpsObligationsMetBody.parse(req.body ?? {});
-    return asPlatform(db, user, (tx) => markObligationMet(tx, user, req.params.id, note));
+    return asPlatform(db, user, (tx) => markObligationMet(tx, user, req.params.id, note, uploads));
   });
   app.post<{ Params: { id: string } }>("/api/obligations/:id/evidence", { config: { body: fileBody } }, async (req) => {
     const user = requireRole(req, ...CLIENT_ROLES, "ops", "founder");
@@ -81,8 +82,8 @@ export function registerReportingRoutes(ctx: RouteContext) {
     const o = await asPlatform(db, user, async (tx) => (await tx.query<{ client_org_id: string; status: string }>("select client_org_id, status from obligations where id = $1", [req.params.id])).rows[0]);
     if (!o || (user.orgType === "client" && o.client_org_id !== user.orgId)) throw notFound("Obligation not found");
     if (!["open", "evidence_uploaded"].includes(o.status)) throw conflict(`Evidence can be attached to an open obligation only (this one is ${o.status})`);
-    const key = await putFile(o.client_org_id, body.fileName, body.contentBase64);
     return asPlatform(db, user, async (tx) => {
+      const key = await putFile(tx, user, o.client_org_id, body.fileName, body.contentBase64);
       const r = await uploadObligationEvidence(tx, user, req.params.id, { key, name: body.fileName });
       await supersedeChecks(tx, "obligation", req.params.id);
       await opts.notify.emit("document_check", { subject: "obligation", id: req.params.id });
@@ -91,7 +92,11 @@ export function registerReportingRoutes(ctx: RouteContext) {
   });
   app.get<{ Params: { id: string } }>("/api/obligations/:id/file", async (req, reply) => {
     const user = requireUser(req);
-    const f = await asPlatform(db, user, (tx) => obligationFile(tx, user, req.params.id));
+    const f = await asPlatform(db, user, async (tx) => {
+      const file = await obligationFile(tx, user, req.params.id);
+      await assertUsable(tx, uploads, [file.key]); // E22: held until scanned clean
+      return file;
+    });
     const data = await opts.storage.get(f.key);
     reply.header("content-disposition", `attachment; filename="${f.name.replace(/"/g, "")}"`);
     return reply.type("application/octet-stream").send(data);

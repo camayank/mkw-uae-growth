@@ -17,6 +17,8 @@ import {
   type PayoutStage,
 } from "@tasees/core";
 import { audit, lockAuditChain, type SessionUser } from "../lib/context.ts";
+import { assertUsable } from "../lib/uploads.ts";
+import type { Scanner } from "../lib/scanner.ts";
 import { assertRequestOpen, lockRequestOffers, transition, withdrawOffers } from "../lib/transition.ts";
 import { num, type Queryable } from "../lib/db.ts";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.ts";
@@ -41,6 +43,10 @@ export interface Deps {
   provider?: PaymentProvider;
   /** Where invoice PDFs and partner invoices are kept (O3). */
   storage?: Storage;
+  /** The malware scanner (E22); null or absent: uploads are held until one is configured (T6). */
+  scanner?: Scanner | null;
+  /** The owner's T6 choice: serve files no scanner looked at, labelled "not scanned". */
+  allowUnscanned?: boolean;
 }
 
 /** Create a card payment link for a pending payment, when a provider is configured. Returns the URL or null. */
@@ -461,6 +467,16 @@ export async function addEvidence(
       [milestoneId, m.engagement_id, file.type, file.key, file.name, user.id],
     )
   ).rows[0]!;
+  // E22: a new file of the same kind supersedes earlier ones the scan has not found clean (refused, failed or still
+  // held), so a refused upload never blocks the step for good. The held file stays recorded and quarantined.
+  const replaced = (
+    await tx.query<{ id: string }>(
+      `update evidence e set superseded_at = app_now(), superseded_by = $3 from file_scans f
+        where f.key = e.file_key and e.milestone_id = $1 and e.type = $2 and e.id <> $3 and e.superseded_at is null and f.status <> 'clean' returning e.id`,
+      [milestoneId, file.type, row.id],
+    )
+  ).rows.map((r) => r.id);
+  if (replaced.length) await audit(tx, user, "evidence.superseded", "milestone", milestoneId, { type: file.type, by: row.id, replaced });
   if (m.status === "pending") await transition(tx, "milestone", milestoneId, "in_progress", "partner", { idempotent: true, actor: user });
   await audit(tx, user, "evidence.added", "milestone", milestoneId, { type: file.type, name: file.name });
   return { id: row.id };
@@ -470,7 +486,7 @@ export async function submitMilestone(tx: Queryable, user: SessionUser, mileston
   const m = await loadMilestone(tx, milestoneId);
   if (user.orgType !== "partner" || m.partner_org_id !== user.orgId) throw notFound("Milestone not found");
   const required = (m.evidence_required as string[]) ?? [];
-  const have = (await tx.query<{ type: string }>("select distinct type from evidence where milestone_id = $1", [milestoneId])).rows.map((r) => r.type);
+  const have = (await tx.query<{ type: string }>("select distinct type from evidence where milestone_id = $1 and superseded_at is null", [milestoneId])).rows.map((r) => r.type);
   const missing = required.filter((r) => !have.includes(r));
   if (have.length === 0 || missing.length > 0) {
     throw badRequest(`Attach the evidence first: ${missing.join(", ") || "at least one file"}`);
@@ -486,6 +502,12 @@ export async function qaMilestone(tx: Queryable, user: SessionUser, milestoneId:
     set: { qa_note: note ?? null },
     audit: { actor: user, action: pass ? "milestone.qa_passed" : "milestone.qa_rejected", data: { note } },
   });
+  // E22: a step passes QA only on evidence a scan found clean. Checked after the move is known to be allowed, so a
+  // refused move says why first; a refusal here rolls the move back.
+  if (pass) {
+    const keys = (await tx.query<{ file_key: string }>("select file_key from evidence where milestone_id = $1 and superseded_at is null", [milestoneId])).rows.map((r) => r.file_key);
+    await assertUsable(tx, deps, keys, "Evidence on this step");
+  }
   if (pass) {
     const client = (await tx.query<{ client_org_id: string }>("select client_org_id from engagements where id = $1", [m.engagement_id])).rows[0];
     if (client) await notifyOrg(tx, deps, client.client_org_id, "milestone_ready_for_review", { milestoneId, engagementId: m.engagement_id });
@@ -585,7 +607,7 @@ export async function releasePayout(tx: Queryable, user: SessionUser, payoutId: 
   const p = (await tx.query<Record<string, unknown>>("select * from payouts where id = $1 for update", [payoutId])).rows[0];
   if (!p) throw notFound("Payout not found");
   if (p.status !== "eligible") throw conflict(`This payout is ${String(p.status)}; only eligible payouts can be released`);
-  const invoice = await tx.query("select 1 from partner_invoices where payout_id = $1", [payoutId]);
+  const invoice = await tx.query("select 1 from partner_invoices where payout_id = $1 and superseded_at is null", [payoutId]);
   if (!invoice.rows.length) throw conflict("The partner has not uploaded its invoice for this payout yet");
   if (p.run_id) throw conflict("This payout is in a payout run; mark the run paid instead");
   await transition(tx, "payout", payoutId, "released", "platform", { set: { released_by: user.id }, audit: { actor: user, action: "payout.released", data: { amount: num(p.amount_fils) } } });

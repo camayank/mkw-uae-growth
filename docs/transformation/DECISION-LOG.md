@@ -48,10 +48,17 @@ adapter code exists (gap 7, corrected by E20). Before E24 can call a live model,
 Until then, E24 builds the adapter against a test double, and the screen says "AI: not connected". Decides: the
 owner.
 
-**T6. A live malware scanner?** E22 builds quarantine and a scanner adapter with a test double, and refuses downloads
-until a file is clean. A live scanner, for example ClamAV as a side task in the staging stack or a managed service,
-costs money to run. Until this is decided, uploads in staging stay quarantined, unless the owner accepts "not
-scanned" as an explicit, labelled state for the pilot. Decides: the owner.
+**T6. A live malware scanner?** E22 (D104) built the quarantine and the adapter: every upload's content is checked,
+held until a scan finds it clean, and never served or relied on before. The only scanner is a test double, refused in
+production. The options, each with its cost:
+- **A. ClamAV as a side container in the staging stack.** No licence fee; CPU and memory in the task, and the signature
+  updates to keep. An adapter speaks its socket protocol.
+- **B. A managed scanning service.** A per-file or monthly fee; an adapter calls its API; personal data leaves the
+  platform's own region unless the service runs in the UAE.
+- **C. Serve unscanned files, labelled.** `UPLOADS_UNSCANNED=allow`: no cost, and every screen says "not scanned".
+  Only for the pilot, and only if the owner accepts the risk in writing.
+
+Until decided, staging holds every upload. Decides: the owner.
 
 **T7. O16 "Agents round two" and E24 to E26.** O16 (planned) lists a fee and rule watcher, a compliance calendar
 agent, a vetting assistant and a founder analyst. E24 to E26 build what those agents need: the provider, the tool

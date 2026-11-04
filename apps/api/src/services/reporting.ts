@@ -213,7 +213,7 @@ export async function accountingExport(tx: Queryable, actor: SessionUser, set: E
     const r = (
       await tx.query<Record<string, unknown>>(
         `select gulf(p.released_at)::text as d, o.name as partner, p.engagement_id, p.stage, p.amount_fils, pi.number as invoice, r.reference as run, r.bank_reference
-         from payouts p join orgs o on o.id = p.partner_org_id left join partner_invoices pi on pi.payout_id = p.id left join payout_runs r on r.id = p.run_id
+         from payouts p join orgs o on o.id = p.partner_org_id left join partner_invoices pi on pi.payout_id = p.id and pi.superseded_at is null left join payout_runs r on r.id = p.run_id
          where p.status = 'released' and gulf(p.released_at) >= $1::date and gulf(p.released_at) <= $2::date order by p.released_at, o.name`,
         [from, toExcl],
       )

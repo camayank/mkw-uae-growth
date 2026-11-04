@@ -454,6 +454,20 @@ in a browser; everything listed here is not.
      session setting is only a claim, settable by any role. So would an outside anchor of the chain. Found by the
      independent review of E21.
 
+## E22: upload quarantine
+
+152. **No live malware scanner exists.** `SCANNER=memory` is a test double that finds only the EICAR test file; it is
+     refused in production. A live adapter (a ClamAV daemon as a side task, or a managed service) implements the same
+     interface once the owner decides T6. Until then every upload in staging is held, or served labelled "not scanned"
+     under `UPLOADS_UNSCANNED=allow`.
+153. **Infected bytes stay in storage.** A file the scan refuses is held (never served, never relied on) but not
+     deleted, so what was sent can be examined. Removing it is a later, audited step for a person; nothing does it yet.
+154. **MKW's own generated files are not scanned.** Invoice PDFs and the payout bank file are built by the platform,
+     not uploaded, and have no scan record. Correct today; a generated file that embeds an upload would need one.
+155. **Text uploads must be UTF-8.** A CSV saved by Excel in a Windows code page (cp1256 for Arabic) or as UTF-16
+     "Unicode text" is refused as "a file of another kind", although it is a real spreadsheet export. Found by the
+     review of E22. Accepting those encodings needs a check that cannot mistake binary for text.
+
 ## E16: report design
 
 129. **The Arabic report's wording is a draft** until the Arabic reviewer signs it off (with gaps 111, 116, 119, 128).
@@ -487,9 +501,10 @@ in a browser; everything listed here is not.
 43. ~~zod 3 has a memory-exhaustion advisory.~~ Closed by S1: zod 4.6.7 (D71); the body caps stay as defence in depth.
 44. ~~Development tools carry advisories (vitest, vite, tinypool, esbuild through tsx, playwright).~~ Closed by E7E
     (D89): all upgraded to patched, pinned versions; `pnpm audit` clean for everything.
-45. **Uploads are not scanned.** Files are checked by extension and size, stored privately and only ever downloaded
-    as attachments, but nothing inspects their content. Add a malware scan (for example the storage provider's) before
-    clients upload at scale.
+45. **Uploads are not scanned by a live scanner.** Narrowed by E22 (D104): every upload's bytes are checked against its
+    name, held until a scan finds them clean, and never served or relied on before; the scanner sits behind an adapter
+    with a test double. What remains is the live scanner itself, which costs money to run: the owner's decision T6
+    (gap 152). Until then, staging holds every upload, or serves them labelled "not scanned" if the owner chooses.
 
 ## Soon after
 

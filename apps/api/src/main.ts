@@ -5,6 +5,7 @@ import { notifierFromEnv } from "./lib/notify.ts";
 import { providerFromEnv } from "./lib/payments.ts";
 import { modelFromEnv } from "./lib/ai.ts";
 import { storageFromEnv } from "./lib/storage.ts";
+import { scannerFromEnv } from "./lib/scanner.ts";
 import { runJobs } from "./jobs/run.ts";
 import { buildApp } from "./server.ts";
 import { seedCatalogue } from "./db/seed.ts";
@@ -38,10 +39,17 @@ if (process.env.NODE_ENV === "production" && storageKind !== "s3") {
 }
 // Development sign-in shows the code on screen. Opt-in only, and never in production.
 const devLogin = process.env.DEV_LOGIN === "1" && process.env.NODE_ENV !== "production";
+// E22: the malware scanner. Unset (staging until T6), uploads are held until one is configured.
+const scanner = scannerFromEnv();
+const allowUnscanned = process.env.UPLOADS_UNSCANNED === "allow";
+if (!scanner) console.warn(`SCANNER is not set: uploads are ${allowUnscanned ? "served unscanned, labelled (UPLOADS_UNSCANNED=allow)" : "held until a scanner is configured (T6)"}.`);
+else if (!scanner.live) console.warn(`SCANNER=${process.env.SCANNER}: a test double, not a malware scan.`);
 const app = await buildApp({
   db,
   notify,
   storage,
+  scanner,
+  allowUnscanned,
   provider: providerFromEnv(),
   model: modelFromEnv(),
   devLogin,
@@ -64,7 +72,7 @@ if (!alertEmail) console.warn("ALERT_EMAIL is not set: platform alerts are logge
 else if (transport.kind !== "ses") console.warn("ALERT_EMAIL is set but EMAIL is not ses: alerts are recorded and printed, not emailed.");
 if (process.env.IN_PROCESS_JOBS !== "0") {
   setInterval(() => {
-    runJobs(db, { notify, storage, provider: providerFromEnv() }, null, { alertEmail, log: (line) => app.log.info(line) }).catch((e) => app.log.error({ err: e }, "jobs failed"));
+    runJobs(db, { notify, storage, provider: providerFromEnv(), scanner, allowUnscanned }, null, { alertEmail, log: (line) => app.log.info(line) }).catch((e) => app.log.error({ err: e }, "jobs failed"));
   }, 15 * 60 * 1000).unref();
 }
 // The watchdog (O13): every five minutes, open or close alerts. It runs here, not in the jobs, because its main

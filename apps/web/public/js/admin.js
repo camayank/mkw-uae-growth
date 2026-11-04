@@ -331,7 +331,8 @@ export async function renderCompany() {
 
 // System (O13): is the platform keeping up? Runs, steps, messages waiting, alerts, the audit chain. No personal data.
 
-const ALERT_KIND = { jobs_late: "Scheduled jobs late", job_step_failed: "A jobs step failed", outbox_stuck: "Messages stuck", audit_chain: "Audit chain broken" };
+const ALERT_KIND = { jobs_late: "Scheduled jobs late", job_step_failed: "A jobs step failed", outbox_stuck: "Messages stuck", audit_chain: "Audit chain broken", upload_held: "Uploaded files held" };
+const SCAN_LABEL = { pending: "not scanned yet", clean: "clean", infected: "refused by the scan", failed: "scan failed", not_scanned: "served unscanned" };
 const RUN_TONE = { ok: "ok", failed: "rejected", running: "pending", abandoned: "UNCERTAIN" };
 const ms = (n) => (n == null ? "–" : n < 1000 ? `${n} ms` : `${(n / 1000).toFixed(1)} s`);
 
@@ -370,9 +371,21 @@ export async function renderSystem() {
     ${table(["Status", "#Messages", "Oldest"], s.outbox.map((o) => `<tr><td>${esc(words(o.status))}</td><td class="num">${o.n}</td><td class="small">${dateTime(o.oldest)}</td></tr>`), "Nothing waiting: every message has been handed to the email provider.")}
     <p class="small muted pad">Messages that failed or whose delivery is not confirmed wait for a person in the queue.</p>
   </section>
+  <section class="card flush" aria-labelledby="uploads-h"><h2 id="uploads-h">Uploaded files</h2>
+    <p class="small muted pad" style="padding-top:0">${uploadsScannerLine(s.uploads)}</p>
+    <p class="small pad" style="padding-top:0">${Object.entries(s.uploads.byStatus).map(([k, n]) => `${esc(SCAN_LABEL[k] ?? words(k))}: <b>${n}</b>`).join(" · ")}</p>
+    ${table(["File", "State", "Detail", "Uploaded"], s.uploads.held.map((f) => `<tr><td class="small">${esc(f.fileName)}</td><td>${badge(f.status === "infected" || f.status === "failed" ? "rejected" : "pending", SCAN_LABEL[f.status] ?? words(f.status))}</td><td class="small muted">${esc(f.finding ?? f.lastError ?? "")}${f.attempts > 1 ? ` (${f.attempts} attempts)` : ""}</td><td class="small">${dateTime(f.createdAt)}</td></tr>`), "Nothing is held: every uploaded file has been scanned and found clean.")}
+  </section>
   <section class="card flush" aria-labelledby="audit-h"><h2 id="audit-h">Audit chain, checked nightly</h2>
     ${table(["Day", "#Events checked", "Result"], s.auditChecks.map((c) => `<tr><td>${date(c.day)}</td><td class="num">${c.checked}</td><td>${auditResult(c)}</td></tr>`), "Not checked yet: the first jobs run of the day checks it.")}
   </section>`;
+}
+
+/** What scans uploads (E22): a live scanner, the test double (never a malware scan), or none, with the owner's T6 choice. */
+function uploadsScannerLine(u) {
+  if (!u.scanner.name) return u.allowUnscanned ? "No malware scanner is configured: files are served unscanned and labelled so (the owner's choice, T6)." : "No malware scanner is configured: every upload is held until one is (T6).";
+  if (!u.scanner.live) return `Scanner: ${esc(u.scanner.name)}. This is a test double for development; it is not a malware scan.`;
+  return `Scanner: ${esc(u.scanner.name)}. A file is served only once it is scanned and found clean.`;
 }
 
 /** The nightly audit check's result (E21 adds the comparison with the night before). */

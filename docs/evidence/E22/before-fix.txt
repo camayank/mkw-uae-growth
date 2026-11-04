@@ -1,0 +1,19 @@
+E22 before the fix: main at 548fa49 (E21 merged), PGlite, 4 Nov 2026.
+
+A probe on the unchanged code, using only existing routes: one engagement in delivery, its partner uploads three
+files as evidence, and the client downloads the last one. The EICAR string is the industry-standard antivirus test
+file, not malware; the probe builds it at run time.
+
+{
+ "PNG bytes uploaded as licence.pdf": 200,
+ "Windows program (MZ) uploaded as photo.jpg": 200,
+ "EICAR test file uploaded as bad.pdf": 200,
+ "client downloads the EICAR file": 200,
+ "downloaded bytes contain the EICAR string": true,
+ "evidence rows show any scan state": false
+}
+So on main: an upload's content was never compared with its name, nothing was scanned, and every uploaded file was
+served at once to every party that could read its row.
+
+The new suite (apps/api/test/uploads.test.ts) cannot load on main: lib/scanner.ts and lib/uploads.ts do not exist:
+  Error: Cannot find module '../src/lib/scanner.ts' imported from .../test/uploads.test.ts

@@ -1,5 +1,6 @@
 import { applyBp, DEFAULT_SETTINGS } from "@tasees/core";
 import { audit, lockAuditChain, type SessionUser } from "../lib/context.ts";
+import { transition } from "../lib/transition.ts";
 import { num, type Queryable } from "../lib/db.ts";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.ts";
 import type { Notifier } from "../lib/notify.ts";
@@ -157,11 +158,13 @@ export async function markPayoutRunPaid(tx: Queryable, actor: SessionUser, runId
   await lockAuditChain(tx);
   await tx.query("select pg_advisory_xact_lock(777002)");
   await assertRunIntact(tx, runId, num(run.total_fils));
-  const payouts = (await tx.query<Record<string, unknown>>("select id, partner_org_id, amount_fils from payouts where run_id = $1 and status = 'eligible'", [runId])).rows;
-  await tx.query("update payouts set status = 'released', released_at = app_now(), released_by = $2 where run_id = $1 and status = 'eligible'", [runId, actor.id]);
+  const payouts = (await tx.query<Record<string, unknown>>("select id, partner_org_id, amount_fils from payouts where run_id = $1 and status = 'eligible' order by id for update", [runId])).rows;
   await tx.query("update payout_runs set status = 'paid', paid_at = app_now(), bank_reference = $2 where id = $1", [runId, bankReference.trim()]);
   await audit(tx, actor, "payout_run.paid", "payout_run", runId, { bankReference: bankReference.trim(), payouts: payouts.map((p) => p.id), total: num(run.total_fils) });
-  for (const p of payouts) await audit(tx, actor, "payout.released", "payout", String(p.id), { amount: num(p.amount_fils), runId });
+  // Each payout is released through the payout machine, with its own event (E21).
+  for (const p of payouts) {
+    await transition(tx, "payout", String(p.id), "released", "platform", { set: { released_by: actor.id }, audit: { actor, action: "payout.released", data: { amount: num(p.amount_fils), runId } } });
+  }
   // The remittance states what the bank paid: payout plus the partner's own VAT.
   const paidRows = (await tx.query<Record<string, unknown>>("select p.partner_org_id, p.amount_fils, coalesce(pi.vat_fils, 0) as vat_fils from payouts p left join partner_invoices pi on pi.payout_id = p.id where p.run_id = $1", [runId])).rows;
   const byPartner = new Map<string, { total: number; count: number }>();

@@ -166,6 +166,11 @@ document.addEventListener("click", (ev) => {
         if (r.skipped) toast("Another run is in progress; nothing was done twice.");
         else toast(`Jobs run: ${r.allocationTimeouts} re-routed, ${r.autoApprovals} auto-approved, ${r.offersExpired} offers expired${r.errors.length ? `; ${r.errors.length} step(s) failed (see System)` : ""}`);
       }, null),
+    "audit-review": () => {
+      const note = prompt("What did the investigation find? (at least 10 characters; kept with the check, never changed)", "");
+      if (note === null || note.trim().length < 10) return;
+      return act(() => api("POST", `/api/ops/system/audit-checks/${id}/review`, { note }), "Investigation recorded");
+    },
     scorecards: () => act(() => api("POST", "/api/ops/scorecards/recompute"), "Scorecards recomputed"),
     "doc-review": () => {
       const decision = el.dataset.decision;

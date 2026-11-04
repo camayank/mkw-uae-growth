@@ -17,7 +17,7 @@ import {
   type PayoutStage,
 } from "@tasees/core";
 import { audit, lockAuditChain, type SessionUser } from "../lib/context.ts";
-import { lockRequestOffers, transition, withdrawOffers } from "../lib/transition.ts";
+import { assertRequestOpen, lockRequestOffers, transition, withdrawOffers } from "../lib/transition.ts";
 import { num, type Queryable } from "../lib/db.ts";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.ts";
 import type { Notifier } from "../lib/notify.ts";
@@ -79,7 +79,7 @@ export async function acceptOffer(tx: Queryable, user: SessionUser, offerId: str
   await lockRequestOffers(tx, String(o.request_id));
   await transition(tx, "offer", offerId, "accepted", "client", { actor: user });
   await withdrawOffers(tx, String(o.request_id), offerId, user);
-  await tx.query("update requests set status = 'closed' where id = $1", [o.request_id]);
+  await transition(tx, "request", String(o.request_id), "closed", "client", { actor: user });
   const answers = (o.answers ?? {}) as { emirate?: string; freeZone?: string | null };
   const eng = (
     await tx.query<{ id: string }>(
@@ -141,12 +141,19 @@ export async function markPaymentPaid(tx: Queryable, actor: SessionUser | null, 
     await setEngagementStatus(tx, engagementId, "allocating", "system");
     await runAllocation(tx, actor, engagementId, deps);
   }
-  if (p.kind === "change_order") {
-    await tx.query(
-      "update payouts set status = 'eligible', eligible_at = app_now() where engagement_id = $1 and stage = 'change_order' and status = 'pending'",
-      [engagementId],
-    );
-  }
+  if (p.kind === "change_order") await makePayoutsEligible(tx, engagementId, null, "change_order");
+}
+
+/**
+ * Payouts become eligible by the tested rule (rule 6): each through the payout machine, with its own audit event, in id
+ * order. `partnerId` null means every partner's payouts at that stage (a change order's payment).
+ */
+async function makePayoutsEligible(tx: Queryable, engagementId: string, partnerId: string | null, stage: string) {
+  const due = await tx.query<{ id: string }>(
+    "select id from payouts where engagement_id = $1 and ($2::uuid is null or partner_org_id = $2) and stage = $3 and status = 'pending' order by id for update",
+    [engagementId, partnerId, stage],
+  );
+  for (const p of due.rows) await transition(tx, "payout", p.id, "eligible", "system", { audit: { actor: null, action: "payout.eligible", data: { stage } } });
 }
 
 async function setEngagementStatus(tx: Queryable, id: string, to: EngagementStatus, by: "system" | "platform" | "client" | "partner") {
@@ -545,12 +552,7 @@ async function refreshPayouts(tx: Queryable, engagementId: string, deps: Deps) {
   const byPartner = new Map<string, Array<{ isKey: boolean; status: MilestoneStatus }>>();
   for (const m of ms) byPartner.set(m.partner_org_id, [...(byPartner.get(m.partner_org_id) ?? []), { isKey: m.is_key, status: m.status }]);
   for (const [partnerId, list] of byPartner) {
-    for (const stage of payoutStagesEligible(true, list)) {
-      await tx.query(
-        "update payouts set status = 'eligible', eligible_at = app_now() where engagement_id = $1 and partner_org_id = $2 and stage = $3 and status = 'pending'",
-        [engagementId, partnerId, stage],
-      );
-    }
+    for (const stage of payoutStagesEligible(true, list)) await makePayoutsEligible(tx, engagementId, partnerId, stage);
   }
   const lines = (
     await tx.query<{ n: number }>("select count(*)::int as n from engagement_lines where engagement_id = $1 and partner_org_id is null", [engagementId])
@@ -586,8 +588,7 @@ export async function releasePayout(tx: Queryable, user: SessionUser, payoutId: 
   const invoice = await tx.query("select 1 from partner_invoices where payout_id = $1", [payoutId]);
   if (!invoice.rows.length) throw conflict("The partner has not uploaded its invoice for this payout yet");
   if (p.run_id) throw conflict("This payout is in a payout run; mark the run paid instead");
-  await tx.query("update payouts set status = 'released', released_at = app_now(), released_by = $2 where id = $1", [payoutId, user.id]);
-  await audit(tx, user, "payout.released", "payout", payoutId, { amount: num(p.amount_fils) });
+  await transition(tx, "payout", payoutId, "released", "platform", { set: { released_by: user.id }, audit: { actor: user, action: "payout.released", data: { amount: num(p.amount_fils) } } });
   await notifyOrg(tx, deps, String(p.partner_org_id), "payout_released", { payoutId, amountFils: num(p.amount_fils) });
 }
 
@@ -629,7 +630,7 @@ export async function decideChangeOrder(tx: Queryable, user: SessionUser, change
   if (!co || co.client_org_id !== user.orgId) throw notFound("Change order not found");
   if (user.role !== "client_owner") throw forbidden("Only the account owner can approve extra costs");
   if (co.status !== "priced") throw conflict("This change order is not waiting for a decision");
-  await tx.query("update change_orders set status = $2, decided_at = app_now() where id = $1", [changeOrderId, approve ? "approved" : "rejected"]);
+  await transition(tx, "change_order", changeOrderId, approve ? "approved" : "rejected", "client", { audit: { actor: user, action: approve ? "change_order.approved" : "change_order.rejected" } });
   if (approve) {
     const settings = await loadSettings(tx);
     const client = num(co.client_fils);
@@ -647,7 +648,6 @@ export async function decideChangeOrder(tx: Queryable, user: SessionUser, change
     // The client's approval is the action that creates the payment link for the change.
     await attachPaymentLink(tx, deps, coPayment.id, String(co.engagement_id), "change_order", gross);
   }
-  await audit(tx, user, approve ? "change_order.approved" : "change_order.rejected", "change_order", changeOrderId);
 }
 
 // Messages -----------------------------------------------------------------------
@@ -674,6 +674,7 @@ export async function postMessage(tx: Queryable, user: SessionUser, engagementId
 
 export async function openQuoteRequest(tx: Queryable, user: SessionUser, requestId: string, codes: string[], deps: Deps) {
   await assertRenewalCurrent(tx, requestId); // a superseded renewal is never reopened
+  await assertRequestOpen(tx, requestId); // E21: nor is a closed one
   const partners = await loadPartners(tx);
   const invited = [...partners.values()]
     .filter((p) => (p.status === "signed" || p.status === "pilot") && p.licenceActive && codes.some((c) => p.codes.includes(c)))
@@ -681,13 +682,14 @@ export async function openQuoteRequest(tx: Queryable, user: SessionUser, request
     .slice(0, 5);
   if (invited.length === 0) throw conflict("No signed partner offers these services yet");
   const deadline = addWorkingHours(nowOf(deps), 9, await loadCalendar(tx));
+  // The request moves first: the audit chain, then the request row, before any row that refers to it (lib/context.ts).
+  await transition(tx, "request", requestId, "quoting", "platform", { actor: user, idempotent: true });
   const qr = (
     await tx.query<{ id: string }>("insert into quote_requests (request_id, deadline) values ($1,$2) returning id", [requestId, deadline.toISOString()])
   ).rows[0]!;
   for (const p of invited) {
     await tx.query("insert into quote_invites (quote_request_id, partner_org_id) values ($1,$2)", [qr.id, p.id]);
   }
-  await tx.query("update requests set status = 'quoting' where id = $1", [requestId]);
   await audit(tx, user, "rfq.opened", "quote_request", qr.id, { codes, invited: invited.map((p) => p.id) });
   return { id: qr.id, invited: invited.length, deadline: deadline.toISOString() };
 }

@@ -1,0 +1,40 @@
+E21 before the fix: main at 0b16552 (E20 merged), PGlite, 4 Nov 2026.
+The new tests, written first, run on the unchanged code:
+  npx vitest run test/audit-guard.test.ts test/downloads.test.ts test/transitions.test.ts --reporter=verbose
+
+ ✓ test/transitions.test.ts > transition tables > allow exactly what each table lists, for exactly who it lists 11ms
+ ✓ test/transitions.test.ts > transition tables > say what can happen next, in the refusal too 1ms
+ ✓ test/transitions.test.ts > transition() > makes every listed move on a real row, with its timestamp and an audit event 106ms
+ ↓ test/downloads.test.ts > downloads are refused to every other party (E21) > the evidence file: the engagement's client and partner and MKW get it; another client, another firm and anonymous do not
+ ↓ test/downloads.test.ts > downloads are refused to every other party (E21) > the invoice PDF: refused to another client, a partner and anonymous
+ ↓ test/downloads.test.ts > downloads are refused to every other party (E21) > the offer PDF: refused to another client, a partner and anonymous
+ ↓ test/downloads.test.ts > downloads are refused to every other party (E21) > the coverage backlog CSV: MKW only
+ ↓ test/downloads.test.ts > downloads are refused to every other party (E21) > the payout bank file: finance and the founder only
+ ↓ test/downloads.test.ts > downloads are refused to every other party (E21) > the accounting export: never to a partner or a client
+ × test/audit-guard.test.ts > the audit trail is written only through audit_append (E21) > refuses a direct insert into audit_events as every application role, and audit_append still works for each 13ms
+ × test/audit-guard.test.ts > the audit trail is written only through audit_append (E21) > refuses a direct insert even to a role later granted the privilege (the trigger) 9ms
+ × test/audit-guard.test.ts > the audit trail is written only through audit_append (E21) > no application role holds insert, update, delete or truncate on audit_events or audit_checks 5ms
+ × test/audit-guard.test.ts > the audit trail is written only through audit_append (E21) > the platform cannot write, change or remove a nightly check row; only the database's own check records one 2ms
+ ✓ test/transitions.test.ts > transition() > audits every move, including the ones a caller does not describe 2ms
+ ✓ test/transitions.test.ts > transition() > refuses an unlisted move and leaves the row as it was 18ms
+ ✓ test/transitions.test.ts > transition() > sets only the columns a move may carry, and can treat an arrived row as done 15ms
+ × test/transitions.test.ts > requests, payouts and change orders (E21) > a request whose offer was accepted is closed: offers are never built or quotes asked on it again 96ms
+ × test/transitions.test.ts > requests, payouts and change orders (E21) > every payout move is checked and audited: withheld on a refund, and a withheld payout is never released 235ms
+ × test/transitions.test.ts > requests, payouts and change orders (E21) > a change order is decided once, by the client, through the machine, and its payout becomes eligible by rule when paid 260ms
+ × test/transitions.test.ts > requests, payouts and change orders (E21) > a status outside the machine is refused by the database, on all six tables 3ms
+ × test/transitions.test.ts > the source > changes these statuses nowhere but transition() 5ms
+ × test/audit-guard.test.ts > the audit trail is written only through audit_append (E21) > compares the chain night to night: a removed tail is found even after new events are added 1248ms
+ × test/audit-guard.test.ts > the audit trail is written only through audit_append (E21) > finds a removed tail when nothing is added either: the chain is shorter and last night's final event is gone 1089ms
+ × test/audit-guard.test.ts > the audit trail is written only through audit_append (E21) > compares the length when the night before recorded no final event (a check from before E21) 869ms
+
+ Test Files  3 failed (3)
+      Tests  12 failed | 6 passed | 6 skipped (24)
+
+Failure detail (abridged):
+
+downloads.test.ts failed in its set-up before the fix only because the invoice needs MKW's TRN (a test omission, corrected
+before the fix run below); its six refusal tests are new coverage, not a reproduced defect.
+
+Probe on the same code (a closed request rebuilt): ops rebuilt offers on a request whose offer was accepted, published
+the new offer, and the client accepted it as a second engagement on the same request:
+{"accept": 200, "rebuildOnClosed": 200, "offers": [{"status": "accepted"}, {"status": "draft"}], "publishAgain": 200, "acceptAgain": 200, "engagementsOnOneRequest": 2}

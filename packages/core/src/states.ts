@@ -2,19 +2,27 @@
  * State machines. Each transition lists who may make it; anything not listed is refused.
  * A milestone is only complete on evidence: QA must pass evidence before the client can approve.
  */
-export type RequestStatus = "draft" | "scoped" | "quoting" | "offered" | "closed";
-export type OfferStatus = "draft" | "ops_review" | "published" | "accepted" | "expired" | "withdrawn";
-export type EngagementStatus = "awaiting_payment" | "allocating" | "in_delivery" | "completed" | "cancelled" | "disputed";
-export type MilestoneStatus =
-  | "pending"
-  | "in_progress"
-  | "evidence_submitted"
-  | "qa_passed"
-  | "qa_rejected"
-  | "client_approved"
-  | "disputed";
-export type PayoutStatus = "pending" | "eligible" | "released" | "withheld";
-export type ChangeOrderStatus = "proposed" | "priced" | "approved" | "rejected";
+/**
+ * Every status each machine's row may hold. The database's check constraint on each status column lists exactly these
+ * (migration 027; `test/transitions.test.ts` compares them). A status no move reaches is still listed: a request is
+ * created `scoped` and a change order `priced`, so `draft` and `proposed` are the columns' defaults that the code never
+ * writes today.
+ */
+export const STATUSES = {
+  request: ["draft", "scoped", "quoting", "offered", "closed"],
+  offer: ["draft", "ops_review", "published", "accepted", "expired", "withdrawn"],
+  engagement: ["awaiting_payment", "allocating", "in_delivery", "completed", "cancelled", "disputed"],
+  milestone: ["pending", "in_progress", "evidence_submitted", "qa_passed", "qa_rejected", "client_approved", "disputed"],
+  payout: ["pending", "eligible", "released", "withheld"],
+  change_order: ["proposed", "priced", "approved", "rejected"],
+} as const;
+
+export type RequestStatus = (typeof STATUSES.request)[number];
+export type OfferStatus = (typeof STATUSES.offer)[number];
+export type EngagementStatus = (typeof STATUSES.engagement)[number];
+export type MilestoneStatus = (typeof STATUSES.milestone)[number];
+export type PayoutStatus = (typeof STATUSES.payout)[number];
+export type ChangeOrderStatus = (typeof STATUSES.change_order)[number];
 
 export type Actor = "client" | "partner" | "platform" | "system";
 
@@ -57,11 +65,51 @@ const engagementTransitions: Transition<EngagementStatus>[] = [
   { from: "in_delivery", to: "cancelled", by: ["platform"] },
 ];
 
-/** The three machines that move money and work, as data (O13). The API changes their status only through these. */
+/**
+ * A request (E21). Ops price it (offers) or ask partners for quotes (quoting), and may go back and forth while no offer
+ * is accepted. The client's acceptance closes it, from `quoting` too: a rebuild that finds a price missing leaves the
+ * offers already published open. A closed request is never priced or quoted again (before E21 a rebuild on a closed
+ * request let the client accept a second engagement on it). Building the same state again (a second request for
+ * quotes, a rebuild of offers) is not a move: `transition()` treats it as done (`idempotent`).
+ */
+const requestTransitions: Transition<RequestStatus>[] = [
+  { from: "scoped", to: "quoting", by: ["platform"] },
+  { from: "scoped", to: "offered", by: ["platform"] },
+  { from: "quoting", to: "offered", by: ["platform"] },
+  { from: "offered", to: "quoting", by: ["platform"] },
+  { from: "offered", to: "closed", by: ["client"] },
+  { from: "quoting", to: "closed", by: ["client"] },
+];
+
+/**
+ * A partner payout (E21). Eligible by the tested rule (`payoutStagesEligible`, or the change order's payment received),
+ * released by finance (one payout, or a payout run marked paid), withheld when the client's money is refunded. A
+ * released or withheld payout never moves again.
+ */
+const payoutTransitions: Transition<PayoutStatus>[] = [
+  { from: "pending", to: "eligible", by: ["system"] },
+  { from: "eligible", to: "released", by: ["platform"] },
+  { from: "pending", to: "withheld", by: ["platform"] },
+  { from: "eligible", to: "withheld", by: ["platform"] },
+];
+
+/** A change order (E21): priced by the margin rule when the partner raises it, then decided once by the client. */
+const changeOrderTransitions: Transition<ChangeOrderStatus>[] = [
+  { from: "priced", to: "approved", by: ["client"] },
+  { from: "priced", to: "rejected", by: ["client"] },
+];
+
+/**
+ * The machines that move money and work, as data (O13; requests, payouts and change orders since E21). The API changes
+ * their status only through these (`apps/api/src/lib/transition.ts`).
+ */
 export const MACHINES = {
   milestone: milestoneTransitions,
   offer: offerTransitions,
   engagement: engagementTransitions,
+  request: requestTransitions,
+  payout: payoutTransitions,
+  change_order: changeOrderTransitions,
 } as const;
 export type MachineName = keyof typeof MACHINES;
 export type MachineStatus<M extends MachineName> = (typeof MACHINES)[M][number]["to"];

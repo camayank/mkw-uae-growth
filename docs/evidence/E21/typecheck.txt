@@ -1,0 +1,1 @@
+pnpm typecheck: packages/core and apps/api clean (tsc exit 0), on the E21 branch, 4 Nov 2026.

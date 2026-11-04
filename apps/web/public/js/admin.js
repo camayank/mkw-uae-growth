@@ -347,7 +347,7 @@ export async function renderSystem() {
       <p class="small muted">Opened ${dateTime(a.openedAt)}${a.closedAt ? ` · cleared ${dateTime(a.closedAt)}` : a.lastNotifiedAt ? ` · last emailed ${dateTime(a.lastNotifiedAt)}` : ""}</p></li>`;
   $app.innerHTML = `
   <h1>System</h1>
-  <p class="muted">Whether the platform is keeping up. An alert opens when the scheduled jobs have not completed for ${s.thresholds.jobsLateMinutes} minutes, when a step fails, when a message has waited more than ${s.thresholds.outboxStuckMinutes} minutes, or when the nightly audit check fails. It is emailed to MKW's alert address, again every ${s.thresholds.remindHours} hours while it stays open, and closes on its own when the cause clears.</p>
+  <p class="muted">Whether the platform is keeping up. An alert opens when the scheduled jobs have not completed for ${s.thresholds.jobsLateMinutes} minutes, when a step fails, when a message has waited more than ${s.thresholds.outboxStuckMinutes} minutes, or when the nightly audit check fails. It is emailed to MKW's alert address, again every ${s.thresholds.remindHours} hours while it stays open, and closes on its own when the cause clears. An audit chain finding closes only once the founder records what the investigation found.</p>
   <section class="card" aria-labelledby="alerts-h"><h2 id="alerts-h">Alerts ${open.length ? badge("pending", `${open.length} open`) : badge("ok", "none open")}</h2>
     ${open.length ? `<ol class="qlist">${open.map(alertItem).join("")}</ol>` : `<p class="muted small">Nothing needs attention.</p>`}
     ${closed.length ? `<details><summary class="small">${closed.length} cleared in the last 7 days</summary><ol class="qlist">${closed.map(alertItem).join("")}</ol></details>` : ""}
@@ -371,8 +371,23 @@ export async function renderSystem() {
     <p class="small muted pad">Messages that failed or whose delivery is not confirmed wait for a person in the queue.</p>
   </section>
   <section class="card flush" aria-labelledby="audit-h"><h2 id="audit-h">Audit chain, checked nightly</h2>
-    ${table(["Day", "#Events checked", "Result"], s.auditChecks.map((c) => `<tr><td>${date(c.day)}</td><td class="num">${c.checked}</td><td>${c.brokenId === null ? badge("ok", "intact") : badge("rejected", `broken at event ${c.brokenId}`)}</td></tr>`), "Not checked yet: the first jobs run of the day checks it.")}
+    ${table(["Day", "#Events checked", "Result"], s.auditChecks.map((c) => `<tr><td>${date(c.day)}</td><td class="num">${c.checked}</td><td>${auditResult(c)}</td></tr>`), "Not checked yet: the first jobs run of the day checks it.")}
   </section>`;
+}
+
+/** The nightly audit check's result (E21 adds the comparison with the night before). */
+function auditResult(c) {
+  const found =
+    c.finding === "tail_removed" ? "end of trail removed"
+    : c.finding === "shortened" ? "chain shorter"
+    : c.brokenId !== null || c.finding === "changed" ? `broken at event ${c.brokenId}`
+    : null;
+  if (!found) return badge("ok", "intact");
+  // A finding stays alerted until the founder records the investigation (E21); the alert says what was found.
+  const review = c.reviewedAt
+    ? `<div class="small muted">Reviewed ${dateTime(c.reviewedAt)}: ${esc(c.reviewNote ?? "")}</div>`
+    : role() === "founder" ? `<div><button class="sm" data-act="audit-review" data-id="${esc(c.day)}">Record the investigation</button></div>` : `<div class="small muted">Waiting for the founder's review</div>`;
+  return `${badge("rejected", found)}${review}`;
 }
 
 // E7B: the jurisdiction coverage matrix and the evidence backlog for the verifier.

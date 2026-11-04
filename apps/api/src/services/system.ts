@@ -4,11 +4,10 @@
  * stopped and since when. One alert per kind and subject is open at a time; it is emailed to MKW's alert address
  * when it opens, every four hours while it stays open, and once when it clears.
  */
-import { audit } from "../lib/context.ts";
+import { audit, type SessionUser } from "../lib/context.ts";
 import type { Queryable } from "../lib/db.ts";
 import type { Notifier } from "../lib/notify.ts";
-import { verifyAuditChain } from "../lib/audit.ts";
-import { cleanErrorText } from "../lib/errors.ts";
+import { cleanErrorText, conflict, forbidden, notFound } from "../lib/errors.ts";
 
 /** The jobs run every 15 minutes; three missed runs is late. */
 export const JOBS_LATE_MINUTES = 45;
@@ -51,17 +50,38 @@ export async function finishRun(tx: Queryable, id: number, steps: Record<string,
   );
 }
 
-/** Verify the whole audit chain once per Dubai day. Returns the events checked, or 0 when today's check is done. */
+/**
+ * Verify the whole audit chain once per Dubai day, and compare it with the night before (E21). The database records
+ * the result itself (`audit_check_run`, migration 027): no application role can write, change or remove a check row.
+ * Returns the events checked, or 0 when today's check is done.
+ */
 export async function nightlyAuditCheck(tx: Queryable): Promise<number> {
-  const done = (await tx.query("select 1 from audit_checks where day = (app_now() at time zone 'Asia/Dubai')::date")).rows.length;
-  if (done) return 0;
-  const result = await verifyAuditChain(tx);
-  await tx.query(
-    "insert into audit_checks (day, checked, broken_id) values ((app_now() at time zone 'Asia/Dubai')::date, $1, $2) on conflict (day) do nothing",
-    [result.checked, result.brokenId],
-  );
-  return result.checked;
+  const r = (await tx.query<{ checked: number | string; recorded: boolean }>("select checked, recorded from audit_check_run()")).rows[0];
+  return r?.recorded ? Number(r.checked) : 0;
 }
+
+/**
+ * The founder records that a nightly check's finding was investigated (E21). Once only, with what was found; it closes
+ * that finding's alert at the next sweep. A finding that is still true (an edited event) is found again by the next
+ * night's check, and alerts again.
+ */
+export async function reviewAuditFinding(tx: Queryable, user: SessionUser, day: string, note: string) {
+  if (user.role !== "founder") throw forbidden("Only the founder records an audit investigation");
+  const c = (await tx.query<{ finding: string | null; broken_id: number | null }>("select finding, broken_id from audit_checks where day = $1::date", [day])).rows[0];
+  if (!c) throw notFound("No audit check on that day");
+  if (c.finding === null && c.broken_id === null) throw conflict("That day's check found nothing to review");
+  const added = await tx.query("insert into audit_check_reviews (day, reviewed_by, note) values ($1::date, $2, $3) on conflict (day) do nothing returning day", [day, user.id, note.trim()]);
+  if (!added.rows.length) throw conflict("That finding has already been reviewed");
+  await audit(tx, user, "audit_check.reviewed", "audit_check", day, { finding: c.finding ?? "changed", note: note.trim() });
+  return { ok: true };
+}
+
+/** What the nightly check found, in words for the alert and the console. */
+const AUDIT_FINDING: Record<string, (c: { day: string; broken_id: number | string | null }) => string> = {
+  changed: (c) => `The audit chain check on ${c.day} failed at event ${c.broken_id}: an audit row was changed or removed.`,
+  tail_removed: (c) => `The audit chain check on ${c.day} found that the last event of the previous check is missing or different: events at the end of the trail were removed or rewritten.`,
+  shortened: (c) => `The audit chain check on ${c.day} found fewer events than the night before: events were removed.`,
+};
 
 interface Condition {
   kind: AlertKind;
@@ -117,13 +137,21 @@ export async function currentConditions(tx: Queryable, since: Date | null): Prom
       summary: `${Number(stuck.n)} message(s) have been due for up to ${Math.floor(Number(stuck.oldest))} minutes and are not sent: the dispatcher is not running or cannot reach the provider.`,
     });
   }
-  const check = (await tx.query<{ day: string; broken_id: number | string | null }>("select day::text, broken_id from audit_checks order by day desc limit 1")).rows[0];
-  if (check && check.broken_id !== null) {
+  // The latest check with a finding no person has reviewed: a removed tail is found once, so its alert stays open until
+  // the founder records the investigation (E21), not only while the latest check still finds it.
+  const check = (
+    await tx.query<{ day: string; broken_id: number | string | null; finding: string | null }>(
+      `select c.day::text, c.broken_id, c.finding from audit_checks c left join audit_check_reviews r on r.day = c.day
+        where (c.finding is not null or c.broken_id is not null) and r.day is null order by c.day desc limit 1`,
+    )
+  ).rows[0];
+  const finding = check ? (check.finding ?? "changed") : null;
+  if (check && finding) {
     out.push({
       kind: "audit_chain",
       subject: "",
       severity: "critical",
-      summary: `The audit chain check on ${check.day} failed at event ${check.broken_id}: an audit row was changed or removed. Do not change anything else; follow the incident steps in docs/DEPLOY.md.`,
+      summary: `${(AUDIT_FINDING[finding] ?? AUDIT_FINDING.changed!)(check)} Do not change anything else; follow the incident steps in docs/DEPLOY.md.`,
     });
   }
   return out;
@@ -224,7 +252,10 @@ export async function systemOverview(tx: Queryable) {
        from alerts where closed_at is null or closed_at > app_now() - interval '7 days' order by closed_at is null desc, opened_at desc limit 50`,
   )).rows;
   const auditChecks = (await tx.query(
-    `select day::text, checked, broken_id as "brokenId", at::text from audit_checks order by day desc limit 7`,
+    `select c.day::text, c.checked, c.broken_id as "brokenId", c.finding, c.at::text, r.at::text as "reviewedAt", r.note as "reviewNote"
+       from audit_checks c left join audit_check_reviews r on r.day = c.day
+      where c.day > (app_now() at time zone 'Asia/Dubai')::date - 7 or (c.finding is not null and r.day is null)
+      order by c.day desc limit 14`,
   )).rows;
   return { runs, outbox, alerts, auditChecks, thresholds: { jobsLateMinutes: JOBS_LATE_MINUTES, outboxStuckMinutes: OUTBOX_STUCK_MINUTES, remindHours: REMIND_HOURS } };
 }

@@ -1,5 +1,6 @@
 import { applyBp, DEFAULT_SETTINGS, splitByShares } from "@tasees/core";
 import { audit, lockAuditChain, type SessionUser } from "../lib/context.ts";
+import { transition } from "../lib/transition.ts";
 import { num, type Queryable } from "../lib/db.ts";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.ts";
 import { col, textPdf } from "../lib/pdf.ts";
@@ -204,7 +205,8 @@ export async function refundPayment(tx: Queryable, actor: SessionUser, paymentId
   const inv = (await tx.query<Record<string, unknown>>("select * from invoices where payment_id = $1 and kind = 'tax_invoice' order by created_at desc limit 1", [paymentId])).rows[0];
   await tx.query("update payments set status = 'refunded', refunded_at = app_now(), refund_reference = $2 where id = $1", [paymentId, reference]);
   // Money the client has paid back is no longer "received": payouts not yet released lose their eligibility.
-  await tx.query("update payouts set status = 'withheld' where engagement_id = $1 and status in ('eligible', 'pending')", [String(payment.engagement_id)]);
+  const unreleased = await tx.query<{ id: string }>("select id from payouts where engagement_id = $1 and status in ('eligible', 'pending') order by id for update", [String(payment.engagement_id)]);
+  for (const p of unreleased.rows) await transition(tx, "payout", p.id, "withheld", "platform", { audit: { actor, action: "payout.withheld", data: { paymentId } } });
   let creditNote: { id: string; number: string | null } | null = null;
   if (inv) {
     const company = await loadCompany(tx);

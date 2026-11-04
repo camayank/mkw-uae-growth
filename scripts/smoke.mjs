@@ -1778,13 +1778,11 @@ for (const [route, name] of [["people", "20-mobile-people"], ["settings", "21-mo
 }
 
 // The new partner's firm page at phone width
-const mpp = await (await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 })).newPage();
+// The new partner's session is reused (E19): sign-in code requests are limited to 20 per address in 15 minutes, and the
+// run signs partner staff in too.
+const mpp = await (await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, storageState: await newPartnerAdmin.context().storageState() })).newPage();
 mpp.on("pageerror", (e) => errors.push(`mobile partner: ${e.message}`));
 await mpp.goto(APP);
-await mpp.fill('form[data-form="request-code"] input[name="email"]', partnerEmail);
-await mpp.locator('form[data-form="request-code"] button[type="submit"]').click();
-await mpp.waitForSelector('form[data-form="verify"]');
-await mpp.locator('form[data-form="verify"] button[type="submit"]').click();
 await mpp.waitForSelector("#nav > :is(a, .navgroup)");
 await mpp.goto(APP + "#/firm"); await mpp.reload();
 await mpp.waitForSelector("main h1");

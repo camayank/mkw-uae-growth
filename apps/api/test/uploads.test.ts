@@ -42,6 +42,14 @@ describe("the content check (E22)", () => {
     expect(() => checkUpload("rows.csv", PNG)).toThrow(/not a CSV/);
     expect(() => checkUpload("empty.pdf", Buffer.alloc(0))).toThrow(/empty/);
   });
+
+  it("takes real files as readers do, and names the format a renamed Office file is in (review)", () => {
+    expect(() => checkUpload("bom.pdf", Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from("\n"), PDF]))).not.toThrow(); // junk before the header
+    expect(() => checkUpload("utf8.csv", Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from("الاسم,المبلغ\nأ,1\n")]))).not.toThrow();
+    expect(() => checkUpload("letter.doc", zip("[Content_Types].xml", "word/document.xml"))).toThrow(/not a Word document: its content is a Word document in the .docx format/);
+    // A workbook that embeds a Word document names word/ after its own parts.
+    expect(() => checkUpload("book.xlsx", zip("[Content_Types].xml", "xl/workbook.xml", "xl/embeddings/word/document.xml"))).not.toThrow();
+  });
 });
 
 /** An engagement in delivery with its first milestone started, and the partner who delivers it. */
@@ -154,15 +162,24 @@ describe("with no scanner (staging until T6) (E22)", () => {
     expect(pd.status).toBe(200);
     expect((await get(env, d.who, `/api/partner-documents/${pd.body.id}/file`)).statusCode).toBe(409);
     expect((await env.call("ops", "POST", `/api/ops/partner-documents/${pd.body.id}/review`, { decision: "verified" })).status).toBe(409);
+    // Obligation evidence: held on both calendars, and ops cannot mark it met (review found the ops calendar had no state).
+    const ob = (await asPlatform(env.db, null, (tx) => tx.query<any>("insert into obligations (client_org_id, engagement_id, kind, title, basis, due_date, status, confidence) values ((select client_org_id from engagements where id = $1), $1, 'licence_renewal', 'Trade licence renewal', 'test', current_date + 30, 'open', 'confirmed') returning id", [d.engagementId]))).rows[0];
+    expect((await env.call("client", "POST", `/api/obligations/${ob.id}/evidence`, { fileName: "renewed.pdf", contentBase64: b64(PDF) })).status).toBe(200);
+    expect((await env.call("client", "GET", "/api/client/compliance")).body.find((o: any) => o.id === ob.id).evidenceScan).toBe("pending");
+    expect((await env.call("ops", "GET", "/api/ops/compliance")).body.find((o: any) => o.id === ob.id).evidenceScan).toBe("pending");
+    expect((await get(env, "ops", `/api/obligations/${ob.id}/file`)).statusCode).toBe(409);
+    expect((await env.call("ops", "POST", `/api/ops/obligations/${ob.id}/met`, { note: "filed" })).status).toBe(409);
     // A clean scan later (the jobs step, once a scanner exists) releases them all.
     const scanner = memoryScanner();
-    expect(await scanHeldFiles(env.db, { storage: env.storage, scanner })).toMatchObject({ clean: 3, infected: 0, failed: 0 });
+    expect(await scanHeldFiles(env.db, { storage: env.storage, scanner })).toMatchObject({ clean: 4, infected: 0, failed: 0 });
+    expect((await env.call("ops", "GET", "/api/ops/compliance")).body.find((o: any) => o.id === ob.id).evidenceScan).toBe("clean");
+    expect((await get(env, "ops", `/api/obligations/${ob.id}/file`)).statusCode).toBe(200);
     expect((await get(env, "client", `/api/evidence/${ev.id}/file`)).statusCode).toBe(200);
     expect((await get(env, d.who, `/api/document-requests/${docs[0].id}/file`)).statusCode).toBe(200);
     expect((await get(env, d.who, `/api/partner-documents/${pd.body.id}/file`)).statusCode).toBe(200);
     expect((await env.call(d.who, "POST", `/api/document-requests/${docs[0].id}/decide`, { decision: "received" })).status).toBe(200);
     const moves = (await asPlatform(env.db, null, (tx) => tx.query<any>("select data from audit_events where action = 'file.status_changed'"))).rows;
-    expect(moves.map((m: any) => `${m.data.from}>${m.data.to}`)).toEqual(["pending>clean", "pending>clean", "pending>clean"]);
+    expect(moves.map((m: any) => `${m.data.from}>${m.data.to}`)).toEqual(["pending>clean", "pending>clean", "pending>clean", "pending>clean"]);
     // The jobs step does nothing while no scanner is configured, and says so on the System page.
     const system = (await env.call("ops", "GET", "/api/ops/system")).body;
     expect(system.uploads.scanner).toEqual({ name: null, live: false });
@@ -182,7 +199,9 @@ describe("a scanner that fails (E22)", () => {
       expect((await get(env, "client", `/api/evidence/${ev.id}/file`)).statusCode).toBe(409);
       expect(await scanHeldFiles(env.db, { storage: env.storage, scanner })).toMatchObject({ failed: 1 });
       scanner.failing = false;
-      expect(await scanHeldFiles(env.db, { storage: env.storage, scanner })).toMatchObject({ clean: 1 });
+      // Two sweeps at once (an abandoned run and "Run the jobs now"): one scans the file, the other finds it moved and skips it (review).
+      const [a, b] = await Promise.all([scanHeldFiles(env.db, { storage: env.storage, scanner }), scanHeldFiles(env.db, { storage: env.storage, scanner })]);
+      expect([a.clean + b.clean, a.failed + b.failed]).toEqual([1, 0]);
       expect((await get(env, "client", `/api/evidence/${ev.id}/file`)).statusCode).toBe(200);
       const attempts = (await asPlatform(env.db, null, (tx) => tx.query<any>("select attempts from file_scans"))).rows[0].attempts;
       expect(attempts).toBe(3);
@@ -201,6 +220,15 @@ describe("unscanned files allowed by the owner (T6, UPLOADS_UNSCANNED=allow) (E2
       const ev = (await env.call("client", "GET", `/api/engagements/${d.engagementId}`)).body.evidence.at(-1);
       expect(ev.scan).toBe("not_scanned");
       expect((await get(env, "client", `/api/evidence/${ev.id}/file`)).statusCode).toBe(200);
+      // A scanner that keeps failing stops after five attempts and alerts, as for a held file (review).
+      const failing = memoryScanner();
+      failing.failing = true;
+      for (let i = 0; i < 6; i++) await scanHeldFiles(env.db, { storage: env.storage, scanner: failing });
+      expect((await asPlatform(env.db, null, (tx) => tx.query<any>("select status, attempts from file_scans"))).rows[0]).toEqual({ status: "not_scanned", attempts: 5 });
+      expect((await env.call("ops", "POST", "/api/ops/jobs/run")).status).toBe(200);
+      expect((await env.call("ops", "GET", "/api/ops/system")).body.alerts.find((a: any) => a.kind === "upload_held" && !a.closedAt)?.summary).toMatch(/scan failed 5 times/);
+      expect(await scanHeldFiles(env.db, { storage: env.storage, scanner: memoryScanner() })).toMatchObject({ clean: 0 }); // capped until a person acts
+      await asPlatform(env.db, null, (tx) => tx.query("update file_scans set attempts = 0"));
       expect(await scanHeldFiles(env.db, { storage: env.storage, scanner: memoryScanner() })).toMatchObject({ clean: 1 });
       // Another client never sees it, whatever its state.
       await env.call("ops", "POST", "/api/ops/clients", { company: "Other E22 LLC", ownerName: "Other Owner", ownerEmail: "owner@other-e22.test" });

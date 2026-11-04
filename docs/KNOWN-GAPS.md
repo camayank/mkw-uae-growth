@@ -464,6 +464,9 @@ in a browser; everything listed here is not.
      deleted, so what was sent can be examined. Removing it is a later, audited step for a person; nothing does it yet.
 154. **MKW's own generated files are not scanned.** Invoice PDFs and the payout bank file are built by the platform,
      not uploaded, and have no scan record. Correct today; a generated file that embeds an upload would need one.
+155. **Text uploads must be UTF-8.** A CSV saved by Excel in a Windows code page (cp1256 for Arabic) or as UTF-16
+     "Unicode text" is refused as "a file of another kind", although it is a real spreadsheet export. Found by the
+     review of E22. Accepting those encodings needs a check that cannot mistake binary for text.
 
 ## E16: report design
 

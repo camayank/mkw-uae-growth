@@ -1419,7 +1419,11 @@ released by the owner: "start E22". The mandate's P0-01, item 1.3; gap 45; rules
   as the seventh machine (`file`): `pending`, `clean`, `infected`, `failed`, `not_scanned`. After the upload only a
   scanner's verdict moves it, by the system, each move audited. Rows are never removed; erasure tombstones the name.
   Clients and partners never read the table or any storage key: `file_scan_status(kind, id)` gives a status for a row
-  they already hold. Files from before E22 are backfilled as `pending`.
+  they already hold. It answers for any id, so a party running SQL of its own could learn that another party's row
+  exists and its scan state, nothing more; no route passes a caller's id to it (noted by the review). Files from
+  before E22 are backfilled as `pending`, and the first scan fills in their size and hash.
+- **Storage before the row.** `storeUpload` writes the object, then the row; a transaction that rolls back after the
+  write leaves an object with no row, which is held (no row is `pending`) and only wastes space.
 - **Why a missing scan is not clean.** With no scanner, an upload is `pending` and held. The owner may instead choose
   `UPLOADS_UNSCANNED=allow` (T6): such files are `not_scanned`, served and labelled so on every screen, and a scanner
   added later still scans them. A failed scan holds the file and is retried by the jobs step (`filesScanned`) up to

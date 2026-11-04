@@ -159,7 +159,7 @@ export async function currentConditions(tx: Queryable, since: Date | null): Prom
   const held = (
     await tx.query<{ infected: number; failed: number }>(
       `select count(*) filter (where status = 'infected')::int as infected,
-              count(*) filter (where status = 'failed' and attempts >= $1)::int as failed from file_scans`,
+              count(*) filter (where status in ('failed', 'not_scanned') and attempts >= $1)::int as failed from file_scans`,
       [MAX_SCAN_ATTEMPTS],
     )
   ).rows[0]!;

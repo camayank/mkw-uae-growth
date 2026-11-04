@@ -1,0 +1,31 @@
+{
+ "errors": [],
+ "upload": 200,
+ "jobs": 200,
+ "uploads": {
+  "pending": 0,
+  "clean": 0,
+  "infected": 3,
+  "failed": 0,
+  "not_scanned": 0
+ },
+ "alert": "3 uploaded file(s) refused by the malware scan: held, never served. The System page lists them; ask the sender for a clean copy, or check the scanner.",
+ "evidence": [
+  [
+   "bank-letter.pdf",
+   "infected"
+  ]
+ ],
+ "e22-client-held-desktop: overflow": false,
+ "e22-client-held-desktop: axe": [],
+ "e22-staff-held-desktop: overflow": false,
+ "e22-staff-held-desktop: axe": [],
+ "e22-system-held-desktop: overflow": false,
+ "e22-system-held-desktop: axe": [],
+ "e22-client-held-phone: overflow": false,
+ "e22-client-held-phone: axe": [],
+ "e22-staff-held-phone: overflow": false,
+ "e22-staff-held-phone: axe": [],
+ "e22-system-held-phone: overflow": false,
+ "e22-system-held-phone: axe": []
+}

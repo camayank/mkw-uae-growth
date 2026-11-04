@@ -34,9 +34,9 @@ const LABEL: Record<DetectedType, string> = {
   png: "a PNG image",
   jpeg: "a JPEG image",
   webp: "a WebP image",
-  ole: "an old-style Office file",
-  docx: "a Word document",
-  xlsx: "an Excel workbook",
+  ole: "an old-style Office file (.doc or .xls)",
+  docx: "a Word document in the .docx format",
+  xlsx: "an Excel workbook in the .xlsx format",
   zip: "a ZIP archive",
   text: "plain text",
   unknown: "a file of another kind",
@@ -44,16 +44,19 @@ const LABEL: Record<DetectedType, string> = {
 
 export function detectType(data: Buffer): DetectedType {
   const starts = (bytes: number[], at = 0) => bytes.every((b, i) => data[at + i] === b);
-  if (data.subarray(0, 5).toString("latin1") === "%PDF-") return "pdf";
+  // Readers accept a byte-order mark or other junk before the header, within the first kilobyte.
+  if (data.subarray(0, 1024).indexOf("%PDF-") >= 0) return "pdf";
   if (starts([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return "png";
   if (starts([0xff, 0xd8, 0xff])) return "jpeg";
   if (data.subarray(0, 4).toString("latin1") === "RIFF" && data.subarray(8, 12).toString("latin1") === "WEBP") return "webp";
   if (starts([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1])) return "ole";
   if (starts([0x50, 0x4b, 0x03, 0x04])) {
-    // An Office Open XML package names its parts in the archive's file headers: word/ or xl/.
-    const names = data.toString("latin1");
-    if (names.includes("word/")) return "docx";
-    if (names.includes("xl/")) return "xlsx";
+    // An Office Open XML package names its parts in the archive's file headers. The package's own parts come first
+    // (word/ or xl/); a workbook that embeds a Word document names word/ later, so the earliest decides.
+    const word = data.indexOf("word/");
+    const xl = data.indexOf("xl/");
+    if (word >= 0 && (xl < 0 || word < xl)) return "docx";
+    if (xl >= 0) return "xlsx";
     return "zip";
   }
   if (isText(data)) return "text";

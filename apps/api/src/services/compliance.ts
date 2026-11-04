@@ -210,7 +210,7 @@ export async function clientCalendar(tx: Queryable) {
 export async function opsCalendar(tx: Queryable, clientOrgId?: string) {
   const rows = (
     await tx.query(
-      `select o.*, o.due_date::text as due_date, c.name as client, live.renewal_request_id, live.renewal_request_status, live.renewal_engagement_id, live.renewal_engagement_status
+      `select o.*, o.due_date::text as due_date, file_scan_status('obligation', o.id) as evidence_scan, c.name as client, live.renewal_request_id, live.renewal_request_status, live.renewal_engagement_id, live.renewal_engagement_status
        from obligations o join orgs c on c.id = o.client_org_id left join lateral (
          select r.id as renewal_request_id, r.status as renewal_request_status, e.id as renewal_engagement_id, e.status as renewal_engagement_status
          from requests r left join engagements e on e.request_id = r.id and e.status not in ('completed', 'cancelled')

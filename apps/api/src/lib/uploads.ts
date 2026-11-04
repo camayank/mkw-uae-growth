@@ -7,9 +7,8 @@
  */
 import { createHash } from "node:crypto";
 import type { FileStatus } from "@tasees/core";
-import { audit, type SessionUser } from "./context.ts";
+import { asPlatform, audit, lockAuditChain, type SessionUser } from "./context.ts";
 import type { Database, Queryable } from "./db.ts";
-import { asPlatform } from "./context.ts";
 import { badRequest, cleanErrorText, conflict } from "./errors.ts";
 import { scanWithin, type Scanner } from "./scanner.ts";
 import { checkUpload, type Storage } from "./storage.ts";
@@ -108,9 +107,11 @@ export interface ScanSweep {
 }
 
 /**
- * The jobs step (`filesScanned`): scan what is held, oldest first. Pending and not_scanned files, and failed ones under
- * the attempt limit. Each verdict moves the file through its machine, audited; a scan that fails again counts the
- * attempt. Nothing happens while no scanner is configured.
+ * The jobs step (`filesScanned`): scan what is held, oldest first, up to the attempt limit for every held state (a
+ * `not_scanned` file whose scans keep failing stays served, labelled, and waits for a person like a failed one). Each
+ * verdict moves the file through its machine, audited; a scan that fails again counts the attempt. A file another
+ * sweep moved meanwhile is skipped: each file is re-read under the audit lock, then its row lock (lib/context.ts).
+ * Nothing happens while no scanner is configured.
  */
 export async function scanHeldFiles(db: Database, deps: UploadDeps, limit = 50): Promise<ScanSweep> {
   const out: ScanSweep = { clean: 0, infected: 0, failed: 0 };
@@ -120,7 +121,7 @@ export async function scanHeldFiles(db: Database, deps: UploadDeps, limit = 50):
     await asPlatform(db, null, (tx) =>
       tx.query<{ id: string; key: string; status: FileStatus }>(
         `select id, key, status from file_scans
-          where status in ('pending', 'not_scanned') or (status = 'failed' and attempts < $1)
+          where status in ('pending', 'not_scanned', 'failed') and attempts < $1
           order by created_at limit $2`,
         [MAX_SCAN_ATTEMPTS, limit],
       ),
@@ -129,21 +130,30 @@ export async function scanHeldFiles(db: Database, deps: UploadDeps, limit = 50):
   for (const f of held) {
     let verdict: { verdict: "clean" | "infected"; finding?: string } | null = null;
     let error: string | null = null;
+    let bytes: Buffer | null = null;
     try {
-      verdict = await scanWithin(scanner, await deps.storage.get(f.key));
+      bytes = await deps.storage.get(f.key);
+      verdict = await scanWithin(scanner, bytes);
     } catch (e) {
       error = cleanErrorText((e as Error).message, 200);
     }
-    await asPlatform(db, null, async (tx) => {
+    const done = await asPlatform(db, null, async (tx) => {
+      await lockAuditChain(tx);
+      const row = (await tx.query<{ status: string }>("select status from file_scans where id = $1 for update", [f.id])).rows[0];
+      if (!row || !["pending", "not_scanned", "failed"].includes(row.status)) return false; // moved by another sweep
       await tx.query("update file_scans set attempts = attempts + 1 where id = $1", [f.id]);
+      // A row from before E22 was backfilled without its size and hash: the first read fills them in.
+      if (bytes) await tx.query("update file_scans set size_bytes = $2, sha256 = $3 where id = $1 and sha256 = ''", [f.id, bytes.length, createHash("sha256").update(bytes).digest("hex")]);
       if (verdict) {
         await transition(tx, "file", f.id, verdict.verdict, "system", { set: { scanner: scanner.name, finding: verdict.finding ?? null, last_error: null } });
-      } else if (f.status === "pending") {
+      } else if (row.status === "pending") {
         await transition(tx, "file", f.id, "failed", "system", { set: { scanner: scanner.name, last_error: error } });
       } else {
         await tx.query("update file_scans set last_error = $2 where id = $1", [f.id, error]);
       }
+      return true;
     });
+    if (!done) continue;
     if (verdict) out[verdict.verdict] += 1;
     else out.failed += 1;
   }

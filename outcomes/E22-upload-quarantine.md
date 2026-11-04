@@ -35,7 +35,7 @@ orders it.)
    - the scanner, any finding and the attempts.
 
    Moves after the upload go through `transition()`, as a seventh machine (`file`), each one audited. Clients and
-   partners never read the table. They see only a file's status, through `file_scan_status(key)`. Existing files are
+   partners never read the table. They see only a file's status, through `file_scan_status(kind, id)`. Existing files are
    backfilled as `pending`.
 4. **Uploads.** All five upload paths go through one `storeUpload()`, in the same transaction as their row:
    - evidence;
@@ -72,16 +72,21 @@ orders it.)
 
 - **`before-fix.txt`.** A probe on `main` at 548fa49: PNG bytes named `.pdf` and a Windows program named `.jpg` were
   both stored, and the client downloaded the EICAR test file at once. The new suite cannot load on `main`.
-- **`tests-pglite.txt`.** Core 159 passed (19 files). API 431 passed, 7 skipped (44 files).
-- **`tests-postgres16.txt`.** API 438 passed (44 files), on PostgreSQL 16.15, with the runtime-login suite.
+- **`tests-pglite.txt`.** Core 159 passed (19 files). API 432 passed, 7 skipped (44 files).
+- **`tests-postgres16.txt`.** API 439 passed (44 files), on PostgreSQL 16.15, with the runtime-login suite.
 - **`typecheck.txt`.** Clean.
 - **`smoke-log.txt`.** 337 checks and 60 axe scans passed on a fresh demo, with `SCANNER=memory`: every upload the
   smoke makes is scanned by the test double and served as clean.
 - **`screens/79-system.png`, `screens/80-mobile-system.png`.** The System page with the new "Uploaded files" section,
   at 1280 and 390 px.
+- **`screens/e22-client-held-*.png`, `e22-staff-held-*.png`, `e22-system-held-*.png` and `held-screens.json`.** A local
+  demo with three EICAR uploads (a partner's evidence and two client documents): the client's engagement page shows
+  "refused by the malware scan" instead of a link, MKW's view of the same engagement shows the held evidence, and the
+  System page shows the "Uploaded files held" alert and the three files, at 1280 and 390 px, each axe-clean with no
+  horizontal overflow and no page errors.
 
 The new and changed tests:
-- `uploads.test.ts` (9): the content check for each type; a clean file served and recorded; an infected file held on
+- `uploads.test.ts` (10): the content check for each type, and the forms real files take; a clean file served and recorded; an infected file held on
   download, on QA and on the System page, with its alert; the scan table unreadable by clients and partners; with no
   scanner, evidence, a client document and a partner document held on every route and refused as received or
   verified, then released by the jobs step; a failing scanner and its retry; unscanned files allowed by the owner;
@@ -98,6 +103,27 @@ The new and changed tests:
 - **Rule 1 (money privacy).** Unchanged: `file_scans` is platform-only, and `file_scan_status` returns a status for a
   row the caller already holds.
 - **Rule 9 (PDPL).** Erasure tombstones the file names in `file_scans`.
+
+## Independent review
+
+An independent reviewer read the change against the code and probed it on PGlite and PostgreSQL 16.
+
+- **Should fix, a regression:** the ops compliance page lost its evidence links, because `opsCalendar` had no scan
+  column and the screen treats a missing state as held. Fixed, with a test on both calendars.
+- **Minor, all fixed with tests:**
+  - two sweeps at once made the second abort its step: each file is now re-read under the audit lock, in the
+    documented lock order, and a file another sweep moved is skipped;
+  - `not_scanned` files were retried forever: every held state stops at five attempts and alerts;
+  - real files refused: a PDF with a byte-order mark or junk before its header, and a workbook that embeds a Word
+    document; and a `.docx` renamed `.doc` was refused with the same word on both sides;
+  - backfilled rows kept no size or hash: the first scan fills them in.
+- **Noted, not changed:** `file_scan_status` answers for any id (SQL only; no route passes a caller's id; recorded in
+  D104); an object written before a rolled-back row is held and only wastes space (D104); CSV from Excel in a
+  Windows code page and UTF-16 text are refused as "another kind" (gap 155).
+
+The reviewer verified as correct: every reader of uploaded bytes is guarded; all five upload paths go through
+`storeUpload`; a missing row is held; the machine's moves and cap; the grants, RLS and erasure; the configuration and
+the staging stack leaving `SCANNER` unset; every screen's file link; the evidence counts.
 
 ## Dependencies
 

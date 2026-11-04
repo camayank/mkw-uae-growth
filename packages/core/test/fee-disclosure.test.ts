@@ -10,7 +10,7 @@ describe("government fee disclosure (E18)", () => {
     expect(feeBasis({ confidence: "verified", stale: false })).toBe("verified");
   });
 
-  it("only uncertain and stale fees need an acknowledgement (the existing rule; D101 recommends partner-stated too)", () => {
+  it("only uncertain and stale fees need an acknowledgement (the existing rule; D100 recommends partner-stated too)", () => {
     expect(FEE_BASES.filter(feeNeedsReview)).toEqual(["uncertain", "stale"]);
   });
 

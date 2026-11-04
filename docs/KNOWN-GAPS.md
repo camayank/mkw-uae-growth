@@ -358,6 +358,18 @@ in a browser; everything listed here is not.
      takes longer for a known email, which sends one, than for an unknown one; checking a code differs by far less.
      Sending the email from the outbox rather than in the request would close most of it.
 
+## E18: quote provenance
+
+135. **A partner-stated government fee publishes without an acknowledgement.** The existing rule (D23), kept until the
+     owner decides; D100 recommends requiring one, as for an UNCERTAIN fee. The client sees it labelled PARTNER-STATED.
+136. **Offers priced before E18 read LEGACY.** Their lines recorded no basis, so each fee shows as an estimate; nothing
+     is back-filled, by design (a later record would present an old quotation as checked).
+137. **The engagement page, invoices and payment screens show government fees without their label.** The label is on
+     the proposal, the PDF and the acceptance record; carrying it onto the engagement and the invoice is a later change.
+138. **The Arabic for the fee labels and sentences is a draft** for the Arabic reviewer (with gaps 111, 116, 119, 128).
+139. **The snapshot keeps the source link, not a copy of the authority's page.** If the authority changes or removes
+     the page, the link no longer shows what was checked; an archived copy at verification would close it.
+
 ## E16: report design
 
 129. **The Arabic report's wording is a draft** until the Arabic reviewer signs it off (with gaps 111, 116, 119, 128).

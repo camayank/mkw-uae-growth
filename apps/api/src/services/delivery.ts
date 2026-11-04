@@ -346,7 +346,9 @@ export async function allocateManually(tx: Queryable, actor: SessionUser, engage
 
 /** The client's branded offer: scope, prices, government fees, VAT, assumptions, timeline, validity. No partner. */
 export async function offerDocument(tx: Queryable, actor: SessionUser, offerId: string): Promise<{ pdf: Buffer; fileName: string }> {
-  const o = (await tx.query<Record<string, unknown>>("select o.*, c.name as client from offers o join orgs c on c.id = o.client_org_id where o.id = $1", [offerId])).rows[0];
+  const o = (await tx.query<Record<string, unknown>>(`select o.*, c.name as client, o.valid_to::text as valid_on,
+     to_char(coalesce(o.published_at, o.created_at) at time zone 'Asia/Dubai', 'YYYY-MM-DD') as dated_on
+   from offers o join orgs c on c.id = o.client_org_id where o.id = $1`, [offerId])).rows[0];
   if (!o) throw notFound("Offer not found");
   if (actor.orgType === "client" && o.client_org_id !== actor.orgId) throw notFound("Offer not found");
   if (actor.orgType === "partner") throw forbidden("Offers are for clients");
@@ -358,7 +360,7 @@ export async function offerDocument(tx: Queryable, actor: SessionUser, offerId: 
   const ref = String(o.id).slice(0, 8).toUpperCase();
   const money = (f: unknown) => formatAed(num(f));
   const out: string[] = [];
-  out.push("TASEES, BY MKW ADVISORS", "Your UAE business services, one clear price", "", `Offer ${ref} (${String(o.tier)} tier)`, `Prepared for: ${String(o.client)}`, `Date: ${String(o.published_at ?? o.created_at).slice(0, 10)}    Valid until: ${String(o.valid_to).slice(0, 10)}`, "", "SCOPE AND PRICES (AED, excluding VAT)", "");
+  out.push("TASEES, BY MKW ADVISORS", "Your UAE business services, one clear price", "", `Offer ${ref} (${String(o.tier)} tier)`, `Prepared for: ${String(o.client)}`, `Date: ${String(o.dated_on)}    Valid until: ${String(o.valid_on)}`, "", "SCOPE AND PRICES (AED, excluding VAT)", "");
   out.push(col("Service", "Qty   Price"), "-".repeat(78));
   let maxDays = 0;
   for (const l of lines) {
@@ -375,11 +377,19 @@ export async function offerDocument(tx: Queryable, actor: SessionUser, offerId: 
   }
   out.push("-".repeat(78));
   out.push(col("Professional fees", money(o.professional_fils)), col("MKW Advisors service fee", money(o.mkw_fees_fils)), col("VAT 5% on fees", money(o.vat_fils)), col("Government fees (at cost, no VAT)", money(o.government_fils)), col("TOTAL", money(o.client_total_fils)), "");
-  out.push("HOW PAYMENT WORKS", `  Deposit on acceptance: 50% of fees plus all government fees. Balance when the work is complete.`, `  Card or bank transfer; a tax invoice is issued for every payment.`, "");
-  out.push("TIMELINE", `  About ${maxDays} UAE working days from the deposit and your documents, per service; each step has a`, `  due date you can follow online. Government processing times are outside our control.`, "");
-  out.push("WHAT IS INCLUDED", "  Scope management, pricing, a vetted delivery partner from the MKW Advisors Partner Network,", "  quality checks on every step, and our service guarantee: a step more than five working days", "  late earns you a credit of part of the fee.", "");
-  out.push("ASSUMPTIONS AND EXCLUSIONS", "  Government fees are passed on at cost. Each is marked above with where its figure came from;", "  only a VERIFIED fee was checked by MKW Advisors against the authority's published fee. If the", "  authority charges a different amount, the actual fee is charged at cost. Services not listed,", "  attestations abroad, translations, courier and bank charges are excluded unless listed. Statutory outcomes (approvals, visas, bank", "  accounts) are decided by the authority or bank, not by us; we manage the process.", "");
-  out.push("HOW TO ACCEPT", `  The account owner accepts online; the offer stays valid until ${String(o.valid_to).slice(0, 10)}.`, "", `${company.legalName}${company.trn ? ` | TRN ${company.trn}` : ""}`, company.address.replace(/\s+/g, " ").slice(0, 78), "Tasees is a service of MKW Advisors.");
+  // Each paragraph is wrapped to the page (E18: longer lines ran off the page's edge and were lost).
+  const para = (heading: string, ...sentences: string[]) => out.push(heading, ...wrap(sentences.join(" "), 76).map((s) => `  ${s}`), "");
+  para("HOW PAYMENT WORKS", "Deposit on acceptance: 50% of fees plus all government fees. Balance when the work is complete.", "Card or bank transfer; a tax invoice is issued for every payment.");
+  para("TIMELINE", `About ${maxDays} UAE working days from the deposit and your documents, per service; each step has a due date you can follow online.`, "Government processing times are outside our control.");
+  para("WHAT IS INCLUDED", "Scope management, pricing, a vetted delivery partner from the MKW Advisors Partner Network, quality checks on every step, and our service guarantee: a step more than five working days late earns you a credit of part of the fee.");
+  para(
+    "ASSUMPTIONS AND EXCLUSIONS",
+    "Government fees are passed on at cost. Each is marked above with where its figure came from; only a VERIFIED fee was checked by MKW Advisors against the authority's published fee. If the authority charges a different amount, the actual fee is charged at cost.",
+    "Services not listed, attestations abroad, translations, courier and bank charges are excluded unless listed.",
+    "Statutory outcomes (approvals, visas, bank accounts) are decided by the authority or bank, not by us; we manage the process.",
+  );
+  para("HOW TO ACCEPT", `The account owner accepts online; the offer stays valid until ${String(o.valid_on)}.`);
+  out.push(`${company.legalName}${company.trn ? ` | TRN ${company.trn}` : ""}`, company.address.replace(/\s+/g, " ").slice(0, 78), "Tasees is a service of MKW Advisors.");
   return { pdf: textPdf(out, `Tasees offer ${ref}`), fileName: `tasees-offer-${ref}.pdf` };
 }
 

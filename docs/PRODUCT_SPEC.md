@@ -66,6 +66,7 @@ Fourteen modules and 80 features: 30 are built, 4 are partly built, 40 I can bui
 | Full catalogue | Extend from 20 codes to the 83 services in the Service Catalogue tab | Build next |
 | Government fee table | Fee per code, emirate and free zone, each with its source link and last-verified date; stale after 90 days | Build next |
 | Verified fee data | A qualified person confirms each government fee before it quotes real clients | Needs you |
+| Fee provenance on offers | Each offer line keeps its fee's basis, record, source, verifier and dates; the proposal, the PDF, the acceptance record and MKW's review show one disclosure: VERIFIED, PARTNER-STATED, UNCERTAIN, STALE or LEGACY (D100) | Built (E18) |
 | Rules admin | Founder edits rates, floors and fees with an effective date; every change audited, old offers keep old rules | Build next |
 
 ### M2 Lead capture and intake

@@ -1,0 +1,33 @@
+apps/api vitest on PostgreSQL 16 (TEST_DATABASE_URL set), c695e53, 2026-11-04
+ Test Files  39 passed (39)
+      Tests  391 passed (391)
+   Duration  48.83s (transform 2.73s, setup 0ms, import 14.49s, tests 127.55s, environment 3ms)
+
+Verbose rerun on PostgreSQL 16 of the new file and the concurrency tests:
+ ✓ test/fee-provenance.test.ts > government fee provenance: the defects (E18) > a fee quoted as the partner stated it keeps that disclosure after MKW verifies a fee record for it 109ms
+ ✓ test/fee-provenance.test.ts > government fee provenance: the defects (E18) > a fee quoted from an unverified record keeps its estimate disclosure after the record is verified 60ms
+ ✓ test/fee-provenance.test.ts > government fee provenance: the defects (E18) > the downloadable offer says what the online proposal says about each government fee 57ms
+ ✓ test/fee-provenance.test.ts > government fee provenance: the defects (E18) > an ops price on a line whose government fee needs a decision does not clear that decision 42ms
+ ✓ test/concurrency.test.ts > at the same moment > two acceptances of one offer make one engagement 43ms
+ ✓ test/concurrency.test.ts > at the same moment > two tiers of one request accepted at once: one engagement, the other refused, no deadlock 385ms
+ ✓ test/concurrency.test.ts > at the same moment > the deposit recorded twice at once is paid once: one invoice, one allocation run 27ms
+ ✓ test/concurrency.test.ts > at the same moment > two answers to one allocation accept it once and create its steps once 45ms
+ ✓ test/concurrency.test.ts > at the same moment > two QA decisions on one step: one passes, the other is refused 45ms
+ ✓ test/concurrency.test.ts > at the same moment > two releases of one payout release it once 18ms
+ ✓ test/concurrency.test.ts > at the same moment > two payout runs at once: one run, every payout in it once 19ms
+ ✓ test/concurrency.test.ts > at the same moment > two deposits paid at once never give a partner more work than its capacity 85ms
+ ✓ test/fee-provenance.test.ts > government fee provenance: twelve scenarios end to end (E18) > 1. a partner-stated fee with no MKW record: PARTNER-STATED, recorded as such, and published under the existing rule (no acknowledgement) 46ms
+ ✓ test/fee-provenance.test.ts > government fee provenance: twelve scenarios end to end (E18) > 2. a current verified fee: VERIFIED with the date, the record's own amount, no review 53ms
+ ✓ test/fee-provenance.test.ts > government fee provenance: twelve scenarios end to end (E18) > 3. an unverified fee: UNCERTAIN, refused without an acknowledgement, and the acknowledgement is recorded once with who and when 55ms
+ ✓ test/fee-provenance.test.ts > government fee provenance: twelve scenarios end to end (E18) > 4. a stale verified fee: STALE with the date it was last verified, and it needs an acknowledgement 54ms
+ ✓ test/fee-provenance.test.ts > government fee provenance: twelve scenarios end to end (E18) > 5 and 8. a record created after publication changes neither the online proposal nor the PDF, byte for byte 55ms
+ ✓ test/fee-provenance.test.ts > government fee provenance: twelve scenarios end to end (E18) > 6. a record retired and replaced by a different verified amount after publication leaves the quotation as it was 71ms
+ ✓ test/concurrency.test.ts > at the same moment > two allocation runs on one engagement offer each line once 56ms
+ ✓ test/concurrency.test.ts > at the same moment > a deposit on one engagement and a reallocation on another, at once, never deadlock 587ms
+ ✓ test/fee-provenance.test.ts > government fee provenance: twelve scenarios end to end (E18) > 7. an offer accepted before the fee table changes: the acceptance records the disclosures the client accepted, and they still match 92ms
+ ✓ test/fee-provenance.test.ts > government fee provenance: twelve scenarios end to end (E18) > 9. an offer priced before E18 has no recorded basis: LEGACY everywhere, never verified, and no evidence can be added to it later 65ms
+ ✓ test/fee-provenance.test.ts > government fee provenance: twelve scenarios end to end (E18) > 10. no one reads more than their role allows: the client gets the label and sentence only, partners nothing 94ms
+ ✓ test/fee-provenance.test.ts > government fee provenance: twelve scenarios end to end (E18) > 11. two publications at the same moment: one wins, the fee acknowledgement and the audit event are written once 82ms
+ ✓ test/fee-provenance.test.ts > government fee provenance: twelve scenarios end to end (E18) > 12. the money reconciles and the audit chain records each fee's evidence and holds 105ms
+ ✓ test/concurrency.test.ts > at the same moment > the same idempotency key twice at once creates one request 12ms
+      Tests  26 passed (26)

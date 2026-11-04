@@ -187,6 +187,11 @@ describe("government fee provenance: twelve scenarios end to end (E18)", () => {
       expect(words(after.pdf)).toContain(d.text.slice(0, 50));
     }
     expect(after.pdf).not.toMatch(/as published on the offer date/);
+    // Every line fits the page (longer ones used to run off its edge) and the dates carry the year.
+    const pdfLines = [...after.pdf.matchAll(/^\((.*)\) Tj T\*$/gm)].map((m) => words(m[1]!));
+    expect(pdfLines.length).toBeGreaterThan(20);
+    expect(pdfLines.filter((l) => l.length > 79)).toEqual([]);
+    expect(pdfLines).toContainEqual(expect.stringMatching(/^Date: \d{4}-\d{2}-\d{2} {4}Valid until: \d{4}-\d{2}-\d{2}$/));
     await retireAll();
   });
 

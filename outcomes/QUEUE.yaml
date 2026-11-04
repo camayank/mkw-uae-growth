@@ -238,12 +238,19 @@ outcomes:
     # Released by the owner on 3 Nov 2026 ("start E16"), with "Approve pdfkit" and "Assessment report only".
   - id: E17
     title: Sign-in lockout (a wrong code is counted and committed; simultaneous guesses cannot pass five; one answer)
-    status: verified-pending-merge
+    status: merged  # camayank/mkw-uae-growth#38, 4 Nov 2026
     contract: outcomes/E17-sign-in-lockout.md
     depends_on: []
     needs_from_owner: []
     # Released by the owner on 3 Nov 2026: the transformation mandate's Phase 1.1, "Begin with the OTP security
     # defect and write a failing reproduction test".
+  - id: E18
+    title: Trusted quotation and fee provenance (each offer line keeps its government fee's evidence; one disclosure everywhere)
+    status: verified-pending-merge
+    contract: outcomes/E18-quote-provenance.md
+    depends_on: [E17]
+    needs_from_owner: [whether a partner-stated fee needs an acknowledgement before publication (D100, gap 135)]
+    # Released by the owner on 4 Nov 2026: "Execute E18: trusted quotation and fee provenance".
 
 # Roadmap from docs/VISION.md (18 Oct 2026). Order of work: O11, O12, O13 before the pilot; then O7 (launch gate);
 # then O14, O15, O16. Renumbered on 18 Oct 2026 when the owner released O10 as Real data and staging.

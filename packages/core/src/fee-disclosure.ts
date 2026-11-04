@@ -50,7 +50,7 @@ export function feeBasis(record: FeeRecord | undefined): FeeBasis {
 /**
  * Whether the basis needs a person's acknowledgement before the offer reaches the client. UNCERTAIN and STALE do, as
  * before E18 (`withFeeCheck`). A partner-stated fee does not: that is the existing rule, kept until the owner decides
- * otherwise (D101 recommends requiring it).
+ * otherwise (D100 recommends requiring it).
  */
 export function feeNeedsReview(basis: FeeBasis): boolean {
   return basis === "uncertain" || basis === "stale";

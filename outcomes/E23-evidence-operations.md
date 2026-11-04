@@ -1,6 +1,6 @@
 # E23 Evidence operations: conflicts flagged to the verifier, versions compared, stale facts on the queue
 
-Status: in progress (branch `outcome/E23-evidence-operations`, from `main` at 7f97829 with E22 merged; released by the
+Status: verified-pending-merge (branch `outcome/E23-evidence-operations`, from `main` at 7f97829 with E22 merged; released by the
 owner on 4 Nov 2026: "start E23". The transformation mandate's P0-02, item 2.2, as `docs/transformation/ROADMAP.md`
 orders it.)
 
@@ -50,8 +50,38 @@ orders it.)
 
 ## Acceptance evidence
 
-To be listed in `docs/evidence/E23/`: before-fix run, PGlite and PostgreSQL 16 suites, typecheck, smoke, screenshots
-of a conflict in the history panel and on the queue, at desktop and phone width.
+`docs/evidence/E23/`:
+
+- **`before-fix.txt`.** A probe on `main` at 7f97829: an UNCERTAIN intermediary figure with older evidence replaced
+  the verified official figure in the engine and the cache; nothing said so; nothing reached the queue. The new suite
+  cannot load on `main`.
+- **`tests-pglite.txt`.** Core 159 passed (19 files). API 443 passed, 7 skipped (45 files).
+- **`tests-postgres16.txt`.** API 450 passed (45 files), on PostgreSQL 16.15.
+- **`typecheck.txt`.** Clean.
+- **`smoke-log.txt`.** 337 checks and 60 axe scans passed on a fresh demo.
+- **`screens/e23-history-conflict-*.png`, `e23-queue-conflict-*.png`, `e23-history-decided-desktop.png` and
+  `conflict-screens.json`.** A local demo with a verified cost for IFZA and then an UNCERTAIN intermediary figure: the
+  history panel shows the conflict with the previous value, the reason and the founder's buttons; the queue shows the
+  item with the decision as its action; after "Keep the current figure" the history shows the decision and the queue
+  is empty. At 1280 and 390 px, each axe-clean with no horizontal overflow and no page errors.
+
+The new and changed tests:
+- `evidence-ops.test.ts` (9): the classification's cases and the version diff (core); a weaker contradicting figure
+  recorded as a conflict that changes nothing, flagged on the queue with the decision as its action, shown in the
+  history and the comparison; the founder's decision, once, audited, `keep` and `accept`; a change that supersedes and
+  closes an open conflict; the importer's dry run and apply; a stale engine fact as a queue item that a new fact
+  clears;
+- `public-selector.test.ts`: its "new fact lapses the approval" fixture is now a superseding fact (a correction from the
+  same source, today); a weaker figure is a conflict and lapses nothing, by design.
+
+## Business invariants touched
+
+- **Rule 5 (uncertain is a state).** Strengthened: an UNCERTAIN or weaker figure can no longer replace a verified one
+  on its own, anywhere, until a person decides.
+- **Rule 6 (no unattended side effects).** The jobs do nothing new; conflicts and stale facts are queue items for a
+  person.
+- **Rule 8 (audit).** New events: `catalogue.conflict_reviewed`; `catalogue.fact_recorded` carries the change and
+  what it supersedes.
 
 ## Dependencies
 

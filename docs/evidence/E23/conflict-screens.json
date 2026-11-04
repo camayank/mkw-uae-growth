@@ -1,0 +1,36 @@
+{
+ "errors": [],
+ "verified": {
+  "id": 1,
+  "change": {
+   "kind": "first",
+   "reason": "the first fact recorded for this field",
+   "supersedes": null
+  }
+ },
+ "conflict": {
+  "id": 2,
+  "change": {
+   "kind": "conflict",
+   "reason": "a UNCERTAIN intermediary source contradicts the current verified figure",
+   "supersedes": 1
+  }
+ },
+ "queue": [
+  [
+   "Evidence conflict to resolve",
+   "IFZA, cost: a UNCERTAIN intermediary source contradicts the current verified figure. The current figure stays until the founder accepts the new one or keeps the current."
+  ]
+ ],
+ "e23-history-conflict-desktop: overflow": false,
+ "e23-history-conflict-desktop: axe": [],
+ "e23-queue-conflict-desktop: overflow": false,
+ "e23-queue-conflict-desktop: axe": [],
+ "e23-history-conflict-phone: overflow": false,
+ "e23-history-conflict-phone: axe": [],
+ "e23-queue-conflict-phone: overflow": false,
+ "e23-queue-conflict-phone: axe": [],
+ "e23-history-decided-desktop: overflow": false,
+ "e23-history-decided-desktop: axe": [],
+ "after": 0
+}

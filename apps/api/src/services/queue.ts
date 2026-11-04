@@ -164,7 +164,7 @@ select 'fact_conflict', f.id::text, f.id::text, null, null, 'Evidence conflict: 
   from catalogue_facts f
  where f.change_kind = 'conflict' and not exists (select 1 from catalogue_fact_reviews r where r.fact_id = f.id)
    and not exists (select 1 from catalogue_facts n where n.subject_kind = f.subject_kind and n.subject = f.subject and n.field = f.field and n.id > f.id
-                   and (n.change_kind <> 'conflict' or exists (select 1 from catalogue_fact_reviews r2 where r2.fact_id = n.id and r2.decision = 'accept')))
+                   and (n.change_kind = 'change' or exists (select 1 from catalogue_fact_reviews r2 where r2.fact_id = n.id and r2.decision = 'accept')))
 union all
 select 'licence_expiring', o.id::text, pd.id::text, null, o.id::text, 'Trade licence expires ' || pd.expires_on::text || ' (' || o.name || ')',
        greatest(pd.verified_at, (pd.expires_on - ${LICENCE_WARNING_DAYS})::timestamp at time zone 'Asia/Dubai'),
@@ -284,7 +284,8 @@ const review = (id: string): QueueAction[] => [
   { label: "Check is wrong", method: "POST", path: `/api/ops/drafts/${id}/review`, body: { decision: "discard" }, prompt: "What is wrong with the check? (optional)" },
 ];
 
-function actionsFor(r: Row): QueueAction[] {
+function actionsFor(r: Row, role: string): QueueAction[] {
+  if (r.kind === "fact_conflict" && role !== "founder") return []; // only the founder decides evidence
   const id = r.subject_id;
   switch (r.kind) {
     case "offer_ready":
@@ -451,7 +452,7 @@ export async function opsQueue(tx: Queryable, viewer: Pick<SessionUser, "role"> 
   return ranked.map((t) => {
     const r = t.row;
     // Only ops and the founder act from the queue; finance reads it and opens items.
-    const actions = ["ops", "founder"].includes(viewer?.role ?? "") ? actionsFor(r) : [];
+    const actions = ["ops", "founder"].includes(viewer?.role ?? "") ? actionsFor(r, viewer?.role ?? "") : [];
     return {
       id: `${r.kind}:${r.subject_id}`,
       kind: r.kind,

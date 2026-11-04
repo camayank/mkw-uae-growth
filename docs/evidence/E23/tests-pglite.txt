@@ -7,13 +7,13 @@ packages/core test$ vitest run
 packages/core test:  RUN  v4.1.12 /home/user/mkw-uae-growth/packages/core
 packages/core test:  Test Files  19 passed (19)
 packages/core test:       Tests  159 passed (159)
-packages/core test:    Start at  20:07:40
-packages/core test:    Duration  3.01s (transform 872ms, setup 0ms, import 1.67s, tests 5.38s, environment 1ms)
+packages/core test:    Start at  20:24:22
+packages/core test:    Duration  3.12s (transform 985ms, setup 0ms, import 1.76s, tests 5.58s, environment 1ms)
 packages/core test: Done
 apps/api test$ vitest run
 apps/api test:  RUN  v4.1.12 /home/user/mkw-uae-growth/apps/api
-apps/api test:  Test Files  45 passed (45)
-apps/api test:       Tests  443 passed | 7 skipped (450)
-apps/api test:    Start at  20:07:43
-apps/api test:    Duration  77.98s (transform 3.06s, setup 0ms, import 19.47s, tests 207.38s, environment 3ms)
+apps/api test:  Test Files  46 passed (46)
+apps/api test:       Tests  447 passed | 7 skipped (454)
+apps/api test:    Start at  20:24:25
+apps/api test:    Duration  77.69s (transform 3.32s, setup 0ms, import 19.50s, tests 207.03s, environment 3ms)
 apps/api test: Done

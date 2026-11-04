@@ -54,6 +54,7 @@ export async function verifyRule(tx: Queryable, actor: SessionUser, key: string,
     subjectKind: "rule",
     subject: key,
     field: "rule",
+    decided: true,
     value: { statement, confidence: input.confidence, version: num(before.version) + 1 },
     sourceUrl,
     evidenceDate: today,
@@ -95,7 +96,7 @@ export async function verifyZone(
   const today = await catalogueToday(tx);
   if (input.active === true && before.status === "historical") throw badRequest("A historical place is not offered: change its status on the Coverage page first");
   // E7B: the source kind travels with the facts this writes; appendFact refuses a verified intermediary figure.
-  const common = { subjectKind: "place" as const, subject: name, sourceUrl, evidenceDate: today, confidence: input.confidence, verifiedBy: input.verifiedBy ?? null, nextVerification: input.nextVerification ?? null, sourceKind: input.sourceKind ?? "official" };
+  const common = { decided: true, subjectKind: "place" as const, subject: name, sourceUrl, evidenceDate: today, confidence: input.confidence, verifiedBy: input.verifiedBy ?? null, nextVerification: input.nextVerification ?? null, sourceKind: input.sourceKind ?? "official" };
   // A place added without figures (Umm Al Quwain, Fujairah) holds placeholders, not data. Each figure counts only
   // once it is given here or recorded as a fact; a placeholder is never verified, and the place is not offered until
   // its cost, visas and timeline are all on record.

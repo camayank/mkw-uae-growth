@@ -56,6 +56,8 @@ export interface FactInput {
   verifiedBy?: string | null;
   nextVerification?: string | null;
   note?: string;
+  /** E23: recorded by the founder's own verification of the place or rule, so a would-be conflict is a change. */
+  decided?: boolean;
   /** E7B: when the figure takes effect, the exact reference in the source, and whether the source is official. */
   effectiveDate?: string | null;
   reference?: string;
@@ -322,7 +324,12 @@ export async function appendFact(tx: Queryable, actor: SessionUser | null, input
   }
 
   // E23: what this fact is against the current one. A conflict is recorded but changes nothing until the verifier decides.
-  const { current, change } = await classifyIncoming(tx, { ...input, sourceUrl, sourceKind, nextVerification: next }, today);
+  const classified = await classifyIncoming(tx, { ...input, sourceUrl, sourceKind, nextVerification: next }, today);
+  const current = classified.current;
+  const change: FactChange =
+    classified.change.kind === "conflict" && input.decided
+      ? { kind: "change", reason: `${classified.change.reason}; recorded by the founder's own verification as the figure in force` }
+      : classified.change;
   const r = (
     await tx.query<{ id: number }>(
       `insert into catalogue_facts (subject_kind, subject, field, value, source_url, evidence_date, confidence, verified_by, next_verification, note, recorded_by, effective_date, reference, source_kind, supersedes_id, change_kind, change_reason)
@@ -409,6 +416,8 @@ export async function reviewFactConflict(tx: Queryable, actor: SessionUser, fact
   if (!f) throw notFound("No such fact");
   if (f.change_kind !== "conflict") throw conflict("This fact is not a conflict: nothing to decide");
   if ((await tx.query("select 1 from catalogue_fact_reviews where fact_id = $1", [factId])).rows.length) throw conflict("This conflict has already been decided");
+  const before = await currentFact(tx, f.subject_kind as SubjectKind, f.subject, f.field);
+  if (decision === "accept" && before && num(before.id) > num(f.id)) throw conflict("The field has been recorded again since this figure: it cannot become current. Keep it, or record a new fact.");
   await tx.query("insert into catalogue_fact_reviews (fact_id, decision, note, reviewed_by) values ($1, $2, $3, $4)", [factId, decision, note.trim(), actor.id]);
   if (decision === "accept") {
     const now = await currentFact(tx, f.subject_kind as SubjectKind, f.subject, f.field);
@@ -650,7 +659,7 @@ export async function coverageReport(tx: Queryable, approvals: CoverageApproval[
     `select count(*)::int as n from catalogue_facts f where f.change_kind = 'conflict'
        and not exists (select 1 from catalogue_fact_reviews r where r.fact_id = f.id)
        and not exists (select 1 from catalogue_facts n where n.subject_kind = f.subject_kind and n.subject = f.subject and n.field = f.field and n.id > f.id
-                       and (n.change_kind <> 'conflict' or exists (select 1 from catalogue_fact_reviews r2 where r2.fact_id = n.id and r2.decision = 'accept')))`,
+                       and (n.change_kind = 'change' or exists (select 1 from catalogue_fact_reviews r2 where r2.fact_id = n.id and r2.decision = 'accept')))`,
   )).rows[0]!.n);
   return { ...matrix, conflicts: { open: openConflicts } };
 }

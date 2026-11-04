@@ -1,7 +1,7 @@
 import { AUTHORITY_FIELDS, FIELD_LABEL, PLACE_FIELDS, normaliseName, parseFactValue, type Confidence, type SubjectKind } from "@tasees/core";
 import type { SessionUser } from "../lib/context.ts";
 import type { Queryable } from "../lib/db.ts";
-import { appendFact, loadPlaces, placeByName } from "../services/catalogue.ts";
+import { appendFact, classifyIncoming, loadPlaces, placeByName } from "../services/catalogue.ts";
 import { excelDate } from "./xlsx.ts";
 import { newReport, readTable, sameValue, type Report, type ReportRow } from "./common.ts";
 
@@ -121,25 +121,28 @@ export async function importCatalogueFacts(tx: Queryable, grid: string[][], sour
       continue;
     }
     const reference = cell(cells, C.reference);
-    const latest = (
-      await tx.query<{ value: unknown; source_url: string; evidence_date: string; confidence: string; verified_by: string | null; next_verification: string | null }>(
+    // Identical to the current fact (E23's rule), or to the latest row whatever it is: nothing to record.
+    const { current } = await classifyIncoming(tx, { subjectKind: kind, subject, field, value: parsed.value, confidence, evidenceDate, sourceUrl, sourceKind: sourceKindRaw, nextVerification: next });
+    const newest = (
+      await tx.query<{ value: unknown; source_url: string; evidence_date: string; confidence: string; verified_by: string | null; next_verification: string | null; effective_date: string | null; reference: string; source_kind: string }>(
         `select value, source_url, evidence_date::text as evidence_date, confidence, verified_by, next_verification::text as next_verification, effective_date::text as effective_date, reference, source_kind
          from catalogue_facts where subject_kind = $1 and subject = $2 and field = $3 order by id desc limit 1`,
         [kind, subject, field],
       )
     ).rows[0];
-    if (
-      latest &&
-      sameValue(latest.value, parsed.value) &&
-      latest.source_url === sourceUrl &&
-      latest.evidence_date === evidenceDate &&
-      latest.confidence === confidence &&
-      (latest.verified_by ?? null) === verifiedBy &&
-      (!next || latest.next_verification === next) &&
-      ((latest as any).effective_date ?? null) === effectiveDate &&
-      ((latest as any).reference ?? "") === reference &&
-      ((latest as any).source_kind ?? "official") === sourceKindRaw
-    ) {
+    const latest = current ? { ...current, effective_date: current.effective_date ?? null, reference: current.reference ?? "", source_kind: current.source_kind ?? "official" } : null;
+    const identical = (f: typeof newest | null | undefined) =>
+      !!f &&
+      sameValue(f.value, parsed.value) &&
+      f.source_url === sourceUrl &&
+      f.evidence_date === evidenceDate &&
+      f.confidence === confidence &&
+      (f.verified_by ?? null) === verifiedBy &&
+      (!next || f.next_verification === next) &&
+      (f.effective_date ?? null) === effectiveDate &&
+      (f.reference ?? "") === reference &&
+      (f.source_kind ?? "official") === sourceKindRaw;
+    if (identical(latest as typeof newest) || identical(newest)) {
       row.action = "unchanged";
       continue;
     }

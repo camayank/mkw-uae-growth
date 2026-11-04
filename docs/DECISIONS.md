@@ -1443,19 +1443,25 @@ released by the owner: "start E22". The mandate's P0-01, item 1.3; gap 45; rules
 queue.** (E23, 4 Nov 2026, released by the owner: "start E23". The mandate's P0-02, item 2.2.)
 - **Classification** (`classifyFactChange`, core): a new fact against the current one for its field is `first`, `same`,
   `change` or `conflict`, with the reason in words. A differing value is a conflict when it is weaker than the current
-  figure deserves today, older than the current evidence, or of the same date from another source; otherwise it is a
-  change. Every fact stores what it was and what it superseded (migration 030). Facts from before E23 are backfilled
-  by order, none as a conflict.
+  figure deserves today, older than the current evidence, or of the same date and strength from another source;
+  otherwise it is a change. A weaker source that agrees is a conflict too: it would replace the figure's confidence, not the figure
+  (independent review). Every fact stores what it was and what it superseded (migration 030). Facts from before E23
+  are backfilled by order (first, same, change), none as a conflict; the backfill lifts the table's append-only guard
+  for itself, as only the migrating owner can.
 - **A conflict changes nothing until the verifier decides.** The engine's current fact per field is the newest that
   is not an unreviewed or kept conflict; the current-value cache is untouched by a conflict. The founder decides once
   (`catalogue_fact_reviews`, append-only): `accept` makes the new figure current, `keep` leaves the current one. A
-  later superseding fact closes an open conflict on its own. On `main` the newest fact always won: an UNCERTAIN
-  intermediary figure replaced a verified official one in the engine and on every screen, and nothing said so.
+  later fact that supersedes the figure (a change, or an accepted conflict) closes an open conflict on its own; a
+  repeat of the current value, such as a re-import of the master sheet, does not (independent review). Accepting a
+  conflict the field has moved past is refused: keep it, or record a new fact. The founder's own verification of a
+  place or rule (`PUT /api/admin/scoping/...`) is a decision, not a contradicting source: its facts are recorded as
+  changes that say so. On `main` the newest fact always won: an UNCERTAIN intermediary figure replaced a verified
+  official one in the engine and on every screen, and nothing said so.
 - **Version comparison** (`GET /api/admin/jurisdictions/compare`; `diffVersions`, core): every version of a field,
   oldest first, each against the fact it superseded (not a conflict recorded in between), with the difference for
   amounts and ranges, its change and reason, its review, and whether it is current. The history panel shows the
   change, the previous value and the founder's Accept / Keep buttons on an open conflict.
-- **Queue items.** `fact_conflict`: one per open conflict, the decision as its action, founder only. `evidence_stale`:
+- **Queue items.** `fact_conflict`: one per open conflict, the decision as its action, shown to the founder only. `evidence_stale`:
   one per active place with a recorded engine fact past its re-verification date, naming the fields and the oldest
   due date; a new fact clears it. Both link to the Scoping page. The coverage report counts open conflicts; the
   importer reports each conflict it would record, in its dry run too.

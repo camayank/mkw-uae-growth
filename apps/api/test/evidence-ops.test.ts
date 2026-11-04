@@ -60,7 +60,7 @@ describe("conflicts, versions and stale facts (E23)", () => {
     const p = (await env.call("ops", "GET", "/api/admin/jurisdictions")).body.places.find((p: any) => p.name === PLACE);
     return { ...p, evidence: Object.fromEntries((p.evidence as any[]).map((e) => [e.field, e])) };
   };
-  const queue = async (kind: string) => ((await env.call("ops", "GET", "/api/ops/queue")).body.items as any[]).filter((i) => i.kind === kind);
+  const queue = async (kind: string) => ((await env.call("founder", "GET", "/api/ops/queue")).body.items as any[]).filter((i) => i.kind === kind);
   beforeAll(async () => {
     env = await makeEnv();
   });
@@ -96,6 +96,23 @@ describe("conflicts, versions and stale facts (E23)", () => {
     expect(compare.versions[1]!).toMatchObject({ previous: { minFils: 1_000_000, maxFils: 1_500_000 }, delta: { minFils: -200_000, maxFils: -300_000 } });
   });
 
+  it("a weaker source that agrees cannot replace the figure either: it would replace the confidence (review)", async () => {
+    const agreeing = await fact({ valueText: "10000-15000", confidence: "UNCERTAIN", sourceKind: "intermediary", sourceUrl: "https://agent.example/ifza-2", evidenceDate: day(env.clock.now, -5) });
+    expect(agreeing.body.change).toMatchObject({ kind: "conflict" });
+    expect(agreeing.body.change.reason).toMatch(/agrees with the current verified figure but cannot replace it/);
+    expect((await place()).evidence.cost).toMatchObject({ confidence: "verified", sourceKind: "official" });
+    expect(await queue("fact_conflict")).toHaveLength(2);
+    await env.call("founder", "POST", `/api/admin/jurisdictions/facts/${agreeing.body.id}/review`, { decision: "keep", note: "Agrees, but an agent's page is not the authority's schedule." });
+    expect(await queue("fact_conflict")).toHaveLength(1);
+  });
+
+  it("ops see the conflict but not the founder's buttons (review)", async () => {
+    const items = ((await env.call("ops", "GET", "/api/ops/queue")).body.items as any[]).filter((i) => i.kind === "fact_conflict");
+    expect(items).toHaveLength(1);
+    expect(items[0].actions).toEqual([]);
+    expect((await queue("fact_conflict"))[0].actions).toHaveLength(2); // the founder
+  });
+
   it("only the founder decides; keeping the current figure closes the conflict; the decision is recorded once and audited", async () => {
     const id = (await queue("fact_conflict"))[0].subjectId;
     expect((await env.call("ops", "POST", `/api/admin/jurisdictions/facts/${id}/review`, { decision: "keep", note: "An agent's page; the authority's own fee schedule stands." })).status).toBe(403);
@@ -104,7 +121,7 @@ describe("conflicts, versions and stale facts (E23)", () => {
     expect((await place()).evidence.cost.confidence).toBe("verified");
     expect((await env.call("founder", "POST", `/api/admin/jurisdictions/facts/${id}/review`, { decision: "accept", note: "changed my mind" })).status).toBe(409);
     await expect(asPlatform(env.db, null, (tx) => tx.query("update catalogue_fact_reviews set decision = 'accept'"))).rejects.toThrow(/append-only|permission denied/);
-    const ev = (await asPlatform(env.db, null, (tx) => tx.query<any>("select data from audit_events where action = 'catalogue.conflict_reviewed'"))).rows;
+    const ev = (await asPlatform(env.db, null, (tx) => tx.query<any>("select data from audit_events where action = 'catalogue.conflict_reviewed' and (data->>'factId')::int = $1", [Number(id)]))).rows;
     expect(ev).toHaveLength(1);
     expect(ev[0].data).toMatchObject({ factId: Number(id), decision: "keep" });
     const row = (await env.call("ops", "GET", `/api/admin/jurisdictions/history?kind=place&subject=${PLACE}`)).body.find((h: any) => h.id === Number(id));
@@ -156,9 +173,37 @@ describe("conflicts, versions and stale facts (E23)", () => {
     const applied = await asPlatform(env.db, founder, (tx) => importCatalogueFacts(tx, grid, "apply.csv", founder));
     expect(applied.rows[0]!.reason).toMatch(/CONFLICT/);
     expect(await queue("fact_conflict")).toHaveLength(1);
+    // Re-importing the master sheet's unchanged row records nothing and decides nothing (review): the conflict stays open.
+    const cur = (await env.call("ops", "GET", `/api/admin/jurisdictions/compare?kind=place&subject=${PLACE}&field=cost`)).body.versions.find((v: any) => v.current);
+    const master = [grid[0]!, ["place", PLACE, "cost", "9600-14000", cur.sourceUrl, cur.evidenceDate, "verified", "official"]];
+    const again = await asPlatform(env.db, founder, (tx) => importCatalogueFacts(tx, [[...master[0]!, "Verified by"], [...master[1]!, "B. Checker"]], "again.csv", founder));
+    expect(again.rows[0]!.action).toBe("unchanged");
+    expect(await queue("fact_conflict")).toHaveLength(1);
+    // Re-importing the agent's row again is unchanged too: no second conflict.
+    const twice = await asPlatform(env.db, founder, (tx) => importCatalogueFacts(tx, grid, "twice.csv", founder));
+    expect(twice.rows[0]!.action).toBe("unchanged");
+    expect(await queue("fact_conflict")).toHaveLength(1);
+  });
+
+  it("the founder's own verification of a place is a decision, not a contradicting source (review)", async () => {
+    // Weaker figures given by the founder on the place itself take effect, as before E23, and raise no conflict.
+    const open = await queue("fact_conflict"); // the importer's, still open
+    expect(open).toHaveLength(1);
+    const r = await env.call("founder", "PUT", `/api/admin/scoping/zones/${PLACE}`, { confidence: "UNCERTAIN", costMinAed: 9800, costMaxAed: 14000 });
+    expect(r.status).toBe(200);
+    expect(await queue("fact_conflict")).toEqual([]); // the founder's figure superseded the one the importer's row contradicted
+    expect(Number((await asPlatform(env.db, null, (tx) => tx.query<any>("select cost_min_fils from zones where name = $1", [PLACE]))).rows[0].cost_min_fils)).toBe(980_000);
+    const latest = (await env.call("ops", "GET", `/api/admin/jurisdictions/history?kind=place&subject=${PLACE}`)).body.find((h: any) => h.field === "cost");
+    expect(latest.change.kind).toBe("change");
+    expect(latest.change.reason).toMatch(/founder's own verification/);
+    // Accepting the importer's conflict now is refused: the field was recorded again since.
+    const refused = await env.call("founder", "POST", `/api/admin/jurisdictions/facts/${open[0].subjectId}/review`, { decision: "accept", note: "too late to accept" });
+    expect(refused.status).toBe(409);
+    expect((await env.call("founder", "POST", `/api/admin/jurisdictions/facts/${open[0].subjectId}/review`, { decision: "keep", note: "superseded by the founder's own figure" })).status).toBe(200);
   });
 
   it("a current engine fact past its re-verification date is a queue item for the place, and a new fact clears it", async () => {
+    expect((await fact({ valueText: "9900-14000", confidence: "verified", verifiedBy: "B. Checker", nextVerification: day(env.clock.now, 120) })).body.change.kind).toBe("change");
     expect(await queue("evidence_stale")).toEqual([]);
     const saved = env.clock.now;
     env.clock.now = new Date(saved.getTime() + 200 * 86_400_000); // past every re-verification date recorded above
@@ -168,9 +213,8 @@ describe("conflicts, versions and stale facts (E23)", () => {
       expect(mine).toMatchObject({ label: "Stale evidence to re-verify" });
       expect(mine.why).toMatch(/cost/);
       expect(mine.link).toMatch(/scoping/);
-      expect((await env.call("ops", "GET", "/api/admin/coverage")).body.conflicts.open).toBe(1);
+      expect((await env.call("ops", "GET", "/api/admin/coverage")).body.conflicts.open).toBe(0);
       // A fresh fact for the field clears it (the only engine field with a fact on this place).
-      await env.call("founder", "POST", `/api/admin/jurisdictions/facts/${(await queue("fact_conflict"))[0].subjectId}/review`, { decision: "keep", note: "not the authority's figure" });
       expect((await fact({ valueText: "9700-14000", confidence: "verified", verifiedBy: "B. Checker", nextVerification: day(env.clock.now, 120), evidenceDate: day(env.clock.now) })).status).toBe(200);
       expect((await queue("evidence_stale")).find((i: any) => i.ref === PLACE)).toBeUndefined();
     } finally {

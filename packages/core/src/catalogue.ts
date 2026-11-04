@@ -265,15 +265,19 @@ export function sameValue(a: unknown, b: unknown): boolean {
  */
 export function classifyFactChange(current: FactForChange | null, incoming: FactForChange, asOf: string): FactChange {
   if (!current) return { kind: "first", reason: "the first fact recorded for this field" };
-  if (sameValue(current.value, incoming.value)) return { kind: "same", reason: "the same value as the current fact" };
   const today = effectiveConfidence(current.confidence, current.nextVerification ?? null, asOf);
+  const agrees = sameValue(current.value, incoming.value);
+  // A weaker source never becomes current, even when it agrees: it would replace the figure's confidence (review of E23).
   if (RANK[incoming.confidence] < RANK[today.confidence]) {
-    return { kind: "conflict", reason: `a ${incoming.confidence} ${incoming.sourceKind === "intermediary" ? "intermediary " : ""}source contradicts the current ${today.confidence} figure${today.stale ? " (stale)" : ""}` };
+    const who = `a ${incoming.confidence} ${incoming.sourceKind === "intermediary" ? "intermediary " : ""}source`;
+    return { kind: "conflict", reason: agrees ? `${who} agrees with the current ${today.confidence} figure but cannot replace it` : `${who} contradicts the current ${today.confidence} figure${today.stale ? " (stale)" : ""}` };
   }
+  if (agrees) return { kind: "same", reason: "the same value as the current fact" };
   if (incoming.evidenceDate < current.evidenceDate) {
     return { kind: "conflict", reason: `older evidence (${incoming.evidenceDate}) contradicts the current figure (evidence ${current.evidenceDate})` };
   }
-  if (incoming.evidenceDate === current.evidenceDate && (incoming.sourceUrl ?? "") !== (current.sourceUrl ?? "")) {
+  // Two sources of equal strength and the same date disagree: a person decides. A stronger one of the same date supersedes.
+  if (incoming.evidenceDate === current.evidenceDate && RANK[incoming.confidence] === RANK[today.confidence] && (incoming.sourceUrl ?? "") !== (current.sourceUrl ?? "")) {
     return { kind: "conflict", reason: `two sources of the same date (${incoming.evidenceDate}) disagree` };
   }
   return { kind: "change", reason: `newer evidence (${incoming.evidenceDate}, ${incoming.confidence}) supersedes the figure of ${current.evidenceDate}` };

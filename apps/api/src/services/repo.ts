@@ -1,5 +1,9 @@
 import {
   DEFAULT_SETTINGS,
+  FEE_STALE_DAYS,
+  feeDisclosures,
+  type FeeBasis,
+  type FeeDisclosure,
   type CostQuote,
   type Deliverable,
   type MarginRule,
@@ -41,7 +45,8 @@ export async function loadRules(tx: Queryable, asOf: string = today()): Promise<
   return new Map(r.rows.map((m) => [m.category, { category: m.category, rateBp: num(m.rate_bp), floor: num(m.floor_fils) }]));
 }
 
-export const FEE_STALE_DAYS = 90;
+/** One staleness threshold for the fee table and the client's disclosure (E18). */
+export { FEE_STALE_DAYS };
 
 export interface FeeLookup {
   id: string;
@@ -52,6 +57,10 @@ export interface FeeLookup {
   scope: "free_zone" | "emirate";
   verifiedBy: string | null;
   verifiedAt: string | null;
+  /** E18: where the figure came from and the place it is for, snapshotted onto the offer line. */
+  sourceUrl: string | null;
+  emirate: string;
+  freeZone: string | null;
 }
 
 /**
@@ -61,7 +70,7 @@ export interface FeeLookup {
 export async function loadGovernmentFees(tx: Queryable, codes: string[], emirate: string, freeZone: string | null, asOf: string = today()): Promise<Map<string, FeeLookup>> {
   if (codes.length === 0) return new Map();
   const r = await tx.query<Record<string, unknown>>(
-    `select distinct on (code) id, code, fee_fils, confidence, free_zone, verified_by, verified_at::text as verified_at from government_fees
+    `select distinct on (code) id, code, fee_fils, confidence, emirate, free_zone, source_url, verified_by, verified_at::text as verified_at from government_fees
      where code = any($1) and lower(trim(emirate)) = lower(trim($2)) and (free_zone is null or lower(trim(free_zone)) = lower(trim($3)))
        and effective_from <= $4::date and retired_at is null
      order by code, (free_zone is not null) desc, effective_from desc, created_at desc, id`,
@@ -79,6 +88,9 @@ export async function loadGovernmentFees(tx: Queryable, codes: string[], emirate
       scope: row.free_zone ? "free_zone" : "emirate",
       verifiedBy: (row.verified_by as string | null) ?? null,
       verifiedAt,
+      sourceUrl: (row.source_url as string | null) ?? null,
+      emirate: String(row.emirate),
+      freeZone: (row.free_zone as string | null) ?? null,
     });
   }
   return out;
@@ -204,4 +216,18 @@ export function addDays(iso: string, days: number): string {
   const d = new Date(`${iso}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + days);
   return today(d);
+}
+
+/**
+ * E18: what the client is told about each government fee on an offer, from the line's own snapshot. The one source
+ * for the online proposal, the PDF, the acceptance record and MKW's offer review. Runs as the platform: the evidence
+ * columns are not granted to clients, and only the label and the client sentence leave here.
+ */
+export async function loadFeeDisclosures(tx: Queryable, offerId: string): Promise<FeeDisclosure[]> {
+  const r = await tx.query<{ code: string; gov_unit_fils: number; gov_fee_basis: FeeBasis | null; verified_at: string | null; quoted_on: string | null }>(
+    `select l.code, l.gov_unit_fils, l.gov_fee_basis, l.gov_fee_verified_at::text as verified_at, l.gov_fee_quoted_on::text as quoted_on
+     from offer_lines l join deliverables d on d.code = l.code where l.offer_id = $1 order by d.category, l.code`,
+    [offerId],
+  );
+  return feeDisclosures(r.rows.map((l) => ({ code: l.code, govUnitFee: num(l.gov_unit_fils), basis: l.gov_fee_basis, verifiedAt: l.verified_at, quotedOn: l.quoted_on })));
 }

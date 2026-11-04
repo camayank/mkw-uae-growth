@@ -232,16 +232,32 @@ export async function renderOpsOffer(id) {
     <div class="kpi"><b>${f.linesNeedingReview ?? 0}</b><span>Lines needing a decision</span></div>
   </div>
   <div class="card flush">${table(
-    ["Service", "#Qty", "Partner", "#Partner cost", "#Cap", "#Client price", ...(seesMargin() ? ["#Margin"] : []), "Check", ...(canAct ? ["Set price, AED"] : [])],
+    ["Service", "#Qty", "Partner", "#Partner cost", "#Cap", "#Client price", ...(seesMargin() ? ["#Margin"] : []), "Government fee", "Check", ...(canAct ? ["Set price, AED"] : [])],
     f.lines.map(
       (l) => `<tr><td>${esc(l.name)}<br><span class="small muted">${esc(l.code)} · ${esc(l.model)}</span></td><td class="num">${l.qty}</td><td>${esc(l.partnerName ?? "–")}</td>
       <td class="num">${aed(l.partnerUnitCost)}</td><td class="num">${aed(l.capUnit)}</td><td class="num">${aed(l.clientUnitPrice)}</td>
-      ${seesMargin() ? `<td class="num">${aed(l.marginUnit)}</td>` : ""}<td>${badge(l.status)}${l.reason ? `<br><span class="small muted">${esc(l.reason)}</span>` : ""}</td>
+      ${seesMargin() ? `<td class="num">${aed(l.marginUnit)}</td>` : ""}<td data-gov-fee="${esc(l.code)}">${govFeeCell(l)}</td><td>${badge(l.status)}${l.reason ? `<br><span class="small muted">${esc(l.reason)}</span>` : ""}</td>
       ${canAct && ["draft", "ops_review"].includes(f.status) ? `<td><form class="row" data-form="override" data-id="${f.id}" data-code="${esc(l.code)}"><input name="aed" type="number" min="1" style="width:110px" /><button class="sm">Set</button></form></td>` : canAct ? "<td></td>" : ""}</tr>`,
     ),
   )}</div>
   <p class="small muted">Prices follow the margin rule: cost plus the category rate or floor, rounded up to AED 50 and capped at 1.25× the market mid. A line goes to review when the cap would push the margin below the floor. A price you set here is recorded in the audit trail.</p>
   ${canAct && ["draft", "ops_review"].includes(f.status) ? `<button class="primary" data-act="publish" data-id="${f.id}" data-review="${f.linesNeedingReview ?? 0}">${f.linesNeedingReview ? "Publish anyway (I have checked the flagged lines)" : "Publish to client"}</button>` : ""}`;
+}
+
+/** E18: a line's government fee as quoted, with the evidence it was quoted on and what the client is told. */
+function govFeeCell(l) {
+  const g = l.govFee ?? {};
+  const d = g.disclosure;
+  if (!d) return `<span class="small muted">${l.govUnitFee ? aed(l.govUnitFee) : "none"}</span>`;
+  const from =
+    g.basis === "partner_stated"
+      ? "the partner's stated figure; no MKW record"
+      : g.basis
+        ? `MKW record${g.verifiedBy ? `, verified by ${esc(g.verifiedBy)}${g.verifiedAt ? ` on ${esc(g.verifiedAt)}` : ""}` : ", not verified"}`
+        : "not recorded (priced before E18)";
+  const review = g.review === "required" ? `<br><b class="small">Needs your acknowledgement to publish</b>` : g.review === "acknowledged" ? `<br><span class="small muted">Acknowledged at publication</span>` : "";
+  const src = g.sourceUrl && /^https?:\/\//.test(g.sourceUrl) ? ` · <a class="small" href="${esc(g.sourceUrl)}" target="_blank" rel="noopener noreferrer">source</a>` : "";
+  return `${badge(d.confirmed ? "verified" : "UNCERTAIN", d.label)} <span class="num">${aed(l.govUnitFee)}</span><br><span class="small muted">From ${from}${g.quotedOn ? `, quoted ${esc(g.quotedOn)}` : ""}</span>${src}${review}`;
 }
 
 export async function renderPartners() {

@@ -16,7 +16,7 @@ import { col, textPdf } from "../lib/pdf.ts";
 import { attachPaymentLink, categoryOf, monthShares, notifyOrg, type Deps } from "./engagements.ts";
 import { loadCompany } from "./invoices.ts";
 import { loadCalendar } from "./calendar.ts";
-import { loadDeliverables, loadPartners, loadRateCards, dbToday, today } from "./repo.ts";
+import { loadDeliverables, loadFeeDisclosures, loadPartners, loadRateCards, dbToday, today } from "./repo.ts";
 
 /**
  * Delivery (O6): client document requests, delay watch and the service guarantee, ratings, manual
@@ -353,6 +353,8 @@ export async function offerDocument(tx: Queryable, actor: SessionUser, offerId: 
   if (actor.orgType === "client" && !["published", "accepted", "expired"].includes(String(o.status))) throw notFound("Offer not found");
   const lines = (await tx.query<Record<string, unknown>>("select l.code, d.name, d.category, l.qty, l.model, l.gov_unit_fils, l.client_unit_fils from offer_lines l join deliverables d on d.code = l.code where l.offer_id = $1 order by d.category, l.code", [offerId])).rows;
   const company = await loadCompany(tx);
+  // E18: each government fee says where it came from, in the same words as the online proposal (the line's evidence).
+  const disclosed = new Map((await loadFeeDisclosures(tx, offerId)).map((d) => [d.code, d]));
   const ref = String(o.id).slice(0, 8).toUpperCase();
   const money = (f: unknown) => formatAed(num(f));
   const out: string[] = [];
@@ -365,14 +367,32 @@ export async function offerDocument(tx: Queryable, actor: SessionUser, offerId: 
     maxDays = Math.max(maxDays, days);
     const price = num(l.qty) * num(l.client_unit_fils);
     out.push(col(`${String(l.name)} (${String(l.code)})`, `${String(l.qty).padStart(3)}   ${money(price)}`));
-    if (num(l.gov_unit_fils) > 0) out.push(col(`   Government fees at cost, no mark-up`, money(num(l.qty) * num(l.gov_unit_fils))));
+    const fee = disclosed.get(String(l.code));
+    if (num(l.gov_unit_fils) > 0) {
+      out.push(col(`   Government fees at cost, no mark-up (${fee?.label ?? "LEGACY"})`, money(num(l.qty) * num(l.gov_unit_fils))));
+      if (fee) out.push(...wrap(fee.text, 73).map((t) => `     ${t}`));
+    }
   }
   out.push("-".repeat(78));
   out.push(col("Professional fees", money(o.professional_fils)), col("MKW Advisors service fee", money(o.mkw_fees_fils)), col("VAT 5% on fees", money(o.vat_fils)), col("Government fees (at cost, no VAT)", money(o.government_fils)), col("TOTAL", money(o.client_total_fils)), "");
   out.push("HOW PAYMENT WORKS", `  Deposit on acceptance: 50% of fees plus all government fees. Balance when the work is complete.`, `  Card or bank transfer; a tax invoice is issued for every payment.`, "");
   out.push("TIMELINE", `  About ${maxDays} UAE working days from the deposit and your documents, per service; each step has a`, `  due date you can follow online. Government processing times are outside our control.`, "");
   out.push("WHAT IS INCLUDED", "  Scope management, pricing, a vetted delivery partner from the MKW Advisors Partner Network,", "  quality checks on every step, and our service guarantee: a step more than five working days", "  late earns you a credit of part of the fee.", "");
-  out.push("ASSUMPTIONS AND EXCLUSIONS", "  Government fees are as published on the offer date and are passed on at cost; changes by the", "  authority are charged at cost. Services not listed, attestations abroad, translations, courier", "  and bank charges are excluded unless listed. Statutory outcomes (approvals, visas, bank", "  accounts) are decided by the authority or bank, not by us; we manage the process.", "");
+  out.push("ASSUMPTIONS AND EXCLUSIONS", "  Government fees are passed on at cost. Each is marked above with where its figure came from;", "  only a VERIFIED fee was checked by MKW Advisors against the authority's published fee. If the", "  authority charges a different amount, the actual fee is charged at cost. Services not listed,", "  attestations abroad, translations, courier and bank charges are excluded unless listed. Statutory outcomes (approvals, visas, bank", "  accounts) are decided by the authority or bank, not by us; we manage the process.", "");
   out.push("HOW TO ACCEPT", `  The account owner accepts online; the offer stays valid until ${String(o.valid_to).slice(0, 10)}.`, "", `${company.legalName}${company.trn ? ` | TRN ${company.trn}` : ""}`, company.address.replace(/\s+/g, " ").slice(0, 78), "Tasees is a service of MKW Advisors.");
   return { pdf: textPdf(out, `Tasees offer ${ref}`), fileName: `tasees-offer-${ref}.pdf` };
+}
+
+/** Words wrapped to lines of at most `width` characters, for the fixed-width offer document. */
+function wrap(text: string, width: number): string[] {
+  const lines: string[] = [];
+  let cur = "";
+  for (const w of text.split(/\s+/).filter(Boolean)) {
+    if (cur && cur.length + 1 + w.length > width) {
+      lines.push(cur);
+      cur = w;
+    } else cur = cur ? `${cur} ${w}` : w;
+  }
+  if (cur) lines.push(cur);
+  return lines;
 }

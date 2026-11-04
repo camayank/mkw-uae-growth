@@ -1,5 +1,5 @@
 import { clientNextActions, clientTimeline, clientWhatsNext } from "./journey.ts";
-import { dbToday, loadDeliverables, loadGovernmentFees } from "./repo.ts";
+import { loadDeliverables, loadFeeDisclosures } from "./repo.ts";
 import { CLIENT_REVIEW_DAYS } from "./engagements.ts";
 import { opsQueue } from "./queue.ts";
 import { documentPlan, milestonesFor, paymentPlan, serialize, UAE_CALENDAR, type DocumentStatus, type Role, type WorkCalendar } from "@tasees/core";
@@ -89,18 +89,12 @@ export function clientOffer(db: Database, user: SessionUser, offerId: string) {
  */
 export function clientOfferProposal(db: Database, user: SessionUser, offer: { id: string; professional?: number; mkwFees?: number; vat?: number; government?: number; lines: Array<{ code: string; name: string; qty: number; govUnitFee?: number }> }) {
   return asPlatform(db, user, async (tx) => {
-    // Each government fee's standing comes from MKW's fee table for the request's place, today: never from a line's
-    // free-text reason (an ops price override rewrites that). No row means the partner's own figure.
-    const place = (await tx.query<{ emirate: string | null; free_zone: string | null }>("select r.answers->>'emirate' as emirate, r.answers->>'freeZone' as free_zone from offers f join requests r on r.id = f.request_id where f.id = $1", [offer.id])).rows[0];
-    const fees = await loadGovernmentFees(tx, offer.lines.map((l) => l.code), place?.emirate ?? "", place?.free_zone ?? null, await dbToday(tx));
+    // E18: each government fee's standing is what the offer line recorded when it was priced, never MKW's fee table as
+    // it stands today (a fee verified or added since would otherwise rewrite what the client was told).
+    const disclosures = await loadFeeDisclosures(tx, offer.id);
     const guaranteeBp = num((await tx.query<{ value: number }>("select value from settings where key = 'guarantee_bp'")).rows[0]?.value ?? 1000);
-    const feeNotes: Record<string, string> = {};
-    for (const l of offer.lines) {
-      if (!(l.govUnitFee ?? 0)) continue;
-      const f = fees.get(l.code);
-      if (!f) feeNotes[l.code] = "As quoted by the partner firm; you pay the authority's actual fee, at cost.";
-      else if (f.confidence === "UNCERTAIN" || f.stale) feeNotes[l.code] = "Estimate: MKW Advisors confirms this government fee with the authority before it is paid; you pay the actual fee, at cost.";
-    }
+    // `feeNotes` keeps its meaning for older pages: a sentence for every fee that is not verified.
+    const feeNotes: Record<string, string> = Object.fromEntries(disclosures.filter((d) => !d.confirmed).map((d) => [d.code, d.text]));
     const catalogue = await loadDeliverables(tx);
     const plan = offer.lines.map((l) => {
       const steps = milestonesFor(l.code, l.qty).map((m) => ({ name: m.name, afterWorkingDays: m.dueOffsetDays, isKey: m.isKey }));
@@ -124,6 +118,7 @@ export function clientOfferProposal(db: Database, user: SessionUser, offer: { id
       // Lines run side by side, so the longest one-off line is the estimate; recurring services are left out.
       estimateWorkingDays: Math.max(0, ...plan.filter((p) => !p.recurring).map((p) => p.workingDays)),
       feeNotes,
+      feeDisclosures: disclosures,
       depositFils: payment.clientOnAcceptance,
       balanceFils: payment.clientOnCompletion,
       // The guarantee rate is a promise made to the client, so it is stated here (D60).
@@ -323,6 +318,24 @@ export function opsOffer(db: Database, user: SessionUser, offerId: string) {
     const shaped = { ...camel(o), lines: lines.rows.map((l) => ({ ...camel(l), partnerId: l.partner_org_id })) };
     const out = serialize("offer", user.role, shaped, { lines: "offerLine" });
     (out.lines as Array<Record<string, unknown>>).forEach((l, i) => (l.partnerName = lines.rows[i]?.partner_name));
+    // E18: the government fee's evidence at quotation, for MKW staff, beside the disclosure the client reads.
+    const disclosed = new Map((await loadFeeDisclosures(tx, offerId)).map((d) => [d.code, d]));
+    (out.lines as Array<Record<string, unknown>>).forEach((l, i) => {
+      const r = lines.rows[i]!;
+      l.govFee = {
+        basis: r.gov_fee_basis ?? null,
+        disclosure: disclosed.get(String(r.code)) ?? null,
+        recordId: r.gov_fee_id ?? null,
+        emirate: r.gov_fee_emirate ?? null,
+        freeZone: r.gov_fee_free_zone ?? null,
+        sourceUrl: r.gov_fee_source_url ?? null,
+        verifiedBy: r.gov_fee_verified_by ?? null,
+        verifiedAt: r.gov_fee_verified_at ? String(r.gov_fee_verified_at instanceof Date ? r.gov_fee_verified_at.toISOString() : r.gov_fee_verified_at).slice(0, 10) : null,
+        quotedOn: r.gov_fee_quoted_on ? String(r.gov_fee_quoted_on instanceof Date ? r.gov_fee_quoted_on.toISOString() : r.gov_fee_quoted_on).slice(0, 10) : null,
+        review: r.gov_fee_review ?? null,
+        acknowledgedAt: r.gov_fee_ack_at ? new Date(r.gov_fee_ack_at as string).toISOString() : null,
+      };
+    });
     return out;
   });
 }

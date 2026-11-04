@@ -24,3 +24,4 @@ export * from "./report.ts";
 export * from "./quick.ts";
 export * from "./documents.ts";
 export * from "./report-ar.ts";
+export * from "./fee-disclosure.ts";

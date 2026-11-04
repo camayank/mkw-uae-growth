@@ -54,7 +54,7 @@ describe("the assessment report and the consultation booking (E7D)", () => {
     expect((await env.send("setup", "GET", `/api/client/requests/${req.body.id}/report.pdf?lang=ar`)).status).toBe(403);
     // Back to unreviewed for the tests that follow.
     expect((await env.call("founder", "POST", "/api/admin/arabic/review", { reviewed: false, note: "test over" })).status).toBe(200);
-  });
+  }, 60_000); // E16: the first designed reports in the file (fonts loaded cold, English and Arabic); timed out once at 5 s on a busy runner (E17 CI)
 
   it("the public report: a PDF of the saved result, preliminary, rate-limited, nothing written and not a return visit", async () => {
     const { code } = (await env.call("anon", "POST", "/api/public/assessments", { answers })).body;

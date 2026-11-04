@@ -23,7 +23,7 @@ task on the same image. Secrets come from AWS Secrets Manager at start (`infra/l
 
 | Area | What is in place | Where |
 | --- | --- | --- |
-| Sign-in | Email one-time codes (10 minutes, 5 attempts, 5 per hour per account), stored as hashes; sessions are random tokens stored as SHA-256, 14 days, `HttpOnly; SameSite=Lax; Secure`; per-address throttles on sign-in and the public intake | `lib/auth.ts`, `server.ts` |
+| Sign-in | Email one-time codes (10 minutes, 5 attempts, 5 per hour per account), stored as hashes; the attempt count is committed before the refusal and the code's row is locked while it is checked, so the limit holds against simultaneous guesses and across instances, and every failure reads the same (E17, D99); sessions are random tokens stored as SHA-256, 14 days, `HttpOnly; SameSite=Lax; Secure`; per-address throttles on sign-in and the public intake | `lib/auth.ts`, `server.ts` |
 | Authorisation, three layers | Route guards by role; PostgreSQL row-level security and column grants (each request runs under `app_client`, `app_partner` or `app_platform` with the organisation and user set in the session); a field visibility map | `lib/auth.ts`, `migrations/001_init.sql` onwards, `packages/core/src/visibility.ts`, `test/security.test.ts` |
 | Money privacy | Tests read every forbidden field as every role, at the database and over HTTP, including exports, notifications and the API contract | `test/security.test.ts`, `pdpl.test.ts`, `journey.test.ts`, smoke test |
 | Audit | Append-only, hash-chained audit events for every state change; verified nightly with an alert on a break; `pnpm verify:audit` | `migrations/002`, `services/system.ts`, D65 |

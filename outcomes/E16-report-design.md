@@ -1,6 +1,6 @@
 # E16 Report design: the assessment report as a designed PDF, in English or Arabic
 
-Status: verified-pending-merge (branch `outcome/E16-report-design`, on `main` at 61856ea with E15 merged; released by
+Status: merged (camayank/mkw-uae-growth#37, 3 Nov 2026; previously verified-pending-merge, branch `outcome/E16-report-design`, on `main` at 61856ea with E15 merged; released by
 the owner on 3 Nov 2026: "start E16". The owner approved the library ("Approve pdfkit") and the scope ("Assessment
 report only").)
 

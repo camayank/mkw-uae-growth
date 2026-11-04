@@ -352,6 +352,12 @@ in a browser; everything listed here is not.
      by themselves is a delivery rule for ops, not changed here; the demo seeds such a case.
 128. **The new Arabic strings for E15 are drafts** until the Arabic reviewer signs them off (with gaps 111, 116, 119).
 
+## E17: sign-in
+
+134. **Timing can still hint whether an email has an account.** The answers are the same (D99), but asking for a code
+     takes longer for a known email, which sends one, than for an unknown one; checking a code differs by far less.
+     Sending the email from the outbox rather than in the request would close most of it.
+
 ## E16: report design
 
 129. **The Arabic report's wording is a draft** until the Arabic reviewer signs it off (with gaps 111, 116, 119, 128).
@@ -412,8 +418,9 @@ in a browser; everything listed here is not.
 11. **WhatsApp notifications** (via the WhatsApp Business API) alongside email. The notifier records a
     `whatsapp` channel as `skipped` today.
 12. **Accounting export** of payments, payouts and VAT to the accounting system.
-13. **Shared rate limiting.** Sign-in limits are per process; use the proxy or a shared store with more than
-    one instance.
+13. **Shared rate limiting.** The per-address throttles (sign-in, the public intake, the public report) are per
+    process: use the proxy or a shared store with more than one instance. The five-guess limit on a sign-in code is
+    in the database since E17 (D99), so it holds across instances whatever the throttle does.
 14. **Erasure residue.** A PDPL erasure tombstones the person's name, email and messages and ends their access,
     but free text they typed into fields without an author column stays (milestone dispute reasons, allocation
     decline reasons, change-order descriptions, evidence file names), and audit payloads keep what was recorded

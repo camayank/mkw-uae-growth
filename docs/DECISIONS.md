@@ -1168,3 +1168,44 @@ owner on 3 Nov 2026: "start E15", after the portal assessment's point on the 13-
 - **How to remove it.** Revert E16 (this decision's commit range). The report goes back to `textPdf(reportLines(...))`,
   which is kept, and `pnpm remove pdfkit bidi-js @types/pdfkit` and the fonts folder go with it. No data or migration
   depends on it.
+
+**D99. A wrong sign-in code is counted, committed and then refused; every failure reads the same.** (E17, 3 Nov 2026,
+after the owner's transformation mandate named the defect: "Investigate the reported OTP failure-counter rollback".)
+
+- **The defect, reproduced** (`docs/evidence/E17/before-fix.txt`). `verifyLoginCode` added one to the code's attempt
+  count and then threw inside the same transaction. The error rolled the count back, so it stayed at zero and the
+  five-guess limit never held: after six wrong guesses the right code still signed in. The only brake was the
+  per-address throttle (30 tries per 15 minutes, per process).
+- **Also found.** A wrong code said "not right" and an email without a code said "expired". Codes are only issued for
+  real accounts, so the two answers told whether an email had an account.
+- **The fix** (`apps/api/src/lib/auth.ts`):
+  - the code's row is read `for update`, so guesses sent at the same moment are taken one at a time;
+  - a wrong guess's count is written and the transaction returns a refusal rather than throwing, so the count is
+    committed;
+  - after five wrong guesses the code is spent;
+  - every failure (wrong code, spent or used code, no code, no account) gets one answer: "That code is not right or
+    has expired".
+
+  The limit lives in the database, so it holds across instances. The per-address throttle stays as a second brake
+  (gap 13).
+- **Found by the independent review of E17, and fixed:**
+  - Two code requests at the same moment could each pass the hourly count and leave two codes alive; once the newest
+    was used, the older one could be guessed. Issuing is now one at a time per email (a transaction advisory lock),
+    and verifying looks only at the newest code, used or not.
+  - The path with no live code now compares the hash too, so it takes about as long as the others.
+  - A correct code for an account deactivated in the meantime gets the same refusal as any other failure.
+  - The new message and the throttle message have draft Arabic.
+- **Found by the Codex review of E17, and fixed.** A code's expiry used `now()`, the time its transaction started. A
+  request that started first but took the lock second could therefore insert a code expiring before the one it had
+  just invalidated, and verifying would pick the invalidated one. The expiry is now stamped with `clock_timestamp()`
+  after the lock is held, so the code issued last always expires last.
+- **What remains.** The time a request takes can still differ a little between a known and an unknown email, above
+  all when asking for a code, since a known email sends one (gap 134). The answer itself is the same.
+- **Tests** (`apps/api/test/sign-in.test.ts`):
+  - a wrong code is counted, and after five the right code is refused;
+  - twelve simultaneous wrong guesses leave the count at five;
+  - a used code does not sign in again;
+  - once the newest code is used, an older code still alive cannot be guessed;
+  - the failures read the same.
+
+  They pass on PGlite and on PostgreSQL 16, and fail on the old code.

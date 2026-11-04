@@ -141,6 +141,9 @@ export const AR = {
   "Your compliance calendar is on the Compliance page": "تقويم التزاماتك في صفحة الالتزامات",
   "Every step is checked by MKW Advisors before it comes to you. Approving it releases the partner's payment for that step; if you do nothing for five working days after our check, it is approved automatically.": "تتحقق MKW Advisors من كل خطوة قبل أن تصلك. موافقتك تُفرج عن دفعة الشريك عن تلك الخطوة؛ وإن لم تفعل شيئاً خلال خمسة أيام عمل بعد تحققنا تُعتمد تلقائياً.",
   "Documents we need from you": "المستندات التي نحتاجها منك",
+  // E17 (draft until the Arabic reviewer signs it off)
+  "That code is not right or has expired. Check the email, or ask for a new code.": "الرمز غير صحيح أو انتهت صلاحيته. تحقق من البريد الإلكتروني، أو اطلب رمزاً جديداً.",
+  "Too many attempts. Wait 15 minutes and try again.": "محاولات كثيرة جداً. انتظر 15 دقيقة ثم حاول مرة أخرى.",
   // E15 (draft until the Arabic reviewer signs it off)
   "Needed now": "مطلوبة الآن",
   "This step is already approved: send it only if the firm asks for it again.": "هذه الخطوة معتمدة بالفعل: أرسله فقط إذا طلبته الشركة مرة أخرى.",
